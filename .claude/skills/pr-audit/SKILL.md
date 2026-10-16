@@ -22,7 +22,7 @@ git diff --numstat origin/main...HEAD
 ```
 
 - Branch name must be `feature/<name>` or `fix/<name>` (lowercase, hyphens) and match what the diff actually does.
-- Line count: sum the **added** lines from `--numstat` for every file, **including** `prisma/migrations/**/migration.sql`. Exclude only `package-lock.json` and generated Prisma client output (`app/generated/`); report those separately so nothing is hidden. Limit: 1,000 counted lines. If over, propose how to split into sequential PRs that each leave the app working.
+- Line count: sum the **added** lines from `--numstat` for every file, **including** `prisma/migrations/**/migration.sql`. Exclude only `package-lock.json` and generated Prisma client output (`generated/`); report those separately so nothing is hidden. Limit: 1,000 counted lines. If over, propose how to split into sequential PRs that each leave the app working.
 - Commits: each message 20 words or fewer, no em dashes, describes the commit. No `Co-Authored-By`, no "Claude", "Anthropic" or "Generated with" anywhere in commit messages, code comments or docs (`git log --format=%B origin/main..HEAD`, and grep the diff).
 
 ## Step 2: Check the hard project rules
