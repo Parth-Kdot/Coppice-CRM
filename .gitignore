@@ -155,4 +155,4 @@ next-env.d.ts
 .DS_Store
 
 # Prisma generated client (rebuilt by `prisma generate` on install)
-/app/generated/
+/generated/

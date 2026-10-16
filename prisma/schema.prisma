@@ -1,0 +1,12 @@
+// Prisma schema: the single source of truth for database tables.
+// Tables arrive in Milestone 1. Run `npx prisma generate` after every change.
+
+generator client {
+  provider = "prisma-client"
+  // Machine-written code lives in /generated, never edited by hand and gitignored.
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
