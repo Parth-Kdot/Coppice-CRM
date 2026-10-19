@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow only needs to read the code.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older, now-outdated run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # Same Postgres 16 as docker-compose.yml, so CI tests match local tests.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: boilerpitch
+          POSTGRES_PASSWORD: boilerpitch
+          POSTGRES_DB: boilerpitch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://boilerpitch:boilerpitch@localhost:5432/boilerpitch
+      DIRECT_URL: postgresql://boilerpitch:boilerpitch@localhost:5432/boilerpitch
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Exact versions from package-lock.json; postinstall runs `prisma generate`.
+      - run: npm ci
+
+      - run: npx prisma migrate deploy
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test

@@ -147,3 +147,12 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Next.js and Vercel
+.vercel
+next-env.d.ts
+*.pem
+.DS_Store
+
+# Prisma generated client (rebuilt by `prisma generate` on install)
+/generated/
