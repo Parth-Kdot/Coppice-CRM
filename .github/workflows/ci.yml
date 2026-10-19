@@ -18,10 +18,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
-    # Same Postgres 16 as docker-compose.yml, so CI tests match local tests.
+    # Same Postgres 17 as docker-compose.yml and Supabase, so CI tests match local and production.
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: boilerpitch
           POSTGRES_PASSWORD: boilerpitch
