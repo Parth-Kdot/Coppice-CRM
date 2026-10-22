@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { connection } from "next/server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,7 +18,11 @@ export const metadata: Metadata = {
   description: "Shared sponsorship pipeline for Purdue student orgs",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Render every page per request. The Content-Security-Policy (proxy.ts) gives each request a
+  // new nonce, and a page built ahead of time would carry scripts without it, which the browser
+  // would then block.
+  await connection();
   return (
     <html
       lang="en"
