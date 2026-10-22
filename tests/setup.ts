@@ -1,9 +1,9 @@
 import "dotenv/config";
-import { testDatabaseUrl } from "./test-db";
+import { testDatabaseUrls } from "./test-db";
 
-// Runs in each test worker before any test imports lib/db, so the app's Prisma client
-// connects to the test database.
-process.env.DATABASE_URL = testDatabaseUrl();
+// Runs in each test worker before any test imports lib/db. The app's Prisma client then
+// connects to the test database as app_user, so row-level security applies in tests too.
+process.env.DATABASE_URL = testDatabaseUrls().appUrl;
 
 // lib/auth.ts refuses to load without these. CI has no real keys, and tests never talk to
 // Google, so placeholders are enough. Real values from .env are kept when present.
