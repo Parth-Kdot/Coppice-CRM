@@ -12,5 +12,6 @@ export default async function setup() {
   if (rowCount === 0) await client.query("CREATE DATABASE boilerpitch_test");
   await client.end();
 
-  execSync("npx prisma migrate deploy", { env: { ...process.env, DIRECT_URL: testUrl }, stdio: "ignore" });
+  // "pipe" keeps the output quiet when it works, but puts Prisma's message in the error when it fails.
+  execSync("npx prisma migrate deploy", { env: { ...process.env, DIRECT_URL: testUrl }, stdio: "pipe" });
 }
