@@ -24,7 +24,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
     }),
     prisma.membership.findMany({
       where: { workspaceId },
-      select: { id: true, userId: true, role: true, user: { select: { name: true, email: true } } },
+      // Emails are only loaded for owners, so they never reach an officer's browser at all.
+      select: { id: true, userId: true, role: true, user: { select: { name: true, email: isOwner } } },
       orderBy: { createdAt: "asc" },
     }),
     isOwner
@@ -55,7 +56,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
             return (
               <li key={member.id} className="flex flex-wrap items-center gap-3">
                 <span>
-                  {member.user.name} ({member.user.email}): {roleLabel(role)}
+                  {member.user.name}
+                  {member.user.email && ` (${member.user.email})`}: {roleLabel(role)}
                   {isMe && " (you)"}
                 </span>
                 {isOwner && (
@@ -69,7 +71,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                   <ActionForm
                     action={removeMember}
                     submitLabel="Remove"
-                    confirmMessage={`Remove ${member.user.email} from ${workspace.name}?`}
+                    confirmMessage={`Remove ${member.user.name} from ${workspace.name}?`}
                   >
                     <input type="hidden" name="workspaceId" value={workspaceId} />
                     <input type="hidden" name="memberId" value={member.id} />

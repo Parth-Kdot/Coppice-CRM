@@ -7,7 +7,8 @@ export async function resetAndSeed() {
   await prisma.workspace.deleteMany();
   await prisma.user.deleteMany();
 
-  const user = (id: string) => ({ id, name: id, email: `${id}@example.com`, emailVerified: true });
+  // Lowercase emails, like Better Auth stores them after Google sign-in.
+  const user = (id: string) => ({ id, name: id, email: `${id.toLowerCase()}@example.com`, emailVerified: true });
   await prisma.user.createMany({ data: [user("ownerA"), user("officerA"), user("ownerB")] });
   const now = new Date();
   await prisma.workspace.createMany({
@@ -24,3 +25,22 @@ export async function resetAndSeed() {
     ],
   });
 }
+
+// A pending invitation into workspace "a", sent by its owner.
+export async function invite(fields: { id: string; email: string; role?: string; expiresAt?: Date; status?: string }) {
+  await prisma.invitation.create({
+    data: {
+      workspaceId: "a",
+      inviterId: "ownerA",
+      role: "member",
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      ...fields,
+    },
+  });
+}
+
+export const roleOf = async (membershipId: string) =>
+  (await prisma.membership.findUnique({ where: { id: membershipId }, select: { role: true } }))?.role;
+
+export const ownerCount = (workspaceId: string) =>
+  prisma.membership.count({ where: { workspaceId, role: "owner" } });

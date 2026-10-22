@@ -54,4 +54,9 @@ describe("canCreateWorkspace (Option B allowlist)", () => {
     process.env.WORKSPACE_CREATOR_EMAILS = "";
     expect(canCreateWorkspace("chair@example.com")).toBe(false);
   });
+
+  it("allows nobody when the variable isn't set at all", () => {
+    delete process.env.WORKSPACE_CREATOR_EMAILS;
+    expect(canCreateWorkspace("chair@example.com")).toBe(false);
+  });
 });
