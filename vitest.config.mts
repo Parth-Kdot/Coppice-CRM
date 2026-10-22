@@ -9,6 +9,7 @@ export default defineConfig({
     // Database tests share one Postgres, so test files run one at a time
     // to keep them from changing each other's data mid-test.
     fileParallelism: false,
+    globalSetup: ["./tests/global-setup.ts"],
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts"],
   },

@@ -1,3 +1,6 @@
-// Runs before every test file. Vitest does not load .env on its own (Next.js does),
-// so load it here to give tests the same DATABASE_URL the app uses locally.
 import "dotenv/config";
+import { testDatabaseUrl } from "./test-db";
+
+// Runs in each test worker before any test imports lib/db, so the app's Prisma client
+// connects to the test database.
+process.env.DATABASE_URL = testDatabaseUrl();
