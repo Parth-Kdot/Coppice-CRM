@@ -12,7 +12,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 // Source-code guards: these read the code itself and fail the build if a dangerous pattern
 // appears. They turn the rules in rule 1.11 into something CI enforces, not something to remember.
-const APP_CODE = ["app/**/*.{ts,tsx}", "lib/**/*.ts", "components/**/*.tsx"];
+const APP_CODE = ["app/**/*.{ts,tsx}", "lib/**/*.ts", "components/**/*.tsx", "proxy.ts"];
 const ALL_CODE = [...APP_CODE, "scripts/**/*.ts"];
 const files = (patterns: string[]) => patterns.flatMap((pattern) => globSync(pattern));
 const source = (file: string) => readFileSync(file, "utf8");

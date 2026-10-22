@@ -68,6 +68,11 @@ export const auth = betterAuth({
     },
   },
   disabledPaths: workspaceHttpPaths,
+  // Limits requests to /api/auth/* per IP: 3 sign-in attempts per 10 seconds, 100 requests per
+  // 10 seconds otherwise. Counts live in the database (the rateLimit table) so every server
+  // instance shares them; in memory, each Vercel instance would keep its own count. On in every
+  // environment so tests check the same behavior production has.
+  rateLimit: { enabled: true, storage: "database" },
   // nextCookies must stay last: it lets server actions set the session cookie.
   plugins: [workspaces, nextCookies()],
 });
