@@ -16,7 +16,7 @@ export default defineConfig({
     // tests reach. Pages are checked by clicking through instead.
     coverage: {
       provider: "v8",
-      include: ["lib/**/*.ts", "app/**/actions.ts"],
+      include: ["lib/**/*.ts", "app/**/actions.ts", "proxy.ts"],
       reporter: ["text"],
     },
   },
