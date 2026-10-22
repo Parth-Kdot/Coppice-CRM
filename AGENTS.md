@@ -25,6 +25,7 @@ npx skills experimental_install
 | organization-best-practices | Workspaces, members, roles and invitations (Better Auth organization plugin) | `npx skills add better-auth/skills -s organization-best-practices` |
 | vercel-react-best-practices | Writing or reviewing React and Next.js code | `npx skills add vercel-labs/agent-skills -s vercel-react-best-practices` |
 | tdd | Building a feature or fixing a bug test-first | `npx skills add mattpocock/skills -s tdd` |
+| vitest | Writing Vitest tests: edge-case tables with `test.each`, concurrency, mocking Next.js request APIs, coverage | `npx skills add antfu/skills -s vitest` |
 | improve-codebase-architecture | Reviewing structure and module boundaries | `npx skills add mattpocock/skills -s improve-codebase-architecture` |
 | security-review | Reviewing auth, permissions, row-level security and input handling | `npx skills add getsentry/skills -s security-review` |
 | web-design-guidelines | Reviewing UI and accessibility before demos | `npx skills add vercel-labs/agent-skills -s web-design-guidelines` |
