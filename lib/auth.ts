@@ -14,12 +14,23 @@ export function canCreateWorkspace(email: string): boolean {
   return allowed.includes(email.toLowerCase());
 }
 
+// Fail fast: a missing setting stops the server at startup with a clear message,
+// instead of breaking halfway through someone's sign-in.
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set. Copy .env.example to .env.`);
+  return value;
+}
+
+// Better Auth reads BETTER_AUTH_SECRET itself; this only checks that it exists.
+requireEnv("BETTER_AUTH_SECRET");
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      clientId: requireEnv("GOOGLE_CLIENT_ID"),
+      clientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
     },
   },
   plugins: [
