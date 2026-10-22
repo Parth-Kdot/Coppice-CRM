@@ -35,7 +35,8 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://boilerpitch:boilerpitch@localhost:5432/boilerpitch
+      # The app (and tests) run as app_user so row-level security applies; migrations use the owner.
+      DATABASE_URL: postgresql://app_user:app_user@localhost:5432/boilerpitch
       DIRECT_URL: postgresql://boilerpitch:boilerpitch@localhost:5432/boilerpitch
 
     steps:
@@ -49,7 +50,8 @@ jobs:
       # Exact versions from package-lock.json; postinstall runs `prisma generate`.
       - run: npm ci
 
-      - run: npx prisma migrate deploy
+      # Applies migrations and sets app_user's password (scripts/local-db.ts).
+      - run: npm run db:setup
 
       - run: npm run typecheck
 
