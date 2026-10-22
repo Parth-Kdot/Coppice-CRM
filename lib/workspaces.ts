@@ -1,0 +1,9 @@
+import { checkOwner } from "@/lib/authz";
+import { prisma } from "@/lib/db";
+
+// How long a claim lasts before someone else can take the company. Milestone 3's claim SQL
+// reads this. Owner only; takes a userId (like checkOwner) so it can be tested directly.
+export async function setClaimWindow(userId: string, workspaceId: string, days: number): Promise<void> {
+  await checkOwner(userId, workspaceId);
+  await prisma.workspace.update({ where: { id: workspaceId }, data: { claimWindowDays: days } });
+}

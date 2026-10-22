@@ -2,33 +2,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { canCreateWorkspace } from "@/lib/auth";
 import { AuthzError, checkMembership, checkOwner } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { resetAndSeed } from "./helpers/seed";
 
-// Two workspaces: "a" has an owner and an officer, "b" has its own owner.
-async function seed() {
-  const user = (id: string) => ({ id, name: id, email: `${id}@example.com`, emailVerified: true });
-  await prisma.user.createMany({ data: [user("ownerA"), user("officerA"), user("ownerB")] });
-  const now = new Date();
-  await prisma.workspace.createMany({
-    data: [
-      { id: "a", name: "Org A", slug: "a", createdAt: now },
-      { id: "b", name: "Org B", slug: "b", createdAt: now },
-    ],
-  });
-  await prisma.membership.createMany({
-    data: [
-      { id: "m1", workspaceId: "a", userId: "ownerA", role: "owner", createdAt: now },
-      { id: "m2", workspaceId: "a", userId: "officerA", role: "member", createdAt: now },
-      { id: "m3", workspaceId: "b", userId: "ownerB", role: "owner", createdAt: now },
-    ],
-  });
-}
-
-beforeEach(async () => {
-  // Deleting workspaces and users cascades to memberships, invitations and sessions.
-  await prisma.workspace.deleteMany();
-  await prisma.user.deleteMany();
-  await seed();
-});
+beforeEach(resetAndSeed);
 
 afterAll(async () => {
   await prisma.$disconnect();
