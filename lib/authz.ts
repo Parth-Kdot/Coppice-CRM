@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -49,4 +49,15 @@ export async function requireMembership(workspaceId: string): Promise<Membership
 export async function requireOwner(workspaceId: string): Promise<Membership> {
   const user = await requireUser();
   return checkOwner(user.id, workspaceId);
+}
+
+// For pages: not a member shows the same 404 as a workspace that doesn't exist,
+// so workspace ids can't be probed.
+export async function requireMembershipOr404(workspaceId: string): Promise<Membership> {
+  try {
+    return await requireMembership(workspaceId);
+  } catch (e) {
+    if (e instanceof AuthzError) notFound();
+    throw e;
+  }
 }
