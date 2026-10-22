@@ -12,5 +12,12 @@ export default defineConfig({
     globalSetup: ["./tests/global-setup.ts"],
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts"],
+    // `npm run test:coverage` reports which lines and branches of the server-side logic the
+    // tests reach. Pages are checked by clicking through instead.
+    coverage: {
+      provider: "v8",
+      include: ["lib/**/*.ts", "app/**/actions.ts"],
+      reporter: ["text"],
+    },
   },
 });
