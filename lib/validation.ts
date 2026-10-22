@@ -6,7 +6,8 @@ export const createWorkspaceSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters.").max(80),
 });
 
-const id = z.string().min(1);
+// Our ids are 25 to 36 characters. The cap stops anyone sending megabytes into a lookup.
+const id = z.string().min(1).max(64);
 const role = z.enum(["member", "owner"]);
 
 export const CLAIM_WINDOW_MIN_DAYS = 1;
@@ -15,7 +16,8 @@ export const CLAIM_WINDOW_MAX_DAYS = 60;
 export const inviteMemberSchema = z.object({
   workspaceId: id,
   // Trim and lowercase first, then check the format, so " Sam@Purdue.edu " is accepted.
-  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address.")),
+  // 254 characters is the longest a real email address can be.
+  email: z.string().trim().toLowerCase().max(254, "Enter a valid email address.").pipe(z.email("Enter a valid email address.")),
   role,
 });
 
