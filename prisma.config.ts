@@ -1,6 +1,6 @@
 // Prisma CLI configuration (migrate, generate, studio). The running app does not read this file.
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -8,7 +8,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // Migrations use the direct (unpooled) connection; poolers can break schema changes.
-    url: env("DIRECT_URL"),
+    // Migrations use the owner's connection (Supabase: the session pooler, port 5432). Only
+    // migrate needs it. `prisma generate` runs on every install, including Vercel's build, where
+    // DIRECT_URL is deliberately absent so the owner password never lives on Vercel.
+    url: process.env.DIRECT_URL ?? "",
   },
 });
