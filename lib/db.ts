@@ -1,4 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
+import type { PoolConfig } from "pg";
 import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 
 // One PrismaClient per server process. Each client owns a connection pool, so
@@ -8,12 +9,29 @@ import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 // on globalThis keeps a single instance across reloads instead of leaking pools.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL;
+// Connection settings for the app's pool. Locally that's just DATABASE_URL. In production,
+// DATABASE_CA_CERT holds Supabase's public root certificate: the connection is encrypted and the
+// app checks it is really talking to Supabase (not someone in between). We pass the certificate
+// here instead of using sslmode in the URL, because Node doesn't trust Supabase's own CA by default.
+export function connectionConfig(env: Record<string, string | undefined> = process.env): PoolConfig {
+  const connectionString = env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set. Copy .env.example to .env.");
   }
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  const ca = env.DATABASE_CA_CERT?.replace(/\\n/g, "\n").trim();
+  if (!ca) return { connectionString };
+  if (!ca.startsWith("-----BEGIN CERTIFICATE-----")) {
+    throw new Error("DATABASE_CA_CERT must be the PEM certificate text, starting with -----BEGIN CERTIFICATE-----.");
+  }
+  // An sslmode in the URL would override the settings below, silently dropping the CA check.
+  if (/[?&]sslmode=/i.test(connectionString)) {
+    throw new Error("Remove sslmode from DATABASE_URL: with DATABASE_CA_CERT set, the app configures verified SSL itself.");
+  }
+  return { connectionString, ssl: { ca, rejectUnauthorized: true } };
+}
+
+function createPrismaClient(): PrismaClient {
+  return new PrismaClient({ adapter: new PrismaPg(connectionConfig()) });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
