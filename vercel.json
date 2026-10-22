@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["iad1"],
+  "git": {
+    "deploymentEnabled": {
+      "feature/**": false,
+      "fix/**": false
+    }
+  }
+}
