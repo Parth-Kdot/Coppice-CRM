@@ -46,6 +46,12 @@ describe("source guards", () => {
   test.for(files(APP_CODE))("%s has no eval, new Function or raw HTML injection", (file) => {
     expect(source(file)).not.toMatch(/\beval\(|new Function\(|dangerouslySetInnerHTML|\.innerHTML\s*=/);
   });
+
+  // Project rule 2: only lib/claims.ts may write a claim. Reading is fine (`claimedById: true` in a
+  // select, or `claimedBy` to show the holder); assigning anything else is a write.
+  test.for(files(APP_CODE).filter((file) => file !== "lib/claims.ts"))("%s never writes a claim field", (file) => {
+    expect(source(file)).not.toMatch(/\b(claimedById|claimExpiresAt)\s*:\s*(?!true\b)|"(claimedById|claimExpiresAt)"\s*=/);
+  });
 });
 
 // The same attack strings against the real code. Every value travels as a parameter, so
