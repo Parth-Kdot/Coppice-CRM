@@ -15,7 +15,7 @@ const TENANT_TABLES = ["Company", "Contact", "Template", "Outreach"] as const;
 async function seedTenantRows(tenant: Tenant, suffix: string) {
   await withTenant(tenant, async (tx) => {
     const { workspaceId, userId } = tenant;
-    await tx.company.create({ data: { id: `co-${suffix}`, workspaceId, name: `Company ${suffix}` } });
+    await tx.company.create({ data: { id: `co-${suffix}`, workspaceId, name: `Company ${suffix}`, nameKey: `company ${suffix}` } });
     await tx.contact.create({ data: { id: `ct-${suffix}`, workspaceId, companyId: `co-${suffix}`, name: "Sam" } });
     await tx.template.create({ data: { id: `tp-${suffix}`, workspaceId, name: "First touch", body: "Hi" } });
     await tx.outreach.create({
@@ -101,7 +101,7 @@ describe("without withTenant, it fails closed", () => {
   });
 
   it("writes are refused", async () => {
-    await expect(prisma.company.create({ data: { workspaceId: "a", name: "Sneaky" } })).rejects.toThrow(
+    await expect(prisma.company.create({ data: { workspaceId: "a", name: "Sneaky", nameKey: "sneaky" } })).rejects.toThrow(
       /row-level security/,
     );
   });
@@ -162,7 +162,7 @@ describe("inside withTenant", () => {
   });
 
   const plantInB: [string, (tx: Prisma.TransactionClient) => Promise<unknown>][] = [
-    ["a company", (tx) => tx.company.create({ data: { workspaceId: "b", name: "Planted" } })],
+    ["a company", (tx) => tx.company.create({ data: { workspaceId: "b", name: "Planted", nameKey: "planted" } })],
     ["a template", (tx) => tx.template.create({ data: { workspaceId: "b", name: "x", body: "x" } })],
   ];
   test.for(plantInB)("A can't create %s in workspace B", async ([, create]) => {
@@ -220,7 +220,7 @@ describe("membership is checked by the database too", () => {
   it("a non-member can't write either", async () => {
     await expect(
       withTenant({ userId: "ownerB", workspaceId: "a" }, (tx) =>
-        tx.company.create({ data: { workspaceId: "a", name: "Planted" } }),
+        tx.company.create({ data: { workspaceId: "a", name: "Planted", nameKey: "planted" } }),
       ),
     ).rejects.toThrow(/row-level security/);
   });
@@ -230,7 +230,7 @@ describe("withTenant itself", () => {
   it("rolls everything back if the work fails", async () => {
     await expect(
       withTenant(A, async (tx) => {
-        await tx.company.create({ data: { id: "co-new", workspaceId: "a", name: "New" } });
+        await tx.company.create({ data: { id: "co-new", workspaceId: "a", name: "New", nameKey: "new" } });
         throw new Error("boom");
       }),
     ).rejects.toThrow("boom");

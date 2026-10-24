@@ -16,20 +16,22 @@ datasource db {
 }
 
 model User {
-  id               String       @id
+  id               String                @id
   name             String
   email            String
-  emailVerified    Boolean      @default(false)
+  emailVerified    Boolean               @default(false)
   image            String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
   sessions         Session[]
   accounts         Account[]
   memberships      Membership[]
   invitations      Invitation[]
   // App relations (not from the generator).
-  claimedCompanies Company[]    @relation("CompanyClaims")
+  claimedCompanies Company[]             @relation("CompanyClaims")
   outreach         Outreach[]
+  stageChanges     StageChange[]
+  pairDecisions    CompanyPairDecision[]
 
   @@unique([email])
   @@map("user")
@@ -85,13 +87,13 @@ model Verification {
 }
 
 model Workspace {
-  id              String       @id
+  id              String                @id
   name            String
   slug            String
   logo            String?
   createdAt       DateTime
   metadata        String?
-  claimWindowDays Int          @default(14)
+  claimWindowDays Int                   @default(14)
   memberships     Membership[]
   invitations     Invitation[]
   // App relations (not from the generator).
@@ -99,6 +101,8 @@ model Workspace {
   contacts        Contact[]
   templates       Template[]
   outreach        Outreach[]
+  stageChanges    StageChange[]
+  pairDecisions   CompanyPairDecision[]
 
   @@unique([slug])
   @@map("workspace")
@@ -178,6 +182,10 @@ model Company {
   industry        String?
   website         String?
   notes           String?
+  // Duplicate-matching keys, computed by lib/duplicates.ts on every write: the name lowercased
+  // without punctuation or legal suffixes ("Acme, Inc." -> "acme"), and the website's domain.
+  nameKey         String
+  domainKey       String?
   stage           Stage     @default(NOT_CONTACTED)
   nextFollowUpAt  DateTime? @db.Timestamptz(3)
   lastContactedAt DateTime? @db.Timestamptz(3)
@@ -188,17 +196,65 @@ model Company {
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
 
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  claimedBy User?      @relation("CompanyClaims", fields: [claimedById], references: [id], onDelete: SetNull)
-  contacts  Contact[]
-  outreach  Outreach[]
+  workspace    Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  claimedBy    User?                 @relation("CompanyClaims", fields: [claimedById], references: [id], onDelete: SetNull)
+  contacts     Contact[]
+  outreach     Outreach[]
+  stageChanges StageChange[]
+  pairsAsA     CompanyPairDecision[] @relation("PairCompanyA")
+  pairsAsB     CompanyPairDecision[] @relation("PairCompanyB")
 
   // Lets contacts and outreach point at (company, workspace) together, so a row can never
   // link to a company in a different workspace.
   @@unique([id, workspaceId])
   @@index([workspaceId, nextFollowUpAt])
   @@index([workspaceId, name])
+  @@index([workspaceId, nameKey])
+  @@index([workspaceId, domainKey])
   @@index([claimedById])
+}
+
+// Every stage move, kept forever: who moved which company from what to what, and when.
+// Written only by changeStage in lib/claims.ts. Later AI features read the history.
+model StageChange {
+  id          String   @id @default(cuid())
+  workspaceId String
+  companyId   String
+  changedById String
+  fromStage   Stage
+  toStage     Stage
+  changedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   Company   @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  // Restrict: history outlives people.
+  changedBy User      @relation(fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, workspaceId])
+  @@index([workspaceId, changedAt])
+  @@index([changedById])
+}
+
+// A person looked at two look-alike companies and said "these are separate", so the pair is
+// never flagged as a duplicate again. companyAId is always the smaller id (enforced by a CHECK in
+// the migration), so each pair has exactly one row.
+model CompanyPairDecision {
+  id          String   @id @default(cuid())
+  workspaceId String
+  companyAId  String
+  companyBId  String
+  decidedById String
+  decidedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  companyA  Company   @relation("PairCompanyA", fields: [companyAId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  companyB  Company   @relation("PairCompanyB", fields: [companyBId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  decidedBy User      @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, companyAId, companyBId])
+  @@index([companyAId, workspaceId])
+  @@index([companyBId, workspaceId])
+  @@index([decidedById])
 }
 
 model Contact {
