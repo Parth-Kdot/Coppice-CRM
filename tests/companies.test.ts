@@ -11,6 +11,7 @@ import {
   unarchiveCompany,
   updateCompany,
   updateContact,
+  type CompanyFields,
   type SaveResult,
 } from "@/lib/companies";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
@@ -25,6 +26,8 @@ const saved = (r: SaveResult) => {
   if (r.status !== "saved") throw new Error(`expected saved, got ${r.status}`);
   return r.companyId;
 };
+// An edit as the form sends it: what the person typed, and what the form showed when it loaded.
+const edit = (original: CompanyFields, changes: Partial<CompanyFields>) => ({ original, changes: { ...original, ...changes } });
 const companyRow = (id: string) => withTenant(A, (tx) => tx.company.findUnique({ where: { id } }));
 const countIn = (tenant: Tenant) => withTenant(tenant, (tx) => tx.company.count());
 
@@ -45,7 +48,7 @@ describe("creating companies and duplicate flags", () => {
     const result = await createCompany(A, { name: "ACME, Inc." });
     expect(result).toEqual({
       status: "possible-duplicates",
-      matches: [{ id: acme, name: "Acme Corp", website: null, matchedOn: ["name"] }],
+      matches: [{ id: acme, name: "Acme Corp", website: null, archived: false, matchedOn: ["name"] }],
     });
     expect(await countIn(A)).toBe(1);
   });
@@ -64,8 +67,8 @@ describe("creating companies and duplicate flags", () => {
     expect([decision?.companyAId, decision?.companyBId].sort()).toEqual([amazon, second].sort());
     expect(await listPossibleDuplicatePairs(A)).toEqual([]);
     // Renaming either one of them doesn't re-ask about this pair, whichever side of it it's on.
-    expect(await updateCompany(A, second, { name: "Amazon, Inc." })).toEqual({ ok: true, data: { status: "saved", companyId: second } });
-    expect(await updateCompany(A, amazon, { name: "AMAZON" })).toEqual({ ok: true, data: { status: "saved", companyId: amazon } });
+    expect(await updateCompany(A, second, edit({ name: "Amazon" }, { name: "Amazon, Inc." }))).toEqual({ ok: true, data: { status: "saved", companyId: second } });
+    expect(await updateCompany(A, amazon, edit({ name: "amazon" }, { name: "AMAZON" }))).toEqual({ ok: true, data: { status: "saved", companyId: amazon } });
   });
 
   it("still flags matches the person didn't acknowledge, and ignores ids that aren't matches", async () => {
@@ -77,10 +80,15 @@ describe("creating companies and duplicate flags", () => {
     expect(await withTenant(A, (tx) => tx.companyPairDecision.count())).toBe(1);
   });
 
-  it("archived companies don't count as duplicates", async () => {
+  it("archived look-alikes are flagged too, marked archived, so their history isn't orphaned", async () => {
     const old = saved(await createCompany(A, { name: "Initech" }));
     await archiveCompany(A, old);
-    expect((await createCompany(A, { name: "Initech" })).status).toBe("saved");
+    expect(await createCompany(A, { name: "Initech, Inc." })).toEqual({
+      status: "possible-duplicates",
+      matches: [{ id: old, name: "Initech", website: null, archived: true, matchedOn: ["name"] }],
+    });
+    // "Separate entries" still works against an archived match.
+    expect((await createCompany(A, { name: "Initech, Inc." }, [old])).status).toBe("saved");
   });
 
   it("another workspace's companies never flag (or leak) into yours", async () => {
@@ -91,22 +99,85 @@ describe("creating companies and duplicate flags", () => {
   it("editing a company into a look-alike flags it; acknowledging saves it", async () => {
     const acme = saved(await createCompany(A, { name: "Acme" }));
     const other = saved(await createCompany(A, { name: "Globex" }));
-    const flagged = await updateCompany(A, other, { name: "acme corporation" });
+    const flagged = await updateCompany(A, other, edit({ name: "Globex" }, { name: "acme corporation" }));
     expect(flagged).toMatchObject({ ok: true, data: { status: "possible-duplicates", matches: [{ id: acme }] } });
     expect((await companyRow(other))?.name).toBe("Globex");
-    expect(await updateCompany(A, other, { name: "acme corporation" }, [acme])).toMatchObject({ ok: true, data: { status: "saved" } });
+    expect(await updateCompany(A, other, edit({ name: "Globex" }, { name: "acme corporation" }), [acme])).toMatchObject({ ok: true, data: { status: "saved" } });
     expect((await companyRow(other))?.nameKey).toBe("acme");
   });
 
   it("a company never flags itself when edited", async () => {
     const acme = saved(await createCompany(A, { name: "Acme", website: "acme.com" }));
-    expect(await updateCompany(A, acme, { name: "Acme Corp", website: "www.acme.com" })).toMatchObject({ data: { status: "saved" } });
+    expect(await updateCompany(A, acme, edit({ name: "Acme", website: "acme.com" }, { name: "Acme Corp", website: "www.acme.com" }))).toMatchObject({ data: { status: "saved" } });
   });
 
   it("updating another workspace's company is refused and changes nothing", async () => {
     const theirs = saved(await createCompany(B, { name: "Hooli" }));
-    expect(await updateCompany(A, theirs, { name: "Hacked" })).toEqual({ ok: false, error: "Company not found." });
+    expect(await updateCompany(A, theirs, edit({ name: "Hooli" }, { name: "Hacked" }))).toEqual({ ok: false, error: "Company not found." });
     expect(await withTenant(B, (tx) => tx.company.findUnique({ where: { id: theirs }, select: { name: true } }))).toEqual({ name: "Hooli" });
+  });
+});
+
+describe("safe concurrent edits (field by field)", () => {
+  const loaded: CompanyFields = { name: "Acme", industry: "Tech", website: "acme.com", notes: "met at fair" };
+  const create = async () => saved(await createCompany(A, loaded));
+
+  it("two people editing different fields both win; nothing is overwritten", async () => {
+    const id = await create();
+    expect(await updateCompany(A, id, edit(loaded, { website: "acme-corp.com" }))).toMatchObject({ data: { status: "saved" } });
+    expect(await updateCompany(OFFICER_A, id, edit(loaded, { notes: "met at fair; follow up in Nov" }))).toMatchObject({ data: { status: "saved" } });
+    expect(await companyRow(id)).toMatchObject({ website: "acme-corp.com", notes: "met at fair; follow up in Nov", domainKey: "acme-corp.com" });
+  });
+
+  it("the same field edited by two people: the second sees a conflict with the other value, and nothing changes", async () => {
+    const id = await create();
+    await updateCompany(A, id, edit(loaded, { website: "acme-corp.com" }));
+    const second = await updateCompany(OFFICER_A, id, edit(loaded, { website: "acme.org" }));
+    expect(second).toEqual({
+      ok: true,
+      data: { status: "conflict", conflicts: [{ field: "website", theirs: "acme-corp.com", yours: "acme.org" }] },
+    });
+    expect((await companyRow(id))?.website).toBe("acme-corp.com");
+  });
+
+  it("resubmitting after seeing the conflict (with the new value as the starting point) saves", async () => {
+    const id = await create();
+    await updateCompany(A, id, edit(loaded, { website: "acme-corp.com" }));
+    const reloaded = { ...loaded, website: "acme-corp.com" };
+    expect(await updateCompany(OFFICER_A, id, edit(reloaded, { website: "acme.org" }))).toMatchObject({ data: { status: "saved" } });
+    expect((await companyRow(id))?.website).toBe("acme.org");
+  });
+
+  it("a stage move by someone else never blocks a details edit", async () => {
+    const id = await create();
+    await changeStage(OFFICER_A, id, "CONTACTED");
+    expect(await updateCompany(A, id, edit(loaded, { industry: "Fintech" }))).toMatchObject({ data: { status: "saved" } });
+  });
+
+  it("clearing a field (to empty) is a change like any other", async () => {
+    const id = await create();
+    expect(await updateCompany(A, id, edit(loaded, { website: null }))).toMatchObject({ data: { status: "saved" } });
+    expect(await companyRow(id)).toMatchObject({ website: null, domainKey: null });
+  });
+
+  it("saving with no changes writes nothing", async () => {
+    const id = await create();
+    const before = (await companyRow(id))?.updatedAt;
+    expect(await updateCompany(A, id, edit(loaded, {}))).toMatchObject({ data: { status: "saved" } });
+    expect((await companyRow(id))?.updatedAt).toEqual(before);
+  });
+
+  it("two simultaneous edits of the same field: exactly one wins, the other gets a conflict (10 rounds)", async () => {
+    for (let round = 0; round < 10; round++) {
+      await resetAndSeed();
+      const id = await create();
+      const results = await Promise.all([
+        updateCompany(A, id, edit(loaded, { notes: "from owner" })),
+        updateCompany(OFFICER_A, id, edit(loaded, { notes: "from officer" })),
+      ]);
+      const statuses = results.map((r) => (r.ok ? r.data.status : "error")).sort();
+      expect(statuses).toEqual(["conflict", "saved"]);
+    }
   });
 });
 
@@ -127,8 +198,8 @@ describe("the 'Possible duplicates' list and resolving pairs", () => {
     await plantPair("c1", "c2", "same.com");
     expect(await listPossibleDuplicatePairs(A)).toEqual([
       {
-        a: { id: "c1", name: "c1", website: null, matchedOn: ["name", "website"] },
-        b: { id: "c2", name: "c2", website: null, matchedOn: ["name", "website"] },
+        a: { id: "c1", name: "c1", website: null, archived: false, matchedOn: ["name", "website"] },
+        b: { id: "c2", name: "c2", website: null, archived: false, matchedOn: ["name", "website"] },
         matchedOn: ["name", "website"],
       },
     ]);
@@ -150,11 +221,11 @@ describe("the 'Possible duplicates' list and resolving pairs", () => {
 
   it("editing a company with nothing to compare against just saves", async () => {
     const only = saved(await createCompany(A, { name: "Solo" }));
-    expect(await updateCompany(A, only, { name: "Solo Labs" })).toMatchObject({ ok: true, data: { status: "saved" } });
+    expect(await updateCompany(A, only, edit({ name: "Solo" }, { name: "Solo Labs" }))).toMatchObject({ ok: true, data: { status: "saved" } });
   });
 
   it("refuses editing a company that doesn't exist", async () => {
-    expect(await updateCompany(A, "nope", { name: "Ghost" })).toEqual({ ok: false, error: "Company not found." });
+    expect(await updateCompany(A, "nope", edit({ name: "Ghost" }, { name: "Ghosted" }))).toEqual({ ok: false, error: "Company not found." });
   });
 
   it("'Separate' removes the pair from the list for good (any member can do it)", async () => {
