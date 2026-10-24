@@ -135,11 +135,10 @@ export function updateCompany(
     const originals = Object.fromEntries(changed.map((f) => [f, value(edit.original, f)]));
     const { count } = await tx.company.updateMany({ where: { ...where, ...originals }, data: { ...changes, ...keys } });
     if (count === 0) {
-      // Someone saved the same field between our read and our write.
-      const now = await tx.company.findFirst({ where, select: { name: true, industry: true, website: true, notes: true } });
-      return now
-        ? { ok: true, data: { status: "conflict", conflicts: conflictsWith(now) } }
-        : { ok: false, error: "Company not found." };
+      // Someone saved the same field between our read and our write. (Companies are never
+      // deleted, only archived, so the row is still there.)
+      const now = await tx.company.findFirstOrThrow({ where, select: { name: true, industry: true, website: true, notes: true } });
+      return { ok: true, data: { status: "conflict", conflicts: conflictsWith(now) } };
     }
     return { ok: true, data: { status: "saved", companyId } };
   });
@@ -158,6 +157,48 @@ async function setArchived(tenant: Tenant, companyId: string, archived: boolean)
 // Hidden from the board and queue, kept with all its history, and recoverable.
 export const archiveCompany = (tenant: Tenant, companyId: string) => setArchived(tenant, companyId, true);
 export const unarchiveCompany = (tenant: Tenant, companyId: string) => setArchived(tenant, companyId, false);
+
+// Everything the company page shows. Stage history is capped at the latest 50 moves.
+export function getCompanyDetail(tenant: Tenant, companyId: string) {
+  return withTenant(tenant, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, workspaceId: tenant.workspaceId },
+      select: {
+        id: true,
+        name: true,
+        industry: true,
+        website: true,
+        notes: true,
+        stage: true,
+        archivedAt: true,
+        updatedAt: true,
+        contacts: { select: { id: true, name: true, email: true, title: true }, orderBy: { createdAt: "asc" } },
+        stageChanges: {
+          select: { id: true, fromStage: true, toStage: true, changedAt: true, changedBy: { select: { name: true } } },
+          orderBy: { changedAt: "desc" },
+          take: 50,
+        },
+      },
+    }),
+  );
+}
+
+export type CompanyDetail = NonNullable<Awaited<ReturnType<typeof getCompanyDetail>>>;
+
+// Industries already used in this workspace, for the industry box's suggestions, so "Tech",
+// "tech" and "Technology" don't drift apart. Capped at 200.
+export function listIndustries(tenant: Tenant): Promise<string[]> {
+  return withTenant(tenant, async (tx) => {
+    const rows = await tx.company.findMany({
+      where: { workspaceId: tenant.workspaceId, industry: { not: null } },
+      distinct: ["industry"],
+      select: { industry: true },
+      orderBy: { industry: "asc" },
+      take: 200,
+    });
+    return rows.map((r) => r.industry as string);
+  });
+}
 
 export type DuplicatePair = { a: DuplicateMatch; b: DuplicateMatch; matchedOn: MatchReason[] };
 
