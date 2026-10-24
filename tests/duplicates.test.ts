@@ -1,0 +1,74 @@
+import { describe, expect, test } from "vitest";
+import { domainKey, matchReasons, nameKey, orderedPair } from "@/lib/duplicates";
+
+describe("nameKey: names that mean the same company match", () => {
+  test.for([
+    ["amazon", "Amazon"],
+    ["Amazon", "Amazon, Inc."],
+    ["Acme Corp", " acme corp "],
+    ["Acme Corp", "ACME Corporation"],
+    ["Acme", "Acme L.L.C."],
+    ["Acme", "Acme Co., Inc."],
+    ["Acme", "Acme Ltd"],
+    ["Coca-Cola", "The Coca-Cola Company"],
+    ["Johnson & Johnson", "Johnson and Johnson"],
+    ["Café Nero", "Cafe Nero"],
+  ] as const)("%j matches %j", ([a, b]) => {
+    expect(nameKey(a)).toBe(nameKey(b));
+  });
+
+  test.for([
+    ["Amazon", "Amazon Web Services"],
+    ["Acme", "Acme Labs"],
+    ["Apple", "Pineapple"],
+  ] as const)("%j does not match %j", ([a, b]) => {
+    expect(nameKey(a)).not.toBe(nameKey(b));
+  });
+
+  test.for(["Inc", "Co", "The"])("a name that is only %j isn't stripped to nothing", (name) => {
+    expect(nameKey(name)).toBe(name.toLowerCase());
+  });
+
+  test("a name made only of punctuation falls back to itself instead of an empty key", () => {
+    expect(nameKey(" ?!? ")).toBe("?!?");
+    expect(nameKey("?!?")).not.toBe(nameKey("..."));
+  });
+});
+
+describe("domainKey: websites on the same domain match", () => {
+  test.for([
+    ["https://www.acme.com/", "acme.com"],
+    ["ACME.COM", "acme.com"],
+    ["http://acme.com/about?x=1", "acme.com"],
+    ["www.acme.com", "acme.com"],
+    ["  acme.com  ", "acme.com"],
+  ] as const)("%j is %j", ([input, expected]) => {
+    expect(domainKey(input)).toBe(expected);
+  });
+
+  test("a subdomain is its own domain (careers.acme.com isn't acme.com)", () => {
+    expect(domainKey("careers.acme.com")).toBe("careers.acme.com");
+  });
+
+  test.for(["", "   ", "not a url", "localhost", null, undefined])("%j has no domain, so it never matches", (input) => {
+    expect(domainKey(input)).toBeNull();
+  });
+});
+
+describe("matchReasons", () => {
+  const acme = { nameKey: "acme", domainKey: "acme.com" };
+  test("same name and website gives both reasons", () => {
+    expect(matchReasons(acme, { nameKey: "acme", domainKey: "acme.com" })).toEqual(["name", "website"]);
+  });
+  test("different names on the same website match on website", () => {
+    expect(matchReasons(acme, { nameKey: "acme labs", domainKey: "acme.com" })).toEqual(["website"]);
+  });
+  test("two companies without websites don't match on website", () => {
+    expect(matchReasons({ nameKey: "a", domainKey: null }, { nameKey: "b", domainKey: null })).toEqual([]);
+  });
+});
+
+test("orderedPair always puts the smaller id first", () => {
+  expect(orderedPair("b", "a")).toEqual(["a", "b"]);
+  expect(orderedPair("a", "b")).toEqual(["a", "b"]);
+});
