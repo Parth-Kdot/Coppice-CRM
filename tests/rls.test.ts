@@ -78,6 +78,18 @@ describe("the database role", () => {
     await expect(prisma.$executeRaw`TRUNCATE "Company"`).rejects.toThrow(/permission denied/);
     await expect(prisma.$executeRaw`DROP TABLE "Contact"`).rejects.toThrow(/must be owner|permission denied/);
   });
+
+  it("every function we define pins its search_path, so it can't be pointed at look-alike tables", async () => {
+    // A function without a fixed search_path looks tables up by whatever schemas the caller has
+    // on its path. Pinning it (search_path = '') and naming tables in full closes that door.
+    // This is the check Supabase's security advisor runs; a new function that skips it fails here.
+    const unpinned = await prisma.$queryRaw<{ name: string }[]>`
+      SELECT n.nspname || '.' || p.proname AS name
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname IN ('public', 'private')
+        AND NOT EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, '{}')) c WHERE c LIKE 'search_path=%')`;
+    expect(unpinned.map((f) => f.name)).toEqual([]);
+  });
 });
 
 describe("without withTenant, it fails closed", () => {
