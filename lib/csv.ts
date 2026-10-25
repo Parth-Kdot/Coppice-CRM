@@ -3,7 +3,7 @@ import Papa from "papaparse";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ContactFields, CompanyFields } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
-import { domainKey, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
+import { domainKey, groupLookAlikes, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import {
   companyFieldsSchema,
   contactFieldsSchema,
@@ -154,54 +154,18 @@ async function findGroups(tx: Tx, workspaceId: string, rows: CheckedRow[]): Prom
     orderBy: { createdAt: "asc" },
   });
 
-  // Union-find over "row:3" and "company:<id>" nodes, joined whenever they share a key.
-  const parent = new Map<string, string>();
-  const find = (x: string): string => {
-    const p = parent.get(x) ?? x;
-    if (p === x) return x;
-    const root = find(p);
-    parent.set(x, root);
-    return root;
-  };
-  const union = (a: string, b: string) => parent.set(find(a), find(b));
-  const firstWithKey = new Map<string, string>();
-  const reasons = new Map<string, Set<MatchReason>>();
-  const link = (node: string, key: string, reason: MatchReason) => {
-    const other = firstWithKey.get(key);
-    if (other === undefined) {
-      firstWithKey.set(key, node);
-      return;
-    }
-    union(node, other);
-    reasons.set(key, (reasons.get(key) ?? new Set()).add(reason));
-  };
-  const nodes = [
-    ...existing.map((c) => ({ node: `company:${c.id}`, nameKey: c.nameKey, domainKey: c.domainKey })),
-    ...keyed.map((k) => ({ node: `row:${k.row}`, nameKey: k.nameKey, domainKey: k.domainKey })),
+  const items = [
+    ...existing.map((c) => ({ ...c, row: null })),
+    ...keyed.map((k) => ({ ...k, id: `row:${k.row}`, name: "", website: null, archivedAt: null })),
   ];
-  for (const n of nodes) {
-    link(n.node, `name:${n.nameKey}`, "name");
-    if (n.domainKey) link(n.node, `site:${n.domainKey}`, "website");
-  }
-
-  // Gather each group's members, and which kinds of key joined it.
-  const groups = new Map<string, { rows: number[]; existing: ExistingMatch[]; matchedOn: Set<MatchReason> }>();
-  const groupOf = (node: string) => {
-    const root = find(node);
-    if (!groups.has(root)) groups.set(root, { rows: [], existing: [], matchedOn: new Set() });
-    return groups.get(root)!;
-  };
-  for (const c of existing) groupOf(`company:${c.id}`).existing.push({ id: c.id, name: c.name, website: c.website, archived: c.archivedAt !== null });
-  for (const k of keyed) groupOf(`row:${k.row}`).rows.push(k.row);
-  for (const [key, why] of reasons) {
-    const member = firstWithKey.get(key) as string;
-    for (const r of why) groupOf(member).matchedOn.add(r);
-  }
-
   // A group matters if it has a row from the file and something else: another row or a company.
-  return [...groups.values()]
-    .filter((g) => g.rows.length > 0 && g.rows.length + g.existing.length > 1)
-    .map((g) => ({ rows: g.rows.sort((a, b) => a - b), existing: g.existing, matchedOn: [...g.matchedOn].sort() as MatchReason[] }))
+  return groupLookAlikes(items)
+    .map((g) => ({
+      rows: g.members.flatMap((m) => (m.row === null ? [] : [m.row])).sort((a, b) => a - b),
+      existing: g.members.flatMap((m) => (m.row === null ? [{ id: m.id, name: m.name, website: m.website, archived: m.archivedAt !== null }] : [])),
+      matchedOn: g.matchedOn,
+    }))
+    .filter((g) => g.rows.length > 0)
     .sort((a, b) => a.rows[0] - b.rows[0]);
 }
 
