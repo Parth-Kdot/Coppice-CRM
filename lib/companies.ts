@@ -13,16 +13,27 @@ type Tx = Prisma.TransactionClient;
 export type CompanyFields = { name: string; industry?: string | null; website?: string | null; notes?: string | null };
 export type ContactFields = { name: string; email?: string | null; title?: string | null };
 
-export type DuplicateMatch = { id: string; name: string; website: string | null; matchedOn: MatchReason[] };
+// `archived` matches are included on purpose: re-adding a company that was archived last year
+// should offer to unarchive it (with its history) instead of starting an empty duplicate.
+export type DuplicateMatch = { id: string; name: string; website: string | null; archived: boolean; matchedOn: MatchReason[] };
 
-// Saving either succeeds, or stops and asks the person about look-alike companies first.
+type EditableField = keyof CompanyFields;
+export type FieldConflict = { field: EditableField; theirs: string | null; yours: string | null };
+
+// Saving either succeeds, stops to ask about look-alike companies, or (for edits) stops because
+// someone else changed the same field first.
 export type SaveResult =
   | { status: "saved"; companyId: string }
-  | { status: "possible-duplicates"; matches: DuplicateMatch[] };
+  | { status: "possible-duplicates"; matches: DuplicateMatch[] }
+  | { status: "conflict"; conflicts: FieldConflict[] };
+
+// An edit: the values the person submitted, and the values the form showed when it loaded.
+export type CompanyEdit = { changes: CompanyFields; original: CompanyFields };
 
 const keysFor = (fields: CompanyFields) => ({ nameKey: nameKey(fields.name), domainKey: domainKey(fields.website) });
 
-// Active companies in this workspace that look like `keys`, minus pairs already marked separate.
+// Companies in this workspace (active or archived) that look like `keys`, minus pairs already
+// marked separate.
 async function findMatches(
   tx: Tx,
   workspaceId: string,
@@ -32,11 +43,10 @@ async function findMatches(
   const candidates = await tx.company.findMany({
     where: {
       workspaceId,
-      archivedAt: null,
       ...(excludeId ? { id: { not: excludeId } } : {}),
       OR: [{ nameKey: keys.nameKey }, ...(keys.domainKey ? [{ domainKey: keys.domainKey }] : [])],
     },
-    select: { id: true, name: true, website: true, nameKey: true, domainKey: true },
+    select: { id: true, name: true, website: true, nameKey: true, domainKey: true, archivedAt: true },
     orderBy: { createdAt: "asc" },
   });
   let separate = new Set<string>();
@@ -49,7 +59,7 @@ async function findMatches(
   }
   return candidates
     .filter((c) => !separate.has(c.id))
-    .map((c) => ({ id: c.id, name: c.name, website: c.website, matchedOn: matchReasons(keys, c) }));
+    .map((c) => ({ id: c.id, name: c.name, website: c.website, archived: c.archivedAt !== null, matchedOn: matchReasons(keys, c) }));
 }
 
 // Remember "these are separate" for each acknowledged match, so the pair never flags again.
@@ -85,24 +95,51 @@ export function createCompany(tenant: Tenant, fields: CompanyFields, separateFro
   });
 }
 
+const EDITABLE: EditableField[] = ["name", "industry", "website", "notes"];
+const value = (fields: CompanyFields, field: EditableField) => fields[field] ?? null;
+
+// Saves only the fields the person actually changed, and only if each one still holds the value
+// their form loaded. That check and the write are one UPDATE, so two people editing at the same
+// moment can't overwrite each other: editing different fields both succeed, the same field is a
+// conflict the second person sees (with the other value) instead of a silent overwrite.
 export function updateCompany(
   tenant: Tenant,
   companyId: string,
-  fields: CompanyFields,
+  edit: CompanyEdit,
   separateFrom: string[] = [],
 ): Promise<ActionResult<SaveResult>> {
   return withTenant(tenant, async (tx) => {
-    const exists = await tx.company.findFirst({ where: { id: companyId, workspaceId: tenant.workspaceId }, select: { id: true } });
-    if (!exists) return { ok: false, error: "Company not found." };
-    const keys = keysFor(fields);
-    const matches = await findMatches(tx, tenant.workspaceId, keys, companyId);
-    const { unresolved, confirmedSeparate } = split(matches, separateFrom);
-    if (unresolved.length > 0) return { ok: true, data: { status: "possible-duplicates", matches: unresolved } };
-    await tx.company.update({
-      where: { id_workspaceId: { id: companyId, workspaceId: tenant.workspaceId } },
-      data: { ...fields, ...keys },
-    });
-    await recordSeparate(tx, tenant, companyId, confirmedSeparate);
+    const where = { id: companyId, workspaceId: tenant.workspaceId };
+    const current = await tx.company.findFirst({ where, select: { name: true, industry: true, website: true, notes: true } });
+    if (!current) return { ok: false, error: "Company not found." };
+
+    const changed = EDITABLE.filter((f) => value(edit.changes, f) !== value(edit.original, f));
+    if (changed.length === 0) return { ok: true, data: { status: "saved", companyId } };
+
+    const conflictsWith = (now: CompanyFields): FieldConflict[] =>
+      changed
+        .filter((f) => value(now, f) !== value(edit.original, f))
+        .map((f) => ({ field: f, theirs: value(now, f), yours: value(edit.changes, f) }));
+    const early = conflictsWith(current);
+    if (early.length > 0) return { ok: true, data: { status: "conflict", conflicts: early } };
+
+    const changes = Object.fromEntries(changed.map((f) => [f, value(edit.changes, f)])) as Partial<CompanyFields>;
+    let keys: ReturnType<typeof keysFor> | undefined;
+    if (changed.includes("name") || changed.includes("website")) {
+      keys = keysFor({ ...current, ...changes } as CompanyFields);
+      const { unresolved, confirmedSeparate } = split(await findMatches(tx, tenant.workspaceId, keys, companyId), separateFrom);
+      if (unresolved.length > 0) return { ok: true, data: { status: "possible-duplicates", matches: unresolved } };
+      await recordSeparate(tx, tenant, companyId, confirmedSeparate);
+    }
+
+    const originals = Object.fromEntries(changed.map((f) => [f, value(edit.original, f)]));
+    const { count } = await tx.company.updateMany({ where: { ...where, ...originals }, data: { ...changes, ...keys } });
+    if (count === 0) {
+      // Someone saved the same field between our read and our write. (Companies are never
+      // deleted, only archived, so the row is still there.)
+      const now = await tx.company.findFirstOrThrow({ where, select: { name: true, industry: true, website: true, notes: true } });
+      return { ok: true, data: { status: "conflict", conflicts: conflictsWith(now) } };
+    }
     return { ok: true, data: { status: "saved", companyId } };
   });
 }
@@ -120,6 +157,48 @@ async function setArchived(tenant: Tenant, companyId: string, archived: boolean)
 // Hidden from the board and queue, kept with all its history, and recoverable.
 export const archiveCompany = (tenant: Tenant, companyId: string) => setArchived(tenant, companyId, true);
 export const unarchiveCompany = (tenant: Tenant, companyId: string) => setArchived(tenant, companyId, false);
+
+// Everything the company page shows. Stage history is capped at the latest 50 moves.
+export function getCompanyDetail(tenant: Tenant, companyId: string) {
+  return withTenant(tenant, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, workspaceId: tenant.workspaceId },
+      select: {
+        id: true,
+        name: true,
+        industry: true,
+        website: true,
+        notes: true,
+        stage: true,
+        archivedAt: true,
+        updatedAt: true,
+        contacts: { select: { id: true, name: true, email: true, title: true }, orderBy: { createdAt: "asc" } },
+        stageChanges: {
+          select: { id: true, fromStage: true, toStage: true, changedAt: true, changedBy: { select: { name: true } } },
+          orderBy: { changedAt: "desc" },
+          take: 50,
+        },
+      },
+    }),
+  );
+}
+
+export type CompanyDetail = NonNullable<Awaited<ReturnType<typeof getCompanyDetail>>>;
+
+// Industries already used in this workspace, for the industry box's suggestions, so "Tech",
+// "tech" and "Technology" don't drift apart. Capped at 200.
+export function listIndustries(tenant: Tenant): Promise<string[]> {
+  return withTenant(tenant, async (tx) => {
+    const rows = await tx.company.findMany({
+      where: { workspaceId: tenant.workspaceId, industry: { not: null } },
+      distinct: ["industry"],
+      select: { industry: true },
+      orderBy: { industry: "asc" },
+      take: 200,
+    });
+    return rows.map((r) => r.industry as string);
+  });
+}
 
 export type DuplicatePair = { a: DuplicateMatch; b: DuplicateMatch; matchedOn: MatchReason[] };
 
@@ -155,7 +234,7 @@ export function listPossibleDuplicatePairs(tenant: Tenant, limit = 50): Promise<
           if (separate.has(id) || pairs.has(id)) continue;
           const [a, b] = aId === group[i].id ? [group[i], group[j]] : [group[j], group[i]];
           const reasons = matchReasons(a, b);
-          const view = (c: typeof a) => ({ id: c.id, name: c.name, website: c.website, matchedOn: reasons });
+          const view = (c: typeof a) => ({ id: c.id, name: c.name, website: c.website, archived: false, matchedOn: reasons });
           pairs.set(id, { a: view(a), b: view(b), matchedOn: reasons });
           if (pairs.size >= limit) return [...pairs.values()];
         }

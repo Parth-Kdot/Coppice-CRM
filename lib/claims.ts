@@ -1,12 +1,11 @@
 import { withTenant, type Tenant } from "@/lib/db";
 import type { Stage } from "@/generated/prisma/client";
+import { TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 
 // Everything that touches a claim lives here (project rule 2). Milestone 3 adds claimCompany,
 // releaseClaim, forceRelease and logOutreach; for now this holds the stage change, because moving
 // a company to Committed or Declined must also clear its claim.
-
-const TERMINAL: Stage[] = ["COMMITTED", "DECLINED"];
 
 export type StageChangeResult = { changed: boolean; fromStage: Stage; toStage: Stage };
 
@@ -24,7 +23,7 @@ export function changeStage(tenant: Tenant, companyId: string, toStage: Stage): 
     const fromStage = rows[0].stage;
     if (fromStage === toStage) return { ok: true, data: { changed: false, fromStage, toStage } };
 
-    const closesTheDeal = TERMINAL.includes(toStage);
+    const closesTheDeal = TERMINAL_STAGES.includes(toStage);
     await tx.company.update({
       where: { id_workspaceId: { id: companyId, workspaceId: tenant.workspaceId } },
       // A finished company can't stay claimed: nobody should be "holding" it any more.
