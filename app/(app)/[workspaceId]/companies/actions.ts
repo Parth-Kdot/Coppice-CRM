@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { failure } from "@/lib/actions";
-import { requireMembership } from "@/lib/authz";
+import { requireMembership, requireOwner } from "@/lib/authz";
+import * as claims from "@/lib/claims";
 import { changeStage } from "@/lib/claims";
 import * as companies from "@/lib/companies";
 import type { SaveResult } from "@/lib/companies";
@@ -12,6 +13,7 @@ import {
   companyRefSchema,
   contactRefSchema,
   createCompanySchema,
+  logOutreachSchema,
   moveStageSchema,
   sameCompanySchema,
   unarchiveSchema,
@@ -21,8 +23,9 @@ import {
 } from "@/lib/validation";
 
 // Every action: validate the form, check membership (project rule 1), then call lib/, which runs
-// inside withTenant so row-level security backs up the workspace check. Any member may do all of
-// these; Milestone 3 limits stage moves on a claimed company to its holder or an owner.
+// inside withTenant so row-level security backs up the workspace check. Any member may do these,
+// except that a company someone else holds can only be moved or archived by them or an owner, and
+// only owners can force-release a claim (all enforced in lib/claims.ts).
 
 const companyPath = (workspaceId: string, companyId: string) => `/${workspaceId}/companies/${companyId}`;
 const boardPath = (workspaceId: string) => `/${workspaceId}/board`;
@@ -102,8 +105,8 @@ export async function archiveCompany(_prev: ActionResult | null, form: FormData)
   const { workspaceId, companyId } = parsed.data;
 
   try {
-    const { userId } = await requireMembership(workspaceId);
-    const result = await companies.archiveCompany({ userId, workspaceId }, companyId);
+    const member = await requireMembership(workspaceId);
+    const result = await companies.archiveCompany(member, companyId);
     if (result.ok) refresh(workspaceId, companyId);
     return result;
   } catch (e) {
@@ -146,8 +149,8 @@ export async function archiveAsDuplicate(_prev: ActionResult | null, form: FormD
   const { workspaceId, companyId, keepId } = parsed.data;
 
   try {
-    const { userId } = await requireMembership(workspaceId);
-    const result = await companies.resolveAsDuplicate({ userId, workspaceId }, keepId, companyId);
+    const member = await requireMembership(workspaceId);
+    const result = await companies.resolveAsDuplicate(member, keepId, companyId);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
@@ -166,8 +169,81 @@ export async function moveStage(_prev: ActionResult | null, form: FormData): Pro
   const { workspaceId, companyId, stage } = parsed.data;
 
   try {
-    const { userId } = await requireMembership(workspaceId);
-    const result = await changeStage({ userId, workspaceId }, companyId, stage);
+    const member = await requireMembership(workspaceId);
+    const result = await changeStage(member, companyId, stage);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
+  return { ok: true, data: undefined };
+}
+
+// ----- Claims and outreach (Milestone 3). All the rules live in lib/claims.ts. -----
+
+export async function claimCompany(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
+  if (!parsed.success) return { ok: false, error: "Company not found." };
+  const { workspaceId, companyId } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await claims.claimCompany(member, companyId);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
+  return { ok: true, data: undefined };
+}
+
+export async function releaseClaim(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
+  if (!parsed.success) return { ok: false, error: "Company not found." };
+  const { workspaceId, companyId } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await claims.releaseClaim(member, companyId);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
+  return { ok: true, data: undefined };
+}
+
+// Owners only: checked here (requireOwner) and again inside forceRelease.
+export async function forceRelease(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
+  if (!parsed.success) return { ok: false, error: "Company not found." };
+  const { workspaceId, companyId } = parsed.data;
+
+  try {
+    const owner = await requireOwner(workspaceId);
+    const result = await claims.forceRelease(owner, companyId);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
+  return { ok: true, data: undefined };
+}
+
+export async function logOutreach(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = logOutreachSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    companyId: form.get("companyId"),
+    channel: form.get("channel"),
+    note: form.get("note"),
+    followUpOn: form.get("followUpOn"),
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const { workspaceId, companyId, ...input } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await claims.logOutreach(member, companyId, input);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
