@@ -7,9 +7,11 @@ import {
 } from "@/app/(app)/[workspaceId]/companies/actions";
 import { leaveWorkspace, removeMember } from "@/app/(app)/[workspaceId]/settings/actions";
 import type { Membership } from "@/lib/authz";
+import { CHANNEL_LABELS, CHANNELS } from "@/lib/channels";
 import {
   changeStage,
   claimCompany,
+  claimState,
   dbNow,
   dbToday,
   forceRelease,
@@ -19,6 +21,7 @@ import {
   type OutreachInput,
 } from "@/lib/claims";
 import { archiveCompany, createCompany, resolveAsDuplicate, unarchiveCompany } from "@/lib/companies";
+import { addDays } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { form, redirectTo } from "./helpers/form";
 import { asUser } from "./helpers/next-request";
@@ -57,8 +60,6 @@ const expireClaim = (id: string) =>
 const setStage = (id: string, stage: string) =>
   withTenant(OWNER, (tx) => tx.$executeRaw`UPDATE "Company" SET stage = ${stage}::"Stage" WHERE id = ${id}`);
 
-// "2026-10-25" plus n days, as a calendar date.
-const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const outreach = async (days = 7, extra: Partial<OutreachInput> = {}): Promise<OutreachInput> => ({
   channel: "EMAIL",
   note: "Sent the sponsorship packet",
@@ -400,6 +401,38 @@ describe("claim actions", () => {
       error: "Only the workspace owner can do that.",
     });
     expect((await row(id)).claimedById).toBe("ownerA");
+  });
+});
+
+describe("what pages show for a claim", () => {
+  const now = new Date("2026-10-25T12:00:00Z");
+  const claim = (claimedById: string | null, expires: string | null) => ({
+    claimedById,
+    claimExpiresAt: expires ? new Date(expires) : null,
+  });
+
+  test.for([
+    [claim(null, null), "free"],
+    [claim("officerA", "2026-11-01T00:00:00Z"), "mine"],
+    [claim("ownerA", "2026-11-01T00:00:00Z"), "theirs"],
+    [claim("ownerA", "2026-10-25T11:59:59Z"), "expired"],
+    // Expiring exactly now counts as expired, matching the claim SQL (`<= now()` can be taken).
+    [claim("ownerA", "2026-10-25T12:00:00Z"), "expired"],
+  ] as const)("%j is %s for officerA", ([c, state]) => {
+    expect(claimState(c, now, "officerA")).toBe(state);
+  });
+
+  it("lists the outreach channels in form order with their labels", () => {
+    expect(CHANNELS.map((c) => CHANNEL_LABELS[c])).toEqual(["Email", "LinkedIn", "In person", "Other"]);
+  });
+
+  test.for([
+    ["2026-10-25", 7, "2026-11-01"],
+    ["2026-12-28", 7, "2027-01-04"],
+    ["2026-10-31", 1, "2026-11-01"],
+    ["2028-02-28", 1, "2028-02-29"],
+  ] as const)("%s plus %i days is %s, daylight saving or not", ([from, days, to]) => {
+    expect(addDays(from, days)).toBe(to);
   });
 });
 

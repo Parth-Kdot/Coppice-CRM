@@ -4,11 +4,35 @@ import { BoardSearch } from "@/components/board-search";
 import { StageForm } from "@/components/stage-form";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { getBoard, type BoardColumn } from "@/lib/board";
+import { claimState, dbNow, type ClaimState } from "@/lib/claims";
 import { listIndustries } from "@/lib/companies";
 import { day } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { boardFiltersSchema, boardQuery, type BoardFilters } from "@/lib/validation";
-import { moveStage, unarchiveCompany } from "../companies/actions";
+import { claimCompany, moveStage, unarchiveCompany } from "../companies/actions";
+
+type CardClaimProps = {
+  state: ClaimState;
+  holderName: string | null;
+  expiresAt: Date | null;
+  closed: boolean;
+  workspaceId: string;
+  companyId: string;
+};
+
+// A card's claim line: "Yours until Nov 1", "Held by Sam until Nov 1", or a Claim button.
+// Committed and Declined companies can't be claimed, so they show nothing.
+function CardClaim({ state, holderName, expiresAt, closed, workspaceId, companyId }: CardClaimProps) {
+  if (state === "mine") return <span className="text-sm text-green-700">Yours until {day(expiresAt as Date)}</span>;
+  if (state === "theirs") return <span className="text-sm">Held by {holderName} until {day(expiresAt as Date)}</span>;
+  if (closed) return null;
+  return (
+    <ActionForm action={claimCompany} submitLabel="Claim">
+      <input type="hidden" name="workspaceId" value={workspaceId} />
+      <input type="hidden" name="companyId" value={companyId} />
+    </ActionForm>
+  );
+}
 
 export default async function BoardPage({ params, searchParams }: PageProps<"/[workspaceId]/board">) {
   const { workspaceId } = await params;
@@ -26,11 +50,11 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
     archived: first("archived"),
   });
 
-  const [board, industries] = await Promise.all([getBoard(tenant, filters), listIndustries(tenant)]);
+  // The time comes from the database, the same clock the claim SQL uses, for "overdue" and claims.
+  const [board, industries, now] = await Promise.all([getBoard(tenant, filters), listIndustries(tenant), dbNow()]);
   const href = (changes: Partial<BoardFilters>) => `/${workspaceId}/board${boardQuery({ ...filters, ...changes })}`;
   const filtered = filters.q !== "" || filters.industry !== "";
   const total = board.columns.reduce((sum, column) => sum + column.count, 0);
-  const now = new Date();
 
   const toggle = (column: BoardColumn) =>
     href({ show: column.open ? filters.show.filter((s) => s !== column.stage) : [...filters.show, column.stage] });
@@ -85,6 +109,14 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
                         <span className="text-zinc-500">No follow-up set</span>
                       )}
                     </span>
+                    <CardClaim
+                      state={claimState(card, now, userId)}
+                      holderName={card.claimedBy?.name ?? null}
+                      expiresAt={card.claimExpiresAt}
+                      closed={TERMINAL_STAGES.includes(card.stage)}
+                      workspaceId={workspaceId}
+                      companyId={card.id}
+                    />
                     <StageForm compact workspaceId={workspaceId} companyId={card.id} stage={card.stage} action={moveStage} />
                   </li>
                 ))}

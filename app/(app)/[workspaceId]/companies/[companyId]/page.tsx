@@ -1,18 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
+import { ClaimPanel } from "@/components/claim-panel";
 import { CompanyForm } from "@/components/company-form";
 import { StageForm } from "@/components/stage-form";
 import { requireMembershipOr404 } from "@/lib/authz";
+import { CHANNEL_LABELS } from "@/lib/channels";
+import { claimState, dbNow, dbToday } from "@/lib/claims";
 import { getCompanyDetail, listIndustries } from "@/lib/companies";
-import { when } from "@/lib/dates";
+import { day, when } from "@/lib/dates";
 import { STAGE_LABELS } from "@/lib/stages";
 import { websiteHref } from "@/lib/validation";
 import {
   addContact,
   archiveAsDuplicate,
   archiveCompany,
+  claimCompany,
+  forceRelease,
+  logOutreach,
   moveStage,
+  releaseClaim,
   removeContact,
   unarchiveCompany,
   updateCompany,
@@ -21,10 +28,16 @@ import {
 
 export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/companies/[companyId]">) {
   const { workspaceId, companyId } = await params;
-  const { userId } = await requireMembershipOr404(workspaceId);
+  const { userId, role } = await requireMembershipOr404(workspaceId);
   const tenant = { userId, workspaceId };
-  // Not found and "in another workspace" look the same, so ids can't be probed.
-  const [company, industries] = await Promise.all([getCompanyDetail(tenant, companyId), listIndustries(tenant)]);
+  // Not found and "in another workspace" look the same, so ids can't be probed. The time and date
+  // come from the database, the same clock the claim SQL uses.
+  const [company, industries, now, today] = await Promise.all([
+    getCompanyDetail(tenant, companyId),
+    listIndustries(tenant),
+    dbNow(),
+    dbToday(),
+  ]);
   if (!company) notFound();
 
   const archived = company.archivedAt !== null;
@@ -53,6 +66,10 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
               </>
             )}
           </p>
+          <p className="text-sm text-zinc-500">
+            {company.lastContactedAt ? `Last contacted ${day(company.lastContactedAt)}` : "Never contacted"}
+            {company.nextFollowUpAt && ` · Follow up ${day(company.nextFollowUpAt)}`}
+          </p>
         </div>
         <Link href={`/${workspaceId}`} className="rounded border px-3 py-1">
           Back
@@ -67,10 +84,27 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
           </ActionForm>
         </section>
       ) : (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">Stage</h2>
-          <StageForm workspaceId={workspaceId} companyId={company.id} stage={company.stage} action={moveStage} />
-        </section>
+        <>
+          <section className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold">Claim</h2>
+            <ClaimPanel
+              workspaceId={workspaceId}
+              companyId={company.id}
+              companyName={company.name}
+              stage={company.stage}
+              role={role}
+              state={claimState(company, now, userId)}
+              holderName={company.claimedBy?.name ?? null}
+              expiresAt={company.claimExpiresAt}
+              today={today}
+              actions={{ claim: claimCompany, release: releaseClaim, forceRelease, logOutreach }}
+            />
+          </section>
+          <section className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold">Stage</h2>
+            <StageForm workspaceId={workspaceId} companyId={company.id} stage={company.stage} action={moveStage} />
+          </section>
+        </>
       )}
 
       <section className="flex flex-col gap-3">
@@ -139,6 +173,24 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
             {ids}
             <ContactInputs />
           </ActionForm>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Outreach</h2>
+        {company.outreach.length === 0 ? (
+          <p className="text-sm text-zinc-500">No outreach logged yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2 text-sm">
+            {company.outreach.map((entry) => (
+              <li key={entry.id} className="flex flex-col">
+                <span>
+                  {when(entry.sentAt)}: {entry.sender.name}, {CHANNEL_LABELS[entry.channel]}
+                </span>
+                {entry.note && <span className="whitespace-pre-wrap text-zinc-600">{entry.note}</span>}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

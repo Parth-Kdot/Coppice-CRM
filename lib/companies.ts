@@ -172,9 +172,14 @@ export function unarchiveCompany(tenant: Tenant, companyId: string): Promise<Act
 
 // Everything the company page shows. Stage history is capped at the latest 50 moves and the
 // outreach log at the latest 100.
+//
+// The lists are loaded one query at a time on purpose. Asked for all of them in one nested query,
+// Prisma runs the parts at the same moment on the transaction's single connection, which the pg
+// driver only tolerates with a deprecation warning (and pg 9 will refuse).
 export function getCompanyDetail(tenant: Tenant, companyId: string) {
-  return withTenant(tenant, (tx) =>
-    tx.company.findFirst({
+  return withTenant(tenant, async (tx) => {
+    const scope = { companyId, workspaceId: tenant.workspaceId };
+    const company = await tx.company.findFirst({
       where: { id: companyId, workspaceId: tenant.workspaceId },
       select: {
         id: true,
@@ -191,20 +196,28 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
         claimedById: true,
         claimExpiresAt: true,
         claimedBy: { select: { name: true } },
-        contacts: { select: { id: true, name: true, email: true, title: true }, orderBy: { createdAt: "asc" } },
-        outreach: {
-          select: { id: true, channel: true, note: true, sentAt: true, sender: { select: { name: true } } },
-          orderBy: { sentAt: "desc" },
-          take: 100,
-        },
-        stageChanges: {
-          select: { id: true, fromStage: true, toStage: true, changedAt: true, changedBy: { select: { name: true } } },
-          orderBy: { changedAt: "desc" },
-          take: 50,
-        },
       },
-    }),
-  );
+    });
+    if (!company) return null;
+    const contacts = await tx.contact.findMany({
+      where: scope,
+      select: { id: true, name: true, email: true, title: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const outreach = await tx.outreach.findMany({
+      where: scope,
+      select: { id: true, channel: true, note: true, sentAt: true, sender: { select: { name: true } } },
+      orderBy: { sentAt: "desc" },
+      take: 100,
+    });
+    const stageChanges = await tx.stageChange.findMany({
+      where: scope,
+      select: { id: true, fromStage: true, toStage: true, changedAt: true, changedBy: { select: { name: true } } },
+      orderBy: { changedAt: "desc" },
+      take: 50,
+    });
+    return { ...company, contacts, outreach, stageChanges };
+  });
 }
 
 export type CompanyDetail = NonNullable<Awaited<ReturnType<typeof getCompanyDetail>>>;
