@@ -12,7 +12,18 @@ export const COLUMN_SIZE = 50;
 // "Show all" and the archived list stop here: the most one CSV import can add (Milestone 4).
 export const SHOW_ALL_LIMIT = 2000;
 
-const CARD = { id: true, name: true, industry: true, stage: true, nextFollowUpAt: true } as const;
+// The claim fields are read only, to show "Held by Sam until Nov 1"; whether a claim is still live
+// is decided against the database clock (dbNow in lib/claims.ts).
+const CARD = {
+  id: true,
+  name: true,
+  industry: true,
+  stage: true,
+  nextFollowUpAt: true,
+  claimedById: true,
+  claimExpiresAt: true,
+  claimedBy: { select: { name: true } },
+} as const;
 
 export type BoardCard = Prisma.CompanyGetPayload<{ select: typeof CARD }>;
 export type BoardColumn = { stage: Stage; count: number; open: boolean; cards: BoardCard[]; hasMore: boolean };
