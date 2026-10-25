@@ -55,6 +55,15 @@ export function CompanyForm(props: Props) {
     return result;
   }, null);
 
+  // The dialog's "Same company" buttons run their own action. On success it opens another page;
+  // on failure (say someone else already unarchived it) the reason shows in the dialog.
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const runFromDialog = (action: Action<undefined>) => async (form: FormData) => {
+    setDialogError(null);
+    const outcome = await action(null, form);
+    if (outcome && !outcome.ok) setDialogError(outcome.error);
+  };
+
   const set = (field: keyof CompanyValues) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [field]: e.target.value }));
   const result = state?.ok ? state.data : null;
@@ -122,7 +131,7 @@ export function CompanyForm(props: Props) {
                 {match.archived && <span className="rounded bg-zinc-200 px-1">archived</span>}
                 {props.mode === "create" && match.archived && (
                   <button
-                    formAction={(form) => props.unarchive(null, form).then(() => {})}
+                    formAction={runFromDialog(props.unarchive)}
                     name="companyId"
                     value={match.id}
                     className="rounded border px-2 py-0.5"
@@ -137,7 +146,7 @@ export function CompanyForm(props: Props) {
                 )}
                 {props.mode === "edit" && !match.archived && (
                   <button
-                    formAction={(form) => props.archiveAsDuplicate(null, form).then(() => {})}
+                    formAction={runFromDialog(props.archiveAsDuplicate)}
                     name="keepId"
                     value={match.id}
                     className="rounded border px-2 py-0.5"
@@ -148,6 +157,7 @@ export function CompanyForm(props: Props) {
               </li>
             ))}
           </ul>
+          {dialogError && <p className="text-red-600">{dialogError}</p>}
           <div>
             <button
               type="submit"

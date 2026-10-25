@@ -78,21 +78,33 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Details</h2>
-        <CompanyForm
-          mode="edit"
-          workspaceId={workspaceId}
-          companyId={company.id}
-          industries={industries}
-          initial={{
-            name: company.name,
-            industry: company.industry ?? "",
-            website: company.website ?? "",
-            notes: company.notes ?? "",
-          }}
-          save={updateCompany}
-          unarchive={unarchiveCompany}
-          archiveAsDuplicate={archiveAsDuplicate}
-        />
+        {/* An archived company is out of play, so it's read-only until someone unarchives it. */}
+        {archived ? (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            <dt className="text-zinc-500">Industry</dt>
+            <dd>{company.industry ?? "None"}</dd>
+            <dt className="text-zinc-500">Website</dt>
+            <dd>{company.website ?? "None"}</dd>
+            <dt className="text-zinc-500">Notes</dt>
+            <dd className="whitespace-pre-wrap">{company.notes ?? "None"}</dd>
+          </dl>
+        ) : (
+          <CompanyForm
+            mode="edit"
+            workspaceId={workspaceId}
+            companyId={company.id}
+            industries={industries}
+            initial={{
+              name: company.name,
+              industry: company.industry ?? "",
+              website: company.website ?? "",
+              notes: company.notes ?? "",
+            }}
+            save={updateCompany}
+            unarchive={unarchiveCompany}
+            archiveAsDuplicate={archiveAsDuplicate}
+          />
+        )}
       </section>
 
       <section className="flex flex-col gap-3">
@@ -106,27 +118,31 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
                 {contact.title && `, ${contact.title}`}
                 {contact.email && ` (${contact.email})`}
               </span>
-              <details>
-                <summary className="cursor-pointer text-sm text-zinc-600">Edit or remove</summary>
-                <div className="flex flex-col gap-2 pt-2">
-                  <ActionForm action={updateContact} submitLabel="Save contact">
-                    {ids}
-                    <input type="hidden" name="contactId" value={contact.id} />
-                    <ContactInputs name={contact.name} email={contact.email} title={contact.title} />
-                  </ActionForm>
-                  <ActionForm action={removeContact} submitLabel="Remove contact" confirmMessage={`Remove ${contact.name}?`}>
-                    {ids}
-                    <input type="hidden" name="contactId" value={contact.id} />
-                  </ActionForm>
-                </div>
-              </details>
+              {!archived && (
+                <details>
+                  <summary className="cursor-pointer text-sm text-zinc-600">Edit or remove</summary>
+                  <div className="flex flex-col gap-2 pt-2">
+                    <ActionForm action={updateContact} submitLabel="Save contact">
+                      {ids}
+                      <input type="hidden" name="contactId" value={contact.id} />
+                      <ContactInputs name={contact.name} email={contact.email} title={contact.title} />
+                    </ActionForm>
+                    <ActionForm action={removeContact} submitLabel="Remove contact" confirmMessage={`Remove ${contact.name}?`}>
+                      {ids}
+                      <input type="hidden" name="contactId" value={contact.id} />
+                    </ActionForm>
+                  </div>
+                </details>
+              )}
             </li>
           ))}
         </ul>
-        <ActionForm action={addContact} submitLabel="Add contact">
-          {ids}
-          <ContactInputs />
-        </ActionForm>
+        {!archived && (
+          <ActionForm action={addContact} submitLabel="Add contact">
+            {ids}
+            <ContactInputs />
+          </ActionForm>
+        )}
       </section>
 
       <section className="flex flex-col gap-3">
