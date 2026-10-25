@@ -21,6 +21,9 @@ export default async function WorkspacePage({ params }: PageProps<"/[workspaceId
           <p className="text-sm text-zinc-500">You are {roleLabel(membership.role)}</p>
         </div>
         <div className="flex gap-2">
+          <Link href={`/${workspaceId}/board`} className="rounded border px-3 py-1">
+            Board
+          </Link>
           <Link href={`/${workspaceId}/companies/new`} className="rounded border px-3 py-1">
             Add company
           </Link>

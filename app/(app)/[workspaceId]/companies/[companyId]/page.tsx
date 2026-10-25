@@ -5,6 +5,7 @@ import { CompanyForm } from "@/components/company-form";
 import { StageForm } from "@/components/stage-form";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { getCompanyDetail, listIndustries } from "@/lib/companies";
+import { when } from "@/lib/dates";
 import { STAGE_LABELS } from "@/lib/stages";
 import { websiteHref } from "@/lib/validation";
 import {
@@ -17,10 +18,6 @@ import {
   updateCompany,
   updateContact,
 } from "../actions";
-
-// Dates in Purdue's time zone, whatever time zone the server runs in.
-const when = (date: Date) =>
-  date.toLocaleString("en-US", { timeZone: "America/Indiana/Indianapolis", dateStyle: "medium", timeStyle: "short" });
 
 export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/companies/[companyId]">) {
   const { workspaceId, companyId } = await params;
