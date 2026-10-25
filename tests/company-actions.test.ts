@@ -218,7 +218,7 @@ describe("updateCompany", () => {
 
   it("refuses a form without its original values", async () => {
     const tampered = form({ workspaceId: "a", companyId: acme, name: "Hacked" });
-    expect(await asUser("ownerA", () => updateCompany(null, tampered))).toEqual(NOT_OK);
+    expect(await asUser("ownerA", () => updateCompany(null, tampered))).toEqual({ ok: false, error: "Reload the page and try again." });
     expect((await row(acme))?.name).toBe("Acme");
   });
 

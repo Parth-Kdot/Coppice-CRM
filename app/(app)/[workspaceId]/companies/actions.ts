@@ -69,7 +69,12 @@ export async function updateCompany(_prev: ActionResult<SaveResult> | null, form
     changes: companyFields(form),
     original: companyFields(form, "original."),
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!parsed.success) {
+    // The "original" values are hidden fields the page fills in, so a problem there means a
+    // stale or tampered form, not a typing mistake.
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: issue.path[0] === "original" ? "Reload the page and try again." : issue.message };
+  }
   const { workspaceId, companyId, separateFrom, changes, original } = parsed.data;
 
   try {
