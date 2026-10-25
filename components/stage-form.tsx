@@ -25,6 +25,8 @@ export function StageForm({ workspaceId, companyId, stage, action }: Props) {
         const closing = TERMINAL_STAGES.includes(selected);
         if (closing && !window.confirm(`Move to ${STAGE_LABELS[selected]}? This closes the pitch and releases any claim.`)) {
           e.preventDefault();
+          // Cancelled, so show the stage the company is actually in.
+          setSelected(stage);
         }
       }}
       className="flex flex-wrap items-center gap-2"

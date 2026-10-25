@@ -58,8 +58,11 @@ export function CompanyForm(props: Props) {
   // The dialog's "Same company" buttons run their own action. On success it opens another page;
   // on failure (say someone else already unarchived it) the reason shows in the dialog.
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const runFromDialog = (action: Action<undefined>) => async (form: FormData) => {
+  // React doesn't send a button's name and value when its formAction is a function, so the id
+  // the action needs is added to the form here.
+  const runFromDialog = (action: Action<undefined>, field: string, id: string) => async (form: FormData) => {
     setDialogError(null);
+    form.set(field, id);
     const outcome = await action(null, form);
     if (outcome && !outcome.ok) setDialogError(outcome.error);
   };
@@ -131,9 +134,7 @@ export function CompanyForm(props: Props) {
                 {match.archived && <span className="rounded bg-zinc-200 px-1">archived</span>}
                 {props.mode === "create" && match.archived && (
                   <button
-                    formAction={runFromDialog(props.unarchive)}
-                    name="companyId"
-                    value={match.id}
+                    formAction={runFromDialog(props.unarchive, "companyId", match.id)}
                     className="rounded border px-2 py-0.5"
                   >
                     Same company: unarchive it instead
@@ -146,9 +147,7 @@ export function CompanyForm(props: Props) {
                 )}
                 {props.mode === "edit" && !match.archived && (
                   <button
-                    formAction={runFromDialog(props.archiveAsDuplicate)}
-                    name="keepId"
-                    value={match.id}
+                    formAction={runFromDialog(props.archiveAsDuplicate, "keepId", match.id)}
                     className="rounded border px-2 py-0.5"
                   >
                     Same company: archive this one
