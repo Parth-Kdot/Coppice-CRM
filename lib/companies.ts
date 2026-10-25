@@ -1,3 +1,5 @@
+import type { Membership } from "@/lib/authz";
+import { releaseForArchive } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
 import { domainKey, matchReasons, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import type { ActionResult } from "@/lib/validation";
@@ -144,21 +146,32 @@ export function updateCompany(
   });
 }
 
-async function setArchived(tenant: Tenant, companyId: string, archived: boolean): Promise<ActionResult> {
+// Hidden from the board and queue, kept with all its history, and recoverable. A company someone
+// else holds can only be archived by them or an owner; archiving clears the claim (lib/claims.ts).
+export function archiveCompany(actor: Membership, companyId: string): Promise<ActionResult> {
+  return withTenant(actor, async (tx) => {
+    const refused = await releaseForArchive(tx, actor, companyId);
+    if (refused) return { ok: false, error: refused };
+    await tx.company.updateMany({
+      where: { id: companyId, workspaceId: actor.workspaceId },
+      data: { archivedAt: new Date() },
+    });
+    return { ok: true, data: undefined };
+  });
+}
+
+export function unarchiveCompany(tenant: Tenant, companyId: string): Promise<ActionResult> {
   return withTenant(tenant, async (tx) => {
     const { count } = await tx.company.updateMany({
-      where: { id: companyId, workspaceId: tenant.workspaceId, archivedAt: archived ? null : { not: null } },
-      data: { archivedAt: archived ? new Date() : null },
+      where: { id: companyId, workspaceId: tenant.workspaceId, archivedAt: { not: null } },
+      data: { archivedAt: null },
     });
     return count === 1 ? { ok: true, data: undefined } : { ok: false, error: "Company not found." };
   });
 }
 
-// Hidden from the board and queue, kept with all its history, and recoverable.
-export const archiveCompany = (tenant: Tenant, companyId: string) => setArchived(tenant, companyId, true);
-export const unarchiveCompany = (tenant: Tenant, companyId: string) => setArchived(tenant, companyId, false);
-
-// Everything the company page shows. Stage history is capped at the latest 50 moves.
+// Everything the company page shows. Stage history is capped at the latest 50 moves and the
+// outreach log at the latest 100.
 export function getCompanyDetail(tenant: Tenant, companyId: string) {
   return withTenant(tenant, (tx) =>
     tx.company.findFirst({
@@ -172,7 +185,18 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
         stage: true,
         archivedAt: true,
         updatedAt: true,
+        lastContactedAt: true,
+        nextFollowUpAt: true,
+        // Read only; whether the claim is still live is decided against dbNow() (lib/claims.ts).
+        claimedById: true,
+        claimExpiresAt: true,
+        claimedBy: { select: { name: true } },
         contacts: { select: { id: true, name: true, email: true, title: true }, orderBy: { createdAt: "asc" } },
+        outreach: {
+          select: { id: true, channel: true, note: true, sentAt: true, sender: { select: { name: true } } },
+          orderBy: { sentAt: "desc" },
+          take: 100,
+        },
         stageChanges: {
           select: { id: true, fromStage: true, toStage: true, changedAt: true, changedBy: { select: { name: true } } },
           orderBy: { changedAt: "desc" },
@@ -255,16 +279,19 @@ export function markSeparate(tenant: Tenant, companyId: string, otherId: string)
   });
 }
 
-// "These are the same": the person keeps one and the other is archived (never deleted).
-export function resolveAsDuplicate(tenant: Tenant, keepId: string, removeId: string): Promise<ActionResult> {
-  return withTenant(tenant, async (tx) => {
+// "These are the same": the person keeps one and the other is archived (never deleted), under the
+// same claim rule as archiving.
+export function resolveAsDuplicate(actor: Membership, keepId: string, removeId: string): Promise<ActionResult> {
+  return withTenant(actor, async (tx) => {
     if (keepId === removeId) return { ok: false, error: "Pick two different companies." };
     const active = await tx.company.count({
-      where: { workspaceId: tenant.workspaceId, archivedAt: null, id: { in: [keepId, removeId] } },
+      where: { workspaceId: actor.workspaceId, archivedAt: null, id: { in: [keepId, removeId] } },
     });
     if (active !== 2) return { ok: false, error: "Company not found." };
+    const refused = await releaseForArchive(tx, actor, removeId);
+    if (refused) return { ok: false, error: refused };
     await tx.company.updateMany({
-      where: { id: removeId, workspaceId: tenant.workspaceId },
+      where: { id: removeId, workspaceId: actor.workspaceId },
       data: { archivedAt: new Date() },
     });
     return { ok: true, data: undefined };

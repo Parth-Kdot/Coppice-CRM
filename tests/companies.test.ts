@@ -14,13 +14,14 @@ import {
   type CompanyFields,
   type SaveResult,
 } from "@/lib/companies";
+import type { Membership } from "@/lib/authz";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { resetAndSeed } from "./helpers/seed";
 
 // Real database, connected as app_user, so row-level security applies to every call.
-const A: Tenant = { userId: "ownerA", workspaceId: "a" };
-const OFFICER_A: Tenant = { userId: "officerA", workspaceId: "a" };
-const B: Tenant = { userId: "ownerB", workspaceId: "b" };
+const A: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
+const OFFICER_A: Membership = { userId: "officerA", workspaceId: "a", role: "member" };
+const B: Membership = { userId: "ownerB", workspaceId: "b", role: "owner" };
 
 const saved = (r: SaveResult) => {
   if (r.status !== "saved") throw new Error(`expected saved, got ${r.status}`);

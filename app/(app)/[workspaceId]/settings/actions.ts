@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { failure } from "@/lib/actions";
 import { requireMembership, requireOwner } from "@/lib/authz";
+import { releaseClaimsOf } from "@/lib/claims";
+import { prisma } from "@/lib/db";
 import { setClaimWindow } from "@/lib/workspaces";
 import {
   cancelInvitationSchema,
@@ -87,18 +89,22 @@ export async function changeMemberRole(_prev: ActionResult | null, form: FormDat
   return { ok: true, data: undefined };
 }
 
-// Milestone 3: removing someone must also release their claims through lib/claims.ts.
+// Removing someone also releases their claims, so their companies don't stay locked until the
+// claims expire. Released after the removal succeeds, by the owner doing the removing.
 export async function removeMember(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = memberSchema.safeParse({ workspaceId: form.get("workspaceId"), memberId: form.get("memberId") });
   if (!parsed.success) return { ok: false, error: "Member not found." };
   const { workspaceId, memberId } = parsed.data;
 
   try {
-    await requireOwner(workspaceId);
+    const owner = await requireOwner(workspaceId);
+    const member = await prisma.membership.findFirst({ where: { id: memberId, workspaceId }, select: { userId: true } });
+    if (!member) return { ok: false, error: "Member not found." };
     await auth.api.removeMember({
       body: { memberIdOrEmail: memberId, organizationId: workspaceId },
       headers: await headers(),
     });
+    await releaseClaimsOf(owner, member.userId);
   } catch (e) {
     return failure(e);
   }
@@ -106,14 +112,16 @@ export async function removeMember(_prev: ActionResult | null, form: FormData): 
   return { ok: true, data: undefined };
 }
 
-// Any member can leave. Better Auth refuses if you are the last owner.
+// Any member can leave. Better Auth refuses if you are the last owner. Your claims are released
+// first, while you're still a member (afterwards row-level security wouldn't let you).
 export async function leaveWorkspace(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = workspaceIdSchema.safeParse(form.get("workspaceId"));
   if (!parsed.success) return { ok: false, error: "Workspace not found." };
   const workspaceId = parsed.data;
 
   try {
-    await requireMembership(workspaceId);
+    const me = await requireMembership(workspaceId);
+    await releaseClaimsOf(me, me.userId);
     await auth.api.leaveOrganization({ body: { organizationId: workspaceId }, headers: await headers() });
   } catch (e) {
     return failure(e);

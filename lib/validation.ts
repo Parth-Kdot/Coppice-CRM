@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Stage } from "@/generated/prisma/enums";
+import { Channel, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
 
 // Every server action parses its input with one of these before touching the database.
@@ -115,6 +115,15 @@ export const companyRefSchema = z.object({ workspaceId: id, companyId: id });
 export const unarchiveSchema = companyRefSchema.extend({ stay: z.enum(["board"]).nullable() });
 
 export const moveStageSchema = companyRefSchema.extend({ stage: z.enum(Stage) });
+
+// Logging outreach (Milestone 3). The follow-up is a calendar date ("2026-11-01"); lib/claims.ts
+// checks it is from today to a year out, using the database's idea of "today".
+export const NOTE_MAX = 2000;
+export const logOutreachSchema = companyRefSchema.extend({
+  channel: z.enum(Channel, "Pick how you reached out."),
+  note: optionalText(NOTE_MAX, "Note"),
+  followUpOn: z.iso.date("Pick a follow-up date."),
+});
 
 // "Same company" while editing: archive this company (companyId) and keep the other one.
 export const sameCompanySchema = companyRefSchema.extend({ keepId: id });
