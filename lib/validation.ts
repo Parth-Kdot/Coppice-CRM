@@ -181,3 +181,33 @@ export function boardQuery(filters: BoardFilters): string {
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+// ----- Queue filters (from the URL) -----
+
+// The queue's URL: ?mine=1&never=1&all=due. Like the board, anything malformed is dropped.
+const flag = z
+  .string()
+  .nullable()
+  .transform((v) => v === "1")
+  .catch(false);
+
+export const queueFiltersSchema = z.object({
+  // Only companies I hold with a live claim.
+  mine: flag,
+  // The "Never contacted" section is open.
+  never: flag,
+  // One section showing everything instead of the first 50.
+  all: z.enum(["due", "never"]).nullable().catch(null),
+});
+
+export type QueueFilters = z.infer<typeof queueFiltersSchema>;
+
+// The query string for a queue view: the inverse of queueFiltersSchema.
+export function queueQuery(filters: QueueFilters): string {
+  const params = new URLSearchParams();
+  if (filters.mine) params.set("mine", "1");
+  if (filters.never) params.set("never", "1");
+  if (filters.all) params.set("all", filters.all);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
