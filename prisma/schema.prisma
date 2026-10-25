@@ -208,6 +208,8 @@ model Company {
   // link to a company in a different workspace.
   @@unique([id, workspaceId])
   @@index([workspaceId, nextFollowUpAt])
+  // The board: each column is one stage, sorted by follow-up date.
+  @@index([workspaceId, stage, nextFollowUpAt])
   @@index([workspaceId, name])
   @@index([workspaceId, nameKey])
   @@index([workspaceId, domainKey])

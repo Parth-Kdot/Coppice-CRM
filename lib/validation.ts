@@ -111,6 +111,9 @@ export const updateCompanySchema = z.object({
 
 export const companyRefSchema = z.object({ workspaceId: id, companyId: id });
 
+// stay=board keeps the person on the board after unarchiving; otherwise their page opens.
+export const unarchiveSchema = companyRefSchema.extend({ stay: z.enum(["board"]).nullable() });
+
 export const moveStageSchema = companyRefSchema.extend({ stage: z.enum(Stage) });
 
 // "Same company" while editing: archive this company (companyId) and keep the other one.
@@ -132,3 +135,40 @@ export const contactFieldsSchema = z.object({
 export const addContactSchema = contactFieldsSchema.extend({ workspaceId: id, companyId: id });
 export const updateContactSchema = addContactSchema.extend({ contactId: id });
 export const contactRefSchema = companyRefSchema.extend({ contactId: id });
+
+// ----- Board filters (from the URL) -----
+
+// The board's URL: ?q=acme&industry=Tech&show=COMMITTED&all=CONTACTED&archived=1. A URL can be
+// typed or edited by hand, so anything malformed is dropped (`catch`) instead of failing the page.
+const stageList = z
+  .string()
+  .transform((v) => v.split(","))
+  .pipe(z.array(z.enum(Stage)));
+
+export const boardFiltersSchema = z.object({
+  q: z.string().trim().max(100).catch(""),
+  industry: z.string().trim().max(COMPANY_LIMITS.industry).catch(""),
+  // Committed and Declined start collapsed; these are the ones opened.
+  show: stageList.catch([]),
+  // One column showing every card instead of the first 50.
+  all: z.enum(Stage).nullable().catch(null),
+  archived: z
+    .string()
+    .nullable()
+    .transform((v) => v === "1")
+    .catch(false),
+});
+
+export type BoardFilters = z.infer<typeof boardFiltersSchema>;
+
+// The query string for a board view: the inverse of boardFiltersSchema. Empty values are left out.
+export function boardQuery(filters: BoardFilters): string {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.industry) params.set("industry", filters.industry);
+  if (filters.show.length > 0) params.set("show", filters.show.join(","));
+  if (filters.all) params.set("all", filters.all);
+  if (filters.archived) params.set("archived", "1");
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}

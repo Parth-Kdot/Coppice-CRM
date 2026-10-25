@@ -10,11 +10,13 @@ type Props = {
   companyId: string;
   stage: Stage;
   action: (prev: ActionResult | null, form: FormData) => Promise<ActionResult>;
+  // Smaller, for cards on the board.
+  compact?: boolean;
 };
 
 // Stage dropdown. Moving to Committed or Declined asks first, since it closes the pitch and
 // releases any claim.
-export function StageForm({ workspaceId, companyId, stage, action }: Props) {
+export function StageForm({ workspaceId, companyId, stage, action, compact = false }: Props) {
   const [state, formAction, pending] = useActionState(action, null);
   const [selected, setSelected] = useState(stage);
 
@@ -29,7 +31,7 @@ export function StageForm({ workspaceId, companyId, stage, action }: Props) {
           setSelected(stage);
         }
       }}
-      className="flex flex-wrap items-center gap-2"
+      className={`flex flex-wrap items-center gap-2 ${compact ? "text-sm" : ""}`}
     >
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <input type="hidden" name="companyId" value={companyId} />
@@ -38,7 +40,7 @@ export function StageForm({ workspaceId, companyId, stage, action }: Props) {
         value={selected}
         onChange={(e) => setSelected(e.target.value as Stage)}
         aria-label="Stage"
-        className="rounded border px-2 py-1"
+        className={`rounded border ${compact ? "px-1 py-0.5" : "px-2 py-1"}`}
       >
         {STAGES.map((s) => (
           <option key={s} value={s}>
@@ -46,7 +48,11 @@ export function StageForm({ workspaceId, companyId, stage, action }: Props) {
           </option>
         ))}
       </select>
-      <button type="submit" disabled={pending || selected === stage} className="rounded border px-3 py-1 disabled:opacity-50">
+      <button
+        type="submit"
+        disabled={pending || selected === stage}
+        className={`rounded border disabled:opacity-50 ${compact ? "px-2 py-0.5" : "px-3 py-1"}`}
+      >
         {pending ? "Moving..." : "Move"}
       </button>
       {state && !state.ok && (
