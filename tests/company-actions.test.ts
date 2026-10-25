@@ -3,13 +3,18 @@ import {
   addContact,
   archiveAsDuplicate,
   archiveCompany,
+  claimCompany,
   createCompany,
+  forceRelease,
+  logOutreach,
   moveStage,
+  releaseClaim,
   removeContact,
   unarchiveCompany,
   updateCompany,
   updateContact,
 } from "@/app/(app)/[workspaceId]/companies/actions";
+import type { Membership } from "@/lib/authz";
 import * as companies from "@/lib/companies";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { isWebAddress, websiteHref } from "@/lib/validation";
@@ -21,8 +26,8 @@ import { resetAndSeed } from "./helpers/seed";
 vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-const A: Tenant = { userId: "ownerA", workspaceId: "a" };
-const B: Tenant = { userId: "ownerB", workspaceId: "b" };
+const A: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
+const B: Membership = { userId: "ownerB", workspaceId: "b", role: "owner" };
 const OK = { ok: true, data: undefined };
 const NOT_OK = { ok: false, error: expect.any(String) };
 
@@ -76,10 +81,15 @@ describe("every company action refuses outsiders", () => {
       ["addContact", () => addContact(null, form({ workspaceId: "a", companyId: acme, name: "Eve" }))],
       ["updateContact", () => updateContact(null, form({ workspaceId: "a", companyId: acme, contactId: contact, name: "Eve" }))],
       ["removeContact", () => removeContact(null, form({ workspaceId: "a", companyId: acme, contactId: contact }))],
+      ["claimCompany", () => claimCompany(null, form({ workspaceId: "a", companyId: acme }))],
+      ["releaseClaim", () => releaseClaim(null, form({ workspaceId: "a", companyId: acme }))],
+      ["forceRelease", () => forceRelease(null, form({ workspaceId: "a", companyId: acme }))],
+      ["logOutreach", () => logOutreach(null, form({ workspaceId: "a", companyId: acme, channel: "EMAIL", followUpOn: "2026-12-01" }))],
     ];
 
   const unchanged = async () => {
-    expect(await row(acme)).toMatchObject({ name: "Acme", stage: "NOT_CONTACTED", archivedAt: null });
+    expect(await row(acme)).toMatchObject({ name: "Acme", stage: "NOT_CONTACTED", archivedAt: null, claimedById: null });
+    expect(await withTenant(A, (tx) => tx.outreach.count())).toBe(0);
     expect(await withTenant(A, (tx) => tx.company.count())).toBe(1);
     expect(await contactsOf(acme)).toEqual([{ name: "Sam", email: null, title: null }]);
   };
@@ -105,6 +115,10 @@ describe("every company action refuses outsiders", () => {
         addContact(null, asB({ companyId: acme, name: "Eve" })),
         updateContact(null, asB({ companyId: acme, contactId: contact, name: "Eve" })),
         removeContact(null, asB({ companyId: acme, contactId: contact })),
+        claimCompany(null, asB({ companyId: acme })),
+        releaseClaim(null, asB({ companyId: acme })),
+        forceRelease(null, asB({ companyId: acme })),
+        logOutreach(null, asB({ companyId: acme, channel: "EMAIL", followUpOn: "2026-12-01" })),
       ]),
     );
     for (const result of results) expect(result).toEqual(NOT_OK);

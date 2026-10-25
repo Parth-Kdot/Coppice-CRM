@@ -50,7 +50,8 @@ describe("source guards", () => {
   // Project rule 2: only lib/claims.ts may write a claim. Reading is fine (`claimedById: true` in a
   // select, or `claimedBy` to show the holder); assigning anything else is a write.
   test.for(files(APP_CODE).filter((file) => file !== "lib/claims.ts"))("%s never writes a claim field", (file) => {
-    expect(source(file)).not.toMatch(/\b(claimedById|claimExpiresAt)\s*:\s*(?!true\b)|"(claimedById|claimExpiresAt)"\s*=/);
+    // The lookahead skips the spaces itself, so `claimedById: true` (a read) never matches.
+    expect(source(file)).not.toMatch(/\b(claimedById|claimExpiresAt)\s*:(?!\s*true\b)|"(claimedById|claimExpiresAt)"\s*=/);
   });
 });
 
