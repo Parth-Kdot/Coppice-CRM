@@ -211,3 +211,69 @@ export function queueQuery(filters: QueueFilters): string {
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+// ----- CSV import (Milestone 4) -----
+
+export const IMPORT_MAX_ROWS = 2000;
+export const IMPORT_MAX_BYTES = 3 * 1024 * 1024;
+// No real sponsor sheet has more columns than this; the cap keeps a mapping small.
+export const IMPORT_MAX_COLUMNS = 200;
+
+// BoilerPitch fields a CSV column can fill, in the order the mapper shows them.
+export const IMPORT_FIELDS = ["name", "industry", "website", "notes", "contactName", "contactEmail"] as const;
+export type ImportField = (typeof IMPORT_FIELDS)[number];
+
+// Which column (by position) fills each field; null leaves it empty. Name is required, and a
+// column can only fill one field.
+const column = z.number().int().min(0).max(IMPORT_MAX_COLUMNS - 1);
+export const importMappingSchema = z
+  .object({
+    name: column,
+    industry: column.nullable(),
+    website: column.nullable(),
+    notes: column.nullable(),
+    contactName: column.nullable(),
+    contactEmail: column.nullable(),
+  })
+  .refine((m) => {
+    const used = Object.values(m).filter((c) => c !== null);
+    return new Set(used).size === used.length;
+  }, "Each column can only fill one field.");
+export type ImportMapping = z.infer<typeof importMappingSchema>;
+
+// A form field holding JSON, parsed and then checked against `schema`.
+const json = <T extends z.ZodType>(schema: T, message: string) =>
+  z
+    .string()
+    .transform((text, ctx) => {
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        ctx.addIssue({ code: "custom", message });
+        return z.NEVER;
+      }
+    })
+    .pipe(schema);
+
+export const previewImportSchema = z.object({
+  workspaceId: id,
+  // Optional: on the first preview the server guesses the mapping from the headers.
+  mapping: json(importMappingSchema, "Choose a column for each field.").nullable(),
+});
+
+// The import choices come from the preview page, never typed by hand, so anything wrong with them
+// means a stale or tampered page: one message for all of it.
+const REVIEW_AGAIN = "Review the duplicates again.";
+export const runImportSchema = z.object({
+  workspaceId: id,
+  mapping: json(importMappingSchema, "Choose a column for each field."),
+  // Spreadsheet row numbers the person chose to skip (row 1 is the header). Blank rows in a sheet
+  // still count, so a row number can go a little past the row limit; lib/csv.ts checks each one
+  // is a real row of this file.
+  skip: json(
+    z.array(z.number(REVIEW_AGAIN).int(REVIEW_AGAIN).min(2, REVIEW_AGAIN).max(100_000, REVIEW_AGAIN), REVIEW_AGAIN).max(IMPORT_MAX_ROWS, REVIEW_AGAIN),
+    REVIEW_AGAIN,
+  ),
+  // Existing companies the preview showed as possible duplicates.
+  seen: json(z.array(z.string(REVIEW_AGAIN).min(1, REVIEW_AGAIN).max(64, REVIEW_AGAIN), REVIEW_AGAIN).max(IMPORT_MAX_ROWS, REVIEW_AGAIN), REVIEW_AGAIN),
+});
