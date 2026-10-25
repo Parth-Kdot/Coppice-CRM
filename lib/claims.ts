@@ -66,6 +66,15 @@ export async function dbNow(): Promise<Date> {
   return now;
 }
 
+// What a page should show for a company's claim, given the database's time (from dbNow) and who
+// is looking: nobody holds it, you hold it, someone else holds it, or someone's claim ran out.
+export type ClaimState = "free" | "mine" | "theirs" | "expired";
+export function claimState(claim: { claimedById: string | null; claimExpiresAt: Date | null }, now: Date, userId: string): ClaimState {
+  if (claim.claimedById === null || claim.claimExpiresAt === null) return "free";
+  if (claim.claimExpiresAt <= now) return "expired";
+  return claim.claimedById === userId ? "mine" : "theirs";
+}
+
 // Today's date in West Lafayette ("2026-10-25"), from the database clock.
 export async function dbToday(): Promise<string> {
   const [{ today }] = await prisma.$queryRaw<{ today: string }[]>`
