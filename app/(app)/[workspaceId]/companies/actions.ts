@@ -14,6 +14,7 @@ import {
   createCompanySchema,
   moveStageSchema,
   sameCompanySchema,
+  unarchiveSchema,
   updateCompanySchema,
   updateContactSchema,
   type ActionResult,
@@ -24,6 +25,13 @@ import {
 // these; Milestone 3 limits stage moves on a claimed company to its holder or an owner.
 
 const companyPath = (workspaceId: string, companyId: string) => `/${workspaceId}/companies/${companyId}`;
+const boardPath = (workspaceId: string) => `/${workspaceId}/board`;
+
+// After a change, both the company's page and the board show fresh data on their next visit.
+function refresh(workspaceId: string, companyId: string) {
+  revalidatePath(companyPath(workspaceId, companyId));
+  revalidatePath(boardPath(workspaceId));
+}
 
 // The four company boxes, optionally under a prefix ("original." holds what the form loaded).
 const companyFields = (form: FormData, prefix = "") => ({
@@ -57,6 +65,7 @@ export async function createCompany(_prev: ActionResult<SaveResult> | null, form
     return failure(e);
   }
   if (result.status !== "saved") return { ok: true, data: result };
+  revalidatePath(boardPath(workspaceId));
   redirect(companyPath(workspaceId, result.companyId));
 }
 
@@ -80,7 +89,7 @@ export async function updateCompany(_prev: ActionResult<SaveResult> | null, form
   try {
     const { userId } = await requireMembership(workspaceId);
     const result = await companies.updateCompany({ userId, workspaceId }, companyId, { changes, original }, separateFrom);
-    if (result.ok && result.data.status === "saved") revalidatePath(companyPath(workspaceId, companyId));
+    if (result.ok && result.data.status === "saved") refresh(workspaceId, companyId);
     return result;
   } catch (e) {
     return failure(e);
@@ -95,7 +104,7 @@ export async function archiveCompany(_prev: ActionResult | null, form: FormData)
   try {
     const { userId } = await requireMembership(workspaceId);
     const result = await companies.archiveCompany({ userId, workspaceId }, companyId);
-    if (result.ok) revalidatePath(companyPath(workspaceId, companyId));
+    if (result.ok) refresh(workspaceId, companyId);
     return result;
   } catch (e) {
     return failure(e);
@@ -103,11 +112,16 @@ export async function archiveCompany(_prev: ActionResult | null, form: FormData)
 }
 
 // Brings an archived company back and opens its page. Also used by "Unarchive it instead" when
-// someone tries to add a company that was archived.
+// someone tries to add a company that was archived. From the board's Archived list
+// (stay=board), it stays on the board instead.
 export async function unarchiveCompany(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
-  const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
+  const parsed = unarchiveSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    companyId: form.get("companyId"),
+    stay: form.get("stay"),
+  });
   if (!parsed.success) return { ok: false, error: "Company not found." };
-  const { workspaceId, companyId } = parsed.data;
+  const { workspaceId, companyId, stay } = parsed.data;
 
   try {
     const { userId } = await requireMembership(workspaceId);
@@ -116,7 +130,8 @@ export async function unarchiveCompany(_prev: ActionResult | null, form: FormDat
   } catch (e) {
     return failure(e);
   }
-  revalidatePath(companyPath(workspaceId, companyId));
+  refresh(workspaceId, companyId);
+  if (stay === "board") return { ok: true, data: undefined };
   redirect(companyPath(workspaceId, companyId));
 }
 
@@ -137,7 +152,7 @@ export async function archiveAsDuplicate(_prev: ActionResult | null, form: FormD
   } catch (e) {
     return failure(e);
   }
-  revalidatePath(companyPath(workspaceId, companyId));
+  refresh(workspaceId, companyId);
   redirect(companyPath(workspaceId, keepId));
 }
 
@@ -157,7 +172,7 @@ export async function moveStage(_prev: ActionResult | null, form: FormData): Pro
   } catch (e) {
     return failure(e);
   }
-  revalidatePath(companyPath(workspaceId, companyId));
+  refresh(workspaceId, companyId);
   return { ok: true, data: undefined };
 }
 
