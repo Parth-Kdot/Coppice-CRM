@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { unarchiveCompany } from "@/app/(app)/[workspaceId]/companies/actions";
 import type { Stage } from "@/generated/prisma/enums";
 import { COLUMN_SIZE, getBoard, SHOW_ALL_LIMIT, type Board } from "@/lib/board";
+import { day, when } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { nameKey } from "@/lib/duplicates";
 import { STAGES } from "@/lib/stages";
@@ -189,5 +190,13 @@ describe("unarchiving from the board", () => {
     const [id] = await seed(A, [{ name: "Old one", archived: true }]);
     const result = await asUser("officerA", () => unarchiveCompany(null, form({ workspaceId: "a", companyId: id, stay: "elsewhere" })));
     expect(result).toEqual({ ok: false, error: "Company not found." });
+  });
+});
+
+describe("dates are shown in Purdue's time zone", () => {
+  it("formats a day and a moment in Indiana time, not the server's", () => {
+    // 3 am UTC on Oct 25 is still the evening of Oct 24 in West Lafayette (UTC-4 in October).
+    expect(day(new Date("2026-10-25T03:00:00Z"))).toBe("Oct 24");
+    expect(when(new Date("2026-10-25T05:15:00Z"))).toBe("Oct 25, 2026, 1:15 AM");
   });
 });
