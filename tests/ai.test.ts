@@ -175,8 +175,13 @@ describe("generate (the Gemini client)", () => {
     expect(generation.thinkingConfig).not.toHaveProperty("thinkingBudget");
   });
 
-  it("routes each feature to its model", async () => {
-    expect(ROUTES.CLAIM_CHECK.model).toBe("gemini-3.5-flash-lite");
+  it("routes each feature to its model, each with a fallback", async () => {
+    const models = Object.fromEntries(Object.entries(ROUTES).map(([f, r]) => [f, [r.model, r.fallback.model]]));
+    expect(models).toEqual({
+      FACT_EXTRACTION: ["gemini-3.8-flash", "gemini-3.6-flash"],
+      DRAFT: ["gemini-3.8-flash", "gemini-3.6-flash"],
+      CLAIM_CHECK: ["gemini-3.5-flash-lite", "gemini-3.6-flash"],
+    });
     fakeGemini(answer(JSON.stringify(GOOD)));
     await generate({ ...request, feature: "CLAIM_CHECK" });
     expect(calls[0].url).toContain("models/gemini-3.5-flash-lite:generateContent");
@@ -201,32 +206,61 @@ describe("generate (the Gemini client)", () => {
     ["a rate limit, without retrying it", [apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")], "rate_limited", 1],
     ["an invalid key", [apiError(400, "API key not valid. Please pass a valid API key.", "INVALID_ARGUMENT")], "bad_key", 1],
     ["a forbidden key", [apiError(403, "Permission denied", "PERMISSION_DENIED")], "bad_key", 1],
-    ["another bad request", [apiError(400, "Invalid JSON payload", "INVALID_ARGUMENT")], "unavailable", 1],
-    ["a server error, after one retry", [apiError(503, "Overloaded", "UNAVAILABLE"), apiError(503, "Overloaded", "UNAVAILABLE")], "unavailable", 2],
+    ["another bad request, without retrying or falling back", [apiError(400, "Invalid JSON payload", "INVALID_ARGUMENT")], "rejected", 1],
   ] as const)("reports %s", async ([, responses, error, attempts]) => {
     fakeGemini(...responses);
     expect(await generate(request)).toMatchObject({ ok: false, error, usage: null });
     expect(calls).toHaveLength(attempts);
   });
 
-  it("recovers when the one retry succeeds", async () => {
-    fakeGemini(apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify(GOOD)));
-    expect(await generate(request)).toMatchObject({ ok: true, data: GOOD });
+  const busy = () => apiError(503, "This model is currently experiencing high demand.", "UNAVAILABLE");
+
+  it("goes straight to the fallback model when the main one is overloaded, and says which answered", async () => {
+    fakeGemini(busy(), answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).toMatchObject({ ok: true, data: GOOD, model: "gemini-3.6-flash" });
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.6-flash"]);
+    // The fallback gets the same request, thinking level included.
+    expect(calls[1].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
   });
 
-  // The SDK retries a timed-out attempt once, then gives up. (A failed connection isn't retried.)
+  it("retries the fallback once, then gives up", async () => {
+    fakeGemini(busy(), busy(), busy());
+    expect(await generate(request)).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.6-flash" });
+    expect(calls).toHaveLength(3);
+  });
+
+  it("doesn't fall back for a rate limit", async () => {
+    fakeGemini(apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"));
+    expect(await generate(request)).toMatchObject({ ok: false, error: "rate_limited", model: "gemini-3.8-flash" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("tries the main model once, then retries the fallback once", async () => {
+    fakeGemini(apiError(500, "Internal", "INTERNAL"), apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
+    expect(calls).toHaveLength(3);
+  });
+
+  // A slow attempt is cut off (AbortError); a slow main model goes to the fallback.
   const aborted = () => new DOMException("The operation was aborted.", "AbortError");
 
-  it("reports a timeout after the one retry", async () => {
-    fakeGemini(aborted(), aborted());
-    expect(await generate(request)).toMatchObject({ ok: false, error: "timeout" });
-    expect(calls).toHaveLength(2);
+  it("falls back when the main model is too slow", async () => {
+    fakeGemini(aborted(), answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
   });
 
-  it("reports a network failure as unavailable", async () => {
-    fakeGemini(new TypeError("fetch failed"));
-    expect(await generate(request)).toMatchObject({ ok: false, error: "unavailable" });
-    expect(calls).toHaveLength(1);
+  it("reports a timeout when the fallback is too slow as well", async () => {
+    fakeGemini(aborted(), aborted(), aborted());
+    expect(await generate(request)).toMatchObject({ ok: false, error: "timeout", model: "gemini-3.6-flash" });
+    expect(calls).toHaveLength(3);
+  });
+
+  it("reports a network failure as unavailable, after trying the fallback (connections aren't retried)", async () => {
+    fakeGemini(new TypeError("fetch failed"), new TypeError("fetch failed"));
+    expect(await generate({ ...request, feature: "CLAIM_CHECK" })).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.6-flash" });
+    expect(calls).toHaveLength(2);
+    // The Claim Checker's fallback thinks at a low level.
+    expect(calls[1].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
   });
 
   it("never calls out without a key", async () => {

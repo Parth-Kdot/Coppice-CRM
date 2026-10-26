@@ -12,11 +12,33 @@ import { toGeminiSchema } from "@/lib/ai/schema";
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
-export const ROUTES: Record<AiFeature, { model: string; thinkingLevel?: ThinkingLevel }> = {
-  FACT_EXTRACTION: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.MEDIUM },
-  DRAFT: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.LOW },
+//
+// Free-tier capacity swings minute to minute (we've seen a model hang 45 s while another answered in
+// 6 s), so each feature gets one short try on its main model (`firstTryMs`), then goes to a
+// `fallback` model when the main one is overloaded, erroring or slow. The fallback gets the rest of
+// the overall time and one retry. AiRun records whichever model actually answered.
+type Model = { model: string; thinkingLevel?: ThinkingLevel };
+type Route = Model & { firstTryMs: number; fallback: Model };
+export const ROUTES: Record<AiFeature, Route> = {
+  // Long input and more thinking, so a longer first try.
+  FACT_EXTRACTION: {
+    model: "gemini-3.8-flash",
+    thinkingLevel: ThinkingLevel.MEDIUM,
+    firstTryMs: 50_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.MEDIUM },
+  },
+  DRAFT: {
+    model: "gemini-3.8-flash",
+    thinkingLevel: ThinkingLevel.LOW,
+    firstTryMs: 20_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
   // Flash-Lite's default (minimal) thinking is right for a quick check.
-  CLAIM_CHECK: { model: "gemini-3.5-flash-lite" },
+  CLAIM_CHECK: {
+    model: "gemini-3.5-flash-lite",
+    firstTryMs: 15_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
 };
 
 export type AiErrorCode =
@@ -27,6 +49,7 @@ export type AiErrorCode =
   | "blocked"
   | "truncated"
   | "invalid_output"
+  | "rejected"
   | "unavailable";
 
 export type Usage = { promptTokens: number | null; outputTokens: number | null; thinkingTokens: number | null };
@@ -46,7 +69,7 @@ export type GenerateRequest<S extends z.ZodType> = {
 
 // Thinking tokens count against this, so it's generous; replies are short JSON.
 const MAX_OUTPUT_TOKENS = 8192;
-// Per attempt; the whole call (including one retry) is capped by OVERALL_TIMEOUT_MS.
+// Per attempt on the fallback model; the whole call is capped by OVERALL_TIMEOUT_MS.
 const ATTEMPT_TIMEOUT_MS = 45_000;
 const OVERALL_TIMEOUT_MS = 100_000;
 
@@ -66,20 +89,37 @@ function errorCode(error: unknown): AiErrorCode {
   if (error instanceof Error && error.name === "ApiError" && typeof status === "number") {
     if (status === 429) return "rate_limited";
     if (status === 401 || status === 403 || (status === 400 && /API_KEY_INVALID|API key not valid/i.test(error.message))) return "bad_key";
+    // Any other 4xx: the request itself was refused, so neither a retry nor the fallback helps.
+    if (status >= 400 && status < 500) return "rejected";
   }
   return "unavailable";
 }
 
 export async function generate<S extends z.ZodType>(request: GenerateRequest<S>): Promise<GenerateResult<z.output<S>>> {
   const route = ROUTES[request.feature];
-  const model = route.model;
   // Without a key the SDK would quietly try Google Cloud credentials and fail seconds later.
-  if (!isConfigured()) return { ok: false, error: "not_configured", model, usage: null };
+  if (!isConfigured()) return { ok: false, error: "not_configured", model: route.model, usage: null };
 
+  // One deadline for the whole call, fallback included.
+  const signal = AbortSignal.timeout(OVERALL_TIMEOUT_MS);
+  const first = await callModel(route, { attempts: 1, timeoutMs: route.firstTryMs }, request, signal);
+  // Only a busy, broken or slow model is worth switching away from; a rate limit, a bad key or a
+  // refused request would fail the same way on the fallback.
+  if (first.ok || (first.error !== "unavailable" && first.error !== "timeout")) return first;
+  return callModel(route.fallback, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }, request, signal);
+}
+
+// One model, a number of tries (a second try only for server errors and timeouts; a rate limit is
+// reported, never retried), and the reply checked against the request's schema.
+async function callModel<S extends z.ZodType>(
+  { model, thinkingLevel }: Model,
+  { attempts, timeoutMs }: { attempts: number; timeoutMs: number },
+  request: GenerateRequest<S>,
+  signal: AbortSignal,
+): Promise<GenerateResult<z.output<S>>> {
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
-    // One retry for server errors only; a rate limit is reported, not retried.
-    httpOptions: { timeout: ATTEMPT_TIMEOUT_MS, retryOptions: { attempts: 2, httpStatusCodes: [500, 503, 504] } },
+    httpOptions: { timeout: timeoutMs, retryOptions: { attempts, httpStatusCodes: [500, 503, 504] } },
   });
 
   let response: GenerateContentResponse;
@@ -92,8 +132,8 @@ export async function generate<S extends z.ZodType>(request: GenerateRequest<S>)
         responseMimeType: "application/json",
         responseJsonSchema: toGeminiSchema(request.schema),
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        ...(route.thinkingLevel ? { thinkingConfig: { thinkingLevel: route.thinkingLevel } } : {}),
-        abortSignal: AbortSignal.timeout(OVERALL_TIMEOUT_MS),
+        ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
+        abortSignal: signal,
       },
     });
   } catch (error) {

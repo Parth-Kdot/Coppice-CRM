@@ -26,6 +26,7 @@ export const AI_ERROR_MESSAGES: Record<AiErrorCode, string> = {
   blocked: "The AI declined to answer that. Try rewording your note.",
   truncated: "The AI's answer was cut off. Try again.",
   invalid_output: "The AI sent back something unusable. Try again.",
+  rejected: "The AI service refused this request. Tell the app admin.",
   unavailable: "The AI service isn't responding. Try again in a few minutes.",
 };
 
