@@ -118,7 +118,10 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
 
   const result = await runAi(tenant, { feature: "DRAFT", system: SYSTEM, prompt: lines.join("\n\n"), schema: Variants });
   if (!result.ok) return result;
-  const variants = result.data.variants.filter((v) => usable(v.subject) && usable(v.body));
+  // The body must greet and sign off through the placeholders: a model that writes names itself
+  // invents them ("Hi John" to Hank, signed by a made-up officer), as Flash-Lite did on 2026-10-26.
+  const signedProperly = (body: string) => PLACEHOLDERS.every((p) => new RegExp(`\\{\\{\\s*${p}\\s*\\}\\}`).test(body));
+  const variants = result.data.variants.filter((v) => usable(v.subject) && usable(v.body) && signedProperly(v.body));
   if (variants.length === 0) return { ok: false, error: "The AI's drafts broke the drafting rules. Try again." };
 
   const values = {
