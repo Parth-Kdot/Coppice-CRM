@@ -155,6 +155,14 @@ export const draftEmailSchema = companyRefSchema.extend({
   note: optionalText(DRAFT_NOTE_MAX, "Note"),
 });
 
+// "Check again" on an edited draft: the text as it is in the boxes now.
+export const checkDraftSchema = z.object({
+  workspaceId: id,
+  draftId: id,
+  subject: z.string().max(300, "The subject is too long to check."),
+  body: z.string().trim().min(1, "Write the email first.").max(6000, "The email is too long to check."),
+});
+
 // The board's "Possible duplicates" box: two companies, kept as separate or one archived.
 export const duplicatePairSchema = z.object({ workspaceId: id, companyId: id, otherId: id });
 export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, archiveId: id });

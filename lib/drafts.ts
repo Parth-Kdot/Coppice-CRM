@@ -3,10 +3,12 @@ import type { DraftKind } from "@/generated/prisma/enums";
 import { aiGate, runAi } from "@/lib/ai/run";
 import { promptSafe } from "@/lib/ai/text";
 import { CHANNEL_LABELS } from "@/lib/channels";
+import { aiCheck, readCheck, saveChecks, type DraftCheck } from "@/lib/claim-check";
 import { claimCompany, dbNow } from "@/lib/claims";
 import { day } from "@/lib/dates";
 import { withTenant, type Tenant } from "@/lib/db";
 import { verifiedFacts } from "@/lib/facts";
+import { fill, PLACEHOLDERS } from "@/lib/placeholders";
 import type { ActionResult } from "@/lib/validation";
 
 // The Pitch Drafter. An officer asks for a first-touch or follow-up email; the company is claimed
@@ -19,7 +21,6 @@ import type { ActionResult } from "@/lib/validation";
 // details go to it: the recipient is described by job title, and the email says {{firstName}},
 // {{senderName}} and {{orgName}}, which code fills in afterwards.
 
-const PLACEHOLDERS = ["firstName", "senderName", "orgName"] as const;
 const EARLIER_OUTREACH_SHOWN = 5;
 
 const Variants = z.object({
@@ -55,6 +56,8 @@ export type DraftView = {
   // The contact's email, for the "To" line of the compose links. It never goes to the AI.
   to: string;
   createdAt: Date;
+  // The Claim Checker's AI findings and the text they were for (null before any check).
+  check: DraftCheck | null;
 };
 
 // A variant is used only if every placeholder is one we fill and it has no contact details.
@@ -64,9 +67,6 @@ function usable(text: string): boolean {
   if (/\{\{|\}\}/.test(text.replace(/\{\{\s*\w+\s*\}\}/g, ""))) return false;
   return !/[^\s@]+@[^\s@]+\.\w+|\[email\]|\[phone\]/.test(text);
 }
-
-const fill = (text: string, values: Record<(typeof PLACEHOLDERS)[number], string>) =>
-  text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: keyof typeof values) => values[key]);
 
 export type DraftRequest = { kind: DraftKind; contactId: string | null; note: string | null };
 
@@ -128,8 +128,8 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
   };
   // One timestamp for the whole click, so recentDrafts() can find these drafts together.
   const createdAt = await dbNow();
-  return withTenant(tenant, async (tx) => {
-    const saved: DraftView[] = [];
+  const saved = await withTenant(tenant, async (tx) => {
+    const rows: Omit<DraftView, "check">[] = [];
     for (const v of variants) {
       const row = await tx.aiDraft.create({
         data: {
@@ -146,10 +146,16 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
         },
         select: { id: true, kind: true, angle: true, subject: true, body: true, createdAt: true },
       });
-      saved.push({ ...row, to: contact?.email ?? "" });
+      rows.push({ ...row, to: contact?.email ?? "" });
     }
-    return { ok: true, data: saved };
+    return rows;
   });
+
+  // The Claim Checker reads both drafts in one call, after they're saved, so a failed check never
+  // loses a draft (lib/claim-check.ts).
+  const checks = await aiCheck(tenant, saved, { ...values, firstName: contact ? values.firstName : null });
+  await saveChecks(tenant, saved.map((d) => d.id), checks);
+  return { ok: true, data: saved.map((d, i) => ({ ...d, check: checks[i] })) };
 }
 
 // Your latest Draft click for a company, so its drafts survive a reload. One click's drafts share
@@ -161,9 +167,9 @@ export function recentDrafts(tenant: Tenant, companyId: string): Promise<DraftVi
     if (!latest) return [];
     const rows = await tx.aiDraft.findMany({
       where: { ...mine, createdAt: latest.createdAt },
-      select: { id: true, kind: true, angle: true, subject: true, body: true, createdAt: true, contact: { select: { email: true } } },
+      select: { id: true, kind: true, angle: true, subject: true, body: true, createdAt: true, check: true, contact: { select: { email: true } } },
       orderBy: { id: "asc" },
     });
-    return rows.map(({ contact, ...row }) => ({ ...row, to: contact?.email ?? "" }));
+    return rows.map(({ contact, check, ...row }) => ({ ...row, to: contact?.email ?? "", check: readCheck(check) }));
   });
 }
