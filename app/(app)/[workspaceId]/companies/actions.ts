@@ -10,9 +10,11 @@ import * as companies from "@/lib/companies";
 import type { SaveResult } from "@/lib/companies";
 import {
   addContactSchema,
+  archiveDuplicateSchema,
   companyRefSchema,
   contactRefSchema,
   createCompanySchema,
+  duplicatePairSchema,
   logOutreachSchema,
   moveStageSchema,
   sameCompanySchema,
@@ -159,6 +161,49 @@ export async function archiveAsDuplicate(_prev: ActionResult | null, form: FormD
   }
   refresh(workspaceId, companyId);
   redirect(companyPath(workspaceId, keepId));
+}
+
+// "Possible duplicates" on the board: these two are separate, remembered so they stop being flagged.
+export async function keepSeparate(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = duplicatePairSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    companyId: form.get("companyId"),
+    otherId: form.get("otherId"),
+  });
+  if (!parsed.success) return { ok: false, error: "Company not found." };
+  const { workspaceId, companyId, otherId } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await companies.markSeparate(member, companyId, otherId);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  revalidatePath(boardPath(workspaceId));
+  return { ok: true, data: undefined };
+}
+
+// "Possible duplicates" on the board: same company, so archive the one picked and stay on the
+// board. Same claim rule as any archive (lib/claims.ts).
+export async function archiveDuplicate(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = archiveDuplicateSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    keepId: form.get("keepId"),
+    archiveId: form.get("archiveId"),
+  });
+  if (!parsed.success) return { ok: false, error: "Company not found." };
+  const { workspaceId, keepId, archiveId } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await companies.resolveAsDuplicate(member, keepId, archiveId);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, archiveId);
+  return { ok: true, data: undefined };
 }
 
 export async function moveStage(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {

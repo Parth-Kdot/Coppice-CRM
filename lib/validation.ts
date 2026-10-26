@@ -125,6 +125,10 @@ export const logOutreachSchema = companyRefSchema.extend({
   followUpOn: z.iso.date("Pick a follow-up date."),
 });
 
+// The board's "Possible duplicates" box: two companies, kept as separate or one archived.
+export const duplicatePairSchema = z.object({ workspaceId: id, companyId: id, otherId: id });
+export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, archiveId: id });
+
 // "Same company" while editing: archive this company (companyId) and keep the other one.
 export const sameCompanySchema = companyRefSchema.extend({ keepId: id });
 
@@ -166,6 +170,12 @@ export const boardFiltersSchema = z.object({
     .nullable()
     .transform((v) => v === "1")
     .catch(false),
+  // The "Possible duplicates" section is open.
+  dupes: z
+    .string()
+    .nullable()
+    .transform((v) => v === "1")
+    .catch(false),
 });
 
 export type BoardFilters = z.infer<typeof boardFiltersSchema>;
@@ -178,6 +188,7 @@ export function boardQuery(filters: BoardFilters): string {
   if (filters.show.length > 0) params.set("show", filters.show.join(","));
   if (filters.all) params.set("all", filters.all);
   if (filters.archived) params.set("archived", "1");
+  if (filters.dupes) params.set("dupes", "1");
   const query = params.toString();
   return query ? `?${query}` : "";
 }

@@ -5,11 +5,11 @@ import { StageForm } from "@/components/stage-form";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { getBoard, type BoardColumn } from "@/lib/board";
 import { claimState, dbNow, type ClaimState } from "@/lib/claims";
-import { listIndustries } from "@/lib/companies";
+import { DUPLICATE_PAIR_LIMIT, listIndustries, listPossibleDuplicatePairs } from "@/lib/companies";
 import { day } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { boardFiltersSchema, boardQuery, type BoardFilters } from "@/lib/validation";
-import { claimCompany, moveStage, unarchiveCompany } from "../companies/actions";
+import { archiveDuplicate, claimCompany, keepSeparate, moveStage, unarchiveCompany } from "../companies/actions";
 
 type CardClaimProps = {
   state: ClaimState;
@@ -48,10 +48,16 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
     show: first("show"),
     all: first("all"),
     archived: first("archived"),
+    dupes: first("dupes"),
   });
 
   // The time comes from the database, the same clock the claim SQL uses, for "overdue" and claims.
-  const [board, industries, now] = await Promise.all([getBoard(tenant, filters), listIndustries(tenant), dbNow()]);
+  const [board, industries, now, pairs] = await Promise.all([
+    getBoard(tenant, filters),
+    listIndustries(tenant),
+    dbNow(),
+    listPossibleDuplicatePairs(tenant, DUPLICATE_PAIR_LIMIT),
+  ]);
   const href = (changes: Partial<BoardFilters>) => `/${workspaceId}/board${boardQuery({ ...filters, ...changes })}`;
   const filtered = filters.q !== "" || filters.industry !== "";
   const total = board.columns.reduce((sum, column) => sum + column.count, 0);
@@ -130,6 +136,60 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
           </section>
         ))}
       </div>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">
+          <Link href={href({ dupes: !filters.dupes })} scroll={false} aria-expanded={filters.dupes}>
+            {filters.dupes ? "▾" : "▸"} Possible duplicates ({pairs.length === DUPLICATE_PAIR_LIMIT ? `${DUPLICATE_PAIR_LIMIT}+` : pairs.length})
+          </Link>
+        </h2>
+        {filters.dupes && (
+          <>
+            <p className="text-sm text-zinc-500">
+              Companies that look alike (same name ignoring case and Inc/LLC/Corp, or same website). Archive the copy, or keep both as
+              separate entries so they stop being flagged.
+            </p>
+            <ul className="flex flex-col gap-3">
+              {pairs.map(({ a, b, matchedOn }) => (
+                <li key={`${a.id}|${b.id}`} className="flex flex-col gap-2 rounded border border-amber-500 p-3 text-sm">
+                  <span>
+                    <Link href={`/${workspaceId}/companies/${a.id}`} className="underline">
+                      {a.name}
+                    </Link>
+                    {a.website && ` (${a.website})`} and{" "}
+                    <Link href={`/${workspaceId}/companies/${b.id}`} className="underline">
+                      {b.name}
+                    </Link>
+                    {b.website && ` (${b.website})`}: same {matchedOn.join(" and ")}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      [b, a],
+                      [a, b],
+                    ].map(([keep, drop]) => (
+                      <ActionForm
+                        key={drop.id}
+                        action={archiveDuplicate}
+                        submitLabel={`Same company: archive ${drop.name}`}
+                        confirmMessage={`Archive ${drop.name} and keep ${keep.name}? You can unarchive it later.`}
+                      >
+                        <input type="hidden" name="workspaceId" value={workspaceId} />
+                        <input type="hidden" name="keepId" value={keep.id} />
+                        <input type="hidden" name="archiveId" value={drop.id} />
+                      </ActionForm>
+                    ))}
+                    <ActionForm action={keepSeparate} submitLabel="Separate entries">
+                      <input type="hidden" name="workspaceId" value={workspaceId} />
+                      <input type="hidden" name="companyId" value={a.id} />
+                      <input type="hidden" name="otherId" value={b.id} />
+                    </ActionForm>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
 
       <section className="flex flex-col gap-2">
         <h2 className="font-semibold">

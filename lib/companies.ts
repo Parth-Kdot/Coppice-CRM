@@ -242,7 +242,9 @@ export type DuplicatePair = { a: DuplicateMatch; b: DuplicateMatch; matchedOn: M
 // Look-alike pairs already in the workspace (from imports, edits or simultaneous creates), for the
 // "Possible duplicates" box. Pairs a person marked separate are left out. Capped so a workspace
 // full of identical names can't produce a huge list.
-export function listPossibleDuplicatePairs(tenant: Tenant, limit = 50): Promise<DuplicatePair[]> {
+export const DUPLICATE_PAIR_LIMIT = 50;
+
+export function listPossibleDuplicatePairs(tenant: Tenant, limit = DUPLICATE_PAIR_LIMIT): Promise<DuplicatePair[]> {
   return withTenant(tenant, async (tx) => {
     const companies = await tx.company.findMany({
       where: { workspaceId: tenant.workspaceId, archivedAt: null },

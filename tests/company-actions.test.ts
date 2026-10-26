@@ -3,9 +3,11 @@ import {
   addContact,
   archiveAsDuplicate,
   archiveCompany,
+  archiveDuplicate,
   claimCompany,
   createCompany,
   forceRelease,
+  keepSeparate,
   logOutreach,
   moveStage,
   releaseClaim,
@@ -85,6 +87,8 @@ describe("every company action refuses outsiders", () => {
       ["releaseClaim", () => releaseClaim(null, form({ workspaceId: "a", companyId: acme }))],
       ["forceRelease", () => forceRelease(null, form({ workspaceId: "a", companyId: acme }))],
       ["logOutreach", () => logOutreach(null, form({ workspaceId: "a", companyId: acme, channel: "EMAIL", followUpOn: "2026-12-01" }))],
+      ["keepSeparate", () => keepSeparate(null, form({ workspaceId: "a", companyId: acme, otherId: acme }))],
+      ["archiveDuplicate", () => archiveDuplicate(null, form({ workspaceId: "a", keepId: acme, archiveId: acme }))],
     ];
 
   const unchanged = async () => {
@@ -119,6 +123,8 @@ describe("every company action refuses outsiders", () => {
         releaseClaim(null, asB({ companyId: acme })),
         forceRelease(null, asB({ companyId: acme })),
         logOutreach(null, asB({ companyId: acme, channel: "EMAIL", followUpOn: "2026-12-01" })),
+        keepSeparate(null, asB({ companyId: acme, otherId: acme })),
+        archiveDuplicate(null, asB({ keepId: acme, archiveId: acme })),
       ]),
     );
     for (const result of results) expect(result).toEqual(NOT_OK);
@@ -394,5 +400,53 @@ describe("websites", () => {
   it("links nothing when there is no website", () => {
     expect(websiteHref(null)).toBeNull();
     expect(websiteHref("")).toBeNull();
+  });
+});
+
+describe("the board's Possible duplicates box", () => {
+  // Look-alikes that got in without being flagged (say, two people adding them at the same moment).
+  async function pair() {
+    await withTenant(A, (tx) =>
+      tx.company.createMany({
+        data: [
+          { id: "dupe-1", workspaceId: "a", name: "Acme Corp", nameKey: "acme" },
+          { id: "dupe-2", workspaceId: "a", name: "ACME, Inc.", nameKey: "acme" },
+        ],
+      }),
+    );
+  }
+  const listed = async () => (await companies.listPossibleDuplicatePairs(A)).map((p) => [p.a.id, p.b.id]);
+
+  it("'Separate entries' remembers the pair, so it stops being listed", async () => {
+    await pair();
+    expect(await listed()).toEqual([["dupe-1", "dupe-2"]]);
+    expect(await asUser("officerA", () => keepSeparate(null, form({ workspaceId: "a", companyId: "dupe-1", otherId: "dupe-2" })))).toEqual(OK);
+    expect(await listed()).toEqual([]);
+  });
+
+  it("'Same company' archives the one picked, keeps the other, and stays on the board", async () => {
+    await pair();
+    const result = await asUser("officerA", () => archiveDuplicate(null, form({ workspaceId: "a", keepId: "dupe-1", archiveId: "dupe-2" })));
+    expect(result).toEqual(OK);
+    expect((await row("dupe-2"))?.archivedAt).toBeInstanceOf(Date);
+    expect((await row("dupe-1"))?.archivedAt).toBeNull();
+    expect(await listed()).toEqual([]);
+  });
+
+  it("follows the claim rule: a company someone else holds can't be archived by another officer", async () => {
+    await pair();
+    await withTenant(A, (tx) => tx.$executeRaw`UPDATE "Company" SET "claimedById" = 'ownerA', "claimExpiresAt" = now() + interval '1 day' WHERE id = 'dupe-2'`);
+    const result = await asUser("officerA", () => archiveDuplicate(null, form({ workspaceId: "a", keepId: "dupe-1", archiveId: "dupe-2" })));
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("ownerA holds this company") });
+    expect((await row("dupe-2"))?.archivedAt).toBeNull();
+  });
+
+  it("refuses the same company twice, a missing company and malformed ids", async () => {
+    await pair();
+    expect(await asUser("ownerA", () => keepSeparate(null, form({ workspaceId: "a", companyId: "dupe-1", otherId: "dupe-1" })))).toEqual(NOT_OK);
+    expect(await asUser("ownerA", () => keepSeparate(null, form({ workspaceId: "a", companyId: "dupe-1", otherId: "missing" })))).toEqual(NOT_OK);
+    expect(await asUser("ownerA", () => keepSeparate(null, form({ workspaceId: "a", companyId: "", otherId: "dupe-2" })))).toEqual(NOT_OK);
+    expect(await asUser("ownerA", () => archiveDuplicate(null, form({ workspaceId: "a", keepId: "dupe-1", archiveId: "" })))).toEqual(NOT_OK);
+    expect(await listed()).toEqual([["dupe-1", "dupe-2"]]);
   });
 });

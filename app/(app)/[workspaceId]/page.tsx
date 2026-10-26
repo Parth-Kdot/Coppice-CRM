@@ -72,6 +72,9 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
           <Link href={`/${workspaceId}/companies/new`} className="rounded border px-3 py-1">
             Add company
           </Link>
+          <Link href={`/${workspaceId}/import`} className="rounded border px-3 py-1">
+            Import
+          </Link>
           <Link href={`/${workspaceId}/settings`} className="rounded border px-3 py-1">
             Settings
           </Link>

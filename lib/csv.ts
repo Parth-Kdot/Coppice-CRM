@@ -185,6 +185,8 @@ export type ImportPreview = {
   // Every row that can't be imported, and why.
   errors: { row: number; messages: string[] }[];
   groups: DuplicateGroup[];
+  // Name and website of every row that's in a group, so the choices can say which row is which.
+  labels: { row: number; name: string; website: string | null }[];
   defaultSkips: number[];
   // Existing companies shown as possible duplicates; sent back with the import, so a company
   // added in between is noticed instead of slipping through.
@@ -202,6 +204,7 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
 
   const valid = checked.data.filter((r) => r.errors.length === 0);
   const groups = await withTenant(tenant, (tx) => findGroups(tx, tenant.workspaceId, valid));
+  const grouped = new Set(groups.flatMap((g) => g.rows));
   return {
     ok: true,
     data: {
@@ -211,6 +214,7 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
       sample: checked.data.slice(0, PREVIEW_ROWS),
       errors: checked.data.filter((r) => r.errors.length > 0).map((r) => ({ row: r.row, messages: r.errors })),
       groups,
+      labels: valid.filter((r) => grouped.has(r.row)).map((r) => ({ row: r.row, name: r.company.name, website: r.company.website ?? null })),
       defaultSkips: defaultSkips(groups),
       seen: groups.flatMap((g) => g.existing.map((c) => c.id)),
     },
