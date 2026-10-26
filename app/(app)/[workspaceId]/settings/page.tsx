@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
+import { isConfigured } from "@/lib/ai/client";
+import { AI_WINDOW_DAYS, aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS } from "@/lib/validation";
+import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS } from "@/lib/validation";
 import {
   cancelInvitation,
   changeMemberRole,
   inviteMember,
   leaveWorkspace,
   removeMember,
+  updateAiSettings,
   updateClaimWindow,
 } from "./actions";
 
@@ -17,7 +20,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   const me = await requireMembershipOr404(workspaceId);
   const isOwner = me.role === "owner";
 
-  const [workspace, members, invitations] = await Promise.all([
+  const [workspace, members, invitations, ai] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
       select: { name: true, claimWindowDays: true },
@@ -35,6 +38,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           orderBy: { createdAt: "desc" },
         })
       : [],
+    aiUsage({ userId: me.userId, workspaceId }),
   ]);
 
   return (
@@ -145,6 +149,43 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           </ActionForm>
         ) : (
           <p>Claims last {workspace.claimWindowDays} days.</p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">AI</h2>
+        <p className="text-sm text-zinc-500">
+          Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
+          it&apos;s sent to improve Google&apos;s products, so names and email addresses are never sent to it.
+        </p>
+        {!isConfigured() && <p className="text-sm text-amber-700">AI isn&apos;t set up on this server yet: it needs a GEMINI_API_KEY.</p>}
+        <p className="text-sm">
+          {ai.used} AI {ai.used === 1 ? "call" : "calls"} in the last {AI_WINDOW_DAYS} days, out of {ai.limit}.
+        </p>
+        {isOwner ? (
+          <ActionForm action={updateAiSettings} submitLabel="Save" successMessage="Saved.">
+            <input type="hidden" name="workspaceId" value={workspaceId} />
+            <label className="flex items-center gap-2">
+              <input name="enabled" type="checkbox" defaultChecked={ai.enabled} />
+              <span>AI on for this workspace</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span>Limit</span>
+              <input
+                name="limit"
+                type="number"
+                required
+                min={0}
+                max={AI_LIMIT_MAX}
+                defaultValue={ai.limit}
+                aria-label={`AI calls allowed per ${AI_WINDOW_DAYS} days`}
+                className="w-24 rounded border px-2 py-1"
+              />
+              <span>calls per {AI_WINDOW_DAYS} days</span>
+            </label>
+          </ActionForm>
+        ) : (
+          <p>AI is {ai.enabled ? "on" : "off"} for this workspace.</p>
         )}
       </section>
     </main>

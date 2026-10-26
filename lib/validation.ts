@@ -42,6 +42,22 @@ export const claimWindowSchema = z.object({
     .max(CLAIM_WINDOW_MAX_DAYS, `Use ${CLAIM_WINDOW_MIN_DAYS} to ${CLAIM_WINDOW_MAX_DAYS} days.`),
 });
 
+// AI settings (owner): the switch is a checkbox ("on" when ticked, missing when not), and the
+// limit counts AI calls per 30 days across the workspace. 0 pauses AI without switching it off.
+export const AI_LIMIT_MAX = 5000;
+export const aiSettingsSchema = z.object({
+  workspaceId: id,
+  enabled: z
+    .string()
+    .nullable()
+    .transform((v) => v === "on"),
+  limit: z.coerce
+    .number()
+    .int("Use a whole number.")
+    .min(0, `Use 0 to ${AI_LIMIT_MAX}.`)
+    .max(AI_LIMIT_MAX, `Use 0 to ${AI_LIMIT_MAX}.`),
+});
+
 // Shape every server action returns (project convention).
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
