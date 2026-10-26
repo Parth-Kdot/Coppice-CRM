@@ -7,18 +7,20 @@ import { toGeminiSchema } from "@/lib/ai/schema";
 // runAi() in lib/ai/run.ts, which checks the workspace's switch and limits first and logs the call.
 //
 // Free tier, so: prompts must never contain recruiter or member names (they may be used to improve
-// Google's products); nothing here retries a rate limit; and every reply is re-checked with the
+// Google's products); no model is retried after a rate limit; and every reply is re-checked with the
 // same Zod schema the model was asked to follow, because the model is never trusted.
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
 //
 // Free-tier capacity swings minute to minute (we've seen a model hang 45 s while another answered in
-// 6 s), so each feature gets one short try on its main model (`firstTryMs`), then goes to a
-// `fallback` model when the main one is overloaded, erroring or slow. The fallback gets the rest of
-// the overall time and one retry. AiRun records whichever model actually answered.
+// 6 s), and each model has its own quota (on 2026-10-26 3.6 Flash was out while 3.5 Flash-Lite
+// answered every call). So each feature gets one short try on its main model (`firstTryMs`), then
+// moves to a `fallback` model when the main one is overloaded, slow or out of quota, and drafting
+// has a `lastResort` after that. The last model in line gets one retry; everything shares the
+// overall deadline. AiRun records whichever model actually answered.
 type Model = { model: string; thinkingLevel?: ThinkingLevel };
-type Route = Model & { firstTryMs: number; fallback: Model };
+type Route = Model & { firstTryMs: number; fallback: Model; lastResort?: Model };
 export const ROUTES: Record<AiFeature, Route> = {
   // Long input and more thinking, so a longer first try.
   FACT_EXTRACTION: {
@@ -27,11 +29,16 @@ export const ROUTES: Record<AiFeature, Route> = {
     firstTryMs: 50_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.MEDIUM },
   },
+  // The officer is waiting with nothing else to do, so drafting tries a third model before giving
+  // up. Flash-Lite's drafts pass the same rules and Claim Checker as any other.
   DRAFT: {
     model: "gemini-3.8-flash",
     thinkingLevel: ThinkingLevel.LOW,
     firstTryMs: 20_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    // At its default (minimal) thinking it sometimes skipped the placeholders and line breaks;
+    // LOW followed them, at the same speed (tested 2026-10-26).
+    lastResort: { model: "gemini-3.5-flash-lite", thinkingLevel: ThinkingLevel.LOW },
   },
   // Flash-Lite's default (minimal) thinking is right for a quick check.
   CLAIM_CHECK: {
@@ -69,7 +76,7 @@ export type GenerateRequest<S extends z.ZodType> = {
 
 // Thinking tokens count against this, so it's generous; replies are short JSON.
 const MAX_OUTPUT_TOKENS = 8192;
-// Per attempt on the fallback model; the whole call is capped by OVERALL_TIMEOUT_MS.
+// Per attempt after the first try; the whole call is capped by OVERALL_TIMEOUT_MS.
 const ATTEMPT_TIMEOUT_MS = 45_000;
 const OVERALL_TIMEOUT_MS = 100_000;
 
@@ -100,17 +107,29 @@ export async function generate<S extends z.ZodType>(request: GenerateRequest<S>)
   // Without a key the SDK would quietly try Google Cloud credentials and fail seconds later.
   if (!isConfigured()) return { ok: false, error: "not_configured", model: route.model, usage: null };
 
-  // One deadline for the whole call, fallback included.
+  // One deadline for the whole call, every model included. Only the last model in line is retried.
   const signal = AbortSignal.timeout(OVERALL_TIMEOUT_MS);
-  const first = await callModel(route, { attempts: 1, timeoutMs: route.firstTryMs }, request, signal);
-  // Only a busy, broken or slow model is worth switching away from; a rate limit, a bad key or a
-  // refused request would fail the same way on the fallback.
-  if (first.ok || (first.error !== "unavailable" && first.error !== "timeout")) return first;
-  return callModel(route.fallback, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }, request, signal);
+  const line: [Model, { attempts: number; timeoutMs: number }][] = [
+    [route, { attempts: 1, timeoutMs: route.firstTryMs }],
+    [route.fallback, { attempts: route.lastResort ? 1 : 2, timeoutMs: ATTEMPT_TIMEOUT_MS }],
+  ];
+  if (route.lastResort) line.push([route.lastResort, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+
+  let result!: GenerateResult<z.output<S>>;
+  for (const [model, tries] of line) {
+    result = await callModel(model, tries, request, signal);
+    // Only a busy, slow or out-of-quota model is worth moving away from; a bad key, a refused
+    // request or a blocked prompt would fail the same way on the next model.
+    if (result.ok || !MOVE_ON.includes(result.error)) return result;
+  }
+  return result;
 }
 
+// Free-tier quotas are per model, so a rate limit sends the call on too.
+const MOVE_ON: AiErrorCode[] = ["unavailable", "timeout", "rate_limited"];
+
 // One model, a number of tries (a second try only for server errors and timeouts; a rate limit is
-// reported, never retried), and the reply checked against the request's schema.
+// never retried on the same model), and the reply checked against the request's schema.
 async function callModel<S extends z.ZodType>(
   { model, thinkingLevel }: Model,
   { attempts, timeoutMs }: { attempts: number; timeoutMs: number },

@@ -172,6 +172,8 @@ describe("draftEmail", () => {
     ["a stray brace", variant(9, { subject: "Hello {{orgName}" })],
     ["an email address", variant(9, { body: "Write to me at sam@purdue.edu" })],
     ["a masked phone number", variant(9, { body: "Call [phone]" })],
+    ["names written out instead of placeholders", variant(9, { body: "Hi John,\n\nSarah\nPurdue Hackers" })],
+    ["no sign-off placeholders", variant(9, { body: "Hi {{firstName}}, thanks." })],
   ] as const)("drops a variant with %s", async ([, bad]) => {
     fakeGemini(...drafted(bad, variant(1)));
     const result = await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
@@ -211,7 +213,8 @@ describe("draftEmail", () => {
   });
 
   it("keeps the claim but saves nothing when the AI fails", async () => {
-    fakeGemini(apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"));
+    // Every model in line is out of quota.
+    fakeGemini(...Array.from({ length: 3 }, () => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")));
     expect(await draftEmail(OFFICER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null })).toEqual({
       ok: false,
       error: "The AI is busy right now. Try again in a minute.",

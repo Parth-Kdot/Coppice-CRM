@@ -151,12 +151,12 @@ describe("generate (the Gemini client)", () => {
     expect(generation.thinkingConfig).not.toHaveProperty("thinkingBudget");
   });
 
-  it("routes each feature to its model, each with a fallback", async () => {
-    const models = Object.fromEntries(Object.entries(ROUTES).map(([f, r]) => [f, [r.model, r.fallback.model]]));
+  it("routes each feature to its model, each with a fallback, and drafting with a last resort", async () => {
+    const models = Object.fromEntries(Object.entries(ROUTES).map(([f, r]) => [f, [r.model, r.fallback.model, r.lastResort?.model]]));
     expect(models).toEqual({
-      FACT_EXTRACTION: ["gemini-3.8-flash", "gemini-3.6-flash"],
-      DRAFT: ["gemini-3.8-flash", "gemini-3.6-flash"],
-      CLAIM_CHECK: ["gemini-3.5-flash-lite", "gemini-3.6-flash"],
+      FACT_EXTRACTION: ["gemini-3.8-flash", "gemini-3.6-flash", undefined],
+      DRAFT: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"],
+      CLAIM_CHECK: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
     });
     fakeGemini(answer(JSON.stringify(GOOD)));
     await generate({ ...request, feature: "CLAIM_CHECK" });
@@ -178,8 +178,9 @@ describe("generate (the Gemini client)", () => {
     expect(await generate(request)).toMatchObject({ ok: false, error, model: "gemini-3.8-flash" });
   });
 
+  const limited = () => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED");
   test.for([
-    ["a rate limit, without retrying it", [apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")], "rate_limited", 1],
+    ["a rate limit on every model, trying each once", [limited(), limited(), limited()], "rate_limited", 3],
     ["an invalid key", [apiError(400, "API key not valid. Please pass a valid API key.", "INVALID_ARGUMENT")], "bad_key", 1],
     ["a forbidden key", [apiError(403, "Permission denied", "PERMISSION_DENIED")], "bad_key", 1],
     ["another bad request, without retrying or falling back", [apiError(400, "Invalid JSON payload", "INVALID_ARGUMENT")], "rejected", 1],
@@ -199,22 +200,33 @@ describe("generate (the Gemini client)", () => {
     expect(calls[1].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
   });
 
-  it("retries the fallback once, then gives up", async () => {
+  // Fact extraction has no last resort, so its fallback is the last in line and gets the retry.
+  const extraction = { ...request, feature: "FACT_EXTRACTION" as const };
+  const modelsCalled = () => calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1]);
+
+  it("retries the last model in line once, then gives up", async () => {
     fakeGemini(busy(), busy(), busy());
-    expect(await generate(request)).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.6-flash" });
+    expect(await generate(extraction)).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.6-flash" });
     expect(calls).toHaveLength(3);
   });
 
-  it("doesn't fall back for a rate limit", async () => {
-    fakeGemini(apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"));
-    expect(await generate(request)).toMatchObject({ ok: false, error: "rate_limited", model: "gemini-3.8-flash" });
-    expect(calls).toHaveLength(1);
-  });
-
-  it("tries the main model once, then retries the fallback once", async () => {
-    fakeGemini(apiError(500, "Internal", "INTERNAL"), apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify(GOOD)));
+  it("moves to the next model on a rate limit, since free-tier quotas are per model", async () => {
+    fakeGemini(limited(), answer(JSON.stringify(GOOD)));
     expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
-    expect(calls).toHaveLength(3);
+  });
+
+  it("drafts with Flash-Lite when both Flash models fail, thinking at a low level", async () => {
+    fakeGemini(busy(), limited(), answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).toMatchObject({ ok: true, data: GOOD, model: "gemini-3.5-flash-lite" });
+    expect(modelsCalled()).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    expect(calls[2].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
+  });
+
+  it("tries drafting's first two models once each and retries Flash-Lite once", async () => {
+    const internal = () => apiError(500, "Internal", "INTERNAL");
+    fakeGemini(internal(), internal(), internal(), answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.5-flash-lite" });
+    expect(modelsCalled()).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash-lite"]);
   });
 
   // A slow attempt is cut off (AbortError); a slow main model goes to the fallback.
@@ -227,7 +239,7 @@ describe("generate (the Gemini client)", () => {
 
   it("reports a timeout when the fallback is too slow as well", async () => {
     fakeGemini(aborted(), aborted(), aborted());
-    expect(await generate(request)).toMatchObject({ ok: false, error: "timeout", model: "gemini-3.6-flash" });
+    expect(await generate(extraction)).toMatchObject({ ok: false, error: "timeout", model: "gemini-3.6-flash" });
     expect(calls).toHaveLength(3);
   });
 
@@ -294,7 +306,8 @@ describe("runAi (the gate every AI call goes through)", () => {
 
   it("logs a failed call with a short code and shows a plain message", async () => {
     await turnOn();
-    fakeGemini(apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"));
+    // Every drafting model is out of quota.
+    fakeGemini(...[1, 2, 3].map(() => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")));
     expect(await runAi(A, request)).toEqual({ ok: false, error: AI_ERROR_MESSAGES.rate_limited });
     expect(await runs()).toMatchObject([{ status: "FAILED", error: "rate_limited", promptTokens: null }]);
   });

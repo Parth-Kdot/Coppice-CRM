@@ -128,7 +128,8 @@ describe("the AI check", () => {
   });
 
   it("returns the reason, and no AI findings, when the AI can't answer", async () => {
-    fakeGemini(apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"));
+    // Every model in line is out of quota.
+    fakeGemini(...Array.from({ length: 2 }, () => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")));
     expect(await aiCheck(OWNER, [draft], NAMES)).toEqual([{ ...draft, ai: [], error: "The AI is busy right now. Try again in a minute." }]);
   });
 
@@ -140,10 +141,10 @@ describe("the AI check", () => {
   });
 
   it("runs after drafting, and the result survives a reload", async () => {
-    const variants = [{ angle: "A", subject: "Hello {{firstName}}", body: "Hi {{firstName}}, we have 900 members.\n\n{{senderName}}" }];
+    const variants = [{ angle: "A", subject: "Hello {{firstName}}", body: "Hi {{firstName}}, we have 900 members.\n\n{{senderName}}\n{{orgName}}" }];
     fakeGemini(answer(JSON.stringify({ variants })), issues({ email: 1, quote: "we have 900 members", problem: "No member count." }));
     const result = await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
-    const expected = { subject: "Hello there", body: "Hi there, we have 900 members.\n\nownerA", ai: [expect.objectContaining({ quote: "we have 900 members" })], error: null };
+    const expected = { subject: "Hello there", body: "Hi there, we have 900 members.\n\nownerA\nOrg A", ai: [expect.objectContaining({ quote: "we have 900 members" })], error: null };
     expect(result).toMatchObject({ ok: true, data: [{ check: expected }] });
     expect(calls[1].url).toContain("gemini-3.5-flash-lite");
     expect(await recentDrafts(OWNER, companyId)).toMatchObject([{ check: expected }]);
@@ -152,7 +153,7 @@ describe("the AI check", () => {
   describe("Check again", () => {
     async function myDraft(member: Membership, withContact = true) {
       const contact = withContact ? await addContact(OWNER, companyId, { name: "Hank Scorpio", email: null, title: null }) : null;
-      const variants = [{ angle: "A", subject: "Hi", body: "Hi {{firstName}}" }];
+      const variants = [{ angle: "A", subject: "Hi", body: "Hi {{firstName}}\n\n{{senderName}}\n{{orgName}}" }];
       fakeGemini(answer(JSON.stringify({ variants })), issues());
       const result = await draftEmail(member, companyId, { kind: "FIRST_TOUCH", contactId: contact?.ok ? contact.data.contactId : null, note: null });
       if (!result.ok) throw new Error(result.error);
