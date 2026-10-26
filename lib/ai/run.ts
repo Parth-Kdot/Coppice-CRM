@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { AiFeature } from "@/generated/prisma/enums";
 import { generate, isConfigured, type AiErrorCode, type GenerateRequest } from "@/lib/ai/client";
 import { dbNow } from "@/lib/claims";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
@@ -43,7 +44,10 @@ export async function aiUsage(tenant: Tenant): Promise<AiUsage> {
   return { enabled: workspace.aiEnabled, limit: workspace.aiMonthlyLimit, used };
 }
 
-export async function runAi<S extends z.ZodType>(tenant: Tenant, request: GenerateRequest<S>): Promise<ActionResult<z.output<S>>> {
+// Whether this person may make an AI call for this feature right now (steps 1 and 2 above).
+// runAi() checks it itself; a feature that has a side effect before its AI call (the drafter
+// claims the company) checks it first too, so a refused call leaves nothing behind.
+export async function aiGate(tenant: Tenant, feature: AiFeature): Promise<ActionResult> {
   if (!isConfigured()) return { ok: false, error: AI_ERROR_MESSAGES.not_configured };
   const usage = await aiUsage(tenant);
   if (!usage.enabled) return { ok: false, error: "AI is turned off for this workspace. An owner can turn it on in Settings." };
@@ -53,7 +57,7 @@ export async function runAi<S extends z.ZodType>(tenant: Tenant, request: Genera
       error: `This workspace has used its ${usage.limit} AI calls for the last ${AI_WINDOW_DAYS} days. An owner can raise the limit in Settings.`,
     };
   }
-  if (request.feature === "DRAFT") {
+  if (feature === "DRAFT") {
     const since = new Date((await dbNow()).getTime() - DAY_MS);
     const mine = await withTenant(tenant, (tx) =>
       tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, userId: tenant.userId, feature: "DRAFT", createdAt: { gte: since } } }),
@@ -62,6 +66,15 @@ export async function runAi<S extends z.ZodType>(tenant: Tenant, request: Genera
       return { ok: false, error: `You've made ${DAILY_DRAFTS_PER_PERSON} drafts in the last 24 hours. Try again tomorrow.` };
     }
   }
+  return { ok: true, data: undefined };
+}
+
+// The model's checked reply, and which model gave it (a fallback model can answer).
+export type AiResult<T> = { ok: true; data: T; model: string } | { ok: false; error: string };
+
+export async function runAi<S extends z.ZodType>(tenant: Tenant, request: GenerateRequest<S>): Promise<AiResult<z.output<S>>> {
+  const gate = await aiGate(tenant, request.feature);
+  if (!gate.ok) return gate;
 
   const started = performance.now();
   const result = await generate(request);
@@ -84,5 +97,5 @@ export async function runAi<S extends z.ZodType>(tenant: Tenant, request: Genera
     }),
   );
 
-  return result.ok ? { ok: true, data: result.data } : { ok: false, error: AI_ERROR_MESSAGES[result.error] };
+  return result.ok ? { ok: true, data: result.data, model: result.model } : { ok: false, error: AI_ERROR_MESSAGES[result.error] };
 }

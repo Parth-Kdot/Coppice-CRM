@@ -3,13 +3,18 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { ClaimPanel } from "@/components/claim-panel";
 import { CompanyForm } from "@/components/company-form";
+import { DraftPanel } from "@/components/draft-panel";
 import { StageForm } from "@/components/stage-form";
+import { isConfigured } from "@/lib/ai/client";
+import { aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { CHANNEL_LABELS } from "@/lib/channels";
 import { claimState, dbNow, dbToday } from "@/lib/claims";
 import { getCompanyDetail, listIndustries } from "@/lib/companies";
 import { day, when } from "@/lib/dates";
-import { STAGE_LABELS } from "@/lib/stages";
+import { recentDrafts } from "@/lib/drafts";
+import { verifiedFacts } from "@/lib/facts";
+import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { websiteHref } from "@/lib/validation";
 import {
   addContact,
@@ -25,6 +30,10 @@ import {
   updateCompany,
   updateContact,
 } from "../actions";
+import { draftEmail } from "../draft-actions";
+
+// Drafting an email waits on the AI for up to 100 seconds.
+export const maxDuration = 120;
 
 export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/companies/[companyId]">) {
   const { workspaceId, companyId } = await params;
@@ -32,13 +41,19 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
   const tenant = { userId, workspaceId };
   // Not found and "in another workspace" look the same, so ids can't be probed. The time and date
   // come from the database, the same clock the claim SQL uses.
-  const [company, industries, now, today] = await Promise.all([
+  const [company, industries, now, today, ai, facts, drafts] = await Promise.all([
     getCompanyDetail(tenant, companyId),
     listIndustries(tenant),
     dbNow(),
     dbToday(),
+    aiUsage(tenant),
+    verifiedFacts(tenant),
+    recentDrafts(tenant, companyId),
   ]);
   if (!company) notFound();
+  const claim = claimState(company, now, userId);
+  // Drafting claims the company, so it's offered only when that could work.
+  const canDraft = !TERMINAL_STAGES.includes(company.stage) && claim !== "theirs";
 
   const archived = company.archivedAt !== null;
   const href = websiteHref(company.website);
@@ -93,13 +108,32 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
               companyName={company.name}
               stage={company.stage}
               role={role}
-              state={claimState(company, now, userId)}
+              state={claim}
               holderName={company.claimedBy?.name ?? null}
               expiresAt={company.claimExpiresAt}
               today={today}
               actions={{ claim: claimCompany, release: releaseClaim, forceRelease, logOutreach }}
             />
           </section>
+          {canDraft && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-lg font-semibold">Draft an email</h2>
+              {isConfigured() && ai.enabled ? (
+                <DraftPanel
+                  workspaceId={workspaceId}
+                  companyId={company.id}
+                  contacts={company.contacts}
+                  hasOutreach={company.outreach.length > 0}
+                  factCount={facts.length}
+                  initialDrafts={drafts}
+                  today={today}
+                  actions={{ draft: draftEmail, logOutreach }}
+                />
+              ) : (
+                <p className="text-sm text-zinc-500">AI drafting is off for this workspace. An owner can turn it on in Settings.</p>
+              )}
+            </section>
+          )}
           <section className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold">Stage</h2>
             <StageForm workspaceId={workspaceId} companyId={company.id} stage={company.stage} action={moveStage} />
@@ -186,6 +220,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
               <li key={entry.id} className="flex flex-col">
                 <span>
                   {when(entry.sentAt)}: {entry.sender.name}, {CHANNEL_LABELS[entry.channel]}
+                  {entry.aiDraftId && ", from an AI draft"}
                 </span>
                 {entry.note && <span className="whitespace-pre-wrap text-zinc-600">{entry.note}</span>}
               </li>
