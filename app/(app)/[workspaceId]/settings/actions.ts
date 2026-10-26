@@ -8,8 +8,9 @@ import { failure } from "@/lib/actions";
 import { requireMembership, requireOwner } from "@/lib/authz";
 import { releaseClaimsOf } from "@/lib/claims";
 import { prisma } from "@/lib/db";
-import { setClaimWindow } from "@/lib/workspaces";
+import { setAiSettings, setClaimWindow } from "@/lib/workspaces";
 import {
+  aiSettingsSchema,
   cancelInvitationSchema,
   changeRoleSchema,
   claimWindowSchema,
@@ -137,6 +138,25 @@ export async function updateClaimWindow(_prev: ActionResult | null, form: FormDa
   try {
     const { userId } = await requireOwner(workspaceId);
     await setClaimWindow(userId, workspaceId, days);
+  } catch (e) {
+    return failure(e);
+  }
+  revalidatePath(settingsPath(workspaceId));
+  return { ok: true, data: undefined };
+}
+
+export async function updateAiSettings(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = aiSettingsSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    enabled: form.get("enabled"),
+    limit: form.get("limit"),
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const { workspaceId, enabled, limit } = parsed.data;
+
+  try {
+    const { userId } = await requireOwner(workspaceId);
+    await setAiSettings(userId, workspaceId, { enabled, limit });
   } catch (e) {
     return failure(e);
   }
