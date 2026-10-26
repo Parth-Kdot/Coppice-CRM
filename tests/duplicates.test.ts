@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { domainKey, matchReasons, nameKey, orderedPair } from "@/lib/duplicates";
+import { domainKey, groupLookAlikes, matchReasons, nameKey, orderedPair } from "@/lib/duplicates";
 
 describe("nameKey: names that mean the same company match", () => {
   test.for([
@@ -65,6 +65,29 @@ describe("matchReasons", () => {
   });
   test("two companies without websites don't match on website", () => {
     expect(matchReasons({ nameKey: "a", domainKey: null }, { nameKey: "b", domainKey: null })).toEqual([]);
+  });
+});
+
+describe("groupLookAlikes", () => {
+  const item = (id: string, name: string, website: string | null = null) => ({ id, nameKey: nameKey(name), domainKey: domainKey(website) });
+
+  test("joins look-alikes transitively and says what joined them", () => {
+    const groups = groupLookAlikes([
+      item("a", "Acme"),
+      item("b", "ACME, Inc.", "acme.com"),
+      item("c", "Acme Labs", "https://www.acme.com"),
+      item("d", "Globex"),
+      item("e", "Initech", "initech.com"),
+      item("f", "Initrode", "initech.com"),
+    ]);
+    expect(groups.map((g) => [g.members.map((m) => m.id), g.matchedOn])).toEqual([
+      [["a", "b", "c"], ["name", "website"]],
+      [["e", "f"], ["website"]],
+    ]);
+  });
+
+  test("leaves out companies with nothing in common, and blank websites never match", () => {
+    expect(groupLookAlikes([item("a", "Acme"), item("b", "Globex"), item("c", "Initech", "")])).toEqual([]);
   });
 });
 

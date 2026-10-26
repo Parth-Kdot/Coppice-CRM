@@ -47,6 +47,48 @@ export function matchReasons(
   return reasons;
 }
 
+type Keyed = { id: string; nameKey: string; domainKey: string | null };
+
+// Sorts items into groups of look-alikes. Linked transitively: if A shares a name with B and B
+// shares a website with C, all three are one group. Returns only groups of two or more, each with
+// the kinds of key that joined it. (A union-find: each item points toward a representative of its
+// group, and two groups merge when an item links them.)
+export function groupLookAlikes<T extends Keyed>(items: T[]): { members: T[]; matchedOn: MatchReason[] }[] {
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const up = parent.get(id) ?? id;
+    if (up === id) return id;
+    const root = find(up);
+    parent.set(id, root);
+    return root;
+  };
+
+  const firstWithKey = new Map<string, string>();
+  const joinedBy = new Map<string, MatchReason>();
+  const link = (id: string, key: string, reason: MatchReason) => {
+    const other = firstWithKey.get(key);
+    if (other === undefined) return firstWithKey.set(key, id);
+    parent.set(find(id), find(other));
+    joinedBy.set(key, reason);
+  };
+  for (const item of items) {
+    link(item.id, `name:${item.nameKey}`, "name");
+    if (item.domainKey) link(item.id, `site:${item.domainKey}`, "website");
+  }
+
+  const groups = new Map<string, { members: T[]; matchedOn: Set<MatchReason> }>();
+  for (const item of items) {
+    const root = find(item.id);
+    if (!groups.has(root)) groups.set(root, { members: [], matchedOn: new Set() });
+    groups.get(root)!.members.push(item);
+  }
+  for (const [key, reason] of joinedBy) groups.get(find(firstWithKey.get(key) as string))!.matchedOn.add(reason);
+
+  return [...groups.values()]
+    .filter((g) => g.members.length > 1)
+    .map((g) => ({ members: g.members, matchedOn: [...g.matchedOn].sort() as MatchReason[] }));
+}
+
 // A pair is always stored smaller id first, matching the CHECK in the companies_core migration.
 export function orderedPair(x: string, y: string): [string, string] {
   return x < y ? [x, y] : [y, x];

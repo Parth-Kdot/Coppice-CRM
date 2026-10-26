@@ -1,0 +1,45 @@
+﻿Company Name ,Industry,Website,Contact,Contact Email,Notes
+Acme Corp,Technology,https://www.acme.com/,Jen Park,JPark@Acme.com,"Emailed 3/2, said reach out in Aug"
+"Smith, Jones & Co",Consulting,smithjones.com,,,Name has a comma in it
+"ACME, Inc.",Technology,,,,Same as Acme Corp?
+  Globex   , Energy , globex.com ,  Hank Scorpio , hank@globex.com ,  trailing spaces everywhere  
+Café Nero,Food,cafenero.com,,,
+,Finance,nameless.com,,,No company name
+Bad Site LLC,,not a website,,,
+Bad Email Inc,,,Pat Lee,pat at example,
+Multiline Co,Media,multiline.co,,,"Line one
+Line two"
+Initech,Software,initech.com,Bill Lumbergh,bill@initech.com,Already in the workspace
+Sponsor 11,Energy,sponsor11.com,Contact 11,contact11@sponsor11.com,Note 11
+Sponsor 12,Tech,sponsor12.com,,,Note 12
+Sponsor 13,Finance,sponsor13.com,Contact 13,contact13@sponsor13.com,Note 13
+Sponsor 14,Energy,sponsor14.com,,,Note 14
+Sponsor 15,Tech,sponsor15.com,Contact 15,contact15@sponsor15.com,Note 15
+
+,,,,,
+Sponsor 16,Finance,sponsor16.com,,,Note 16
+Sponsor 17,Energy,sponsor17.com,Contact 17,contact17@sponsor17.com,Note 17
+Sponsor 18,Tech,sponsor18.com,,,Note 18
+Sponsor 19,Finance,sponsor19.com,Contact 19,contact19@sponsor19.com,Note 19
+Sponsor 20,Energy,sponsor20.com,,,Note 20
+Sponsor 21,Tech,sponsor21.com,Contact 21,contact21@sponsor21.com,Note 21
+Sponsor 22,Finance,sponsor22.com,,,Note 22
+Sponsor 23,Energy,sponsor23.com,Contact 23,contact23@sponsor23.com,Note 23
+Sponsor 24,Tech,sponsor24.com,,,Note 24
+Sponsor 25,Finance,sponsor25.com,Contact 25,contact25@sponsor25.com,Note 25
+Sponsor 26,Energy,sponsor26.com,,,Note 26
+Sponsor 27,Tech,sponsor27.com,Contact 27,contact27@sponsor27.com,Note 27
+Sponsor 28,Finance,sponsor28.com,,,Note 28
+Sponsor 29,Energy,sponsor29.com,Contact 29,contact29@sponsor29.com,Note 29
+Sponsor 30,Tech,sponsor30.com,,,Note 30
+Sponsor 31,Finance,sponsor31.com,Contact 31,contact31@sponsor31.com,Note 31
+Sponsor 32,Energy,sponsor32.com,,,Note 32
+Sponsor 33,Tech,sponsor33.com,Contact 33,contact33@sponsor33.com,Note 33
+Sponsor 34,Finance,sponsor34.com,,,Note 34
+Sponsor 35,Energy,sponsor35.com,Contact 35,contact35@sponsor35.com,Note 35
+Sponsor 36,Tech,sponsor36.com,,,Note 36
+Sponsor 37,Finance,sponsor37.com,Contact 37,contact37@sponsor37.com,Note 37
+Sponsor 38,Energy,sponsor38.com,,,Note 38
+Sponsor 39,Tech,sponsor39.com,Contact 39,contact39@sponsor39.com,Note 39
+Sponsor 40,Finance,sponsor40.com,,,Note 40
+
