@@ -286,7 +286,7 @@ describe("runAi (the gate every AI call goes through)", () => {
     expect(await runs()).toEqual([]);
 
     await turnOn();
-    expect(await runAi(A, request)).toEqual({ ok: true, data: GOOD });
+    expect(await runAi(A, request)).toEqual({ ok: true, data: GOOD, model: "gemini-3.8-flash" });
     expect(await runs()).toEqual([
       { userId: "ownerA", feature: "DRAFT", model: "gemini-3.8-flash", status: "SUCCEEDED", error: null, promptTokens: 120, outputTokens: 40, thinkingTokens: 15 },
     ]);
