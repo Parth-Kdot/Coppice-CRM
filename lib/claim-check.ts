@@ -70,8 +70,9 @@ export async function aiCheck(tenant: Tenant, drafts: Text[], names: CheckNames)
     const seen = new Set<string>();
     const ai = result.data.issues
       .filter((issue) => issue.email === i + 1 && issue.quote.trim().length >= 4 && key.includes(matchKey(issue.quote)))
-      .map((issue) => ({ kind: "unsupported" as const, quote: fill(issue.quote.trim(), shown), reason: issue.problem.trim() }))
-      .filter((f) => !seen.has(f.quote) && seen.add(f.quote));
+      // The same claim quoted twice (different spacing or case) is one finding.
+      .filter((issue) => !seen.has(matchKey(issue.quote)) && seen.add(matchKey(issue.quote)))
+      .map((issue) => ({ kind: "unsupported" as const, quote: fill(issue.quote.trim(), shown), reason: issue.problem.trim() }));
     return { subject, body, ai, error: null };
   });
 }
