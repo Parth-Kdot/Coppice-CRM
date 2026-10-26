@@ -3,7 +3,7 @@ import type { DraftKind } from "@/generated/prisma/enums";
 import { aiGate, runAi } from "@/lib/ai/run";
 import { promptSafe } from "@/lib/ai/text";
 import { CHANNEL_LABELS } from "@/lib/channels";
-import { claimCompany } from "@/lib/claims";
+import { claimCompany, dbNow } from "@/lib/claims";
 import { day } from "@/lib/dates";
 import { withTenant, type Tenant } from "@/lib/db";
 import { verifiedFacts } from "@/lib/facts";
@@ -126,6 +126,8 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
     senderName: context.sender.name,
     orgName: context.workspace.name,
   };
+  // One timestamp for the whole click, so recentDrafts() can find these drafts together.
+  const createdAt = await dbNow();
   return withTenant(tenant, async (tx) => {
     const saved: DraftView[] = [];
     for (const v of variants) {
@@ -140,6 +142,7 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
           subject: fill(v.subject, values).trim(),
           body: fill(v.body, values).trim(),
           model: result.model,
+          createdAt,
         },
         select: { id: true, kind: true, angle: true, subject: true, body: true, createdAt: true },
       });
@@ -149,14 +152,17 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
   });
 }
 
-// Your latest drafts for a company (one Draft click makes up to two), so they survive a reload.
+// Your latest Draft click for a company, so its drafts survive a reload. One click's drafts share
+// a createdAt (set in draftEmail).
 export function recentDrafts(tenant: Tenant, companyId: string): Promise<DraftView[]> {
   return withTenant(tenant, async (tx) => {
+    const mine = { workspaceId: tenant.workspaceId, companyId, createdById: tenant.userId };
+    const latest = await tx.aiDraft.findFirst({ where: mine, select: { createdAt: true }, orderBy: { createdAt: "desc" } });
+    if (!latest) return [];
     const rows = await tx.aiDraft.findMany({
-      where: { workspaceId: tenant.workspaceId, companyId, createdById: tenant.userId },
+      where: { ...mine, createdAt: latest.createdAt },
       select: { id: true, kind: true, angle: true, subject: true, body: true, createdAt: true, contact: { select: { email: true } } },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 2,
+      orderBy: { id: "asc" },
     });
     return rows.map(({ contact, ...row }) => ({ ...row, to: contact?.email ?? "" }));
   });
