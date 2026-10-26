@@ -28,6 +28,10 @@ export function matchKey(text: string): string {
 // At least this many characters, so a quote can't "match" by being a common word or two.
 const MIN_QUOTE = 12;
 
+// Text from a person or a file, ready to put inside a prompt's data tags: contact details masked,
+// and angle brackets swapped so the text can't close or fake the tags around it.
+export const promptSafe = (text: string) => maskContactDetails(text).replace(/</g, "‹").replace(/>/g, "›");
+
 // Whether the quote is really on the page, and every number in the fact appears in the quote.
 // Both must hold: the quote proves the passage exists, the number check proves the fact didn't
 // change a figure while restating it.
