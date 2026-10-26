@@ -206,7 +206,7 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
     });
     const outreach = await tx.outreach.findMany({
       where: scope,
-      select: { id: true, channel: true, note: true, sentAt: true, sender: { select: { name: true } } },
+      select: { id: true, channel: true, note: true, sentAt: true, aiDraftId: true, sender: { select: { name: true } } },
       orderBy: { sentAt: "desc" },
       take: 100,
     });
