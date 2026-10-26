@@ -30,6 +30,8 @@ describe("checkRules", () => {
     ["a number nobody verified", "We have 900 members and 3.5% growth.", ["900", "3.5%"]],
     ["a call length, which is an ask", "Could we do a 10-minute call, or 15 min?", []],
     ["the same number twice, once", "Gold is $3,000. Yes, $3,000.", ["$3,000"]],
+    ["a date like the earlier email's", "Following up on my Oct 26 email and our October 3rd call.", []],
+    ["a year after a month, which still counts", "We won in March 2025 and plan for Oct 2030.", ["2030"]],
   ] as const)("numbers: %s", ([, text, flagged]) => {
     expect(checkRules(text, RULES).map((f) => f.quote)).toEqual(flagged);
   });

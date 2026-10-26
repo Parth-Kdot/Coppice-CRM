@@ -15,6 +15,10 @@ export type RuleContext = { factNumbers: string[]; website: string | null };
 const NUMBER = /\$?\d[\d,]*(?:\.\d+)?%?/g;
 // "a 10-minute call" is an ask, not a claim about the org.
 const CALL_LENGTH = /^\s*-?\s*min(?:ute)?s?\b/i;
+// "Oct 26" or "October 3rd" is a date, usually the earlier email's, not a claim. Only a day of the
+// month counts: "March 2030" still has a year to check.
+const AFTER_MONTH = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+$/i;
+const isDayOfMonth = (number: string, before: string) => /^\d{1,2}$/.test(number) && Number(number) <= 31 && AFTER_MONTH.test(before);
 const LINK = /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|edu|net|io|co|us|ai|dev)\b\S*/gi;
 const HISTORY =
   /\b(?:sponsor(?:ed|ing)? us (?:before|again|last \w+|in the past)|(?:past|previous|prior|continued) (?:support|sponsorship|partnership)|returning sponsor|(?:once|last year) again|as (?:a|our) (?:past|previous|former) sponsor|work(?:ing|ed) with you (?:before|again|last \w+))\b/gi;
@@ -26,7 +30,7 @@ export function checkRules(text: string, context: RuleContext): Finding[] {
 
   for (const m of text.matchAll(NUMBER)) {
     const value = numbersIn(m[0])[0];
-    if (supported.has(value) || CALL_LENGTH.test(text.slice(m.index + m[0].length))) continue;
+    if (supported.has(value) || CALL_LENGTH.test(text.slice(m.index + m[0].length)) || isDayOfMonth(m[0], text.slice(0, m.index))) continue;
     findings.push({ kind: "number", quote: m[0], reason: "No verified fact has this number." });
   }
   for (const m of text.matchAll(LINK)) {
