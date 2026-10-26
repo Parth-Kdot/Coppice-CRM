@@ -223,11 +223,23 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                           {label(row)?.website && ` (${label(row)?.website})`}
                         </span>
                         <label className="flex items-center gap-1">
-                          <input type="radio" name={`row-${row}`} checked={!skips.has(row)} onChange={() => choose(row, false)} />
+                          <input
+                            type="radio"
+                            name={`row-${row}`}
+                            aria-label={`Import row ${row}`}
+                            checked={!skips.has(row)}
+                            onChange={() => choose(row, false)}
+                          />
                           Import
                         </label>
                         <label className="flex items-center gap-1">
-                          <input type="radio" name={`row-${row}`} checked={skips.has(row)} onChange={() => choose(row, true)} />
+                          <input
+                            type="radio"
+                            name={`row-${row}`}
+                            aria-label={`Skip row ${row}`}
+                            checked={skips.has(row)}
+                            onChange={() => choose(row, true)}
+                          />
                           Skip
                         </label>
                       </fieldset>
