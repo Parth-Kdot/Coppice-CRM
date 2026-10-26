@@ -304,3 +304,13 @@ export const runImportSchema = z.object({
   // Existing companies the preview showed as possible duplicates.
   seen: json(z.array(z.string(REVIEW_AGAIN).min(1, REVIEW_AGAIN).max(64, REVIEW_AGAIN), REVIEW_AGAIN).max(IMPORT_MAX_ROWS, REVIEW_AGAIN), REVIEW_AGAIN),
 });
+
+// ----- Fact sheet (AI feature 1) -----
+
+export const FACT_MAX = 300;
+export const factTextSchema = z.string().trim().min(1, "Write the fact.").max(FACT_MAX, `A fact can be at most ${FACT_MAX} characters.`);
+export const addFactSchema = z.object({ workspaceId: id, text: factTextSchema });
+export const factRefSchema = z.object({ workspaceId: id, factId: id });
+export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
+export const verifyFactSchema = factRefSchema.extend({ verified: z.enum(["1", "0"]).transform((v) => v === "1") });
+export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id });

@@ -162,6 +162,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
         <p className="text-sm">
           {ai.used} AI {ai.used === 1 ? "call" : "calls"} in the last {AI_WINDOW_DAYS} days, out of {ai.limit}.
         </p>
+        <Link href={`/${workspaceId}/facts`} className="self-start underline">
+          {isOwner ? "Manage the fact sheet" : "See the fact sheet"}
+        </Link>
         {isOwner ? (
           <ActionForm action={updateAiSettings} submitLabel="Save" successMessage="Saved.">
             <input type="hidden" name="workspaceId" value={workspaceId} />

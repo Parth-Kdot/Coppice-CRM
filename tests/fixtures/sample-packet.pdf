@@ -1,0 +1,67 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 298 >>
+stream
+BT /F1 12 Tf 72 720 Td 16 TL
+(Test Robotics Club - Sponsorship Packet 2026-27) Tj T*
+(Test Robotics Club is a student organization at Purdue University.) Tj T*
+(Our annual hackathon draws 600 students over 36 hours.) Tj T*
+(Questions? Email sponsor.chair@example.org or call 765-555-0142.) Tj T*
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 254 >>
+stream
+BT /F1 12 Tf 72 720 Td 16 TL
+(Sponsorship tiers) Tj T*
+(Gold tier is $2,500 and includes a keynote slot.) Tj T*
+(Silver tier is $1,000 and includes a booth at the hackathon.) Tj T*
+(Bronze tier is $500 and includes logo placement on our shirts.) Tj T*
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 146 >>
+stream
+BT /F1 12 Tf 72 720 Td 16 TL
+(Past sponsors include Caterpillar and Cummins.) Tj T*
+(Our members won 3 national robotics awards in 2025.) Tj T*
+ET
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000197 00000 n 
+0000000323 00000 n 
+0000000672 00000 n 
+0000000798 00000 n 
+0000001103 00000 n 
+0000001229 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1426
+%%EOF
