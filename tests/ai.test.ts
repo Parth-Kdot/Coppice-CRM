@@ -101,6 +101,13 @@ describe("toGeminiSchema", () => {
     expect(walk(out)).toEqual([]);
   });
 
+  it("leaves out list caps over 50, which Gemini refuses, and keeps smaller ones", () => {
+    const out = toGeminiSchema(z.object({ many: z.array(z.string()).min(1).max(150), few: z.array(z.string()).max(50) }));
+    const props = out.properties as Record<string, Record<string, unknown>>;
+    expect(props.many).toEqual({ type: "array", items: { type: "string" }, minItems: 1 });
+    expect(props.few).toMatchObject({ maxItems: 50 });
+  });
+
   it("matches the exact shape for the test schema", () => {
     expect(toGeminiSchema(Pitch)).toEqual({
       type: "object",
