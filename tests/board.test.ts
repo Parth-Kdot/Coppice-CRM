@@ -17,7 +17,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 // Real database as app_user, so row-level security applies to every board read.
 const A: Tenant = { userId: "ownerA", workspaceId: "a" };
 const B: Tenant = { userId: "ownerB", workspaceId: "b" };
-const NONE: BoardFilters = { q: "", industry: "", show: [], all: null, archived: false };
+const NONE: BoardFilters = { q: "", industry: "", show: [], all: null, archived: false, dupes: false };
 
 type Seed = { name: string; stage?: Stage; industry?: string; followUp?: string | null; archived?: boolean };
 
@@ -162,16 +162,16 @@ describe("getBoard", () => {
 
 describe("board URL filters", () => {
   const parse = (fields: Record<string, string | null>) =>
-    boardFiltersSchema.parse({ q: null, industry: null, show: null, all: null, archived: null, ...fields });
+    boardFiltersSchema.parse({ q: null, industry: null, show: null, all: null, archived: null, dupes: null, ...fields });
 
   it("reads a full board URL and writes it back the same", () => {
-    const filters = parse({ q: " acme ", industry: "Tech", show: "COMMITTED,DECLINED", all: "CONTACTED", archived: "1" });
-    expect(filters).toEqual({ q: "acme", industry: "Tech", show: ["COMMITTED", "DECLINED"], all: "CONTACTED", archived: true });
-    expect(boardQuery(filters)).toBe("?q=acme&industry=Tech&show=COMMITTED%2CDECLINED&all=CONTACTED&archived=1");
+    const filters = parse({ q: " acme ", industry: "Tech", show: "COMMITTED,DECLINED", all: "CONTACTED", archived: "1", dupes: "1" });
+    expect(filters).toEqual({ q: "acme", industry: "Tech", show: ["COMMITTED", "DECLINED"], all: "CONTACTED", archived: true, dupes: true });
+    expect(boardQuery(filters)).toBe("?q=acme&industry=Tech&show=COMMITTED%2CDECLINED&all=CONTACTED&archived=1&dupes=1");
   });
 
   it("drops anything malformed instead of failing, and an empty board URL has no query", () => {
-    const filters = parse({ q: "x".repeat(101), industry: "y".repeat(81), show: "COMMITTED,WON", all: "WON", archived: "yes" });
+    const filters = parse({ q: "x".repeat(101), industry: "y".repeat(81), show: "COMMITTED,WON", all: "WON", archived: "yes", dupes: "yes" });
     expect(filters).toEqual(NONE);
     expect(parse({})).toEqual(NONE);
     expect(boardQuery(NONE)).toBe("");
