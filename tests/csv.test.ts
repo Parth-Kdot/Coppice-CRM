@@ -140,6 +140,11 @@ describe("previewImport", () => {
     ]);
     expect(preview.defaultSkips).toEqual([4, 11]);
     expect(preview.seen).toEqual([initechId]);
+    expect(preview.labels).toEqual([
+      { row: 2, name: "Acme Corp", website: "https://www.acme.com/" },
+      { row: 4, name: "ACME, Inc.", website: null },
+      { row: 11, name: "Initech", website: "initech.com" },
+    ]);
   });
 
   it("joins rows that match each other through different keys into one group", async () => {
