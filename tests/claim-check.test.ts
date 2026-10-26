@@ -189,7 +189,11 @@ describe("the AI check", () => {
       const id = await myDraft(OFFICER);
       const fields = { workspaceId: "a", draftId: id, subject: "Hi", body: "Hi Hank" };
       fakeGemini(issues());
-      expect(await asUser("officerA", () => checkAction(null, form(fields)))).toMatchObject({ ok: true, data: { ai: [], error: null } });
+      // Form text arrives with CRLF line breaks; the check must match the LF text on the page.
+      expect(await asUser("officerA", () => checkAction(null, form({ ...fields, body: "Hi Hank,\r\n\r\nBye" })))).toMatchObject({
+        ok: true,
+        data: { body: "Hi Hank,\n\nBye", ai: [], error: null },
+      });
       expect(await asUser("officerA", () => checkAction(null, form({ ...fields, body: "  " })))).toEqual({ ok: false, error: "Write the email first." });
       expect(await asUser("officerA", () => checkAction(null, form({ ...fields, subject: "x".repeat(301) })))).toEqual({
         ok: false,
