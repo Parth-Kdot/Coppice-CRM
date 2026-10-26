@@ -12,6 +12,10 @@ vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 const ROUNDS = 20;
+// Each round is a real race against the database, so 20 rounds usually take under a second but
+// can pass Vitest's default 5 seconds on a busy machine or CI runner. A slow run isn't a failure;
+// a wrong result is.
+const RACE_TIMEOUT = 20_000;
 
 beforeEach(resetAndSeed);
 
@@ -67,7 +71,7 @@ describe("the database itself", () => {
       await prisma.membership.updateMany({ where: { workspaceId: "a" }, data: { role: "owner" } });
       await prisma.membership.update({ where: { id: "m-officerA" }, data: { role: "member" } });
     }
-  });
+  }, RACE_TIMEOUT);
 });
 
 describe("through the app's actions", () => {
@@ -85,7 +89,7 @@ describe("through the app's actions", () => {
       expect(results.find((r) => !r.ok)).toEqual({ ok: false, error: expect.stringContaining("owner") });
       expect(await ownerCount("a")).toBe(1);
     }
-  });
+  }, RACE_TIMEOUT);
 
   it(`two owners leaving at once: one owner always stays (${ROUNDS} rounds)`, async () => {
     for (let round = 0; round < ROUNDS; round++) {
@@ -96,5 +100,5 @@ describe("through the app's actions", () => {
       expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
       expect(await ownerCount("a")).toBe(1);
     }
-  });
+  }, RACE_TIMEOUT);
 });
