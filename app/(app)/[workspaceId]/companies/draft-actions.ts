@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { failure } from "@/lib/actions";
 import { requireMembership } from "@/lib/authz";
+import * as claimCheck from "@/lib/claim-check";
+import type { DraftCheck } from "@/lib/claim-check";
 import * as drafts from "@/lib/drafts";
 import type { DraftView } from "@/lib/drafts";
-import { draftEmailSchema, type ActionResult } from "@/lib/validation";
+import { checkDraftSchema, draftEmailSchema, type ActionResult } from "@/lib/validation";
 
 // The Pitch Drafter's button. Any member may draft; drafting claims the company for them, so the
 // page, board and queue are refreshed to show the new holder. Gemini answers in 5 to 45 seconds;
@@ -32,4 +34,23 @@ export async function draftEmail(_prev: ActionResult<DraftView[]> | null, form: 
   revalidatePath(`/${workspaceId}/board`);
   revalidatePath(`/${workspaceId}`);
   return result;
+}
+
+// "Check again": runs the Claim Checker's AI pass on the draft as edited. Changes nothing but the
+// stored check, so no page needs refreshing.
+export async function checkDraft(_prev: ActionResult<DraftCheck> | null, form: FormData): Promise<ActionResult<DraftCheck>> {
+  const parsed = checkDraftSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    draftId: form.get("draftId"),
+    subject: form.get("subject"),
+    body: form.get("body"),
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const { workspaceId, draftId, ...text } = parsed.data;
+  try {
+    const member = await requireMembership(workspaceId);
+    return await claimCheck.checkDraft(member, draftId, text);
+  } catch (e) {
+    return failure(e);
+  }
 }

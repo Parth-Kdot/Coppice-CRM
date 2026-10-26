@@ -155,6 +155,22 @@ export const draftEmailSchema = companyRefSchema.extend({
   note: optionalText(DRAFT_NOTE_MAX, "Note"),
 });
 
+// "Check again" on an edited draft: the text as it is in the boxes now. Browsers send form text with
+// CRLF line breaks while the page holds plain LF, so line breaks are normalized first; otherwise the
+// stored check would never match the text on screen.
+const lf = (v: string) => v.replace(/\r\n?/g, "\n");
+export const checkDraftSchema = z.object({
+  workspaceId: id,
+  draftId: id,
+  subject: z.string().transform(lf).pipe(z.string().max(300, "The subject is too long to check.")),
+  // Not trimmed: the saved check must hold exactly the text on screen.
+  body: z
+    .string()
+    .transform(lf)
+    .pipe(z.string().max(6000, "The email is too long to check."))
+    .refine((v) => v.trim() !== "", "Write the email first."),
+});
+
 // The board's "Possible duplicates" box: two companies, kept as separate or one archived.
 export const duplicatePairSchema = z.object({ workspaceId: id, companyId: id, otherId: id });
 export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, archiveId: id });

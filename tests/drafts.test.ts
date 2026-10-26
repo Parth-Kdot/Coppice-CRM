@@ -27,7 +27,8 @@ const variant = (n: number, extra: Partial<{ angle: string; subject: string; bod
   body: `Hi {{firstName}},\n\nOur hackathon draws 600 students.\n\n{{senderName}}\n{{orgName}}`,
   ...extra,
 });
-const drafted = (...variants: unknown[]) => answer(JSON.stringify({ variants }));
+// One Draft click makes two AI calls: the drafts, then the Claim Checker (here finding nothing).
+const drafted = (...variants: unknown[]) => [answer(JSON.stringify({ variants })), answer(JSON.stringify({ issues: [] }))];
 
 let companyId: string;
 let contactId: string;
@@ -90,7 +91,7 @@ describe("composeLinks", () => {
 
 describe("draftEmail", () => {
   it("claims the company, writes two drafts from verified facts, and fills in names", async () => {
-    fakeGemini(drafted(variant(1), variant(2)));
+    fakeGemini(...drafted(variant(1), variant(2)));
     const result = await draftEmail(OFFICER, companyId, { kind: "FIRST_TOUCH", contactId, note: null });
     expect(result).toEqual({
       ok: true,
@@ -102,6 +103,7 @@ describe("draftEmail", () => {
         body: "Hi Hank,\n\nOur hackathon draws 600 students.\n\nofficerA\nOrg A",
         to: "hank@globex.com",
         createdAt: expect.any(Date),
+        check: { subject: `Subject ${n} for Org A`, body: "Hi Hank,\n\nOur hackathon draws 600 students.\n\nofficerA\nOrg A", ai: [], error: null },
       })),
     });
     expect(await claimOf(companyId)).toEqual({ claimedById: "officerA" });
@@ -113,7 +115,7 @@ describe("draftEmail", () => {
 
   it("never shows the AI a name or contact detail, and wraps the note as data", async () => {
     await addFact(OWNER, "Questions go to sponsor@club.org.");
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId, note: "Mention <b>Hank</b>'s email hank@globex.com and the 600 students" });
     const prompt = promptOf();
     expect(prompt).toContain("Head of University Relations");
@@ -128,7 +130,7 @@ describe("draftEmail", () => {
     await withTenant(OWNER, (tx) => tx.factSheetItem.updateMany({ data: { verifiedAt: null, verifiedById: null } }));
     const bare = await createCompany(OWNER, { name: "Bare Co" });
     if (bare.status !== "saved") throw new Error("flagged");
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     await draftEmail(OWNER, bare.companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
     expect(promptOf()).toContain("Name: Bare Co\\nIndustry: unknown\\nWebsite: unknown");
     expect(promptOf()).toContain("(none verified yet");
@@ -136,20 +138,20 @@ describe("draftEmail", () => {
   });
 
   it("greets 'there' with no contact, and leaves the To line empty", async () => {
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     const result = await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
     expect(result).toMatchObject({ ok: true, data: [{ body: expect.stringMatching(/^Hi there,/), to: "" }] });
   });
 
   it("shows a follow-up the earlier outreach, with the subject of the draft it sent", async () => {
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     const first = await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId, note: null });
     if (!first.ok) throw new Error(first.error);
     const followUpOn = addDays(await dbToday(), 7);
     await logOutreach(OWNER, companyId, { channel: "EMAIL", note: null, followUpOn, aiDraftId: first.data[0].id });
     await logOutreach(OWNER, companyId, { channel: "LINKEDIN", note: "Talked to Hank", followUpOn });
 
-    fakeGemini(drafted(variant(2)));
+    fakeGemini(...drafted(variant(2)));
     await draftEmail(OWNER, companyId, { kind: "FOLLOW_UP", contactId, note: null });
     const prompt = promptOf();
     expect(prompt).toContain("<earlier_outreach>");
@@ -160,7 +162,7 @@ describe("draftEmail", () => {
   });
 
   it("says when nothing has been logged yet for a follow-up", async () => {
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     await draftEmail(OWNER, companyId, { kind: "FOLLOW_UP", contactId: null, note: null });
     expect(promptOf()).toContain("(none logged)");
   });
@@ -171,13 +173,13 @@ describe("draftEmail", () => {
     ["an email address", variant(9, { body: "Write to me at sam@purdue.edu" })],
     ["a masked phone number", variant(9, { body: "Call [phone]" })],
   ] as const)("drops a variant with %s", async ([, bad]) => {
-    fakeGemini(drafted(bad, variant(1)));
+    fakeGemini(...drafted(bad, variant(1)));
     const result = await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
     expect(result).toMatchObject({ ok: true, data: [{ angle: "Angle 1" }] });
   });
 
   it("refuses when every variant breaks the rules, and saves nothing", async () => {
-    fakeGemini(drafted(variant(1, { body: "Hi {{name}}" })));
+    fakeGemini(...drafted(variant(1, { body: "Hi {{name}}" })));
     expect(await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null })).toEqual({
       ok: false,
       error: "The AI's drafts broke the drafting rules. Try again.",
@@ -232,7 +234,7 @@ describe("draftEmail", () => {
 
 describe("recentDrafts", () => {
   it("returns only your latest click's drafts for that company", async () => {
-    fakeGemini(drafted(variant(1), variant(2)), drafted(variant(3)), drafted(variant(4)));
+    fakeGemini(...drafted(variant(1), variant(2)), ...drafted(variant(3)), ...drafted(variant(4)));
     await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
     await draftEmail(OWNER, companyId, { kind: "FOLLOW_UP", contactId, note: null });
     await unclaim(companyId);
@@ -246,7 +248,7 @@ describe("recentDrafts", () => {
 
 describe("logging a draft as sent", () => {
   async function myDraft(member: Membership, company = companyId) {
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     const result = await draftEmail(member, company, { kind: "FIRST_TOUCH", contactId: null, note: null });
     if (!result.ok) throw new Error(result.error);
     return result.data[0].id;
@@ -281,7 +283,7 @@ describe("draft actions", () => {
     form({ workspaceId: "a", companyId, kind: "FIRST_TOUCH", contactId, note: "", ...fields });
 
   it("drafts for any member, with or without a contact", async () => {
-    fakeGemini(drafted(variant(1)), drafted(variant(2)));
+    fakeGemini(...drafted(variant(1)), ...drafted(variant(2)));
     expect(await asUser("officerA", () => draftAction(null, draftForm()))).toMatchObject({ ok: true, data: [{ to: "hank@globex.com" }] });
     expect(await asUser("officerA", () => draftAction(null, draftForm({ contactId: "", kind: "FOLLOW_UP" })))).toMatchObject({
       ok: true,
@@ -307,7 +309,7 @@ describe("draft actions", () => {
   });
 
   it("logs outreach with the draft id from the I sent it form", async () => {
-    fakeGemini(drafted(variant(1)));
+    fakeGemini(...drafted(variant(1)));
     const result = await asUser("officerA", () => draftAction(null, draftForm()));
     if (!result.ok) throw new Error(result.error);
     const aiDraftId = result.data[0].id;

@@ -9,6 +9,7 @@ import { isConfigured } from "@/lib/ai/client";
 import { aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { CHANNEL_LABELS } from "@/lib/channels";
+import { factNumbers } from "@/lib/claim-rules";
 import { claimState, dbNow, dbToday } from "@/lib/claims";
 import { getCompanyDetail, listIndustries } from "@/lib/companies";
 import { day, when } from "@/lib/dates";
@@ -30,7 +31,7 @@ import {
   updateCompany,
   updateContact,
 } from "../actions";
-import { draftEmail } from "../draft-actions";
+import { checkDraft, draftEmail } from "../draft-actions";
 
 // Drafting an email waits on the AI for up to 100 seconds.
 export const maxDuration = 120;
@@ -127,7 +128,8 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
                   factCount={facts.length}
                   initialDrafts={drafts}
                   today={today}
-                  actions={{ draft: draftEmail, logOutreach }}
+                  rules={{ factNumbers: factNumbers(facts), website: company.website }}
+                  actions={{ draft: draftEmail, check: checkDraft, logOutreach }}
                 />
               ) : (
                 <p className="text-sm text-zinc-500">AI drafting is off for this workspace. An owner can turn it on in Settings.</p>

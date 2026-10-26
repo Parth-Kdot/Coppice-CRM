@@ -2,6 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { ActionForm } from "@/components/action-form";
+import type { DraftCheck } from "@/lib/claim-check";
+import { checkRules, type Finding, type RuleContext } from "@/lib/claim-rules";
 import { composeLinks } from "@/lib/compose-links";
 import { addDays } from "@/lib/dates";
 import type { DraftView } from "@/lib/drafts";
@@ -20,8 +22,11 @@ type Props = {
   initialDrafts: DraftView[];
   // Today in West Lafayette, from the database, for the follow-up date box.
   today: string;
+  // What the Claim Checker's rules accept: numbers from verified facts and the company's website.
+  rules: RuleContext;
   actions: {
     draft: (prev: ActionResult<DraftView[]> | null, form: FormData) => Promise<ActionResult<DraftView[]>>;
+    check: (prev: ActionResult<DraftCheck> | null, form: FormData) => Promise<ActionResult<DraftCheck>>;
     logOutreach: (prev: ActionResult | null, form: FormData) => Promise<ActionResult>;
   };
 };
@@ -129,6 +134,7 @@ function DraftCard({ draft, label, ...props }: Props & { draft: DraftView; label
         </a>
         {copied && <span className="text-green-700">Copied the {copied}.</span>}
       </div>
+      <ClaimCheck draftId={draft.id} subject={subject} body={body} initial={draft.check} {...props} />
       {!links.bodyIncluded && <p className="text-sm text-amber-700">This email is too long to fit in a link. Copy the body and paste it in.</p>}
       <details>
         <summary className="cursor-pointer text-sm">I sent it: log the outreach</summary>
@@ -155,5 +161,62 @@ function DraftCard({ draft, label, ...props }: Props & { draft: DraftView; label
         </div>
       </details>
     </section>
+  );
+}
+
+const KIND_LABELS: Record<Finding["kind"], string> = {
+  number: "Number",
+  link: "Link",
+  history: "History",
+  unsupported: "Not in the facts",
+};
+
+// The Claim Checker's box under a draft. The rules rerun on every keystroke; the AI's findings
+// count only while the text is exactly what the AI checked, and "Check again" asks it about the
+// text as edited.
+function ClaimCheck({ draftId, subject, body, initial, ...props }: Props & { draftId: string; subject: string; body: string; initial: DraftCheck | null }) {
+  const [check, setCheck] = useState(initial);
+  const [state, checkAction, checking] = useActionState(async (prev: ActionResult<DraftCheck> | null, form: FormData) => {
+    const result = await props.actions.check(prev, form);
+    if (result.ok) setCheck(result.data);
+    return result;
+  }, null);
+
+  const fresh = check !== null && check.subject === subject && check.body === body;
+  const findings = [...checkRules(`${subject}\n${body}`, props.rules), ...(fresh ? check.ai : [])];
+  let summary = findings.length === 1 ? "1 thing to look at" : `${findings.length} things to look at`;
+  if (findings.length === 0) summary = fresh && !check.error ? "nothing unsupported found" : "the rules found nothing";
+
+  return (
+    <div className="flex flex-col gap-1 rounded border p-2 text-sm" aria-live="polite">
+      <p className="font-semibold">Claim check: {summary}</p>
+      {findings.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {findings.map((f) => (
+            <li key={`${f.kind}:${f.quote}`}>
+              <span className="text-zinc-500">{KIND_LABELS[f.kind]}:</span> <mark>{f.quote}</mark> {f.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {fresh && check.error && <p className="text-amber-700">The AI check didn&apos;t run: {check.error}</p>}
+      {!fresh && (
+        <form action={checkAction} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="workspaceId" value={props.workspaceId} />
+          <input type="hidden" name="draftId" value={draftId} />
+          <input type="hidden" name="subject" value={subject} />
+          <input type="hidden" name="body" value={body} />
+          <span className="text-zinc-500">{check ? "You've edited this since the AI checked it." : "The AI hasn't checked this yet."}</span>
+          <button type="submit" disabled={checking} className="rounded border px-3 py-1 disabled:opacity-50">
+            {checking ? "Checking..." : "Check again with AI"}
+          </button>
+        </form>
+      )}
+      {state && !state.ok && (
+        <p role="alert" className="text-red-600">
+          {state.error}
+        </p>
+      )}
+    </div>
   );
 }

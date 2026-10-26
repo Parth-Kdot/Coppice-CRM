@@ -1,0 +1,214 @@
+import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
+import { checkDraft as checkAction } from "@/app/(app)/[workspaceId]/companies/draft-actions";
+import type { Membership } from "@/lib/authz";
+import { aiCheck, checkDraft, readCheck } from "@/lib/claim-check";
+import { checkRules, factNumbers } from "@/lib/claim-rules";
+import { addContact, createCompany } from "@/lib/companies";
+import { prisma, withTenant } from "@/lib/db";
+import { draftEmail, recentDrafts } from "@/lib/drafts";
+import { addFact } from "@/lib/facts";
+import { fill, unfill } from "@/lib/placeholders";
+import { form, redirectTo } from "./helpers/form";
+import { answer, apiError, calls, fakeGemini } from "./helpers/gemini";
+import { asUser, signedOut } from "./helpers/next-request";
+import { resetAndSeed } from "./helpers/seed";
+
+vi.mock("next/headers", () => import("./helpers/next-request"));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+
+const OWNER: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
+const OFFICER: Membership = { userId: "officerA", workspaceId: "a", role: "member" };
+const OTHER_ORG: Membership = { userId: "ownerB", workspaceId: "b", role: "owner" };
+
+const RULES = { factNumbers: ["600", "2500", "2025"], website: "https://www.globex.com" };
+const issues = (...list: { email: number; quote: string; problem: string }[]) => answer(JSON.stringify({ issues: list }));
+const NAMES = { firstName: "Hank", senderName: "Sam Lee", orgName: "Org A" };
+
+describe("checkRules", () => {
+  test.for([
+    ["a number from a verified fact, however it's written", "Our hackathon draws 600 students; Gold is $2,500.", []],
+    ["a number nobody verified", "We have 900 members and 3.5% growth.", ["900", "3.5%"]],
+    ["a call length, which is an ask", "Could we do a 10-minute call, or 15 min?", []],
+    ["the same number twice, once", "Gold is $3,000. Yes, $3,000.", ["$3,000"]],
+    ["a date like the earlier email's", "Following up on my Oct 26 email and our October 3rd call.", []],
+    ["a year after a month, which still counts", "We won in March 2025 and plan for Oct 2030.", ["2030"]],
+  ] as const)("numbers: %s", ([, text, flagged]) => {
+    expect(checkRules(text, RULES).map((f) => f.quote)).toEqual(flagged);
+  });
+
+  it("flags links other than the company's own website", () => {
+    const text = "See globex.com/careers, https://www.globex.com, www.ourclub.org and purdue.edu/events.";
+    expect(checkRules(text, RULES).map((f) => [f.kind, f.quote])).toEqual([
+      ["link", "www.ourclub.org"],
+      ["link", "purdue.edu/events"],
+    ]);
+    expect(checkRules("Visit acme.io.", { factNumbers: [], website: null })).toMatchObject([{ kind: "link", quote: "acme.io" }]);
+  });
+
+  test.for([
+    "Thanks for sponsoring us last year!",
+    "We'd love your continued support.",
+    "As a past sponsor, you know our work.",
+    "It was great working with you before.",
+  ])("flags a claimed history: %s", (text) => {
+    expect(checkRules(text, RULES)).toMatchObject([{ kind: "history", reason: "Check this company really has a history with you." }]);
+  });
+
+  it("collects the numbers in verified facts", () => {
+    expect(factNumbers([{ text: "Gold is $2,500." }, { text: "600 students, 2,500 dollars" }])).toEqual(["2500", "600"]);
+  });
+});
+
+describe("placeholders", () => {
+  it("fills names in and takes them back out, longest name first", () => {
+    const filled = fill("Hi {{firstName}}, from {{senderName}} of {{orgName}}", NAMES);
+    expect(filled).toBe("Hi Hank, from Sam Lee of Org A");
+    expect(unfill(`${filled}. Sam says hi.`, { ...NAMES, firstName: "Sam" })).toBe(
+      "Hi Hank, from {{senderName}} of {{orgName}}. {{firstName}} says hi.",
+    );
+  });
+
+  it("leaves a missing name alone, so 'there' is never replaced", () => {
+    expect(unfill("Hi there, over there", { firstName: null, senderName: "", orgName: "Org A" })).toBe("Hi there, over there");
+  });
+});
+
+describe("the AI check", () => {
+  let companyId: string;
+
+  beforeEach(async () => {
+    await resetAndSeed();
+    process.env.GEMINI_API_KEY = "test-key";
+    await prisma.workspace.updateMany({ data: { aiEnabled: true } });
+    const company = await createCompany(OWNER, { name: "Globex", website: "globex.com" });
+    if (company.status !== "saved") throw new Error("flagged");
+    companyId = company.companyId;
+    await addFact(OWNER, "The annual hackathon draws 600 students.");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.GEMINI_API_KEY;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  const draft = { subject: "Org A at Purdue", body: "Hi Hank,\n\nOrg A has 900 members. Email sam@purdue.edu.\n\nSam Lee\nOrg A" };
+
+  it("sends placeholders instead of names, masks contact details, and numbers the emails", async () => {
+    fakeGemini(issues());
+    await aiCheck(OWNER, [draft, { subject: "Two", body: "Second email" }], NAMES);
+    const prompt = JSON.stringify(calls[0].body);
+    expect(prompt).toContain("1. The annual hackathon draws 600 students.");
+    expect(prompt).toContain('<email number=\\"1\\">\\nSubject: {{orgName}} at Purdue\\n\\nHi {{firstName}},');
+    expect(prompt).toContain("{{orgName}} has 900 members. Email [email].");
+    expect(prompt).toContain('<email number=\\"2\\">');
+    expect(prompt).not.toMatch(/Hank|Sam Lee|sam@purdue/);
+  });
+
+  it("keeps only findings whose quote is really in that email, with names filled back in", async () => {
+    fakeGemini(
+      issues(
+        { email: 1, quote: "{{orgName}} has 900 members", problem: "No fact gives a member count." },
+        { email: 1, quote: "{{orgName}}  HAS 900 members", problem: "Same claim, said twice." },
+        { email: 1, quote: "We won 12 awards", problem: "Not in the email at all." },
+        { email: 2, quote: "{{orgName}} has 900 members", problem: "Wrong email." },
+        { email: 1, quote: "Hi", problem: "Too short to mean anything." },
+      ),
+    );
+    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    expect(check).toEqual({
+      subject: draft.subject,
+      body: draft.body,
+      ai: [{ kind: "unsupported", quote: "Org A has 900 members", reason: "No fact gives a member count." }],
+      error: null,
+    });
+  });
+
+  it("returns the reason, and no AI findings, when the AI can't answer", async () => {
+    fakeGemini(apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"));
+    expect(await aiCheck(OWNER, [draft], NAMES)).toEqual([{ ...draft, ai: [], error: "The AI is busy right now. Try again in a minute." }]);
+  });
+
+  it("says when no facts are verified", async () => {
+    await withTenant(OWNER, (tx) => tx.factSheetItem.deleteMany());
+    fakeGemini(issues());
+    await aiCheck(OWNER, [draft], NAMES);
+    expect(JSON.stringify(calls[0].body)).toContain("(none verified)");
+  });
+
+  it("runs after drafting, and the result survives a reload", async () => {
+    const variants = [{ angle: "A", subject: "Hello {{firstName}}", body: "Hi {{firstName}}, we have 900 members.\n\n{{senderName}}" }];
+    fakeGemini(answer(JSON.stringify({ variants })), issues({ email: 1, quote: "we have 900 members", problem: "No member count." }));
+    const result = await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null });
+    const expected = { subject: "Hello there", body: "Hi there, we have 900 members.\n\nownerA", ai: [expect.objectContaining({ quote: "we have 900 members" })], error: null };
+    expect(result).toMatchObject({ ok: true, data: [{ check: expected }] });
+    expect(calls[1].url).toContain("gemini-3.5-flash-lite");
+    expect(await recentDrafts(OWNER, companyId)).toMatchObject([{ check: expected }]);
+  });
+
+  describe("Check again", () => {
+    async function myDraft(member: Membership, withContact = true) {
+      const contact = withContact ? await addContact(OWNER, companyId, { name: "Hank Scorpio", email: null, title: null }) : null;
+      const variants = [{ angle: "A", subject: "Hi", body: "Hi {{firstName}}" }];
+      fakeGemini(answer(JSON.stringify({ variants })), issues());
+      const result = await draftEmail(member, companyId, { kind: "FIRST_TOUCH", contactId: contact?.ok ? contact.data.contactId : null, note: null });
+      if (!result.ok) throw new Error(result.error);
+      return result.data[0].id;
+    }
+
+    it("checks the edited text with names masked, and saves the result", async () => {
+      const id = await myDraft(OFFICER);
+      fakeGemini(issues({ email: 1, quote: "{{firstName}}, we won 12 awards", problem: "No awards fact." }));
+      const text = { subject: "Hi", body: "Hi Hank, we won 12 awards.\n\nofficerA" };
+      expect(await checkDraft(OFFICER, id, text)).toEqual({
+        ok: true,
+        data: { ...text, ai: [{ kind: "unsupported", quote: "Hank, we won 12 awards", reason: "No awards fact." }], error: null },
+      });
+      expect(JSON.stringify(calls[0].body)).toContain("Hi {{firstName}}, we won 12 awards.\\n\\n{{senderName}}");
+      const stored = await withTenant(OWNER, (tx) => tx.aiDraft.findUniqueOrThrow({ where: { id }, select: { check: true } }));
+      expect(readCheck(stored.check)).toMatchObject({ body: text.body });
+    });
+
+    it("doesn't turn 'there' into a placeholder when the draft had no contact", async () => {
+      const id = await myDraft(OWNER, false);
+      fakeGemini(issues());
+      await checkDraft(OWNER, id, { subject: "Hi", body: "Hi there, over there." });
+      expect(JSON.stringify(calls[0].body)).toContain("Hi there, over there.");
+    });
+
+    it("only checks your own draft", async () => {
+      const id = await myDraft(OFFICER);
+      fakeGemini();
+      expect(await checkDraft(OWNER, id, { subject: "x", body: "y" })).toEqual({ ok: false, error: "Draft not found." });
+      expect(await checkDraft(OTHER_ORG, id, { subject: "x", body: "y" })).toEqual({ ok: false, error: "Draft not found." });
+      expect(calls).toHaveLength(0);
+    });
+
+    it("works through the form, and refuses bad input or a signed-out visitor", async () => {
+      const id = await myDraft(OFFICER);
+      const fields = { workspaceId: "a", draftId: id, subject: "Hi", body: "Hi Hank" };
+      fakeGemini(issues());
+      // Form text arrives with CRLF line breaks; the check must match the LF text on the page.
+      expect(await asUser("officerA", () => checkAction(null, form({ ...fields, body: "Hi Hank,\r\n\r\nBye" })))).toMatchObject({
+        ok: true,
+        data: { body: "Hi Hank,\n\nBye", ai: [], error: null },
+      });
+      expect(await asUser("officerA", () => checkAction(null, form({ ...fields, body: "  " })))).toEqual({ ok: false, error: "Write the email first." });
+      expect(await asUser("officerA", () => checkAction(null, form({ ...fields, subject: "x".repeat(301) })))).toEqual({
+        ok: false,
+        error: "The subject is too long to check.",
+      });
+      expect(await asUser("ownerB", () => checkAction(null, form(fields)))).toMatchObject({ ok: false });
+      await expect(signedOut(() => checkAction(null, form(fields)))).rejects.toEqual(redirectTo("/signin"));
+    });
+  });
+
+  it("reads back only checks in the shape it writes", () => {
+    expect(readCheck(null)).toBeNull();
+    expect(readCheck({ subject: "x" })).toBeNull();
+    expect(readCheck({ subject: "s", body: "b", ai: [], error: null })).toEqual({ subject: "s", body: "b", ai: [], error: null });
+  });
+});
