@@ -166,7 +166,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           <ActionForm action={updateAiSettings} submitLabel="Save" successMessage="Saved.">
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <label className="flex items-center gap-2">
-              <input name="enabled" type="checkbox" defaultChecked={ai.enabled} />
+              <input name="enabled" type="checkbox" defaultChecked={ai.enabled} aria-label="AI on for this workspace" />
               <span>AI on for this workspace</span>
             </label>
             <label className="flex items-center gap-2">
