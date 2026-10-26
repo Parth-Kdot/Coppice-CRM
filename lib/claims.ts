@@ -155,7 +155,9 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
   });
 }
 
-export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string };
+// aiDraftId: the AI draft this outreach sent, if any ("I sent it"), so stats can compare drafted
+// and hand-written emails.
+export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string; aiDraftId?: string | null };
 
 // Records that you contacted the company. One transaction:
 // 1. A conditional UPDATE that only matches if YOU hold a LIVE claim. It sets last contacted
@@ -170,6 +172,14 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
       SELECT ${input.followUpOn}::date BETWEEN (now() AT TIME ZONE ${TIME_ZONE})::date
                                          AND (now() AT TIME ZONE ${TIME_ZONE})::date + 365 AS "inRange"`;
     if (!inRange) return { ok: false, error: "Pick a follow-up date from today to a year from now." };
+    // Only your own draft of this company can be credited.
+    if (input.aiDraftId) {
+      const draft = await tx.aiDraft.findFirst({
+        where: { id: input.aiDraftId, workspaceId: actor.workspaceId, companyId, createdById: actor.userId },
+        select: { id: true },
+      });
+      if (!draft) return { ok: false, error: "That draft wasn't found. Nothing was saved." };
+    }
 
     const updated = await tx.$queryRaw<{ fromStage: Stage; toStage: Stage }[]>`
       UPDATE "Company" c
@@ -197,7 +207,14 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
 
     const { fromStage, toStage } = updated[0];
     const outreach = await tx.outreach.create({
-      data: { workspaceId: actor.workspaceId, companyId, senderId: actor.userId, channel: input.channel, note: input.note },
+      data: {
+        workspaceId: actor.workspaceId,
+        companyId,
+        senderId: actor.userId,
+        channel: input.channel,
+        note: input.note,
+        aiDraftId: input.aiDraftId ?? null,
+      },
       select: { id: true },
     });
     if (fromStage !== toStage) {

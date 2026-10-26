@@ -284,6 +284,7 @@ export async function logOutreach(_prev: ActionResult | null, form: FormData): P
     channel: form.get("channel"),
     note: form.get("note"),
     followUpOn: form.get("followUpOn"),
+    aiDraftId: form.get("aiDraftId"),
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { workspaceId, companyId, ...input } = parsed.data;

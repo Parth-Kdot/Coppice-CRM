@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Channel, Stage } from "@/generated/prisma/enums";
+import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
 
 // Every server action parses its input with one of these before touching the database.
@@ -139,6 +139,20 @@ export const logOutreachSchema = companyRefSchema.extend({
   channel: z.enum(Channel, "Pick how you reached out."),
   note: optionalText(NOTE_MAX, "Note"),
   followUpOn: z.iso.date("Pick a follow-up date."),
+  // Set by "I sent it" under an AI draft; missing for a hand-logged outreach.
+  aiDraftId: id.nullish(),
+});
+
+export const DRAFT_NOTE_MAX = 300;
+// "Draft an email": what kind, to whom (optional), and an optional note on what to emphasize.
+export const draftEmailSchema = companyRefSchema.extend({
+  kind: z.enum(DraftKind, "Pick first email or follow-up."),
+  contactId: z
+    .string()
+    .max(64)
+    .nullish()
+    .transform((v) => v || null),
+  note: optionalText(DRAFT_NOTE_MAX, "Note"),
 });
 
 // The board's "Possible duplicates" box: two companies, kept as separate or one archived.
