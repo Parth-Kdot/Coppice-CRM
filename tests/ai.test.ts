@@ -8,14 +8,14 @@ import { toGeminiSchema } from "@/lib/ai/schema";
 import { dbNow } from "@/lib/claims";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { form, redirectTo } from "./helpers/form";
+import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
 
 vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-// The tests never call the real Gemini API: the SDK's HTTP calls go to a fake fetch that returns
-// recorded-style replies, so the real SDK still builds the request and parses the response.
+// The tests never call the real Gemini API (tests/helpers/gemini.ts).
 const A: Tenant = { userId: "ownerA", workspaceId: "a" };
 const OFFICER_A: Tenant = { userId: "officerA", workspaceId: "a" };
 const B: Tenant = { userId: "ownerB", workspaceId: "b" };
@@ -27,37 +27,6 @@ const Pitch = z.object({
 });
 const request = { feature: "DRAFT" as const, system: "You write short emails.", prompt: "Draft one.", schema: Pitch };
 const GOOD = { subject: "Sponsor our hackathon", tone: "warm", points: ["600 students"] };
-
-type Call = { url: string; body: Record<string, unknown> };
-let calls: Call[] = [];
-
-// A Gemini reply the way the REST API sends it.
-const reply = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const answer = (text: string, finishReason = "STOP", extra: Record<string, unknown> = {}) =>
-  reply({
-    candidates: [{ content: { role: "model", parts: [{ text }] }, finishReason }],
-    usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 40, thoughtsTokenCount: 15, totalTokenCount: 175 },
-    ...extra,
-  });
-const apiError = (status: number, message: string, statusText = "ERROR") =>
-  reply({ error: { code: status, message, status: statusText } }, status);
-
-// Each test queues the replies the fake fetch hands out, in order.
-function fakeGemini(...replies: (Response | Error)[]) {
-  calls = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      calls.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
-      const next = replies.shift();
-      if (!next) throw new Error("unexpected extra call");
-      if (next instanceof Error) throw next;
-      return next;
-    }),
-  );
-}
 
 beforeEach(async () => {
   await resetAndSeed();
