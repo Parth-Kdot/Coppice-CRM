@@ -32,6 +32,11 @@ model User {
   outreach         Outreach[]
   stageChanges     StageChange[]
   pairDecisions    CompanyPairDecision[]
+  aiRuns           AiRun[]
+  factSheets       FactSheet[]
+  factsCreated     FactSheetItem[]       @relation("FactCreatedBy")
+  factsVerified    FactSheetItem[]       @relation("FactVerifiedBy")
+  aiDrafts         AiDraft[]
 
   @@unique([email])
   @@map("user")
@@ -94,6 +99,10 @@ model Workspace {
   createdAt       DateTime
   metadata        String?
   claimWindowDays Int                   @default(14)
+  // AI features (owner settings). Off until an owner turns it on; the limit counts AI calls in
+  // the last 30 days across the workspace (lib/ai/run.ts).
+  aiEnabled       Boolean               @default(false)
+  aiMonthlyLimit  Int                   @default(300)
   memberships     Membership[]
   invitations     Invitation[]
   // App relations (not from the generator).
@@ -103,6 +112,11 @@ model Workspace {
   outreach        Outreach[]
   stageChanges    StageChange[]
   pairDecisions   CompanyPairDecision[]
+  aiRuns          AiRun[]
+  factSheets      FactSheet[]
+  factSheetPages  FactSheetPage[]
+  factSheetItems  FactSheetItem[]
+  aiDrafts        AiDraft[]
 
   @@unique([slug])
   @@map("workspace")
@@ -203,6 +217,7 @@ model Company {
   stageChanges StageChange[]
   pairsAsA     CompanyPairDecision[] @relation("PairCompanyA")
   pairsAsB     CompanyPairDecision[] @relation("PairCompanyB")
+  aiDrafts     AiDraft[]
 
   // Lets contacts and outreach point at (company, workspace) together, so a row can never
   // link to a company in a different workspace.
@@ -270,6 +285,7 @@ model Contact {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   company   Company   @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  aiDrafts  AiDraft[]
 
   @@index([companyId, workspaceId])
   @@index([workspaceId])
@@ -302,15 +318,165 @@ model Outreach {
   sentAt      DateTime @default(now()) @db.Timestamptz(3)
   note        String?
   gotReply    Boolean  @default(false)
+  // The AI draft this email came from, if any (AI feature 1), so stats can compare AI-drafted and
+  // hand-written emails. Always a draft of the same workspace (composite key).
+  aiDraftId   String?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   company   Company   @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
   // Restrict: outreach history outlives people and templates (both are archived, not deleted).
   sender    User      @relation(fields: [senderId], references: [id], onDelete: Restrict)
   template  Template? @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  // NoAction (checked at the end of the statement) rather than Restrict, so deleting a whole
+  // workspace or company can cascade through drafts and outreach together.
+  aiDraft   AiDraft?  @relation(fields: [aiDraftId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
 
   @@index([workspaceId, templateId])
+  @@index([aiDraftId, workspaceId])
   @@index([companyId, workspaceId])
   @@index([senderId])
   @@index([templateId])
+}
+
+// ----- AI (feature 1: the Fact-Locked Pitch Drafter) -----
+
+enum AiFeature {
+  FACT_EXTRACTION
+  DRAFT
+  CLAIM_CHECK
+}
+
+enum AiRunStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum FactSource {
+  PDF
+  MANUAL
+}
+
+enum DraftKind {
+  FIRST_TOUCH
+  FOLLOW_UP
+}
+
+// One row per call to an AI model: who, what for, which model, how long, how many tokens, and
+// whether it worked. The workspace's limits count these (lib/ai/run.ts).
+model AiRun {
+  id             String      @id @default(cuid())
+  workspaceId    String
+  userId         String
+  feature        AiFeature
+  model          String
+  status         AiRunStatus
+  // A short code such as "rate_limited" or "blocked"; never the prompt or the reply.
+  error          String?
+  promptTokens   Int?
+  outputTokens   Int?
+  thinkingTokens Int?
+  latencyMs      Int
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, feature, createdAt])
+}
+
+// An uploaded sponsorship packet. Its text is kept page by page, so quotes the AI returns can be
+// checked against exactly what it was shown.
+model FactSheet {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  fileName     String
+  pageCount    Int
+  uploadedById String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploadedBy User            @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  pages      FactSheetPage[]
+  items      FactSheetItem[]
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([uploadedById])
+}
+
+model FactSheetPage {
+  id          String @id @default(cuid())
+  workspaceId String
+  factSheetId String
+  pageNumber  Int
+  text        String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  factSheet FactSheet @relation(fields: [factSheetId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  @@unique([factSheetId, pageNumber])
+  @@index([factSheetId, workspaceId])
+  @@index([workspaceId])
+}
+
+// One fact the AI may state about the org. Nothing is used until a person verifies it.
+model FactSheetItem {
+  id           String     @id @default(cuid())
+  workspaceId  String
+  // Null for facts typed in by hand.
+  factSheetId  String?
+  source       FactSource
+  text         String
+  // From a PDF: the sentence it came from, its page, and whether code found that sentence on
+  // that page of the stored text.
+  quote        String?
+  pageNumber   Int?
+  quoteFound   Boolean    @default(false)
+  verifiedAt   DateTime?  @db.Timestamptz(3)
+  verifiedById String?
+  createdById  String
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  factSheet  FactSheet? @relation(fields: [factSheetId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  createdBy  User       @relation("FactCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  verifiedBy User?      @relation("FactVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, verifiedAt])
+  @@index([factSheetId, workspaceId])
+  @@index([createdById])
+  @@index([verifiedById])
+}
+
+// One drafted email (each Draft click makes two, with different angles). The body keeps its
+// {{firstName}}-style placeholders; names are filled in on screen, never sent to the AI.
+model AiDraft {
+  id          String    @id @default(cuid())
+  workspaceId String
+  companyId   String
+  // Must be a contact of the same workspace; the RLS policy checks this (see the migration).
+  contactId   String?
+  createdById String
+  kind        DraftKind
+  angle       String
+  subject     String
+  body        String
+  // The Claim Checker's findings for this draft (lib/ai/claim-check.ts).
+  check       Json?
+  model       String
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  contact   Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdBy User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  outreach  Outreach[]
+
+  @@unique([id, workspaceId])
+  @@index([companyId, workspaceId, createdAt])
+  @@index([workspaceId])
+  @@index([contactId])
+  @@index([createdById])
 }
