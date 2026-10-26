@@ -75,6 +75,14 @@ export function claimState(claim: { claimedById: string | null; claimExpiresAt: 
   return claim.claimedById === userId ? "mine" : "theirs";
 }
 
+// Query filters for "who holds it", so claim rules stay in this file. `now` comes from dbNow().
+// Companies this person holds with a claim that hasn't expired:
+export const heldBy = (userId: string, now: Date): Prisma.CompanyWhereInput => ({ claimedById: userId, claimExpiresAt: { gt: now } });
+// Companies nobody else holds right now (free, expired, or held by this person):
+export const notHeldByOthers = (userId: string, now: Date): Prisma.CompanyWhereInput => ({
+  OR: [{ claimedById: null }, { claimExpiresAt: { lte: now } }, { claimedById: userId }],
+});
+
 // Today's date in West Lafayette ("2026-10-25"), from the database clock.
 export async function dbToday(): Promise<string> {
   const [{ today }] = await prisma.$queryRaw<{ today: string }[]>`

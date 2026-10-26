@@ -77,7 +77,8 @@ export function ClaimPanel(props: Props) {
             {ids}
             <span>You hold this until {when(expiresAt as Date)}.</span>
           </ActionForm>
-          <section className="flex flex-col gap-2 rounded border p-3">
+          {/* The queue's "Log outreach" links jump here. */}
+          <section id="log-outreach" className="flex flex-col gap-2 rounded border p-3">
             <h3 className="font-semibold">Log outreach</h3>
             <p className="text-sm text-zinc-500">After you reach out from your own inbox or in person. Saving renews your claim.</p>
             <ActionForm action={actions.logOutreach} submitLabel="Log outreach" successMessage="Logged.">

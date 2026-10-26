@@ -30,10 +30,12 @@ import {
 const companyPath = (workspaceId: string, companyId: string) => `/${workspaceId}/companies/${companyId}`;
 const boardPath = (workspaceId: string) => `/${workspaceId}/board`;
 
-// After a change, both the company's page and the board show fresh data on their next visit.
+// After a change, the company's page, the board and the queue (the workspace home) all show
+// fresh data on their next visit.
 function refresh(workspaceId: string, companyId: string) {
   revalidatePath(companyPath(workspaceId, companyId));
   revalidatePath(boardPath(workspaceId));
+  revalidatePath(`/${workspaceId}`);
 }
 
 // The four company boxes, optionally under a prefix ("original." holds what the form loaded).
@@ -68,7 +70,7 @@ export async function createCompany(_prev: ActionResult<SaveResult> | null, form
     return failure(e);
   }
   if (result.status !== "saved") return { ok: true, data: result };
-  revalidatePath(boardPath(workspaceId));
+  refresh(workspaceId, result.companyId);
   redirect(companyPath(workspaceId, result.companyId));
 }
 
