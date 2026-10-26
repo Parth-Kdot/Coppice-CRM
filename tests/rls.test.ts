@@ -10,7 +10,19 @@ const A: Tenant = { userId: "ownerA", workspaceId: "a" };
 const OFFICER_A: Tenant = { userId: "officerA", workspaceId: "a" };
 const B: Tenant = { userId: "ownerB", workspaceId: "b" };
 
-const TENANT_TABLES = ["Company", "Contact", "Template", "Outreach"] as const;
+const TENANT_TABLES = [
+  "Company",
+  "Contact",
+  "Template",
+  "Outreach",
+  "StageChange",
+  "CompanyPairDecision",
+  "AiRun",
+  "FactSheet",
+  "FactSheetPage",
+  "FactSheetItem",
+  "AiDraft",
+] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {
   await withTenant(tenant, async (tx) => {
