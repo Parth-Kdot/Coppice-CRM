@@ -37,7 +37,10 @@ function clean(node: unknown): unknown {
   const out: Json = {};
   for (const [key, value] of Object.entries(source)) {
     if (key === "oneOf") out.anyOf = clean(value);
-    else if (key === "const") {
+    else if (key === "type" && Array.isArray(value)) {
+      // Zod writes some unions as a list of types; Gemini documents anyOf instead.
+      out.anyOf = value.map((type) => ({ type }));
+    } else if (key === "const") {
       // A constant becomes a one-value enum, but Gemini only allows strings and numbers there.
       if (typeof value === "string" || typeof value === "number") out.enum = [value];
     } else if (key === "enum") {
