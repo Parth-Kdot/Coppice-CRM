@@ -761,10 +761,17 @@ html.lenis body {
   .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub {
     display: none;
   }
-  .ld-seasons[data-motion="on"] .ld-season-tabs {
-    position: absolute;
-    right: 18px;
-    top: 84px;
+  .ld-seasons-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .ld-season-tabs {
+    flex-wrap: wrap;
+  }
+  .ld-seasons[data-motion="on"] .ld-seasons-head .ld-eyebrow {
+    display: none;
   }
   .ld-seasons[data-motion="on"] .ld-seasons-in {
     padding-top: 76px;

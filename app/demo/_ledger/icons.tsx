@@ -1,4 +1,5 @@
 import { useId, type ReactNode, type SVGProps } from "react";
+import type { Stage } from "@/demo/types";
 
 // The Ledger icon set. Drawn for a 20 px grid with 1.5 px strokes and round caps. Where two lines
 // meet, a second, thinner path (0.75 px) is drawn beside the main stroke so the line seems to swell
@@ -280,6 +281,21 @@ export function PaperclipIcon(props: IconProps) {
     <Icon {...props}>
       <path d="M13.8 7.2 8 13a1.9 1.9 0 0 1-2.7-2.7l6.3-6.3a3.1 3.1 0 0 1 4.4 4.4l-6.5 6.5a4.3 4.3 0 0 1-6-6" />
     </Icon>
+  );
+}
+
+// A small engraved glyph per stage: an empty ring, then the ring filling by quarters, a tick when it
+// is committed, a dash when it is declined. Always printed beside the stage name.
+export function StageGlyph({ stage, size = 14, ...rest }: Omit<SVGProps<SVGSVGElement>, "children"> & { stage: Stage; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...rest}>
+      <circle cx="7" cy="7" r="5.2" fill={stage === "COMMITTED" ? "currentColor" : "none"} />
+      {stage === "CONTACTED" && <path d="M7 7V1.8A5.2 5.2 0 0 1 12.2 7z" fill="currentColor" />}
+      {stage === "REPLIED" && <path d="M7 1.8A5.2 5.2 0 0 1 7 12.2z" fill="currentColor" />}
+      {stage === "IN_CONVERSATION" && <path d="M7 7V1.8A5.2 5.2 0 1 1 1.8 7z" fill="currentColor" />}
+      {stage === "COMMITTED" && <path d="M4.5 7.2 6.3 9l3.3-3.7" stroke="var(--paper)" strokeWidth={1.4} />}
+      {stage === "DECLINED" && <path d="M4.6 7h4.8" />}
+    </svg>
   );
 }
 
