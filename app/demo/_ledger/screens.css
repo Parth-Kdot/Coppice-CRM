@@ -929,3 +929,591 @@
     }
   }
 }
+
+/* ---------- Sign-in and the workspace shelf ---------- */
+@layer components {
+  .lg-auth {
+    display: grid;
+    min-height: 100dvh;
+    place-items: center;
+    padding: 32px 16px;
+    background: repeating-linear-gradient(to bottom, transparent 0 39px, rgb(217 205 180 / 0.5) 39px 40px), var(--paper);
+  }
+  .lg-auth-page {
+    position: relative;
+    width: min(480px, 100%);
+    padding: 44px 36px 34px;
+    text-align: center;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    box-shadow:
+      0 0 0 6px var(--paper),
+      0 0 0 7px var(--edge),
+      0 40px 60px -40px var(--shade);
+    outline: none;
+  }
+  .lg-auth-ribbon {
+    right: 34px;
+  }
+  .lg-auth-proto {
+    position: absolute;
+    left: 14px;
+    top: 12px;
+  }
+  .lg-auth-stool {
+    display: block;
+    width: 230px;
+    margin: 0 auto;
+    color: var(--moss);
+    overflow: visible;
+  }
+  .lg-auth-title {
+    margin-top: 6px;
+    font-size: 2.5rem;
+    line-height: 1.1;
+  }
+  .lg-auth-sub {
+    margin: 10px 0 24px;
+    color: var(--ink-2);
+  }
+  .lg-auth-btn {
+    width: 100%;
+    min-height: 50px;
+    font-size: 1.02rem;
+  }
+
+  .lg-wslist {
+    min-height: 100dvh;
+    padding: 0 clamp(16px, 4vw, 56px) 56px;
+  }
+  .lg-wshead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0 10px;
+  }
+  .lg-wslogo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--moss);
+  }
+  .lg-wsme {
+    color: var(--ink-2);
+    font-size: 0.92rem;
+  }
+  .lg-wsmain {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding-top: 30px;
+    outline: none;
+  }
+  .lg-shelf {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 22px 30px;
+    margin-top: 30px;
+    padding: 0 18px;
+  }
+  .lg-volume {
+    width: 176px;
+  }
+  .lg-vspine {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    width: 96px;
+    height: 300px;
+    margin: 0 auto;
+    padding: 14px 0 12px;
+    border: 1px solid #1d3320;
+    border-radius: 4px 4px 2px 2px;
+    background: var(--moss);
+    color: var(--paper);
+    text-decoration: none;
+    box-shadow:
+      inset -7px 0 9px -5px rgb(0 0 0 / 0.28),
+      inset 3px 0 0 rgb(246 241 230 / 0.12),
+      0 18px 20px -18px var(--shade);
+    transition: transform 150ms var(--ease-out);
+  }
+  .lg-volume[data-tone="1"] .lg-vspine {
+    background: var(--ink);
+    border-color: #000;
+  }
+  .lg-volume[data-tone="2"] .lg-vspine {
+    background: #3a5d3c;
+  }
+  .lg-vspine:hover {
+    transform: translateY(-6px);
+  }
+  .lg-vband {
+    display: block;
+    width: calc(100% - 18px);
+    height: 5px;
+    border-top: 1px solid var(--gilt);
+    border-bottom: 1px solid var(--gilt);
+  }
+  .lg-vtitle {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 190px;
+    padding: 8px 0;
+    overflow: hidden;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.12rem;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .lg-vyear {
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: var(--paper);
+  }
+  .lg-shelfedge {
+    height: 12px;
+    margin-top: -1px;
+    border-top: 3px double var(--ink-2);
+    background: linear-gradient(var(--paper-2), var(--paper));
+    box-shadow: 0 12px 14px -12px var(--shade);
+  }
+  .lg-vcap {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 0.95rem;
+  }
+  .lg-vname {
+    font-weight: 600;
+  }
+  .lg-vmeta {
+    text-align: center;
+    color: var(--ink-2);
+    font-size: 0.86rem;
+  }
+  .lg-wssect {
+    max-width: 660px;
+    margin-top: 44px;
+  }
+  .lg-invites {
+    list-style: none;
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .lg-invites li {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px 12px 30px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+    overflow: hidden;
+  }
+  .lg-invribbon {
+    left: 10px;
+  }
+  .lg-createform {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    max-width: 480px;
+    margin-top: 12px;
+  }
+  .lg-createform > div {
+    flex: 1;
+  }
+  .lg-wstools {
+    max-width: 660px;
+    margin-top: 56px;
+  }
+  @media (max-width: 640px) {
+    .lg-shelf {
+      justify-content: center;
+      padding: 0;
+    }
+    .lg-vspine {
+      height: 240px;
+    }
+    .lg-volume {
+      width: 150px;
+    }
+    .lg-wsme {
+      display: none;
+    }
+  }
+}
+
+/* ---------- Pages of the ledger: new company, import, facts, settings ---------- */
+@layer components {
+  .lg-ipage {
+    margin-top: 18px;
+    padding: 16px 28px 24px;
+    border: 1px solid var(--edge);
+    box-shadow: 0 24px 34px -30px var(--shade);
+  }
+  .lg-ipage > .lg-bh {
+    padding-bottom: 8px;
+    border-bottom: 3px double var(--ink-2);
+    margin-bottom: 14px;
+  }
+  .lg-pageno {
+    display: inline-grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin-right: 6px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    vertical-align: 2px;
+  }
+  .lg-newform {
+    display: grid;
+    gap: 14px;
+    max-width: 760px;
+    padding: 24px 28px 28px;
+    border: 1px solid var(--edge);
+    box-shadow: 0 24px 34px -30px var(--shade);
+  }
+  .lg-file {
+    max-width: 100%;
+    padding: 6px;
+    border: 1px dashed var(--edge);
+    border-radius: 3px;
+    background: var(--paper);
+    font-size: 0.92rem;
+  }
+  .lg-file::file-selector-button {
+    margin-right: 10px;
+    padding: 5px 12px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  /* Import */
+  .lg-stepper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 18px 0 0;
+    list-style: none;
+  }
+  .lg-step-tab {
+    padding: 4px 14px;
+    border: 1px solid var(--edge);
+    border-bottom: 3px solid var(--gilt);
+    border-radius: 8px 8px 2px 2px;
+    background: var(--paper);
+    color: var(--ink-2);
+    font-size: 0.92rem;
+    font-weight: 500;
+  }
+  .lg-step-tab[aria-current="step"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    border-bottom-color: var(--gilt);
+    color: var(--paper);
+  }
+  .lg-step-tab[data-done] {
+    color: var(--moss);
+  }
+  .lg-mapgrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 18px;
+  }
+  .lg-tablewrap {
+    overflow-x: auto;
+    border: 1px solid var(--rule);
+  }
+  .lg-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-table th {
+    padding: 6px 10px;
+    border-bottom: 3px double var(--ink-2);
+    background: var(--paper-2);
+    text-align: left;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .lg-table td {
+    max-width: 220px;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+  .lg-table tr[data-bad] td {
+    background: var(--rust-wash);
+  }
+  .lg-cellnote {
+    color: var(--ink-2);
+  }
+  .lg-problems {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-problems summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .lg-problems ul {
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+    font-size: 0.92rem;
+  }
+  .lg-groups {
+    margin-top: 24px;
+  }
+  .lg-group {
+    position: relative;
+    margin-top: 14px;
+    padding-top: 18px;
+  }
+  .lg-group-clip {
+    position: absolute;
+    top: -8px;
+    left: 16px;
+    color: var(--ink-2);
+    transform: rotate(-12deg);
+  }
+  .lg-existing {
+    list-style: none;
+    margin-top: 6px;
+    font-size: 0.92rem;
+  }
+  .lg-rowslips {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .lg-rowslip {
+    padding: 10px 14px;
+  }
+  .lg-rowslip:nth-child(even) {
+    margin-left: 14px;
+  }
+  .lg-rowslip legend {
+    padding: 0 6px;
+    color: var(--ink-2);
+  }
+  .lg-importresult {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--moss);
+  }
+
+  /* Facts */
+  .lg-facts-list {
+    list-style: none;
+  }
+  .lg-fact {
+    display: flex;
+    gap: 10px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-fact > .lg-margin {
+    flex: 0 0 54px;
+    padding-top: 3px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-factmark {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1.5px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+  }
+  .lg-fact[data-verified] .lg-factmark {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-factbody {
+    min-width: 0;
+    flex: 1;
+  }
+  .lg-facttext {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+  .lg-factsrc {
+    margin-top: 4px;
+    color: var(--ink-2);
+    font-size: 0.92rem;
+  }
+  .lg-factsrc .lg-quote {
+    font-size: 1rem;
+    color: var(--ink);
+  }
+  .lg-quotecheck {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .lg-quotecheck svg {
+    flex: none;
+    margin-top: 2px;
+  }
+  .lg-factmeta {
+    margin-top: 4px;
+    color: var(--ink-2);
+    font-size: 0.88rem;
+  }
+  .lg-files {
+    list-style: none;
+    display: grid;
+    gap: 8px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-files li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.92rem;
+  }
+  .lg-addfact {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    max-width: 680px;
+  }
+  .lg-addfact > div {
+    flex: 1;
+  }
+
+  /* Settings */
+  .lg-register {
+    list-style: none;
+  }
+  .lg-member {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-member > .lg-margin {
+    flex: 0 0 54px;
+    padding-top: 2px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-memberbody {
+    min-width: 0;
+    flex: 1;
+  }
+  .lg-membermeta {
+    color: var(--ink-2);
+    font-size: 0.92rem;
+  }
+  .lg-invitelist {
+    list-style: none;
+    display: grid;
+    gap: 14px;
+  }
+  .lg-linkbox {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--edge);
+    background: var(--paper);
+  }
+  .lg-linkbox code {
+    flex: 1 1 220px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 0.82rem;
+  }
+  .lg-inviteform {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 12px;
+    max-width: 680px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--edge);
+  }
+  .lg-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+  .lg-narrow {
+    width: 96px;
+  }
+  .lg-aiform {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--edge);
+  }
+  .lg-usage {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 760px) {
+    .lg-mapgrid,
+    .lg-inviteform {
+      grid-template-columns: 1fr;
+    }
+    .lg-ipage {
+      padding: 14px 14px 20px;
+    }
+    .lg-fact > .lg-margin,
+    .lg-member > .lg-margin {
+      flex-basis: 44px;
+    }
+    .lg-addfact {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+}
