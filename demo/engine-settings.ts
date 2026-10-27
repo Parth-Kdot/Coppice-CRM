@@ -1,7 +1,7 @@
 import { addDaysToIso } from "./dates";
-import { LAST_OWNER, NOT_A_MEMBER, asMember, asOwner, done, membershipOf, nextId, refuse, type Step } from "./engine-core";
-import { domainKey, nameKey } from "./rules";
-import { ROLES, type Company, type DemoState, type Invitation, type Member, type Role, type Workspace } from "./types";
+import { LAST_OWNER, NOT_A_MEMBER, asMember, asOwner, companyOf, done, mapCompany, membershipOf, nextId, refuse, type Step } from "./engine-core";
+import { claimStateOf, domainKey, nameKey } from "./rules";
+import { ROLES, isTerminalStage, type Company, type DemoState, type Invitation, type Member, type Role, type Workspace } from "./types";
 import { checkAiLimit, checkClaimWindow, checkInviteEmail, checkWorkspaceName } from "./validation";
 
 // Workspaces, members, invitations and settings: the rules of the workspace list and Settings
@@ -240,4 +240,25 @@ export function simulateTeammateEdit(state: DemoState, ws: string, companyId: st
     return { ...changed, [field]: value || null };
   };
   return { ...state, companies: state.companies.map((c) => (c.id === companyId && c.workspaceId === ws ? apply(c) : c)) };
+}
+
+// Plays a teammate pressing Claim first, so the "claimed this first" refusal can be reached: a screen
+// calls this just before the person's own claim, which then fails with the real message. The
+// earliest-joined teammate takes the company for the workspace's claim window.
+export function simulateTeammateClaim(state: DemoState, ws: string, companyId: string): DemoState {
+  const checked = asMember(state, ws);
+  if (!checked.ok) return state;
+  const company = companyOf(state, ws, companyId);
+  if (!company || company.archivedAt || isTerminalStage(company.stage)) return state;
+  if (claimStateOf(company, state.now, state.meId) !== "free" && claimStateOf(company, state.now, state.meId) !== "expired") return state;
+  const teammate = state.members
+    .filter((m) => m.workspaceId === ws && m.userId !== state.meId)
+    .sort((a, b) => Date.parse(a.joinedAt) - Date.parse(b.joinedAt))[0];
+  if (!teammate) return state;
+  return mapCompany(state, companyId, (c) => ({
+    ...c,
+    claimedById: teammate.userId,
+    claimExpiresAt: addDaysToIso(state.now, checked.workspace.claimWindowDays),
+    updatedAt: state.now,
+  }));
 }

@@ -33,6 +33,7 @@ import {
   setRole,
   signIn,
   signOut,
+  simulateTeammateClaim,
   simulateTeammateEdit,
   transferOwnership,
   updateAiSettings,
@@ -84,6 +85,8 @@ export type DemoActions = {
   setFlags(flags: DemoFlags): void;
   // Plays a teammate editing a company, so the "someone else changed this" conflict can be shown.
   simulateTeammateEdit(ws: string, companyId: string, field: "name" | "industry" | "website" | "notes", value: string): void;
+  // Plays a teammate pressing Claim a moment before you, so your own claim is refused with the real message.
+  simulateTeammateClaim(ws: string, companyId: string): void;
 
   // ----- Workspace list -----
   createWorkspace(name: string): ActionResult<{ workspaceId: string }>;
@@ -186,6 +189,7 @@ export function createDemoStore(options: StoreOptions = {}): DemoStore {
     advanceClock: (days) => apply((s) => advanceClock(s, days)),
     setFlags: (flags) => apply((s) => setFlags(s, flags)),
     simulateTeammateEdit: (ws, companyId, field, value) => apply((s) => simulateTeammateEdit(s, ws, companyId, field, value)),
+    simulateTeammateClaim: (ws, companyId) => apply((s) => simulateTeammateClaim(s, ws, companyId)),
 
     createWorkspace: (name) => run((s) => createWorkspace(s, name)),
     acceptInvitation: (id) => run((s) => acceptInvitation(s, id)),
