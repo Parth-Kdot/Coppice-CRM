@@ -62,6 +62,9 @@
     border-bottom: 1px solid var(--rule);
     overflow: clip;
   }
+  .lg-qrow:hover:not([data-leaving]) {
+    background: rgb(239 231 214 / 0.55);
+  }
   .lg-qrow[data-active] {
     background: var(--paper-2);
     box-shadow: inset 3px 0 0 var(--moss);
