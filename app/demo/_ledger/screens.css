@@ -1016,7 +1016,7 @@
     align-items: flex-end;
     gap: 22px 30px;
     margin-top: 30px;
-    padding: 0 18px;
+    padding: 0 18px 22px;
   }
   .lg-volume {
     width: 176px;
