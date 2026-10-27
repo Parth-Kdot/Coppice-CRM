@@ -229,7 +229,7 @@ export type Fact = {
 export type Finding = { kind: FindingKind; quote: string; reason: string };
 
 // The Claim Checker's AI findings, saved with the exact text they were for. The rule findings
-// (numbers, links, history) are recomputed on every keystroke by checkRules in demo/claims.ts.
+// (numbers, links, history) are recomputed on every keystroke by checkRules in demo/rules.ts.
 export type DraftCheck = { subject: string; body: string; ai: Finding[]; error: string | null };
 
 export type Draft = {
@@ -265,6 +265,8 @@ export type DemoState = {
   canCreateWorkspace: boolean;
   // False shows the "AI isn't set up on this server yet" notice, like a missing GEMINI_API_KEY.
   serverAiConfigured: boolean;
+  // Demo switch: the next AI call fails once with "The AI is busy right now", then this turns off.
+  aiFailNext: boolean;
   people: Person[];
   workspaces: Workspace[];
   members: Member[];

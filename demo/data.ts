@@ -63,6 +63,7 @@ export function createInitialState(): DemoState {
     // The signed-in person is on the list of emails allowed to create workspaces.
     canCreateWorkspace: true,
     serverAiConfigured: true,
+    aiFailNext: false,
     people: [...MAIN_PEOPLE, ...OTHER_PEOPLE].map((p) => ({ ...p })),
     workspaces: [MAIN_WORKSPACE, ...OTHER_WORKSPACES].map((w) => ({ ...w })),
     members: [...MAIN_MEMBERS, ...OTHER_MEMBERS].map((m) => ({ ...m })),
