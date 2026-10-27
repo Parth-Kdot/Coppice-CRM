@@ -1,26 +1,120 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------------------------------
+   Ledger design tokens. Coppice as the team's book of record: warm paper, moss ink, ruled lines.
+   Contrast (measured): ink on paper 15.2, ink-2 on paper 6.9, moss on paper 7.9, rust on paper 6.0
+   and on paper-2 5.5. Gilt (3.6) is decoration only: tab edges, the ribbon, landing rules.
+   ------------------------------------------------------------------------------------------ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f6f1e6;
+  --paper-2: #efe7d6;
+  --rule: #d9cdb4;
+  --ink: #1f1b14;
+  --ink-2: #5a5142;
+  --moss: #2f5233;
+  --moss-2: #456b47;
+  --rust: #a3380a;
+  --gilt: #9c7a2b;
+
+  /* Derived from the palette above. */
+  --sheet: #fbf8f0; /* a slip of fresher paper: inputs, cards */
+  --edge: #8a7e64; /* 3.5:1 on paper, for the border of an input or a button */
+  --moss-wash: #e4ebdc; /* the faintest moss tint: selected rows, verified marks */
+  --rust-wash: #f4e1d6;
+  --shade: rgb(31 27 20 / 0.12);
+
+  /* Landing seasons: the paper tint shifts around the stool. */
+  --season-autumn: #f1e1bd;
+  --season-winter: #e6ebea;
+  --season-spring: #e3ecd3;
+  --season-summer: #f5e9c6;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-drop: cubic-bezier(0.3, 1.4, 0.5, 1);
+
+  --spine-w: 76px;
+
+  /* Kept so the unchanged real screens under app/(app) still resolve their colors. */
+  --background: var(--paper);
+  --foreground: var(--ink);
+
+  color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-rule: var(--rule);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-moss: var(--moss);
+  --color-moss-2: var(--moss-2);
+  --color-rust: var(--rust);
+  --color-gilt: var(--gilt);
+  --color-sheet: var(--sheet);
+  --color-edge: var(--edge);
+  --color-moss-wash: var(--moss-wash);
+  --color-rust-wash: var(--rust-wash);
+
+  --font-display: var(--font-newsreader), "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: #cfdcc8;
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--moss-2);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Skip link for keyboard users. */
+.lg-skip {
+  position: fixed;
+  left: 12px;
+  top: -64px;
+  z-index: 200;
+  padding: 8px 14px;
+  background: var(--moss);
+  color: var(--paper);
+  border-radius: 3px;
+  font-weight: 500;
+  transition: top 120ms var(--ease-out);
+}
+.lg-skip:focus {
+  top: 12px;
+}
+
+/* Every animation is off for people who ask for reduced motion: content simply appears. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }
