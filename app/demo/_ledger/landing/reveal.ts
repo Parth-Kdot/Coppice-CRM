@@ -12,7 +12,7 @@ export function useReveal(root: RefObject<HTMLElement | null>) {
     if (!el || window.matchMedia(REDUCED_MOTION).matches) return;
     const targets = Array.from(el.querySelectorAll<HTMLElement>(".ld-reveal"));
     if (targets.length === 0 || !("IntersectionObserver" in window)) return;
-    el.dataset.js = "on";
+    el.setAttribute("data-js", "on");
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -27,7 +27,7 @@ export function useReveal(root: RefObject<HTMLElement | null>) {
     targets.forEach((t) => io.observe(t));
     return () => {
       io.disconnect();
-      delete el.dataset.js;
+      el.removeAttribute("data-js");
     };
   }, [root]);
 }

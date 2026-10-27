@@ -219,7 +219,7 @@ export function QueueScreen({ ws }: { ws: string }) {
       .forEach((l) => rows.splice(Math.min(l.index, rows.length), 0, l.row));
     return rows;
   }, [queue.due, leaving]);
-  const neverRows = queue.never ?? [];
+  const neverRows = useMemo(() => queue.never ?? [], [queue.never]);
   const leavingIds = useMemo(() => new Set(leaving.map((l) => l.row.company.id)), [leaving]);
 
   const navRows = useMemo(() => [...dueRows, ...neverRows].filter((r) => !leavingIds.has(r.company.id)), [dueRows, neverRows, leavingIds]);
