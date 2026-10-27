@@ -1,0 +1,119 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+import { demoRoutes, matchDemoRoute, type DemoScreen } from "@/demo/routes";
+import { useDemoState, useIsMember, useWorkspace } from "@/demo/store";
+import { boardYear } from "./marks";
+import { BoardIcon, CompaniesIcon, FactsIcon, ImportIcon, QueueIcon, SettingsIcon } from "./icons";
+import { LogoMark } from "./logo";
+import { NotFoundPage } from "./not-found-page";
+import { UserMenu } from "./user-menu";
+
+const PAGE_NAMES: Partial<Record<DemoScreen, string>> = {
+  queue: "Queue",
+  board: "Board",
+  company: "Company",
+  newCompany: "Add a company",
+  import: "Import",
+  facts: "Fact sheet",
+  settings: "Settings",
+};
+
+type Tab = { key: string; label: string; href: (ws: string) => string; icon: ReactNode; active: DemoScreen[] };
+
+const TABS: Tab[] = [
+  { key: "queue", label: "Queue", href: (ws) => demoRoutes.queue(ws), icon: <QueueIcon />, active: ["queue"] },
+  { key: "board", label: "Board", href: (ws) => demoRoutes.board(ws), icon: <BoardIcon />, active: ["board"] },
+  // Companies opens the board with its search box focused (the board listens for the event).
+  { key: "companies", label: "Companies", href: (ws) => `${demoRoutes.board(ws)}#find`, icon: <CompaniesIcon />, active: ["company", "newCompany"] },
+  { key: "import", label: "Import", href: (ws) => demoRoutes.import(ws), icon: <ImportIcon />, active: ["import"] },
+  { key: "facts", label: "Facts", href: (ws) => demoRoutes.facts(ws), icon: <FactsIcon />, active: ["facts"] },
+  { key: "settings", label: "Settings", href: (ws) => demoRoutes.settings(ws), icon: <SettingsIcon />, active: ["settings"] },
+];
+
+export const FIND_EVENT = "lg:find-company";
+
+export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNode }) {
+  const isMember = useIsMember(ws);
+  const workspace = useWorkspace(ws);
+  const pathname = usePathname();
+  const state = useDemoState();
+  if (!workspace || !isMember) return <NotFoundPage />;
+
+  const route = matchDemoRoute(pathname);
+  const screen = route?.screen ?? "queue";
+  const volume = boardYear(state.now).long;
+
+  return (
+    <div className="lg-shell">
+      <a className="lg-skip" href="#main">
+        Skip to the page
+      </a>
+
+      <nav className="lg-spine" aria-label="Workspace">
+        <div className="lg-spine-mark">
+          <Link href={demoRoutes.queue(ws)} aria-label="Coppice, back to the queue">
+            <LogoMark size={44} />
+          </Link>
+        </div>
+        <ul className="lg-tabs">
+          {TABS.map((tab) => {
+            const current = tab.active.includes(screen);
+            return (
+              <li key={tab.key}>
+                <Link
+                  href={tab.href(ws)}
+                  className="lg-tab"
+                  aria-current={current ? "page" : undefined}
+                  onClick={() => {
+                    if (tab.key === "companies") window.dispatchEvent(new Event(FIND_EVENT));
+                  }}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="lg-spine-title" aria-hidden="true">
+          <span>{workspace.name}</span>
+        </div>
+        <UserMenu ws={ws} placement="spine" />
+      </nav>
+
+      <div className="lg-pagecol">
+        <div className="lg-bar">
+          <Link href={demoRoutes.queue(ws)} className="lg-bar-mark" aria-label="Coppice, back to the queue">
+            <LogoMark size={34} />
+          </Link>
+          <p className="lg-bar-title">{workspace.name}</p>
+          <UserMenu ws={ws} placement="bar" />
+        </div>
+
+        <header className="lg-head">
+          <div className="lg-head-line">
+            <p className="lg-book">
+              <Link href={demoRoutes.workspaces()} title="Switch workspace">
+                {workspace.name}
+              </Link>
+              , <em>Volume {volume}</em>
+            </p>
+            <Link href={demoRoutes.workspaces()} className="lg-link hidden text-sm sm:inline">
+              Switch workspace
+            </Link>
+            <p className="lg-pagename lg-sc">{PAGE_NAMES[screen] ?? "Page"}</p>
+            <p className="lg-proto">Prototype</p>
+          </div>
+          <div className="lg-double-rule" />
+        </header>
+
+        <main id="main" tabIndex={-1} className="lg-main">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}

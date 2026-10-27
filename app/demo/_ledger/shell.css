@@ -1,0 +1,425 @@
+/* The app shell: a bound spine with thumb-index tabs, and the page beside it. */
+
+@layer components {
+  .lg-shell {
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: var(--spine-w) minmax(0, 1fr);
+    background: var(--paper);
+  }
+
+  /* ---------- The spine ---------- */
+  .lg-spine {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px 0 12px;
+    background:
+      linear-gradient(90deg, rgb(31 27 20 / 0.05), transparent 38%),
+      var(--paper-2);
+    border-right: 1px solid var(--edge);
+    box-shadow: inset -1px 0 0 var(--gilt);
+  }
+  /* The stitching down the bound edge. */
+  .lg-spine::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    right: 6px;
+    border-right: 1.5px dashed rgb(138 126 100 / 0.55);
+    pointer-events: none;
+  }
+  .lg-spine-mark {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 14px;
+    color: var(--moss);
+  }
+  .lg-spine-mark a {
+    display: block;
+    padding: 4px;
+    border-radius: 4px;
+  }
+  .lg-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .lg-tab {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 72px;
+    height: 54px;
+    margin-left: 6px;
+    padding: 4px 2px 3px;
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-right: 3px solid var(--gilt);
+    border-radius: 3px 9px 9px 3px;
+    color: var(--ink);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.1;
+    text-decoration: none;
+    transform: translateX(0);
+    transition:
+      transform 150ms var(--ease-out),
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+  .lg-tab:hover {
+    background: #fbf8f0;
+    transform: translateX(2px);
+  }
+  .lg-tab[aria-current="page"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    border-right-color: var(--gilt);
+    color: var(--paper);
+    transform: translateX(6px);
+  }
+  .lg-tab:focus-visible {
+    outline-offset: 3px;
+  }
+  .lg-spine-title {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 14px 0;
+    overflow: hidden;
+  }
+  .lg-spine-title span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    max-height: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--ink-2);
+    letter-spacing: 0.02em;
+  }
+  .lg-spine-user {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* ---------- User button and menu ---------- */
+  .lg-user-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+  .lg-user-btn:hover,
+  .lg-user-btn[aria-expanded="true"] {
+    background: var(--paper);
+    border-color: var(--ink-2);
+  }
+  .lg-menu {
+    position: absolute;
+    z-index: 90;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    padding: 14px;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    box-shadow: 0 24px 40px -22px rgb(31 27 20 / 0.5);
+    animation: lg-rise 140ms var(--ease-out) both;
+  }
+  .lg-menu-spine {
+    left: calc(100% + 4px);
+    bottom: 0;
+  }
+  .lg-menu-bar {
+    right: 0;
+    top: calc(100% + 6px);
+  }
+  .lg-menu h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+  .lg-menu-sect {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-menu-title {
+    margin-bottom: 6px;
+    color: var(--ink-2);
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.08em;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .lg-seg {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .lg-seg button {
+    min-height: 34px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+  .lg-seg button + button {
+    border-left: 1px solid var(--edge);
+  }
+  .lg-seg button[aria-pressed="true"] {
+    background: var(--moss);
+    color: var(--paper);
+  }
+  .lg-seg button:not([aria-pressed="true"]):hover {
+    background: var(--paper-2);
+  }
+  .lg-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 34px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.92rem;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lg-menu-item:hover {
+    background: var(--paper-2);
+  }
+  .lg-menu-item[aria-pressed="true"] {
+    background: var(--moss-wash);
+    color: var(--moss);
+    font-weight: 600;
+  }
+
+  /* ---------- The page ---------- */
+  .lg-pagecol {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .lg-bar {
+    display: none;
+  }
+  .lg-head {
+    padding: 14px 32px 0 36px;
+  }
+  .lg-head-line {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding-bottom: 8px;
+  }
+  .lg-book {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .lg-book a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .lg-book a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1.5px;
+  }
+  .lg-book em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-2);
+  }
+  .lg-pagename {
+    flex: none;
+    color: var(--ink-2);
+  }
+  .lg-proto {
+    flex: none;
+    padding: 1px 7px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--ink-2);
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.08em;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .lg-main {
+    flex: 1;
+    min-width: 0;
+    padding: 22px 32px 72px 36px;
+    outline: none;
+  }
+  .lg-main-narrow {
+    max-width: 1100px;
+  }
+
+  .lg-pagehead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px 24px;
+    margin-bottom: 18px;
+  }
+  .lg-pagehead p.lg-sub {
+    margin-top: 4px;
+    color: var(--ink-2);
+  }
+  .lg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ---------- Phone: the spine becomes a bottom tab strip ---------- */
+  @media (max-width: 760px) {
+    .lg-shell {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-spine {
+      position: fixed;
+      top: auto;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 64px;
+      padding: 0;
+      flex-direction: row;
+      align-items: flex-end;
+      border-right: 0;
+      border-top: 1px solid var(--edge);
+      box-shadow: inset 0 1px 0 var(--gilt);
+      background: var(--paper-2);
+    }
+    .lg-spine::after,
+    .lg-spine-mark,
+    .lg-spine-title,
+    .lg-spine-user {
+      display: none;
+    }
+    .lg-tabs {
+      flex: 1;
+      flex-direction: row;
+      gap: 3px;
+      padding: 0 4px;
+      justify-content: space-between;
+    }
+    .lg-tab {
+      flex: 1;
+      width: auto;
+      min-width: 0;
+      height: 52px;
+      margin: 0;
+      font-size: 11px;
+      border: 1px solid var(--edge);
+      border-bottom: 3px solid var(--gilt);
+      border-right-width: 1px;
+      border-radius: 9px 9px 3px 3px;
+      transform: translateY(0);
+    }
+    .lg-tab:hover {
+      transform: translateY(-1px);
+    }
+    .lg-tab[aria-current="page"] {
+      transform: translateY(-6px);
+      border-bottom-color: var(--gilt);
+      border-right-color: var(--moss);
+      padding-bottom: 9px;
+      height: 58px;
+    }
+    .lg-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: var(--paper-2);
+      border-bottom: 1px solid var(--edge);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .lg-bar-mark {
+      color: var(--moss);
+      flex: none;
+    }
+    .lg-bar-title {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: var(--font-display);
+      font-weight: 500;
+    }
+    .lg-bar .lg-spine-user {
+      display: flex;
+      position: relative;
+    }
+    .lg-head {
+      padding: 12px 16px 0;
+    }
+    .lg-head .lg-book {
+      display: none;
+    }
+    .lg-head-line {
+      justify-content: space-between;
+    }
+    .lg-main {
+      padding: 16px 16px 96px;
+    }
+  }
+
+  @media (max-height: 640px) and (min-width: 761px) {
+    .lg-spine-title {
+      display: none;
+    }
+  }
+}
