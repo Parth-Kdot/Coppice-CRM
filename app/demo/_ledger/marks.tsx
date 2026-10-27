@@ -9,13 +9,14 @@ import { localParts } from "@/demo/dates";
 // 300 ms. It is one path with pathLength 1; a CSS keyframe on stroke-dashoffset runs when the class
 // .lg-tick-draw is added (the class is added right after mount, so a tick that appears is drawn, and
 // one that is already there at page load is drawn once too). Reduced motion shows it complete.
-export function Tick({ size = 18, className = "", label, draw = true }: { size?: number; className?: string; label?: string; draw?: boolean }) {
+export function Tick({ size = 18, className = "", label, auto = true }: { size?: number; className?: string; label?: string; auto?: boolean }) {
+  // auto: draws itself right after it mounts. Otherwise the parent adds .lg-tick-draw when it is time.
   const [drawn, setDrawn] = useState(false);
   useEffect(() => {
-    if (!draw) return;
+    if (!auto) return;
     const frame = requestAnimationFrame(() => setDrawn(true));
     return () => cancelAnimationFrame(frame);
-  }, [draw]);
+  }, [auto]);
   return (
     <svg
       className={`lg-tick ${drawn ? "lg-tick-draw" : ""} ${className}`}

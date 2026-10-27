@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
+import { Landing } from "./demo/_ledger/landing/landing";
 
-// /workspaces sends signed-out visitors on to /signin.
+// The Coppice landing page. "Start a workspace" and "Sign in" go to /demo/signin.
 export default function Home() {
-  redirect("/workspaces");
+  return <Landing />;
 }

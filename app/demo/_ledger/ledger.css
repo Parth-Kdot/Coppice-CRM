@@ -502,7 +502,7 @@
     flex: none;
   }
   .lg-tick path {
-    stroke-dasharray: 1;
+    stroke-dasharray: 1 2;
     stroke-dashoffset: 1;
   }
   .lg-tick-draw path {
@@ -567,7 +567,7 @@
     opacity: 0.7;
   }
   .lg-sprout-stem {
-    stroke-dasharray: 1;
+    stroke-dasharray: 1 2;
     stroke-dashoffset: 0;
   }
   .lg-sprout-leaf {
@@ -600,7 +600,7 @@
     color: var(--moss);
   }
   .lg-quill-wait path {
-    stroke-dasharray: 1;
+    stroke-dasharray: 1 2;
     animation: lg-quill-write 1500ms linear infinite;
   }
 

@@ -34,8 +34,8 @@ export type ShootSpec = {
   first?: -1 | 1;
 };
 
-type Leaf = { x: number; y: number; angle: number; len: number };
-type BuiltShoot = { d: string; leaves: Leaf[]; tip: { x: number; y: number }; base: { x: number; y: number } };
+type Leaf = { x: number; y: number; angle: number; len: number; t: number };
+type BuiltShoot = { d: string; leaves: Leaf[]; tip: { x: number; y: number }; base: { x: number; y: number }; point: (t: number) => { x: number; y: number } };
 
 function buildShoot(s: ShootSpec): BuiltShoot {
   const x0 = s.x;
@@ -67,16 +67,25 @@ function buildShoot(s: ShootSpec): BuiltShoot {
     const t = s.leaves === 1 ? 0.55 : 0.3 + (0.58 * k) / (s.leaves - 1);
     const p = point(t);
     const side = (k % 2 === 0 ? first : -first) as 1 | -1;
-    leaves.push({ x: r1(p.x), y: r1(p.y), angle: r1(tangent(t) + side * 58), len: r1(size * (1 - 0.4 * t)) });
+    leaves.push({ x: r1(p.x), y: r1(p.y), angle: r1(tangent(t) + side * 58), len: r1(size * (1 - 0.4 * t)), t: r1(t) });
   }
   // The bud at the tip grows straight along the stem.
-  leaves.push({ x: r1(x3), y: r1(y3), angle: r1(tangent(1)), len: r1(size * 0.55) });
+  leaves.push({ x: r1(x3), y: r1(y3), angle: r1(tangent(1)), len: r1(size * 0.55), t: 1 });
   return {
     d: `M${r1(x0)} ${r1(y0)} C${r1(x1)} ${r1(y1)} ${r1(x2)} ${r1(y2)} ${r1(x3)} ${r1(y3)}`,
     leaves,
     tip: { x: r1(x3), y: r1(y3) },
     base: { x: r1(x0), y: r1(y0) },
+    point: (t: number) => {
+      const p = point(t);
+      return { x: r1(p.x), y: r1(p.y) };
+    },
   };
+}
+
+// A point along a shoot's stem, t from 0 (the rim) to 1 (the tip). For labels hung from a stem.
+export function pointOnShoot(spec: ShootSpec, t: number) {
+  return buildShoot(spec).point(t);
 }
 
 // Three, five and many shoots: autumn, spring and the final sign-off.
@@ -141,7 +150,7 @@ export function ShootSet({ specs, group = "s", engraved = true }: ShootSetProps)
             <path className="lg-stem-thin" d={built.d} pathLength={1} strokeWidth={0.8} transform="translate(2.200 0)" />
             {built.leaves.map((leaf, k) => (
               <g key={k} transform={`translate(${leaf.x} ${leaf.y}) rotate(${leaf.angle})`}>
-                <g className="lg-leaf" data-leaf={`${group}${i}-${k}`}>
+                <g className="lg-leaf" data-leaf={`${group}${i}-${k}`} data-t={leaf.t}>
                   <path d={leafPath(leaf.len)} strokeWidth={1.8} />
                   {engraved && <path d={leafVeins(leaf.len)} strokeWidth={0.8} />}
                 </g>
@@ -158,7 +167,7 @@ export function ShootSet({ specs, group = "s", engraved = true }: ShootSetProps)
 export function shootTips(specs: ShootSpec[]) {
   return specs.map((s) => {
     const b = buildShoot(s);
-    return { x: b.tip.x, y: b.tip.y, leaves: b.leaves.map((l) => ({ x: l.x, y: l.y })) };
+    return { x: b.tip.x, y: b.tip.y, base: b.base, leaves: b.leaves.map((l) => ({ x: l.x, y: l.y })) };
   });
 }
 
@@ -189,7 +198,7 @@ export function Stump({ engraved = true }: StumpProps) {
         </>
       )}
       <path className="lg-stump-wall" d={wall} pathLength={1} strokeWidth={2.4} />
-      <ellipse className="lg-stump-top" cx={cx} cy={cy} rx={rx} ry={ry} strokeWidth={2.4} />
+      <ellipse className="lg-stump-top" cx={cx} cy={cy} rx={rx} ry={ry} strokeWidth={2.4} pathLength={1} />
       <g className="lg-stump-rings" strokeWidth={1.3}>
         <ellipse cx={cx + 3} cy={cy - 1} rx={112} ry={28} />
         <ellipse cx={cx + 6} cy={cy} rx={74} ry={18} />
