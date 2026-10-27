@@ -410,7 +410,7 @@ The company form in edit mode, for active companies:
 
 ### 6.9 Stage history block (heading "Stage history")
 
-"No stage moves yet." or a list, newest first (latest 50): "Oct 30, 2026, 10:12 AM: Sam Lee moved it from Not contacted to Contacted". People who have left the workspace appear as "a former member".
+"No stage moves yet." or a list, newest first (latest 50): "Oct 30, 2026, 10:12 AM: Sam Lee moved it from Not contacted to Contacted". Someone who has since left the workspace keeps their name on their history.
 
 ### 6.10 Archive block (heading "Archive"; active companies only)
 
@@ -518,7 +518,7 @@ Heading "Add a company". The form: **Name** (required), **Industry** (suggestion
   - the fact text (one sentence, up to 300 characters);
   - its source: for a PDF fact, "Page 6 of BRC-Sponsorship-Packet-2026-27.pdf" followed by the quote, ": "Gold ($5,000): logo on the rover..."" ("Page unknown of ..." when the page was not found, "a deleted file" if the file is gone); for a hand-typed fact, "Added by hand";
   - the **quote check** for PDF facts: "quote found on that page" with a check mark, or a warning "quote not found on that page, or it doesn't match the fact. Check the PDF." The second happens when the quote is missing from the page or when a number in the fact is not in the quote (for example the fact says $1,000 and the quote says $1,200);
-  - when verified: "Verified by Priya Raghunathan on Oct 1" (or "a former member"), and a **Stale: over a year old** badge when it was last verified (or created) more than a year ago.
+  - when verified: "Verified by Priya Raghunathan on Oct 1" (or "a former member" if that account no longer exists), and a **Stale: over a year old** badge when it was last verified (or created) more than a year ago.
 - **Uploaded files** (owners): "BRC-Sponsorship-Packet-2026-27.pdf: 12 pages, uploaded Sep 14 by Priya Raghunathan".
 - Facts are listed unverified first, then by creation order.
 
@@ -736,7 +736,7 @@ These do not exist in the real app. They exist so a reviewer can reach every sta
 
 - **Role switch.** `setRole("owner" | "member", ws?)` switches the signed-in person between Owner and Officer in one workspace or in all of them. The seed keeps a second owner wherever the person could switch out of Owner, so no workspace is left without one. Every prototype should include a small, unobtrusive "View as" control.
 - **Reset.** `resetDemo()` restores all mock data (it keeps the person signed in unless `{ signOut: true }`). State also resets on a full page reload.
-- **Clock.** `advanceClock(days)` moves the demo clock forward so claims expire and follow-ups come due. The seed has a claim that runs out tomorrow (Cummins, held by Aaliyah Brooks, 3:00 PM) and one that already expired (Allison Transmission, Wei Chen).
+- **Clock.** `advanceClock(days)` moves the demo clock forward so claims expire and follow-ups come due. The seed has a claim that runs out tomorrow (Cummins Inc., held by Aaliyah Brooks, until Oct 29, 11:00 AM) and one that already expired (Allison Transmission, Wei Chen).
 - **Flags.** `setFlags({ serverAiConfigured, canCreateWorkspace, aiFailNext })` reaches the AI-not-set-up notice, the no-workspace state and the "AI is busy" error. `aiFailNext` fails the next AI call once.
 - **Teammate edit.** `simulateTeammateEdit(ws, companyId, field, value)` changes a company as a teammate would, so the edit conflict can be shown.
 - **Reply question.** Moving a company to Replied, In conversation, Committed or Declined asks "Which outreach got the reply?" with the company's outreach as options, plus "None of these" (the reply was a phone call, for example). The answer is stored on the outreach and feeds reply rates per template. `useReplyChoice(ws, companyId, stage)` says whether to ask. Pass the choice as `moveStage(ws, id, stage, { replyOutreachId })`.
@@ -771,7 +771,7 @@ None of these exist yet, and prototypes must not build them as functional screen
 ### Turnover Time Capsule
 
 - **What it is:** an end-of-term report in the style of a year-in-review, made so a departing chair can hand the pipeline to the next one. It tells the story of the term and says what to do next.
-- **What it shows:** totals (companies reached, outreach sent, replies, commitments), the funnel by stage, the timeline of the term (stage moves and outreach by week), the officers who carried the work (by outreach logged, with former members shown as "a former member"), the longest conversations, the fastest replies, the companies that committed, and a hand-off list: open conversations with who holds them, their last contact and their next follow-up. The last part is the useful one, so it must not be buried under the celebration.
+- **What it shows:** totals (companies reached, outreach sent, replies, commitments), the funnel by stage, the timeline of the term (stage moves and outreach by week), the officers who carried the work (by outreach logged, including people who have since left, whose names stay on their history), the longest conversations, the fastest replies, the companies that committed, and a hand-off list: open conversations with who holds them, their last contact and their next follow-up. The last part is the useful one, so it must not be buried under the celebration.
 - **Data that already exists:** every outreach with sender and channel, every stage change with who made it and when, claims, facts with who verified them, and the members' join dates. `useActivity(ws, limit)` and `useWorkspaceStats(ws)` give a head start.
 - **Shape to expect:** a sequence of full-width cards or slides that a person steps through, finishing on the hand-off list, plus a way to print or save it. Reading takes a couple of minutes.
 - **Rules it must keep:** it lives inside the workspace and is for its members. There are no public pages in this product, so no public share link. It contains member names and company contacts, so it is not sent to the AI. If a written summary is ever generated by AI, it gets the same inputs the other AI features get: counts and verified facts, never names or contact details.
