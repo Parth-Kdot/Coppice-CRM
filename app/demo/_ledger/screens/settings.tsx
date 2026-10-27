@@ -251,6 +251,7 @@ export function SettingsScreen({ ws }: { ws: string }) {
         {s.isOwner ? (
           <>
             <form
+              noValidate
               className="lg-inline"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -295,6 +296,7 @@ export function SettingsScreen({ ws }: { ws: string }) {
         {s.isOwner ? (
           <>
             <form
+              noValidate
               className="lg-aiform"
               onSubmit={(e) => {
                 e.preventDefault();

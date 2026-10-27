@@ -56,7 +56,7 @@ export function LogOutreachForm({
   };
 
   return (
-    <form onSubmit={submit} className={`lg-logform ${compact ? "lg-logform-compact" : ""}`} aria-label="Log outreach">
+    <form noValidate onSubmit={submit} className={`lg-logform ${compact ? "lg-logform-compact" : ""}`} aria-label="Log outreach">
       <div className="lg-logform-grid">
         <div>
           <label className="lg-label" htmlFor={`${id}-channel`}>

@@ -208,7 +208,7 @@ function DraftCard({ ws, detail, draft, index }: { ws: string; detail: CompanyDe
 
       <details className="lg-more mt-3">
         <summary>I sent it: log the outreach</summary>
-        <form onSubmit={logIt} className="lg-contactform">
+        <form noValidate onSubmit={logIt} className="lg-contactform">
           <div>
             <label className="lg-label" htmlFor={`${id}-follow`}>
               Follow up on
