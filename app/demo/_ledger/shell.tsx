@@ -171,7 +171,15 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
   const pageTitle = screen === "company" ? (companyName ?? "Company") : (PAGE_NAMES[screen] ?? "Page");
   const bookName = workspace && isMember ? workspace.name : null;
   useEffect(() => {
-    document.title = bookName ? `${pageTitle} · ${bookName}` : "Not found · Coppice";
+    const want = bookName ? `${pageTitle} · ${bookName}` : "Not found · Coppice";
+    const apply = () => {
+      if (document.title !== want) document.title = want;
+    };
+    apply();
+    // Next writes the route's own title again after a client navigation, so keep ours in place.
+    const watch = new MutationObserver(apply);
+    watch.observe(document.head, { subtree: true, childList: true, characterData: true });
+    return () => watch.disconnect();
   }, [pageTitle, bookName]);
 
   if (!workspace || !isMember) return <NotFoundPage />;

@@ -239,6 +239,10 @@
     padding: 8px;
     list-style: none;
   }
+  /* The two halves of the Committed and Declined column are short, so their slips sit a little closer to the header. */
+  .lg-bcol[data-split] .lg-slips {
+    padding-block: 4px;
+  }
   .lg-colempty {
     padding: 8px 14px 14px;
     color: var(--ink-2);
