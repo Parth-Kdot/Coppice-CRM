@@ -397,7 +397,7 @@
   .lg-chead,
   .lg-crow {
     display: grid;
-    grid-template-columns: 62px minmax(150px, 1.3fr) 150px minmax(170px, 0.9fr) 160px 84px;
+    grid-template-columns: 62px minmax(150px, 1.3fr) 150px minmax(170px, 0.9fr) 160px 98px;
     column-gap: 10px;
     align-items: center;
   }
