@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { demoRoutes } from "@/demo/routes";
 import { Ribbon } from "../marks";
 import { SHOOTS_THREE, Stool } from "../stool";
 import { HERO } from "./copy";
+import { HeroDemo } from "./hero-demo";
 import { MOTION_OK, REDUCED_MOTION, setupGsap } from "./motion";
 
 // The hero. On load, in about 2.2 s, the engraved stool draws itself: the stump strokes in, then
@@ -13,6 +14,8 @@ import { MOTION_OK, REDUCED_MOTION, setupGsap } from "./motion";
 // in word by word, then the subhead and the two buttons fade up. After that it is still.
 export function Hero() {
   const root = useRef<HTMLElement>(null);
+  // True once the headline, subhead and buttons have settled. The live queue waits for it.
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     const el = root.current;
@@ -48,6 +51,7 @@ export function Hero() {
         // Subhead, buttons and the supporting strip fade up 8 px.
         tl.fromTo(q(".ld-up"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.08, clearProps: "transform" }, 1.75);
 
+        tl.call(() => setSettled(true), [], 2.3);
         el.classList.remove("ld-pre");
       }, el);
       return () => ctx.revert();
@@ -55,6 +59,7 @@ export function Hero() {
 
     mm.add(REDUCED_MOTION, () => {
       el.classList.remove("ld-pre");
+      setSettled(true);
     });
 
     return () => mm.revert();
@@ -65,6 +70,7 @@ export function Hero() {
       <Ribbon size="lg" className="ld-hero-ribbon" />
       <div className="ld-wrap ld-hero-grid">
         <div className="ld-hero-copy">
+          <Stool shoots={SHOOTS_THREE} className="ld-stool ld-hero-stool" />
           <p className="ld-eyebrow ld-up">A shared outreach pipeline</p>
           <h1 id="hero-title" className="ld-h1">
             {HERO.headline.map((word, i) => (
@@ -79,14 +85,14 @@ export function Hero() {
             <Link href={demoRoutes.signIn()} className="lg-btn lg-btn-primary ld-btn-lg">
               Start a workspace
             </Link>
-            <a href="#how" className="lg-btn ld-btn-lg">
-              See how it works
-            </a>
+            <Link href={demoRoutes.signIn()} className="lg-btn ld-btn-lg">
+              Sign in
+            </Link>
           </div>
           <p className="ld-micro ld-up">{HERO.micro}</p>
         </div>
-        <div className="ld-hero-art">
-          <Stool shoots={SHOOTS_THREE} className="ld-stool ld-hero-stool" />
+        <div className="ld-hero-demo ld-up">
+          <HeroDemo settled={settled} />
         </div>
       </div>
       <div className="ld-wrap">

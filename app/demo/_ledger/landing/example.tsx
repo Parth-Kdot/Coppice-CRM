@@ -1,80 +1,206 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
-import { Ribbon, Tick, TurnoverRule } from "../marks";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ResetIcon } from "../icons";
+import { Ribbon } from "../marks";
 import { EXAMPLE } from "./copy";
-import { MOTION_OK, setupGsap } from "./motion";
+import { MOTION_OK, REDUCED_MOTION, setupGsap } from "./motion";
+import { useReveal } from "./reveal";
 
-// The live example: Maya and Dev go for the same company in the same second. Two ledger columns, one
-// per officer, with the six beats of the script laid down the page. Beats come in as the reader
-// scrolls: when Maya claims Kestrel Aerospace a gilt ribbon drops into her row, and on Dev's side a
-// rust margin note writes in. Later the follow-up row returns to the top of Maya's queue.
+// Maya and Dev, same company, same second: two facing ledger pages and two cursors that head for
+// the same Claim button. Maya's click lands first and her gilt ribbon drops. Dev's page shakes and
+// a rust margin note names the holder and the date. Then Dev moves on to the next company down.
+// It plays once, when the book is on screen, and rests on the last state with a Replay button.
+// Each row's claim box has three states set through data-state (free, mine, theirs), which the
+// timeline flips; the markup starts in its finished state, so without script or with reduced
+// motion the book simply shows how it ended.
 
-function MiniRow({ name, children, ribbon, className = "" }: { name: string; children?: ReactNode; ribbon?: boolean; className?: string }) {
+type Timeline = ReturnType<ReturnType<typeof setupGsap>["gsap"]["timeline"]>;
+
+const ROWS = ["Kestrel Aerospace", "Birchwood Foods", "Alder Tool and Die"];
+
+type Who = "Maya" | "Dev";
+type RowState = "free" | "mine" | "theirs";
+
+// How each row looks at the end, per officer.
+const FINAL: Record<Who, RowState[]> = {
+  Maya: ["mine", "free", "free"],
+  Dev: ["theirs", "mine", "free"],
+};
+
+function Page({ who, initial }: { who: Who; initial: RowState[] }) {
   return (
-    <div className={`ld-mini-row ${className}`}>
-      {ribbon && <Ribbon size="sm" className="ld-mini-ribbon" />}
-      <span className="ld-mini-name">{name}</span>
-      <span className="ld-mini-meta">{children}</span>
-    </div>
-  );
-}
-
-function Beat({ date, time, caption, children }: { date: string; time?: string; caption: string; children: ReactNode }) {
-  return (
-    <article className="ld-beat">
-      <div className="ld-beat-date">
-        <p className="lg-sc">{date}</p>
-        {time && <p className="lg-num">{time}</p>}
-      </div>
-      {children}
-      <p className="ld-beat-cap lg-quote">{caption}</p>
-    </article>
-  );
-}
-
-function Cell({ who, children, className = "" }: { who: "Maya" | "Dev"; children?: ReactNode; className?: string }) {
-  return (
-    <div className={`ld-cell ${className}`} role="group" aria-label={`${who}'s screen`}>
-      <p className="ld-cell-who lg-sc" aria-hidden="true">
-        {who}
-      </p>
-      {children}
-    </div>
+    <section className="ld-rpage" data-who={who} role="group" aria-label={`${who}'s queue`}>
+      <header className="ld-rpage-head">
+        <h3 className="ld-officer">{who}</h3>
+        <p className="lg-sc ld-rpage-sub">Never contacted</p>
+      </header>
+      <ul className="ld-rrows">
+        {ROWS.map((name, i) => (
+          <li key={name} className={`ld-rr ${who === "Dev" && i === 0 ? "has-note" : ""}`} data-row={i} data-state={initial[i]}>
+            <span className="lg-margin" aria-hidden="true">
+              26-27
+            </span>
+            <span className="ld-rr-name">{name}</span>
+            <span className="ld-rr-claim" aria-hidden="true">
+              <span className="ld-rr-btn" data-claim>
+                Claim
+              </span>
+              <span className="ld-rr-chip ld-rr-mine">
+                <Ribbon size="sm" className="ld-rr-ribbon" />
+                Yours until {EXAMPLE.until}
+              </span>
+              <span className="ld-rr-chip ld-rr-theirs">Maya C. until {EXAMPLE.until}</span>
+            </span>
+            {who === "Dev" && i === 0 && <p className="ld-rr-note">{EXAMPLE.devNote}</p>}
+          </li>
+        ))}
+      </ul>
+      <p className="ld-rpage-foot">{who === "Maya" ? EXAMPLE.mayaNote : EXAMPLE.devNext}</p>
+      <span className="ld-rcursor" data-cursor aria-hidden="true">
+        <svg width="22" height="24" viewBox="0 0 22 24" focusable="false">
+          <path d="M3 2v17l4.7-4.3 3.3 7.3 3-1.4-3.3-7.2 6.6-.4z" fill="var(--ink)" stroke="var(--paper)" strokeWidth={1.4} strokeLinejoin="round" />
+        </svg>
+        <span className="ld-rcursor-name">{who}</span>
+      </span>
+    </section>
   );
 }
 
 export function Example() {
   const root = useRef<HTMLElement>(null);
+  const book = useRef<HTMLDivElement>(null);
+  const timeline = useRef<Timeline | null>(null);
+  const started = useRef(false);
+  const [phase, setPhase] = useState<"static" | "idle" | "playing" | "done">("static");
+  const [visible, setVisible] = useState(false);
+  useReveal(root);
 
   useEffect(() => {
-    const el = root.current;
+    const el = book.current;
     if (!el) return;
-    const { gsap, ScrollTrigger } = setupGsap();
+    const { gsap } = setupGsap();
     const mm = gsap.matchMedia();
+
     mm.add(MOTION_OK, () => {
-      el.dataset.js = "on";
-      const triggers = Array.from(el.querySelectorAll<HTMLElement>(".ld-beat")).map((beat) =>
-        ScrollTrigger.create({
-          trigger: beat,
-          start: "top 76%",
-          once: true,
-          onEnter: () => {
-            beat.classList.add("is-in");
-            beat.querySelectorAll(".lg-tick").forEach((t, i) => window.setTimeout(() => t.classList.add("lg-tick-draw"), 500 + i * 300));
-          },
-        }),
+      const pages = Array.from(el.querySelectorAll<HTMLElement>(".ld-rpage"));
+      const [mayaPage, devPage] = pages;
+      const cursors = pages.map((p) => p.querySelector<HTMLElement>("[data-cursor]")!);
+      const [mayaCursor, devCursor] = cursors;
+      const row = (page: HTMLElement, i: number) => page.querySelector<HTMLElement>(`.ld-rr[data-row="${i}"]`)!;
+      const setState = (page: HTMLElement, i: number, state: RowState) => {
+        const r = row(page, i);
+        r.dataset.state = state;
+        const ribbon = r.querySelector(".ld-rr-ribbon");
+        ribbon?.classList.remove("lg-ribbon-drop");
+        if (state === "mine") {
+          // Restart the drop animation.
+          void (ribbon as HTMLElement | null)?.offsetWidth;
+          ribbon?.classList.add("lg-ribbon-drop");
+        }
+      };
+      const reset = () => {
+        pages.forEach((p) => {
+          for (let i = 0; i < ROWS.length; i++) setState(p, i, "free");
+          p.classList.remove("ld-shaking");
+          p.querySelectorAll(".lg-ribbon-drop").forEach((r) => r.classList.remove("lg-ribbon-drop"));
+        });
+        devPage.querySelector(".ld-rr")?.classList.remove("has-note");
+        el.dataset.beat = "0";
+      };
+
+      const at = (page: HTMLElement, i: number) => {
+        const b = row(page, i).querySelector<HTMLElement>("[data-claim]")!.getBoundingClientRect();
+        const a = page.getBoundingClientRect();
+        return { x: b.left - a.left + b.width * 0.55, y: b.top - a.top + b.height * 0.55 };
+      };
+      const tl = gsap.timeline({ paused: true, defaults: { ease: "power3.inOut" }, onComplete: () => setPhase("done") });
+      const press = (c: HTMLElement, t: number) => {
+        tl.to(c, { scale: 0.82, duration: 0.07, ease: "power2.out" }, t);
+        tl.to(c, { scale: 1, duration: 0.14, ease: "power2.out" }, t + 0.07);
+      };
+
+      tl.call(reset, [], 0);
+      tl.set(cursors, { x: (i: number) => pages[i].clientWidth * 0.78, y: () => mayaPage.clientHeight * 0.9, opacity: 0, scale: 1 }, 0);
+      tl.to(cursors, { opacity: 1, duration: 0.25, ease: "none" }, 0.15);
+
+      // Both cursors head for the same Claim button. Maya arrives a beat sooner.
+      tl.to(mayaCursor, { x: () => at(mayaPage, 0).x, y: () => at(mayaPage, 0).y, duration: 1.0 }, 0.5);
+      tl.to(devCursor, { x: () => at(devPage, 0).x, y: () => at(devPage, 0).y, duration: 1.2 }, 0.5);
+      press(mayaCursor, 1.6);
+      press(devCursor, 1.78);
+
+      // Maya's claim lands: the button becomes the chip and the ribbon drops.
+      tl.call(() => setState(mayaPage, 0, "mine"), [], 1.68);
+      // Dev's request is refused: his page shakes and the margin note names the holder.
+      tl.call(
+        () => {
+          setState(devPage, 0, "theirs");
+          devPage.classList.remove("ld-shaking");
+          void devPage.offsetWidth;
+          devPage.classList.add("ld-shaking");
+          row(devPage, 0).classList.add("has-note");
+        },
+        [],
+        1.86,
       );
-      const strip = el.querySelector<HTMLElement>(".ld-datestrip");
-      if (strip) triggers.push(ScrollTrigger.create({ trigger: strip, start: "top 85%", once: true, onEnter: () => strip.classList.add("is-in") }));
+      tl.to(mayaCursor, { opacity: 0, duration: 0.3, ease: "none" }, 2.5);
+
+      // Dev moves on to the next company down.
+      tl.to(devCursor, { x: () => at(devPage, 1).x, y: () => at(devPage, 1).y, duration: 0.9 }, 3.4);
+      press(devCursor, 4.4);
+      tl.call(() => setState(devPage, 1, "mine"), [], 4.48);
+      tl.to(devCursor, { opacity: 0, duration: 0.3, ease: "none" }, 5.0);
+      tl.to({}, { duration: 0.2 }, 5.4);
+
+      timeline.current = tl;
+      setPhase("idle");
       return () => {
-        triggers.forEach((t) => t.kill());
-        el.querySelectorAll(".is-in").forEach((b) => b.classList.remove("is-in"));
-        el.querySelectorAll(".lg-tick-draw").forEach((t) => t.classList.remove("lg-tick-draw"));
-        delete el.dataset.js;
+        tl.kill();
+        timeline.current = null;
+        started.current = false;
+        // Back to the finished state.
+        pages.forEach((p, k) => {
+          FINAL[k === 0 ? "Maya" : "Dev"].forEach((s, i) => setState(p, i, s));
+          p.classList.remove("ld-shaking");
+        });
+        row(devPage, 0).classList.add("has-note");
+        gsap.set(cursors, { clearProps: "all" });
       };
     });
+    mm.add(REDUCED_MOTION, () => setPhase("static"));
     return () => mm.revert();
+  }, []);
+
+  // Is the book on screen?
+  useEffect(() => {
+    const el = book.current;
+    if (!el || !("IntersectionObserver" in window)) return;
+    const io = new IntersectionObserver((entries) => setVisible(entries.some((e) => e.isIntersecting)), { threshold: 0.55 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Plays once, the first time the book is on screen; pauses if it is scrolled away mid-run.
+  useEffect(() => {
+    const tl = timeline.current;
+    if (!tl || phase === "done" || phase === "static") return;
+    if (visible) {
+      if (!started.current) {
+        started.current = true;
+        setPhase("playing");
+      }
+      tl.play();
+    } else {
+      tl.pause();
+    }
+  }, [visible, phase]);
+
+  const replay = useCallback(() => {
+    const tl = timeline.current;
+    if (!tl) return;
+    setPhase("playing");
+    tl.restart(false, false);
   }, []);
 
   return (
@@ -86,177 +212,45 @@ export function Example() {
             {EXAMPLE.headline}
           </h2>
           <p className="ld-sub">{EXAMPLE.subhead}</p>
-          <p className="ld-setting">{EXAMPLE.setting}</p>
         </header>
 
-        <div className="ld-duo">
-          <div className="ld-duo-heads" aria-hidden="true">
-            <span />
-            <p className="ld-officer">Maya</p>
-            <p className="ld-officer">Dev</p>
-          </div>
-
-          <Beat date="Mon, Oct 26" time="9:02 AM" caption="Two officers, one promising lead, and both about to click.">
-            <Cell who="Maya">
-              <p className="ld-list-title lg-sc">Never contacted</p>
-              <MiniRow name="Kestrel Aerospace">
-                <span className="ld-fakebtn">Claim</span>
-              </MiniRow>
-            </Cell>
-            <Cell who="Dev">
-              <p className="ld-list-title lg-sc">Never contacted</p>
-              <MiniRow name="Kestrel Aerospace">
-                <span className="ld-fakebtn">Claim</span>
-              </MiniRow>
-            </Cell>
-          </Beat>
-
-          <Beat date="Mon, Oct 26" time="9:02 AM, a moment later" caption="One winner. The other officer is told who and until when.">
-            <Cell who="Maya">
-              <p className="ld-list-title lg-sc">Never contacted</p>
-              <MiniRow name="Kestrel Aerospace" ribbon className="ld-claimed">
-                <span className="lg-badge lg-badge-mine">Yours until Nov 9</span>
-              </MiniRow>
-              <p className="ld-line">You hold this until Nov 9, 2026, 9:02 AM.</p>
-            </Cell>
-            <Cell who="Dev" className="ld-cell-refused">
-              <p className="ld-list-title lg-sc">Never contacted</p>
-              <MiniRow name="Kestrel Aerospace">
-                <span className="ld-fakebtn ld-shake">Claim</span>
-              </MiniRow>
-              <p className="ld-margin-note ld-write">Maya claimed this first. They hold it until Nov 9, 2026, 9:02 AM.</p>
-            </Cell>
-          </Beat>
-
-          <Beat date="Mon, Oct 26" time="9:03 AM" caption="Nobody had to ask in the group chat.">
-            <Cell who="Maya">
-              <MiniRow name="Kestrel Aerospace" ribbon>
-                <span className="lg-badge lg-badge-mine">Yours until Nov 9</span>
-              </MiniRow>
-              <p className="ld-line ld-line-quiet">Writing to Priya in partnerships from her own Gmail.</p>
-            </Cell>
-            <Cell who="Dev">
-              <p className="ld-line">Kestrel&apos;s page says &quot;Held by Maya until Nov 9.&quot; There is no outreach form for him, and only Maya or an owner can change its stage.</p>
-              <MiniRow name="Birchwood Foods" ribbon className="ld-claimed ld-claimed-late">
-                <span className="lg-badge lg-badge-mine">Yours until Nov 9</span>
-              </MiniRow>
-            </Cell>
-          </Beat>
-
-          <Beat date="Wed, Oct 28" caption="Logging the email renews the claim for another 14 days.">
-            <Cell who="Maya">
-              <div className="ld-logcard">
-                <p className="lg-sc ld-log-title">Log outreach</p>
-                <dl>
-                  <div>
-                    <dt>Channel</dt>
-                    <dd>Email</dd>
-                  </div>
-                  <div>
-                    <dt>Follow up on</dt>
-                    <dd className="lg-num">Nov 4</dd>
-                  </div>
-                  <div>
-                    <dt>Note</dt>
-                    <dd>Intro to Priya in partnerships, packet attached</dd>
-                  </div>
-                </dl>
-                <p className="ld-saved">
-                  <Tick size={18} auto={false} />
-                  <span>Logged. Not contacted moved to Contacted. Claim renewed to Nov 11.</span>
-                </p>
-              </div>
-            </Cell>
-            <Cell who="Dev">
-              <MiniRow name="Birchwood Foods" ribbon>
-                <span className="lg-badge lg-badge-mine">Yours until Nov 9</span>
-              </MiniRow>
-            </Cell>
-          </Beat>
-
-          <Beat date="Wed, Nov 4" caption="The queue remembers so Maya does not have to.">
-            <Cell who="Maya">
-              <p className="ld-list-title lg-sc">Follow-ups due</p>
-              <MiniRow name="Kestrel Aerospace" className="ld-returns">
-                <span className="ld-due">Due today</span>
-              </MiniRow>
-              <p className="ld-quote-line lg-quote">&ldquo;Intro to Priya in partnerships, packet attached&rdquo;</p>
-              <p className="ld-line">She sends a short follow-up and logs it. Next follow-up Nov 11, claim now runs to Nov 18.</p>
-            </Cell>
-            <Cell who="Dev">
-              <p className="ld-list-title lg-sc">Follow-ups due</p>
-              <MiniRow name="Kestrel Aerospace">
-                <span className="lg-badge lg-badge-theirs">Held by Maya until Nov 11</span>
-              </MiniRow>
-              <p className="ld-margin-note ld-write">Held by Maya until Nov 11. No Claim button.</p>
-            </Cell>
-          </Beat>
-
-          <Beat date="Fri, Nov 6" caption="The new board starts from Maya's notes.">
-            <Cell who="Maya">
-              <div className="ld-logcard">
-                <p className="lg-sc ld-log-title">Log outreach</p>
-                <dl>
-                  <div>
-                    <dt>Channel</dt>
-                    <dd>Other</dd>
-                  </div>
-                  <div>
-                    <dt>Note</dt>
-                    <dd>Priya replied, wants a 20-minute call</dd>
-                  </div>
-                </dl>
-                <p className="ld-saved">
-                  <Tick size={18} auto={false} />
-                  <span>Logged. Kestrel moved to Replied.</span>
-                </p>
-              </div>
-            </Cell>
-            <Cell who="Dev">
-              <p className="ld-line ld-line-quiet">Still working Birchwood Foods.</p>
-            </Cell>
-          </Beat>
-
-          <div className="ld-nextyear">
-            <TurnoverRule endsYear="2026-27" />
-            <div className="ld-nextyear-card">
-              <p className="lg-sc ld-log-title">Next September, the new chair opens Kestrel Aerospace</p>
-              <ol>
-                <li>
-                  <span className="lg-margin">26-27</span>
-                  <span>Oct 28, email, Maya</span>
-                </li>
-                <li>
-                  <span className="lg-margin">26-27</span>
-                  <span>Nov 4, email follow-up, Maya</span>
-                </li>
-                <li>
-                  <span className="lg-margin">26-27</span>
-                  <span>Nov 6, note: Priya replied, wants a 20-minute call</span>
-                </li>
-              </ol>
-              <p className="ld-line">Stage history: Not contacted, Contacted, Replied. All of it still there, top to bottom.</p>
-            </div>
-          </div>
+        <div className="ld-race-bar">
+          <p className="ld-setting">
+            <strong>{EXAMPLE.when}.</strong> {EXAMPLE.setting}
+          </p>
+          {phase !== "static" && (
+            <button
+              type="button"
+              className="lg-btn lg-btn-quiet lg-btn-sm ld-replay"
+              onClick={replay}
+              data-shown={phase === "done"}
+              tabIndex={phase === "done" ? 0 : -1}
+              aria-hidden={phase === "done" ? undefined : true}
+            >
+              <ResetIcon size={16} />
+              Replay
+            </button>
+          )}
         </div>
 
-        <figure className="ld-datestrip" aria-label="Maya's claim on Kestrel Aerospace, from Oct 26 to Nov 18">
-          <div className="ld-strip-track" aria-hidden="true">
-            <span className="ld-bar ld-bar-1" />
-            <span className="ld-bar ld-bar-2" />
-            <span className="ld-bar ld-bar-3" />
-            <span className="ld-mark ld-mark-1" />
-            <span className="ld-mark ld-mark-2" />
-            <span className="ld-mark ld-mark-3" />
-          </div>
-          <figcaption>
-            <span>Oct 26</span>
-            <span>Oct 28, logged</span>
-            <span>Nov 4, due and logged</span>
-            <span>Nov 18, claim ends</span>
-          </figcaption>
-          <p className="ld-hint-line">Each time Maya logs, her claim runs another 14 days from that day. If she logged nothing after Oct 28, the claim would end Nov 11 and Dev would see a Claim button again. An owner can also force-release it sooner.</p>
-        </figure>
+        <div ref={book} className="ld-race">
+          <Page who="Maya" initial={FINAL.Maya} />
+          <Page who="Dev" initial={FINAL.Dev} />
+        </div>
+        <p className="lg-sr">
+          Two ledger pages show the same list. Maya and Dev both press Claim on {EXAMPLE.company}. Maya&apos;s claim goes through and her page reads Yours until {EXAMPLE.until}. Dev&apos;s page shakes and a note
+          reads {EXAMPLE.refusal}. Dev then claims Birchwood Foods.
+        </p>
+
+        <ol className="ld-after">
+          {EXAMPLE.after.map((item) => (
+            <li key={item.title} className="ld-reveal">
+              <p className="lg-sc ld-after-when">{item.when}</p>
+              <h3 className="ld-h3">{item.title}</h3>
+              <p>{item.body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );

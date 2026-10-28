@@ -65,151 +65,124 @@ export const PROBLEM = {
 };
 
 export const SEASONS = {
-  headline: "Four seasons of a board",
-  subhead: "Coppicing is an old woodland practice: cut a tree to its stump and it regrows many stems from the same roots. A student board has the same rhythm.",
-  seasons: [
-    {
-      name: "Autumn",
-      line: "A new board takes over",
-      body: "Import last year's sheet. The columns map, look-alike companies are shown together, and the pipeline starts with a full list instead of a blank page.",
-    },
-    {
-      name: "Winter",
-      line: "The stems are cut back",
-      body: "The old officers graduate and their claims are released. Every outreach entry, note and stage change stays on its company, kept as ledger rows.",
-    },
-    {
-      name: "Spring",
-      line: "More shoots from the same roots",
-      body: "Claim before you contact, so each new officer works a company alone. The queue brings every follow-up back on the date it was due.",
-    },
-    {
-      name: "Summer",
-      line: "Full growth",
-      body: "Committed sponsors hang from the stems, each with the story of how it got there still on file for next year's chair.",
-    },
-  ],
-  labels: ["Kestrel Aerospace", "Birchwood Foods", "Ridgeline Energy", "Tern Optics", "Northfield Bank"],
-  rows: [
-    { who: "Maya", what: "Email to Kestrel Aerospace", when: "Mar 3" },
-    { who: "Dev", what: "LinkedIn to Birchwood Foods", when: "Mar 11" },
-    { who: "Sam", what: "Call with Ridgeline Energy", when: "Apr 2" },
-    { who: "Maya", what: "Follow-up to Kestrel Aerospace", when: "Apr 14" },
-    { who: "Priya", what: "Packet sent to Tern Optics", when: "Apr 28" },
-  ],
-};
-
-export const HOW = {
   headline: "From last year's sheet to a pipeline the whole team can work from",
-  subhead: "The first step is done once when the workspace is set up, and the other four become part of an officer's week.",
+  subhead: "A board's year has four seasons. Importing happens once, claiming and logging become part of an officer's week, and turnover comes around every spring.",
   steps: [
     {
+      season: "Autumn",
+      tab: "Import",
       title: "Import last year's sheet",
       who: "Owner or Officer",
-      body: "Export your spreadsheet as a CSV and upload it, up to 2,000 rows. Point each column at the right field, then look over any groups of look-alike companies and choose, group by group, whether to skip them or import them. You can also add companies one at a time.",
+      body: "Export your spreadsheet as a CSV and upload it, up to 2,000 rows. Point each column at the right field, then choose, group by group, whether to skip or import look-alike companies.",
     },
     {
+      season: "Winter",
+      tab: "Claim",
       title: "Claim a company before you contact it",
       who: "Officer",
-      body: "Press Claim on any company nobody else holds. It is yours for your team's claim window, which is 14 days unless your chair changed it. Everyone else sees your name and the date the claim ends.",
+      body: "Press Claim on any company nobody else holds. It is yours for 14 days unless your chair changed that, and everyone else sees your name and the date the claim ends.",
     },
     {
-      title: "Contact from your own inbox, then log it",
+      season: "Spring",
+      tab: "Log and follow up",
+      title: "Send from your inbox, then log it",
       who: "Officer",
-      body: "Write the email yourself, or open a draft in Gmail or Outlook from Coppice, and send it from your own account. Back in Coppice, record the channel (email, LinkedIn, in person or other), add a note, and choose a follow-up date. The date starts at 7 days from today. Saving the entry renews your claim.",
+      body: "Record the channel, a note and a follow-up date, which starts at 7 days out. Saving the entry renews your claim. On the follow-up date the company is back in your queue, most overdue first.",
     },
     {
-      title: "The queue brings it back",
-      who: "Officer",
-      body: "On the follow-up date the company appears on your home screen, with the most overdue ones first and your last note beside each name. As things happen, move it along the board: Replied, In conversation, Committed or Declined.",
-    },
-    {
+      season: "Summer",
+      tab: "Turnover",
       title: "The next board inherits the story",
       who: "Owner and Officer",
-      body: "When officers graduate, the workspace stays. The incoming chair opens any company, reads every outreach entry, note and stage change in order, claims it, and picks up from there.",
+      body: "When officers graduate, the workspace stays. The incoming chair opens any company, reads every entry, note and stage change in order, claims it, and picks up from there.",
     },
   ],
-  numbers: [
-    { n: "14", unit: "days", what: "default claim window, owners can set 1 to 60" },
-    { n: "7", unit: "days", what: "default time to the next follow-up" },
-    { n: "6", unit: "stages", what: "Not contacted to Declined" },
-    { n: "2,000", unit: "rows", what: "per CSV import" },
+  queue: {
+    title: "Next fall, this is the first page the new chair opens",
+    body: "The companies that are due, most overdue first, with the last note beside each name.",
+  },
+  imported: { title: "Imported from the sheet", body: "42 companies read. 2 groups of look-alike names are waiting for a person to decide." },
+  rows: [
+    { who: "Maya", what: "Email to Kestrel Aerospace", when: "Oct 28" },
+    { who: "Maya", what: "Follow-up to Kestrel Aerospace", when: "Nov 4" },
+    { who: "Dev", what: "LinkedIn to Birchwood Foods", when: "Nov 11" },
+    { who: "Sam", what: "Call with Ridgeline Energy", when: "Feb 2" },
+    { who: "Priya", what: "Packet sent to Tern Optics", when: "Apr 28" },
   ],
+  claimTags: [
+    { name: "Kestrel Aerospace", note: "Yours until Nov 11", mine: true },
+    { name: "Birchwood Foods", note: "Priya R. until Oct 31", mine: false },
+    { name: "Ridgeline Energy", note: "", mine: false },
+  ],
+  labels: ["Kestrel Aerospace", "Birchwood Foods", "Ridgeline Energy", "Tern Optics", "Northfield Bank"],
 };
 
 export const FEATURES = {
   headline: "What is in the workspace today",
-  subhead: "Each of these exists in the app now, except the block labeled Coming next.",
+  subhead: "Each of these exists in the app now. Importing a sheet and keeping history across boards are covered above.",
   items: [
     {
       icon: "claim",
+      page: "p. 1",
       title: "Claim before you contact",
       short: "One officer holds a company at a time, and the database enforces it.",
-      long: "When two officers press Claim in the same second, one claim goes through and the other officer is told who got there first and until when. While a claim is live, nobody else can log outreach on that company, change its stage or archive it. The claim ends after your team's claim window and renews each time you log outreach. Owners can force-release a claim from an officer who went quiet, and a claim is released automatically when its holder leaves the workspace. Expiry is judged by the database's clock, so a laptop with the wrong time cannot hold a company longer than it should.",
+      detail: "While a claim is live, nobody else can log outreach, change the stage or archive that company. Owners can force-release a claim from an officer who went quiet.",
     },
     {
       icon: "queue",
+      page: "p. 2",
       title: "A follow-up queue as the home screen",
       short: "Every company that is due, most overdue first.",
-      long: "The first thing you see after signing in is the list of open companies whose follow-up date has arrived, with how many days overdue each one is and your last note beside it. An \"Only mine\" filter narrows the list to companies you currently hold. A second list shows companies nobody has contacted yet, leaving out the ones another officer has claimed. Companies marked Committed or Declined leave the queue.",
+      detail: "Each row shows how many days overdue it is and your last note. Mine narrows the list to companies you hold. Companies nobody has contacted yet sit in their own list.",
     },
     {
       icon: "board",
+      page: "p. 3",
       title: "A stage board",
       short: "Six stages from first contact to a decision.",
-      long: "Not contacted, Contacted, Replied, In conversation, Committed and Declined. A company moves from Not contacted to Contacted on its own when you log the first outreach, and every later move is recorded with who made it. Moving a company to Committed or Declined closes the pitch and clears its claim, and Coppice asks you to confirm first.",
+      detail: "Not contacted, Contacted, Replied, In conversation, Committed and Declined. Logging the first outreach moves a company to Contacted, and every later move records who made it.",
     },
     {
       icon: "log",
+      page: "p. 4",
       title: "An outreach log on every company",
       short: "Emails, LinkedIn messages, conversations and notes, all on the company.",
-      long: "Each entry shows the date, who logged it, the channel (Email, LinkedIn, In person or Other) and what was said, plus the next follow-up date. The company page also keeps a stage history. When the person who knew the contact has graduated, the record is still there to read.",
+      detail: "Each entry shows the date, who logged it, the channel and what was said, plus the next follow-up date. The record is still there when the person who knew the contact has graduated.",
     },
     {
       icon: "duplicate",
+      page: "p. 5",
       title: "Duplicates are flagged, never merged",
       short: "Coppice points at look-alikes. A person decides.",
-      long: "Names are compared with capital letters, punctuation, a leading \"the\" and endings like Inc, LLC and Corp ignored, so \"Acme, Inc.\", \"ACME Corp\" and \"acme corporation\" count as the same name. Websites are compared without \"www\" or the path, so acme.com and www.acme.com match. Matching companies are grouped and shown together. Nothing is merged, blocked or removed on its own.",
-    },
-    {
-      icon: "import",
-      title: "CSV import",
-      short: "Bring last year's sheet in, up to 2,000 rows.",
-      long: "Upload a CSV, map your columns to Coppice's fields, and review the result before anything is saved. Groups of look-alike companies are listed together, and for each group you choose whether to skip it or import it. Files can be up to 3 MB.",
+      detail: "Names are compared without capitals, punctuation or endings like Inc and LLC, and websites without www or the path. Matches are shown together, and nothing is merged or removed on its own.",
     },
     {
       icon: "draft",
-      title: "Pitch drafts that stick to verified facts",
+      page: "p. 6",
+      title: "Drafts that stick to verified facts",
       short: "Drafts built only from facts your owner has checked.",
       tag: "AI, optional",
-      long: "The owner uploads the sponsorship packet and Coppice lists the facts in it, each with the page number and the quote it came from. A fact can be used in a draft only after the owner verifies it. Each request produces two variants. Numbers that no verified fact supports, links, and lines like \"thanks for sponsoring us before\" are underlined so you can check them before sending. When a draft is ready, it opens in your own Gmail or Outlook compose window and you press Send from your own address. Owners can switch AI off for the whole workspace.",
-    },
-    {
-      icon: "history",
-      title: "History that survives turnover",
-      short: "The workspace outlives the board.",
-      long: "Companies, outreach entries, notes and stage changes belong to the workspace, whoever typed them. When an officer leaves, their claims are released and everything they logged stays. Archiving a company hides it from the board and queue and keeps its history.",
+      detail: "Numbers that no verified fact supports, links, and lines like \"thanks for sponsoring us before\" are underlined for you to check. The draft opens in your own Gmail or Outlook, and you press Send there.",
     },
   ],
-  coming: [
-    { tag: "Next", title: "Reply rate per pitch template", body: "See which version of your pitch gets answers, so the next board starts from what worked." },
-    { tag: "Later", title: "Pipeline Copilot", body: "A chat that answers questions about your pipeline. Anything it proposes changing waits for a person to confirm." },
-    { tag: "Later", title: "Research briefs", body: "A short background read on a company before you reach out." },
-    { tag: "Later", title: "Turnover Time Capsule", body: "At the end of the term, a \"wrapped\"-style history of the year handed to the incoming board." },
-  ],
-  roles: [
-    { title: "Owner", body: "Usually the chair. Creates the workspace, invites officers, sets the claim window, verifies the facts AI drafts may use, turns AI on or off, and can force-release a claim." },
-    { title: "Officer", body: "Adds or imports companies, claims them, logs outreach and works the queue." },
-    { title: "Company contacts", body: "They never log in. They are records in your pipeline." },
-  ],
-  pricing: "Free for student teams, with unlimited officers.",
 };
 
 export const EXAMPLE = {
   headline: "Maya and Dev, same company, same second",
-  subhead:
-    "A made-up club, a real race. Here is what each officer sees when they both go for the same lead on Monday morning, and what brings it back two weeks later.",
-  setting: "Alder State Rocketry Club is a fictional student org with a 14-day claim window. The company is Kestrel Aerospace, imported from last year's sheet and never contacted.",
+  subhead: "A made-up club, a real race. Both officers go for the same lead on a Wednesday morning, and the database lets one of them through.",
+  setting: "Alder State Rocketry Club is a fictional student org with a 14-day claim window. Kestrel Aerospace came in from last year's sheet and has never been contacted.",
+  when: "Wed, Oct 28, 9:02 AM",
+  company: "Kestrel Aerospace",
+  until: "Nov 11",
+  refusal: "Held by Maya until Nov 11",
+  mayaNote: "Yours until Nov 11. Logging outreach renews it for another 14 days.",
+  devNote: "Held by Maya until Nov 11",
+  devNext: "Dev moves on to Birchwood Foods, the next company down.",
+  after: [
+    { when: "Oct 28", title: "Maya sends and logs", body: "She writes from her own Gmail, logs the email and picks a follow-up on Nov 4, the 7 day default. Kestrel moves to Contacted and her claim renews." },
+    { when: "Nov 4", title: "The queue brings it back", body: "Kestrel shows as due today on Maya's queue with her note under the name. On Dev's it reads Held by Maya, with no Claim button." },
+    { when: "Nov 6", title: "A reply, and a record", body: "Maya logs Priya's reply and moves Kestrel to Replied. Next September the new chair reads the whole page, top to bottom." },
+  ],
 };
 
 export const AUDIENCE = {
@@ -233,12 +206,6 @@ export const NAME = {
     "A student board works on a similar rhythm. Every spring the officers graduate, and what remains is the set of relationships with companies: who was asked, who said yes, who said to try again in the fall. Coppice keeps those in the workspace so the next board grows back from them.",
     "The name has a second reading in its first syllables, co-piece: working alongside someone, each of you holding a piece of the same list.",
   ],
-  lines: ["New board, same roots.", "Many stems, one root.", "Coppice. Capisce?"],
-  glossary: [
-    { term: "Stems", def: "the officers and boards that come and go on a cycle." },
-    { term: "Roots", def: "the companies, contacts, notes and history that stay." },
-    { term: "One base", def: "a single workspace that everyone on the team works from." },
-  ],
 };
 
 export const TRUST = {
@@ -251,6 +218,14 @@ export const TRUST = {
     { title: "Share one team's data with another", body: "Every workspace is separated inside the database, using row-level security in Postgres, so one team's companies, notes and members are not visible to another team's accounts." },
   ],
   alsoOut: "Also out of scope: payments, and public pages for companies to visit.",
+  comingTitle: "Coming next",
+  comingNote: "These are announced and not built yet. Nothing here exists in the app today.",
+  coming: [
+    { tag: "Next", title: "Reply rate per pitch template", body: "See which version of your pitch gets answers, so the next board starts from what worked." },
+    { tag: "Later", title: "Pipeline Copilot", body: "A chat that answers questions about your pipeline. Anything it proposes changing waits for a person to confirm." },
+    { tag: "Later", title: "Research briefs", body: "A short background read on a company before you reach out." },
+    { tag: "Later", title: "Turnover Time Capsule", body: "At the end of the term, a \"wrapped\"-style history of the year handed to the incoming board." },
+  ],
   privacy: [
     { title: "AI is optional", body: "The owner turns it on or off for the whole workspace and sets how many AI calls the workspace may make in a 30-day period. With AI off, none of the text below is sent anywhere." },
     { title: "Names and emails stay home", body: "People's names and email addresses never go to the AI provider. The provider's free tier may use what it receives to improve its products, so a draft is written with placeholders for first name, sender name and organization name, and Coppice fills in the real names after the draft comes back." },
@@ -266,8 +241,8 @@ export const START = {
   subhead: "You need a Google account and last year's sheet, if you have one.",
   steps: [
     { title: "Sign in with Google", body: "One click, with no new password to remember." },
-    { title: "Create a workspace, or open your chair's invite link", body: "The chair creates the workspace and becomes its Owner. Everyone else joins by opening the invite link they were sent." },
-    { title: "Invite your officers and set your claim window", body: "Owners invite officers with a copyable invite link and choose how long a claim lasts, from 1 to 60 days. The default is 14." },
+    { title: "Create a workspace, or join your chair's", body: "The chair creates the workspace and becomes its Owner. Everyone else signs in with the email address the chair invited and presses Join." },
+    { title: "Invite your officers and set your claim window", body: "Owners invite officers by email address and choose how long a claim lasts, from 1 to 60 days. The default is 14. Coppice does not send the invite, so tell them to sign in." },
     { title: "Import your sheet and start claiming", body: "Upload last year's CSV, review any duplicate groups, then press Claim on the first company you plan to contact." },
   ],
 };
@@ -279,19 +254,14 @@ export const FAQ = [
     q: "What happens when a claim expires?",
     a: "At the end of your team's claim window, the company shows who held it and that the claim expired, and any officer can claim it. Logging outreach before then renews the claim for another full window. An owner can also force-release a claim earlier, and a claim is released if its holder leaves the workspace.",
   },
-  { q: "Can two people claim the same company at once?", a: "No. If two officers press Claim in the same moment, the database lets one through. The other sees who got there first and the date their claim ends." },
   {
     q: "What about Microsoft or Outlook accounts?",
     a: "Sign-in is with Google today. Your outreach can still come from any inbox: drafts open in Gmail, in Outlook on the web with a work or school Microsoft 365 account, or in your computer's default mail app.",
   },
-  { q: "Can we bring last year's sheet?", a: "Yes. Export it as a CSV and upload it, up to 2,000 rows and 3 MB. You map the columns, and any groups of look-alike companies are shown so you can skip or import each group." },
   {
     q: "What happens at board turnover?",
     a: "The workspace and everything in it stays. The outgoing chair makes the incoming chair an Owner in Settings, then steps down to Officer or leaves, and the new board can open any company to read its outreach entries, notes and stage changes. Claims held by someone who leaves the workspace are released.",
   },
-  { q: "Does it work on phones in a browser?", a: "Yes. Coppice is a website, so there is nothing to install, and you can check the queue, claim a company and log outreach from your phone's browser." },
-  { q: "Who can do what?", a: "Owners create the workspace, invite officers, set the claim window, verify the facts AI drafts may use, and can force-release claims. Officers add or import companies, claim them, log outreach and work the queue." },
-  { q: "Do the companies we contact need accounts?", a: "No. Company contacts never log in, and Coppice never emails them." },
 ];
 
 export const FINAL = {

@@ -65,12 +65,14 @@ export function Problem() {
                   ))}
                   <span className="ld-strike" />
                 </div>
-                <p className="ld-note-hand">
-                  <span>{item.note}</span>
-                </p>
-                <h3 className="ld-h3">
-                  <span className="ld-prob-no">{i + 1}</span> {item.title}
-                </h3>
+                <div className="ld-prob-titleline">
+                  <h3 className="ld-h3">
+                    <span className="ld-prob-no">{i + 1}</span> {item.title}
+                  </h3>
+                  <p className="ld-note-hand">
+                    <span>{item.note}</span>
+                  </p>
+                </div>
                 <p className="ld-prob-body">{item.body}</p>
               </div>
               <div className="ld-prob-fix">
