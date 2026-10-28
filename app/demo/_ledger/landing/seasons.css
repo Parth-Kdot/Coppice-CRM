@@ -88,12 +88,12 @@
 }
 .ld-book {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas:
-    "scene ledger"
-    "captions captions";
+    "scene scene"
+    "captions ledger";
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
 }
 .ld-page-left {
   grid-area: captions;
@@ -115,8 +115,13 @@
 .ld-captions {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 22px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.ld-caption + .ld-caption {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--edge);
 }
 .ld-caption p {
   color: var(--ink-2);
@@ -144,7 +149,7 @@
 .ld-scene {
   display: block;
   width: 100%;
-  max-width: 560px;
+  max-width: 460px;
   height: auto;
   max-height: 100%;
   overflow: visible;
@@ -154,17 +159,6 @@
   margin-bottom: 8px;
   color: var(--ink-2);
   font-weight: 600;
-}
-.ld-import-card {
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--edge);
-}
-.ld-import-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  color: var(--ink);
 }
 .ld-ledger-rows {
   list-style: none;
@@ -181,12 +175,374 @@
 .ld-ledger-when {
   color: var(--ink-2);
 }
-.ld-page-right .lg-turnover-label {
-  background: var(--sheet);
-  left: 24px;
+
+/* ---------- Beats: what happens in a season, ticked off in the caption as it happens ---------- */
+.ld-beats {
+  list-style: none;
+  display: grid;
+  gap: 5px;
+  margin: 12px 0 2px;
 }
-.ld-turnover-wrap {
-  margin-top: 10px;
+.ld-beat {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.3;
+}
+.ld-beat-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border: 1.5px solid var(--edge);
+  border-radius: 50%;
+}
+/* The moss check is drawn by the timeline; without it, every check is already drawn. */
+.ld-seasons:not([data-motion="on"]) .ld-tick path {
+  stroke-dashoffset: 0;
+}
+
+/* ---------- The right page: one pane per step, finished. The timeline plays each one from empty. ---------- */
+.ld-page .lg-sc {
+  font-size: 1rem;
+}
+.ld-pane {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+.ld-pane + .ld-pane {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--edge);
+}
+.ld-pane .ld-ledger-title {
+  margin-bottom: 0;
+}
+.ld-pane > * {
+  min-width: 0;
+}
+.ld-pen {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: 56%;
+  height: 1.5px;
+  background: var(--ink);
+  transform-origin: 0% 50%;
+}
+
+/* Chips: a quiet outline, and when picked an ink layer over it. */
+.ld-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ld-pick {
+  position: relative;
+  display: inline-flex;
+  padding: 1px 10px;
+  border: 1.5px solid var(--edge);
+  border-radius: 3px;
+  background: var(--sheet);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.ld-pick[data-on="true"] {
+  border-color: var(--ink);
+}
+.ld-pick-on {
+  position: absolute;
+  inset: -1.5px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+/* Autumn: the old sheet, the look-alike pair, the summary. */
+.ld-old-head,
+.ld-old-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
+  gap: 8px;
+}
+.ld-old-head {
+  align-items: end;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ink-2);
+}
+.ld-old-h {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.ld-old-rows {
+  list-style: none;
+}
+.ld-old-row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  line-height: 1.3;
+}
+.ld-old-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ld-old-more {
+  padding-top: 6px;
+  color: var(--ink-2);
+}
+.ld-lookalike {
+  padding: 8px 12px 10px;
+  border: 1.5px dashed var(--ink-2);
+  border-radius: 3px;
+  background: var(--sheet);
+}
+.ld-lookalike-title {
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.ld-lookalike ul {
+  list-style: none;
+}
+.ld-look-row {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+.ld-look-no {
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.ld-look-name {
+  position: relative;
+  justify-self: start;
+  font-weight: 500;
+}
+.ld-look-choices {
+  display: flex;
+  gap: 6px;
+}
+.ld-pane .ld-import-card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ld-import-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink);
+}
+
+/* Winter: the claim ticket and the second officer's attempt. */
+.ld-ticket {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--paper-2);
+  box-shadow: 0 8px 14px -12px var(--shade);
+}
+.ld-ticket-ribbon {
+  left: auto;
+  right: 18px;
+  transform-origin: 50% 0%;
+}
+.ld-ticket-company {
+  padding-right: 40px;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.ld-ticket-status,
+.ld-claim-slot,
+.ld-due-when,
+.ld-due-labels {
+  display: grid;
+}
+.ld-ticket-status > *,
+.ld-claim-slot > *,
+.ld-due-when > *,
+.ld-due-labels > * {
+  grid-area: 1 / 1;
+}
+.ld-ticket-status {
+  color: var(--ink-2);
+}
+.ld-ticket-free,
+.ld-claim-btn,
+.ld-due-before {
+  opacity: 0;
+}
+.ld-claim-slot {
+  justify-items: start;
+  margin-top: 6px;
+}
+.ld-claim-btn,
+.ld-claim-chip {
+  padding: 3px 16px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ld-claim-btn {
+  background: var(--sheet);
+  color: var(--ink);
+}
+.ld-claim-chip {
+  background: var(--ink);
+  color: var(--paper);
+}
+.ld-attempt {
+  display: grid;
+  gap: 8px;
+}
+.ld-attempt-line {
+  padding-bottom: 6px;
+  border-bottom: 1.5px dashed var(--ink-2);
+  color: var(--ink);
+  font-weight: 500;
+}
+.ld-attempt-note {
+  padding: 1px 0 1px 10px;
+  border-left: 2px solid var(--rust);
+  color: var(--rust);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Spring and summer: the log entry, the company coming back, the ledger, the chair. */
+.ld-pane-ledger {
+  gap: 14px;
+}
+.ld-log,
+.ld-due {
+  padding: 10px 12px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--sheet);
+  box-shadow: 0 8px 14px -12px var(--shade);
+}
+.ld-log {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.ld-log .ld-ledger-title,
+.ld-due .ld-ledger-title {
+  margin-bottom: 0;
+}
+.ld-log-note {
+  min-height: 30px;
+  padding: 2px 0 3px;
+  border-bottom: 1px solid var(--ink-2);
+}
+.ld-log-ink {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-style: italic;
+  line-height: 1.3;
+}
+.ld-log-follow-label {
+  margin-right: 2px;
+  color: var(--ink-2);
+}
+.ld-log-save {
+  position: relative;
+  justify-self: start;
+  padding: 3px 16px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--sheet);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ld-due {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-content: start;
+}
+.ld-due .ld-ledger-title,
+.ld-due-stage {
+  grid-column: 1 / -1;
+}
+.ld-due-name {
+  font-weight: 600;
+}
+.ld-due-when {
+  justify-items: end;
+  font-weight: 600;
+}
+.ld-due-before {
+  color: var(--ink-2);
+}
+.ld-due-stage {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ld-due-stage svg {
+  flex: none;
+}
+.ld-due-labels {
+  justify-items: start;
+}
+.ld-row-tick {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: -4px;
+}
+.ld-chair {
+  display: grid;
+  gap: 2px;
+  padding-top: 6px;
+}
+.ld-chair-old {
+  position: relative;
+  justify-self: start;
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+.ld-chair .lg-turnover-label {
+  left: 24px;
+  background: var(--sheet);
+  font-size: 1rem;
+}
+.ld-chair-new {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.ld-chair-ink {
+  display: inline-block;
 }
 
 /* The framed queue. In the static page it follows the book. */
@@ -256,19 +612,35 @@
 }
 .ld-seasons[data-motion="on"] .ld-book {
   height: 100%;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 0.8fr);
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.3fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "captions scene ledger";
+  align-items: stretch;
   transform-origin: 50% 50%;
+}
+/* The right page needs room for the sheet and the ticket, so on wide screens the book is a little wider than the text column. */
+@media (min-width: 1280px) {
+  .ld-seasons[data-motion="on"] .ld-stage {
+    margin-inline: calc(-1 * clamp(0px, (100vw - 1240px) * 0.6, 64px));
+  }
 }
 .ld-seasons[data-motion="on"] .ld-scene {
   height: 100%;
   width: 100%;
   max-width: none;
 }
+.ld-seasons[data-motion="on"] .ld-page-left {
+  display: flex;
+}
 .ld-seasons[data-motion="on"] .ld-captions {
   position: relative;
   display: block;
-  min-height: 300px;
+  flex: 1;
+}
+.ld-seasons[data-motion="on"] .ld-caption + .ld-caption {
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .ld-seasons[data-motion="on"] .ld-caption {
   position: absolute;
@@ -289,7 +661,34 @@
   transform: none;
 }
 .ld-seasons[data-motion="on"] .ld-page {
+  align-self: stretch;
   overflow: hidden;
+}
+/* The right page is one place where the panes take turns: the old sheet, the claim ticket, the ledger. */
+.ld-seasons[data-motion="on"] .ld-page-right {
+  display: grid;
+  align-content: start;
+}
+.ld-seasons[data-motion="on"] .ld-pane {
+  grid-area: 1 / 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ld-seasons[data-motion="on"] .ld-pane-ledger {
+  grid-template-areas:
+    "rows"
+    "zone";
+}
+.ld-seasons[data-motion="on"] .ld-ledger {
+  grid-area: rows;
+}
+/* The log entry, the company coming back and the chair line take turns in one place under the rows. */
+.ld-seasons[data-motion="on"] .ld-log,
+.ld-seasons[data-motion="on"] .ld-due,
+.ld-seasons[data-motion="on"] .ld-chair {
+  grid-area: zone;
+  align-self: start;
 }
 .ld-seasons[data-motion="on"] .ld-frame {
   position: absolute;
@@ -327,10 +726,13 @@
 }
 @media (max-width: 1180px) and (min-width: 901px) {
   .ld-seasons[data-motion="on"] .ld-book {
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.15fr);
   }
   .ld-seasons[data-motion="on"] .ld-page {
     padding: 16px 16px;
+  }
+  .ld-seasons[data-motion="on"] .ld-pick {
+    padding-inline: 8px;
   }
   .ld-seasons[data-motion="on"] .ld-ledger-row .lg-margin {
     display: none;
@@ -354,6 +756,17 @@
   }
   .ld-captions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+  }
+  .ld-caption + .ld-caption {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .ld-beats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
   }
   .ld-seasons-head {
     flex-direction: column;
@@ -377,7 +790,7 @@
     gap: 8px;
   }
   .ld-seasons[data-motion="on"] .ld-captions {
-    min-height: 210px;
+    min-height: 270px;
   }
   .ld-seasons[data-motion="on"] .ld-page {
     padding: 12px 16px;
@@ -396,6 +809,22 @@
 @media (max-width: 560px) {
   .ld-captions {
     grid-template-columns: 1fr;
+  }
+  .ld-page {
+    padding: 18px 16px;
+  }
+  .ld-beats {
+    display: grid;
+  }
+  .ld-old-head,
+  .ld-old-row {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1fr);
+  }
+  .ld-look-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ld-look-no {
+    display: none;
   }
   /* On a phone the framed queue shows its first five rows, so the frame and its caption fit one screen. */
   .ld-frame .ldm-rows li:nth-child(n + 6) {

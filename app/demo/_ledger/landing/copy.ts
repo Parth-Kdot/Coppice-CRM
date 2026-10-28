@@ -73,6 +73,7 @@ export const SEASONS = {
       title: "Import last year's sheet",
       who: "Owner or Officer",
       body: "Export your spreadsheet as a CSV and upload it, up to 2,000 rows. Point each column at the right field, then choose, group by group, whether to skip or import look-alike companies.",
+      beats: ["Read 42 rows", "Map the columns", "Decide on look-alikes"],
     },
     {
       season: "Winter",
@@ -80,6 +81,7 @@ export const SEASONS = {
       title: "Claim a company before you contact it",
       who: "Officer",
       body: "Press Claim on any company nobody else holds. It is yours for 14 days unless your chair changed that, and everyone else sees your name and the date the claim ends.",
+      beats: ["Find a company nobody holds", "Press Claim", "A second officer is held off"],
     },
     {
       season: "Spring",
@@ -87,6 +89,7 @@ export const SEASONS = {
       title: "Send from your inbox, then log it",
       who: "Officer",
       body: "Record the channel, a note and a follow-up date, which starts at 7 days out. Saving the entry renews your claim. On the follow-up date the company is back in your queue, most overdue first.",
+      beats: ["Fill in the entry", "Save it to the ledger", "Follow up when it is due"],
     },
     {
       season: "Summer",
@@ -94,13 +97,69 @@ export const SEASONS = {
       title: "The next board inherits the story",
       who: "Owner and Officer",
       body: "When officers graduate, the workspace stays. The incoming chair opens any company, reads every entry, note and stage change in order, claims it, and picks up from there.",
+      beats: ["Close the board year", "Pass the chair on", "Leave the history in place"],
     },
   ],
   queue: {
     title: "This is the first page every officer opens",
     body: "The companies that are due, most overdue first.",
   },
-  imported: { title: "Imported from the sheet", body: "42 companies read. 2 groups of look-alike names are waiting for a person to decide." },
+  // The right page of the book, one pane per step. Autumn: the old sheet, its columns and a look-alike pair.
+  sheet: {
+    title: "Last year's sheet",
+    headers: ["Company", "Contact", "Follow-up"],
+    // What each header fills in the app, read out for screen readers beside the tick.
+    mapped: ["Company name", "Contact name", "Notes"],
+    rows: [
+      ["Kestrel Aerospace", "Dana", "Oct 9"],
+      ["Birchwood Foods", "Marcus", "Oct 12"],
+      ["Ridgeline Energy", "Ines", "Nov 2"],
+    ],
+    more: "39 more rows",
+  },
+  lookalike: {
+    title: "Same company?",
+    rows: [
+      { row: "Row 12", name: "Acme Corp", pick: "Import" },
+      { row: "Row 140", name: "acme corp", pick: "Skip" },
+    ],
+    choices: ["Import", "Skip"],
+  },
+  imported: { title: "Imported from the sheet", body: "Imported 41 of 42 rows. 1 look-alike skipped, nothing merged." },
+  // Winter: the claim ticket for Kestrel Aerospace, then the second officer's attempt.
+  claim: {
+    title: "Claim ticket",
+    company: "Kestrel Aerospace",
+    free: "Not claimed.",
+    mine: "You hold this until Nov 11.",
+    button: "Claim",
+    chip: "Yours until Nov 11",
+    attempt: "Dev pressed Claim at 9:02",
+    refusal: "Held by Maya until Nov 11",
+  },
+  // Spring: a fast log entry, the ledger row it becomes, and the company coming back on its date.
+  log: {
+    title: "New entry",
+    channels: ["Email", "Call", "In person", "LinkedIn"],
+    channelPicked: 0,
+    note: "Sent the intro deck. Asked for a call.",
+    followLabel: "Follow up in",
+    follows: ["3 days", "7 days", "14 days"],
+    followPicked: 1,
+    save: "Log outreach",
+    saved: "Logged.",
+  },
+  due: {
+    title: "Back in the queue",
+    company: "Kestrel Aerospace",
+    before: "Due Nov 4",
+    after: "Due today",
+    stageBefore: "Contacted",
+    stageAfter: "Replied",
+  },
+  kept: "Kept on file",
+  // Summer: the chair changes, and every entry above the double rule stays.
+  chair: { old: "Chair 2026-27: Maya", next: "Chair 2027-28: Sam" },
   rows: [
     { who: "Maya", what: "Email, Kestrel Aerospace", when: "Oct 28" },
     { who: "Maya", what: "Follow-up, Kestrel Aerospace", when: "Nov 4" },
@@ -114,6 +173,7 @@ export const SEASONS = {
     { name: "Ridgeline Energy", note: "", mine: false },
   ],
   labels: ["Kestrel Aerospace", "Birchwood Foods", "Ridgeline Energy", "Tern Optics", "Northfield Bank"],
+  freeChip: "Claim",
 };
 
 export const FEATURES = {
