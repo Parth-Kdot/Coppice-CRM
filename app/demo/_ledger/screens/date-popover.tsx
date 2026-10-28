@@ -67,6 +67,11 @@ export function CalendarPopover({
     return weeks;
   }, [lead, total, y, m]);
 
+  // Bring the whole calendar into view when it opens inside a panel that scrolls.
+  useEffect(() => {
+    root.current?.scrollIntoView({ block: "nearest" });
+  }, []);
+
   // Put focus on the day that is current, once the buttons for its month exist.
   useEffect(() => {
     if (moved.current) days.current.get(focus)?.focus();

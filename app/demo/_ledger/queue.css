@@ -816,17 +816,27 @@
     padding-top: 14px;
     border-top: 1px solid var(--rule);
   }
+  .lg-focus .lg-empty {
+    justify-content: center;
+    padding: 56px 0 40px;
+  }
   .lg-focus-keys {
     justify-content: center;
     margin-top: 14px;
   }
 
-  /* ---------- A narrower table: the note goes first, then the stage label ---------- */
+  /* ---------- A narrower table: the columns tighten, the note goes first, then the stage label ---------- */
   @container queue (max-width: 939px) {
     .lg-qhead,
     .lg-qgrid {
-      grid-template-columns: 54px 144px minmax(0, 1fr) 140px 180px 34px;
+      grid-template-columns: 54px 140px minmax(112px, 1fr) 124px minmax(96px, 1.1fr) 176px 32px;
       column-gap: 8px;
+    }
+  }
+  @container queue (max-width: 839px) {
+    .lg-qhead,
+    .lg-qgrid {
+      grid-template-columns: 54px 140px minmax(0, 1fr) 124px 176px 32px;
     }
     .lg-qnote {
       display: none;
