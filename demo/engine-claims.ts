@@ -71,6 +71,8 @@ export type OutreachInput = {
   note?: string | null;
   // A calendar day like "2026-11-04", from today to a year out.
   followUpOn?: string;
+  // The calendar day the message went out, from a year ago up to today. Left out means now.
+  sentOn?: string;
   // The template this message was based on, for the per-template stats.
   templateId?: string | null;
   // Set by "I sent it" under an AI draft.
@@ -98,6 +100,13 @@ export function logOutreach(state: DemoState, ws: string, companyId: string, inp
   if (followUpOn < today || followUpOn > addDaysYmd(today, MAX_FOLLOW_UP_DAYS)) {
     return refuse(state, "Pick a follow-up date from today to a year from now.");
   }
+
+  const sentOn = input.sentOn ?? today;
+  if (!isYmd(sentOn) || sentOn > today || sentOn < addDaysYmd(today, -MAX_FOLLOW_UP_DAYS)) {
+    return refuse(state, "Pick a date from the last year up to today.");
+  }
+  // Today is stamped with the clock; an earlier day is noon that day, so it sorts the way it reads.
+  const sentAt = sentOn === today ? state.now : zonedToIso(sentOn, 12);
 
   const templateId = input.templateId ?? null;
   if (templateId && !state.templates.some((t) => t.id === templateId && t.workspaceId === ws)) {
@@ -130,7 +139,7 @@ export function logOutreach(state: DemoState, ws: string, companyId: string, inp
     senderId: state.meId,
     templateId,
     channel: channel.data,
-    sentAt: state.now,
+    sentAt,
     note: note.data,
     gotReply: false,
     aiDraftId,
@@ -141,7 +150,7 @@ export function logOutreach(state: DemoState, ws: string, companyId: string, inp
   };
   next = mapCompany(next, companyId, (c) => ({
     ...c,
-    lastContactedAt: state.now,
+    lastContactedAt: company.lastContactedAt && Date.parse(company.lastContactedAt) > Date.parse(sentAt) ? company.lastContactedAt : sentAt,
     nextFollowUpAt: zonedToIso(followUpOn),
     claimExpiresAt: addDaysToIso(state.now, checked.workspace.claimWindowDays),
     stage: toStage,
