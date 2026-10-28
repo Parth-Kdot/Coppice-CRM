@@ -6,7 +6,7 @@ import { useId } from "react";
 // box, and pressing the chosen one again clears it. This replaces a native datalist.
 export function IndustryField({ value, onChange, suggestions, label = "Industry" }: { value: string; onChange: (value: string) => void; suggestions: string[]; label?: string }) {
   const id = useId();
-  const shown = suggestions.slice(0, 8);
+  const shown = suggestions.slice(0, 6);
   return (
     <div>
       <label className="lg-label" htmlFor={`${id}-industry`}>
