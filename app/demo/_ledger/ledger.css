@@ -545,7 +545,9 @@
     z-index: 60;
     top: calc(100% + 4px);
     left: 0;
-    min-width: 250px;
+    min-width: 300px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
     padding: 4px 0;
     list-style: none;
     background: var(--sheet);
@@ -589,8 +591,13 @@
     align-self: center;
     color: var(--moss);
   }
+  .lg-lmenu-opt > span:not(.lg-lmenu-tick):not(.lg-lmenu-hint) {
+    white-space: nowrap;
+  }
   .lg-lmenu-hint {
     margin-left: auto;
+    padding-left: 12px;
+    white-space: nowrap;
     font-size: 0.85rem;
     font-weight: 400;
   }

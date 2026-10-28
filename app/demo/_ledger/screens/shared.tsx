@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDemoActions, useDemoState } from "@/demo/store";
-import type { ClaimView } from "@/demo/selectors";
-import { ClaimIcon, SproutIcon, UserIcon, WarningIcon } from "../icons";
+import { SproutIcon, WarningIcon } from "../icons";
 import { useLedgerTools, useNotify } from "../providers";
 
 // Small pieces every Ledger screen shares: a number that crossfades, a sprout for empty states,
 // "ink settle" flashes for updated rows, the claim action (with the shake and the margin note when a
-// claim is refused), and the claim badge.
+// claim is refused).
 
 export function Count({ value, className = "" }: { value: number | string; className?: string }) {
   return (
@@ -117,26 +116,6 @@ export function useClaimAction(ws: string, onClaimed?: (companyId: string) => vo
   );
 
   return { claim, errors, dropping, shaking, dismiss };
-}
-
-export function ClaimBadge({ claim, short = false }: { claim: ClaimView; short?: boolean }) {
-  if (claim.state === "mine") {
-    return (
-      <span className="lg-badge lg-badge-mine">
-        <ClaimIcon size={14} />
-        {claim.label}
-      </span>
-    );
-  }
-  if (claim.state === "theirs") {
-    return (
-      <span className="lg-badge lg-badge-theirs">
-        <UserIcon size={14} />
-        {short ? `Held by ${claim.holderName}` : claim.label}
-      </span>
-    );
-  }
-  return null;
 }
 
 // A message under the control that caused it: rust, announced to screen readers, never color alone.
