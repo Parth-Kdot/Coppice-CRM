@@ -966,31 +966,67 @@
   }
 
   /* Import */
-  .lg-stepper {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 18px 0 0;
+  .lg-entries {
     list-style: none;
-  }
-  .lg-step-tab {
-    padding: 4px 14px;
+    margin: 18px 0 0;
+    padding: 0 28px;
     border: 1px solid var(--edge);
-    border-bottom: 3px solid var(--gilt);
-    border-radius: 8px 8px 2px 2px;
-    background: var(--paper);
-    color: var(--ink-2);
-    font-size: 0.92rem;
-    font-weight: 500;
+    box-shadow: 0 24px 34px -30px var(--shade);
   }
-  .lg-step-tab[aria-current="step"] {
-    background: var(--moss);
+  .lg-entry {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-entry:last-child {
+    border-bottom: 0;
+  }
+  .lg-entry-margin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-top: 20px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-entry-no {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1.5px solid var(--ink-2);
+    border-radius: 999px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .lg-entry[data-state="active"] .lg-entry-no {
     border-color: var(--moss);
-    border-bottom-color: var(--gilt);
+    background: var(--moss);
     color: var(--paper);
   }
-  .lg-step-tab[data-done] {
+  .lg-entry[data-state="done"] .lg-entry-no {
+    border-color: var(--moss);
     color: var(--moss);
+  }
+  .lg-entry-state {
+    color: var(--ink-2);
+    font-size: 0.82rem;
+  }
+  .lg-entry-body {
+    min-width: 0;
+    padding: 16px 0 24px 24px;
+  }
+  .lg-entry-h {
+    margin-bottom: 10px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.28rem;
+    line-height: 1.2;
+  }
+  .lg-entry[data-state="later"] .lg-entry-h {
+    color: var(--ink-2);
   }
   .lg-mapgrid {
     display: grid;
@@ -1049,36 +1085,63 @@
     margin-top: 24px;
   }
   .lg-group {
-    position: relative;
-    margin-top: 14px;
-    padding-top: 18px;
+    margin-top: 16px;
+    padding: 12px 14px 14px;
+    border: 1px solid var(--edge);
+    border-left: 3px solid var(--ink-2);
+    background: var(--paper-2);
   }
-  .lg-group-clip {
-    position: absolute;
-    top: -8px;
-    left: 16px;
-    color: var(--ink-2);
-    transform: rotate(-12deg);
+  .lg-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin-bottom: 10px;
   }
-  .lg-existing {
-    list-style: none;
-    margin-top: 6px;
-    font-size: 0.92rem;
+  .lg-group-head svg {
+    align-self: center;
+    flex: none;
   }
-  .lg-rowslips {
+  .lg-group-q {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.1rem;
+  }
+  .lg-group-cols {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 10px;
-    margin-top: 10px;
   }
-  .lg-rowslip {
-    padding: 10px 14px;
+  .lg-dupcard {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px 14px 12px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
   }
-  .lg-rowslip:nth-child(even) {
-    margin-left: 14px;
+  .lg-dupcard-have {
+    border-style: dashed;
+    border-color: var(--ink-2);
   }
-  .lg-rowslip legend {
-    padding: 0 6px;
+  .lg-dupname {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .lg-dupsite {
+    margin-bottom: 8px;
     color: var(--ink-2);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+  }
+  .lg-dupcard[data-skipped] .lg-nametext {
+    color: var(--ink-2);
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+  }
+  .lg-dupcard .lg-chipset {
+    margin-top: auto;
   }
   .lg-importresult {
     display: flex;
@@ -1262,6 +1325,21 @@
     }
     .lg-ipage {
       padding: 14px 14px 20px;
+    }
+    .lg-entries {
+      padding: 0 12px;
+    }
+    .lg-entries .lg-table {
+      min-width: 680px;
+    }
+    .lg-entry {
+      grid-template-columns: 48px minmax(0, 1fr);
+    }
+    .lg-entry-body {
+      padding-left: 14px;
+    }
+    .lg-entry-state {
+      font-size: 0.74rem;
     }
     .lg-fact > .lg-margin,
     .lg-member > .lg-margin {

@@ -15,6 +15,8 @@ export function LedgerMenu<T extends string>({
   options,
   onChange,
   align = "left",
+  block = false,
+  hideLabel = false,
 }: {
   // "Sort", "Stage": printed before the current choice and used as the listbox name.
   label: string;
@@ -22,6 +24,10 @@ export function LedgerMenu<T extends string>({
   options: readonly MenuOption<T>[];
   onChange: (value: T) => void;
   align?: "left" | "right";
+  // Fill the width of its cell, with the current choice at the left and the chevron at the right.
+  block?: boolean;
+  // Keep the label for screen readers only, when a visible label already sits above the button.
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -90,7 +96,7 @@ export function LedgerMenu<T extends string>({
   };
 
   return (
-    <div className="lg-lmenu" ref={wrap}>
+    <div className={`lg-lmenu ${block ? "lg-lmenu-block" : ""}`} ref={wrap}>
       <button
         ref={button}
         type="button"
@@ -106,7 +112,7 @@ export function LedgerMenu<T extends string>({
           }
         }}
       >
-        <span className="lg-sc lg-muted">{label}</span>
+        <span className={hideLabel ? "lg-sr" : "lg-sc lg-muted"}>{label}</span>
         <span className="lg-lmenu-value">{current.label}</span>
         <ChevronDownIcon size={16} />
       </button>

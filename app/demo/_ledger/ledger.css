@@ -374,8 +374,9 @@
     font-weight: 500;
   }
   .lg-warn-box {
-    border: 1px solid #c9a24d;
-    background: #f7ecd2;
+    border: 1px solid var(--edge);
+    border-left: 3px solid var(--ink-2);
+    background: var(--paper-2);
     border-radius: 3px;
     padding: 12px 14px;
   }
@@ -539,6 +540,23 @@
   }
   .lg-lmenu-value {
     font-weight: 600;
+  }
+  .lg-lmenu-block {
+    display: block;
+  }
+  .lg-lmenu-block .lg-lmenu-btn {
+    width: 100%;
+  }
+  .lg-lmenu-block .lg-lmenu-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-lmenu-block .lg-lmenu-list {
+    min-width: 100%;
   }
   .lg-lmenu-list {
     position: absolute;
