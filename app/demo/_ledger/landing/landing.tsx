@@ -1,5 +1,6 @@
 import "../ledger.css";
 import "./landing.css";
+import "./mini.css";
 import { Example } from "./example";
 import { Features } from "./features";
 import { Final } from "./final";

@@ -60,7 +60,7 @@ html.lenis body {
   content: "";
   width: 28px;
   height: 1px;
-  background: var(--gilt);
+  background: var(--edge);
 }
 .ld-h1 {
   margin-top: 14px;
@@ -225,8 +225,7 @@ html.lenis body {
 /* ---------- Hero ---------- */
 .ld-hero {
   position: relative;
-  min-height: 100svh;
-  padding: 104px 0 48px;
+  padding: 96px 0 40px;
   overflow: hidden;
   background:
     repeating-linear-gradient(to bottom, transparent 0 39px, rgb(217 205 180 / 0.55) 39px 40px),
@@ -243,17 +242,29 @@ html.lenis body {
   border-right: 1px solid var(--rule);
   pointer-events: none;
 }
+/* Text on the left, the live queue on the right. */
 .ld-hero-grid {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
-  gap: 28px;
+  grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.26fr);
+  gap: clamp(28px, 3vw, 44px);
   align-items: center;
-  min-height: calc(100svh - 300px);
 }
-.ld-hero-art {
-  display: flex;
-  justify-content: flex-end;
+.ld-hero-copy {
+  min-width: 0;
+}
+.ld-hero-copy .ld-h1 {
+  font-size: clamp(2.9rem, 1.5rem + 3.2vw, 4.4rem);
+}
+.ld-hero-copy .ld-lede {
+  margin-top: 20px;
+  max-width: 31em;
+}
+.ld-hero-copy .ld-cta-row {
+  margin-top: 26px;
+}
+.ld-hero-demo {
+  min-width: 0;
 }
 .ld-stool {
   display: block;
@@ -262,7 +273,9 @@ html.lenis body {
   color: var(--moss);
 }
 .ld-hero-stool {
-  max-width: 560px;
+  width: 172px;
+  max-width: 100%;
+  margin: 0 0 4px -10px;
 }
 .ld-stool .lg-stem,
 .ld-stool .lg-stem-thin,
@@ -349,21 +362,23 @@ html.lenis body {
   font-weight: 600;
 }
 
+@media (max-width: 1180px) {
+  .ld-hero-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 28px;
+  }
+}
 @media (max-width: 900px) {
   .ld-hero {
     padding-top: 84px;
   }
   .ld-hero-grid {
     grid-template-columns: 1fr;
-    min-height: 0;
-    gap: 8px;
-  }
-  .ld-hero-art {
-    order: -1;
-    justify-content: center;
+    gap: 36px;
   }
   .ld-hero-stool {
-    max-width: 290px;
+    width: 116px;
+    margin-left: -6px;
   }
   .ld-strip {
     grid-template-columns: 1fr;
