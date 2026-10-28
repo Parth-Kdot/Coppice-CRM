@@ -397,7 +397,7 @@
   .lg-chead,
   .lg-crow {
     display: grid;
-    grid-template-columns: 62px minmax(170px, 1.3fr) 170px minmax(190px, 0.9fr) 172px 104px;
+    grid-template-columns: 62px minmax(150px, 1.3fr) 150px minmax(170px, 0.9fr) 160px 84px;
     column-gap: 10px;
     align-items: center;
   }
@@ -464,7 +464,7 @@
     grid-column: 2 / -1;
     margin: 4px 0 6px;
   }
-  @container companies (max-width: 960px) {
+  @container companies (max-width: 840px) {
     .lg-chead {
       display: none;
     }
