@@ -393,12 +393,6 @@
   margin-left: 1px;
   background: var(--ink);
   vertical-align: text-bottom;
-  animation: ldm-blink 1s steps(2, start) infinite;
-}
-@keyframes ldm-blink {
-  to {
-    visibility: hidden;
-  }
 }
 .ldm-pal-group {
   display: flex;
@@ -646,9 +640,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ldm-caret {
-    animation: none;
-  }
   .ldm-bar,
   .ldm-note,
   .ldm-keycaps kbd {
