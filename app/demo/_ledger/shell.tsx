@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { demoRoutes, matchDemoRoute, type DemoScreen } from "@/demo/routes";
-import { useDemoState, useIsMember, useWorkspace } from "@/demo/store";
+import { useDemoState, useIsMember, useMe, useWorkspace, useWorkspaceStats } from "@/demo/store";
 import { boardYear } from "./marks";
 import { BoardIcon, CompaniesIcon, FactsIcon, ImportIcon, QueueIcon, SettingsIcon } from "./icons";
 import { LogoMark } from "./logo";
@@ -33,6 +33,26 @@ const TABS: Tab[] = [
   { key: "facts", label: "Facts", href: (ws) => demoRoutes.facts(ws), icon: <FactsIcon />, active: ["facts"] },
   { key: "settings", label: "Settings", href: (ws) => demoRoutes.settings(ws), icon: <SettingsIcon />, active: ["settings"] },
 ];
+
+// The status line under the content: live counts from the store, in small caps with tabular figures.
+function StatusLine({ ws, claimWindowDays }: { ws: string; claimWindowDays: number }) {
+  const stats = useWorkspaceStats(ws);
+  const me = useMe(ws);
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return (
+    <footer className="lg-status" aria-label="Workspace status">
+      <p>
+        <span>{plural(stats.total, "company", "companies")}</span>
+        <span aria-hidden="true"> &middot; </span>
+        <span>{stats.overdue} overdue</span>
+        <span aria-hidden="true"> &middot; </span>
+        <span>claim window {plural(claimWindowDays, "day", "days")}</span>
+        <span aria-hidden="true"> &middot; </span>
+        <span>{me.roleLabel} view</span>
+      </p>
+    </footer>
+  );
+}
 
 export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNode }) {
   const isMember = useIsMember(ws);
@@ -100,6 +120,8 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
           <main id="main" tabIndex={-1} className="lg-main">
             {children}
           </main>
+
+          <StatusLine ws={ws} claimWindowDays={workspace.claimWindowDays} />
         </div>
       </div>
     </PaletteProvider>
