@@ -243,6 +243,11 @@ html.lenis body {
   pointer-events: none;
 }
 /* Text on the left, the live queue on the right. */
+@media (max-width: 640px) {
+  .ld-hero::before {
+    display: none;
+  }
+}
 .ld-hero-grid {
   position: relative;
   display: grid;
