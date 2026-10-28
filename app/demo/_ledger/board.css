@@ -59,7 +59,7 @@
   }
   .lg-bsearch {
     position: relative;
-    flex: 0 1 300px;
+    flex: 0 1 240px;
     min-width: 180px;
   }
   .lg-bsearch svg {
@@ -90,6 +90,9 @@
     background: var(--moss);
     border-color: var(--moss);
     color: var(--paper);
+  }
+  .lg-btop-status:empty {
+    display: none;
   }
   .lg-btop .lg-loading {
     min-width: 0;
@@ -632,7 +635,7 @@
     .lg-btop .lg-lmenu-btn .lg-sc {
       display: none;
     }
-    .lg-btop .lg-loading {
+    .lg-btop-status {
       display: none;
     }
     .lg-btools-end {

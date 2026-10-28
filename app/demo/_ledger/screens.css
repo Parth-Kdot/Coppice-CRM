@@ -283,124 +283,6 @@
     min-width: 80px;
     font-size: 0.9rem;
   }
-  .lg-cols {
-    display: flex;
-    align-items: stretch;
-    overflow-x: auto;
-    border: 1px solid var(--edge);
-    background: var(--paper-2);
-    scroll-snap-type: x proximity;
-  }
-  .lg-col {
-    flex: 1 1 232px;
-    min-width: 232px;
-    border-left: 1px solid var(--edge);
-    scroll-snap-align: start;
-    padding-bottom: 10px;
-  }
-  .lg-col:first-child {
-    border-left: 0;
-  }
-  .lg-col[data-open="false"] {
-    flex: 0 0 176px;
-    min-width: 176px;
-    background: repeating-linear-gradient(to bottom, transparent 0 23px, rgb(217 205 180 / 0.5) 23px 24px);
-  }
-  .lg-colhead {
-    padding: 12px 14px 10px;
-    border-bottom: 3px double var(--ink-2);
-    background: var(--paper-2);
-  }
-  .lg-coltoggle {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-    color: var(--ink);
-    text-decoration: none;
-  }
-  .lg-coltoggle svg {
-    align-self: center;
-  }
-  a.lg-coltoggle:hover .lg-colname {
-    text-decoration: underline;
-    text-decoration-color: var(--rule);
-    text-underline-offset: 4px;
-  }
-  .lg-colname {
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 1.2rem;
-    line-height: 1.15;
-  }
-  .lg-colcount {
-    color: var(--ink-2);
-    font-variant-numeric: tabular-nums;
-    font-size: 0.95rem;
-  }
-  .lg-colempty {
-    padding: 14px;
-    color: var(--ink-2);
-    font-size: 0.92rem;
-  }
-  .lg-colmore {
-    padding: 4px 14px 0;
-  }
-  .lg-cards {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 10px;
-  }
-  .lg-card {
-    position: relative;
-    padding: 10px 12px 12px;
-    background: var(--sheet);
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    box-shadow:
-      0 1px 0 var(--rule),
-      0 8px 14px -12px var(--shade);
-  }
-  .lg-card[data-stage="DECLINED"] .lg-cardname a {
-    color: var(--ink-2);
-  }
-  .lg-cardname {
-    padding-right: 22px;
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 1.08rem;
-    line-height: 1.22;
-  }
-  .lg-cardname a {
-    color: var(--ink);
-    text-decoration: none;
-  }
-  .lg-cardname a:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--moss);
-    text-underline-offset: 3px;
-  }
-  .lg-cardind {
-    margin-top: 1px;
-    color: var(--ink-2);
-    font-size: 0.86rem;
-  }
-  .lg-cardfollow {
-    margin-top: 8px;
-    font-size: 0.86rem;
-  }
-  .lg-cardfollow span {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .lg-cardclaim {
-    margin-top: 8px;
-  }
-  .lg-cardnote {
-    margin: 8px 0 0;
-  }
   .lg-stage {
     margin-top: 10px;
     padding-top: 10px;
@@ -418,9 +300,6 @@
     padding: 4px 22px 4px 8px;
     background-position: right 7px center;
     font-size: 0.82rem;
-  }
-  .lg-coltoggle {
-    white-space: nowrap;
   }
   .lg-stage-compact .lg-btn {
     min-height: 32px;
@@ -447,9 +326,6 @@
   .lg-reply-opt:has(input:checked) {
     border-color: var(--moss);
     background: var(--moss-wash);
-  }
-  .lg-boardsect {
-    margin-top: 40px;
   }
   .lg-pairs,
   .lg-archived {
@@ -497,9 +373,6 @@
     border-bottom: 1px solid var(--rule);
   }
   @media (max-width: 760px) {
-    .lg-col {
-      flex: 0 0 250px;
-    }
     .lg-pair-slips {
       grid-template-columns: 1fr;
     }
@@ -566,10 +439,6 @@
   .lg-stagechip[data-stage="DECLINED"] {
     border-style: dashed;
     color: var(--ink-2);
-  }
-  .lg-colglyph {
-    align-self: center;
-    flex: none;
   }
   .lg-archivedbanner {
     display: flex;

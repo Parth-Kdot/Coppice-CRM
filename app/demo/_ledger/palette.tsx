@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -14,8 +14,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { demoRoutes } from "@/demo/routes";
-import { useDemoActions, useDemoState, useMe } from "@/demo/store";
+import { demoRoutes, matchDemoRoute } from "@/demo/routes";
+import { useBoardFilters, useDemoActions, useDemoState, useMe } from "@/demo/store";
 import { STAGE_LABELS } from "@/demo/types";
 import { useResetDemo } from "./demo-tools";
 import { BoardIcon, ChevronRightIcon, ClaimIcon, LogIcon, ResetIcon, SearchIcon, StageGlyph, UserIcon } from "./icons";
@@ -138,7 +138,11 @@ function CommandPalette({ ws, onClose }: { ws: string; onClose: () => void }) {
   const reset = useResetDemo(ws);
   const { claim } = useClaimAction(ws);
   const shortcut = useShortcutLabel();
-  const [query, setQuery] = useState("");
+  // On the board the palette and the board's search box share one query: it opens with what the box
+  // holds, and "Filter the board" writes what was typed back to the box.
+  const onBoard = matchDemoRoute(usePathname())?.screen === "board";
+  const boardFilters = useBoardFilters();
+  const [query, setQuery] = useState(onBoard ? boardFilters.q : "");
   const [active, setActive] = useState(0);
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -159,7 +163,17 @@ function CommandPalette({ ws, onClose }: { ws: string; onClose: () => void }) {
     [ws],
   );
 
-  const groups = useMemo(() => searchPalette(state, ws, query, routes, me.role), [state, ws, query, routes, me.role]);
+  const groups = useMemo(() => {
+    const found = searchPalette(state, ws, query, routes, me.role);
+    const text = query.trim().slice(0, 100);
+    if (!onBoard || (!text && !boardFilters.q)) return found;
+    const item: PaletteItem = text
+      ? { kind: "action", key: "board-filter", label: `Filter the board for "${text}"`, hint: "Board search", target: { type: "go", href: demoRoutes.board(ws, { ...boardFilters, q: text, all: null }) } }
+      : { kind: "action", key: "board-filter-clear", label: `Clear the board search "${boardFilters.q}"`, hint: "Board search", target: { type: "go", href: demoRoutes.board(ws, { ...boardFilters, q: "", all: null }) } };
+    const actions = found.find((g) => g.id === "actions");
+    if (!actions) return [...found, { id: "actions" as const, title: "Actions", items: [item] }];
+    return found.map((g) => (g === actions ? { ...g, items: [item, ...g.items] } : g));
+  }, [state, ws, query, routes, me.role, onBoard, boardFilters]);
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const optionId = (index: number) => `${id}-opt-${index}`;
   const current = Math.min(active, Math.max(0, flat.length - 1));

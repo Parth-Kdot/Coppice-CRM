@@ -214,9 +214,9 @@ export function BoardScreen({ ws }: { ws: string }) {
             <span className="lg-sr">Show every stage again</span>
           </button>
         )}
-        <p className="lg-muted lg-loading" role="status" aria-live="polite">
-          {loading ? "Loading..." : ""}
-        </p>
+        <div role="status" aria-live="polite" className="lg-btop-status">
+          {loading && <p className="lg-muted lg-loading">Loading...</p>}
+        </div>
         <div className="lg-btools-end">
           <button type="button" className="lg-toggle" aria-haspopup="dialog" aria-expanded={urlFilters.dupes} onClick={() => go({ dupes: !urlFilters.dupes, archived: false })}>
             <DuplicateIcon size={16} />
