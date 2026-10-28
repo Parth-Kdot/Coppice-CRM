@@ -9,6 +9,7 @@ import { useDemoActions, useDemoState } from "@/demo/store";
 import { DRAFT_KIND_LABELS, FINDING_LABELS, type Draft, type DraftKind, type Finding } from "@/demo/types";
 import { DRAFT_NOTE_MAX } from "@/demo/validation";
 import { AiDraftIcon, CopyLinkIcon, ExternalIcon, WarningIcon } from "../icons";
+import { Tick } from "../marks";
 import { ChipGroup, type ChipOption } from "./chips";
 import { LedgerMenu, type MenuOption } from "./ledger-menu";
 import { LogOutreachForm } from "./log-form";
@@ -18,6 +19,9 @@ import { ErrorLine } from "./shared";
 // underlines what no verified fact supports. The app never sends email: the letter opens in the
 // officer's own mail. While a draft is on its way a quill writes a wavy rule across the area, the
 // one loop allowed in the app, and only while waiting.
+
+// The one headline a clean AI check gets; it earns a check mark instead of the warning sign.
+const CLEAN_HEADLINE = "Claim check: nothing unsupported found";
 
 function QuillWait({ label }: { label: string }) {
   return (
@@ -85,7 +89,7 @@ function DraftCard({ ws, detail, draft, index }: { ws: string; detail: CompanyDe
 
   let headline: string;
   if (findings.length > 0) headline = `Claim check: ${findings.length} thing${findings.length === 1 ? "" : "s"} to look at`;
-  else if (fresh && check && !check.error) headline = "Claim check: nothing unsupported found";
+  else if (fresh && check && !check.error) headline = CLEAN_HEADLINE;
   else headline = "Claim check: the rules found nothing";
 
   let status: string | null = null;
@@ -159,7 +163,7 @@ function DraftCard({ ws, detail, draft, index }: { ws: string; detail: CompanyDe
 
       <div className="lg-claimcheck" aria-live="polite">
         <p className="lg-cc-head">
-          <WarningIcon size={18} />
+          {headline === CLEAN_HEADLINE ? <Tick size={18} /> : <WarningIcon size={18} />}
           {headline}
         </p>
         {findings.length > 0 && (

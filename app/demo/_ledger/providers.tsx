@@ -109,7 +109,10 @@ export function LedgerProviders({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const dialog = replyRef.current;
-    if (asking && dialog && !dialog.open) dialog.showModal();
+    if (!asking || !dialog) return;
+    if (!dialog.open) dialog.showModal();
+    // Start on the chosen answer ("None of these"), not on whichever radio comes first.
+    dialog.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.focus();
   }, [asking]);
 
   const perform = useCallback(
@@ -265,7 +268,7 @@ export function LedgerProviders({ children }: { children: ReactNode }) {
                       </div>
                     </fieldset>
                     <div className="mt-5 flex justify-end gap-2">
-                      <button type="button" className="lg-btn" onClick={() => finishAsk(false)} autoFocus>
+                      <button type="button" className="lg-btn" onClick={() => finishAsk(false)}>
                         Cancel
                       </button>
                       <button type="submit" className="lg-btn lg-btn-primary">
