@@ -902,8 +902,8 @@
       grid-area: n;
     }
     .lg-qopen {
-      min-height: 32px;
-      padding: 6px 4px;
+      min-height: 30px;
+      padding: 4px 4px;
     }
     .lg-qstage {
       grid-area: s;
