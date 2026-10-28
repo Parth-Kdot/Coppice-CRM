@@ -134,6 +134,8 @@
     width: 300px;
     max-width: calc(100vw - 24px);
     padding: 14px;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
     background: var(--sheet);
     border: 1px solid var(--edge);
     border-radius: 3px;

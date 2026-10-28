@@ -8,6 +8,7 @@ import { useDemoActions, useDemoState, useWorkspaceList } from "@/demo/store";
 import { boardYear, Ribbon } from "../marks";
 import { LogoMark } from "../logo";
 import { useNotify } from "../providers";
+import { UserMenu } from "../user-menu";
 import { Empty, ErrorLine } from "./shared";
 
 // The workspace list: each workspace is a bound volume on a shelf. Click a spine to open its queue.
@@ -67,11 +68,8 @@ export function WorkspacesScreen() {
           <span className="font-display text-[1.3rem] font-semibold tracking-[0.02em] text-ink">Coppice</span>
         </span>
         <div className="lg-actions">
-          <p className="lg-proto">Prototype</p>
           <p className="lg-wsme">{list.me.name}</p>
-          <button type="button" className="lg-btn lg-btn-sm" onClick={signOut}>
-            Sign out
-          </button>
+          <UserMenu ws={null} placement="header" />
         </div>
       </header>
       <div className="lg-double-rule lg-wsrule" />
@@ -165,24 +163,6 @@ export function WorkspacesScreen() {
           </section>
         )}
 
-        <details className="lg-more lg-wstools">
-          <summary>Prototype tools</summary>
-          <div className="lg-actions mt-2">
-            <button type="button" className="lg-btn lg-btn-sm" aria-pressed={!state.canCreateWorkspace} onClick={() => actions.setFlags({ canCreateWorkspace: !state.canCreateWorkspace })}>
-              {state.canCreateWorkspace ? "Hide the create form" : "Show the create form"}
-            </button>
-            <button
-              type="button"
-              className="lg-btn lg-btn-sm"
-              onClick={() => {
-                actions.resetDemo();
-                notify("The demo is back to Oct 28, 2026.");
-              }}
-            >
-              Reset demo
-            </button>
-          </div>
-        </details>
       </main>
     </div>
   );

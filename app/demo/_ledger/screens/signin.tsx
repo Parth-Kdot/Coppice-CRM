@@ -33,7 +33,6 @@ export function SignInScreen() {
       </a>
       <main id="main" className="lg-auth-page lg-page-enter">
         <Ribbon size="lg" className="lg-auth-ribbon" />
-        <p className="lg-proto lg-auth-proto">Prototype</p>
         <Stool shoots={SHOOTS_THREE} className="lg-auth-stool" />
         <h1 className="lg-auth-title">
           <Wordmark />

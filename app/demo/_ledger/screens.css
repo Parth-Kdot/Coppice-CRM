@@ -970,14 +970,6 @@
   .lg-readonly dt {
     color: var(--ink-2);
   }
-  .lg-proto-tool {
-    margin-top: 14px;
-    color: var(--ink-2);
-    font-size: 0.85rem;
-  }
-  .lg-proto-tool button {
-    cursor: pointer;
-  }
   .lg-entries {
     list-style: none;
   }
@@ -1171,11 +1163,6 @@
   .lg-auth-ribbon {
     right: 34px;
   }
-  .lg-auth-proto {
-    position: absolute;
-    left: 14px;
-    top: 12px;
-  }
   .lg-auth-stool {
     display: block;
     width: 230px;
@@ -1349,10 +1336,6 @@
   }
   .lg-createform > div {
     flex: 1;
-  }
-  .lg-wstools {
-    max-width: 660px;
-    margin-top: 56px;
   }
   @media (max-width: 640px) {
     .lg-shelf {

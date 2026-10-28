@@ -524,19 +524,6 @@ function DetailsBlock({ ws, detail }: { ws: string; detail: CompanyDetail }) {
           </div>
         )}
       </form>
-      <p className="lg-proto-tool">
-        Prototype tool:{" "}
-        <button
-          type="button"
-          className="lg-link"
-          onClick={() => {
-            actions.simulateTeammateEdit(ws, c.id, "notes", "Updated by a teammate: they asked for the 2026 packet.");
-            notify("A teammate edited the notes. Save your own change to see the conflict.");
-          }}
-        >
-          a teammate edits the notes
-        </button>
-      </p>
     </Block>
   );
 }
