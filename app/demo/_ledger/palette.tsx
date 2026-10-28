@@ -51,9 +51,46 @@ const isTyping = (target: EventTarget | null) => {
   return Boolean(el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable));
 };
 
+// After the palette sends you to another page, focus goes to that page's heading (or the main region), so
+// keyboard and screen reader users start at the top of what they asked for.
+function focusPageStart() {
+  const main = document.getElementById("main");
+  const heading = main?.querySelector<HTMLElement>("h1");
+  const target = heading ?? main;
+  if (!target) return;
+  if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+}
+
 export function PaletteProvider({ ws, children }: { ws: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const pendingPath = useRef<string | null>(null);
+
+  // Runs when the route changes after the palette asked for a navigation.
+  useEffect(() => {
+    if (pendingPath.current === null || pendingPath.current !== pathname) return;
+    pendingPath.current = null;
+    const frame = requestAnimationFrame(focusPageStart);
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
+
+  const navigate = useCallback(
+    (href: string) => {
+      const path = href.split(/[?#]/)[0];
+      opener.current = null;
+      if (path === window.location.pathname) {
+        pendingPath.current = null;
+        requestAnimationFrame(focusPageStart);
+      } else {
+        pendingPath.current = path;
+      }
+      router.push(href);
+    },
+    [router],
+  );
 
   const show = useCallback(() => {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -88,7 +125,7 @@ export function PaletteProvider({ ws, children }: { ws: string; children: ReactN
   return (
     <PaletteContext.Provider value={api}>
       {children}
-      {open && <CommandPalette ws={ws} onClose={close} />}
+      {open && <CommandPalette ws={ws} onClose={close} onNavigate={navigate} />}
     </PaletteContext.Provider>
   );
 }
@@ -128,11 +165,10 @@ function ItemIcon({ item }: { item: PaletteItem }) {
   }
 }
 
-function CommandPalette({ ws, onClose }: { ws: string; onClose: () => void }) {
+function CommandPalette({ ws, onClose, onNavigate }: { ws: string; onClose: () => void; onNavigate: (href: string) => void }) {
   const state = useDemoState();
   const actions = useDemoActions();
   const me = useMe(ws);
-  const router = useRouter();
   const notify = useNotify();
   const moveStage = useMoveStage();
   const reset = useResetDemo(ws);
@@ -191,16 +227,16 @@ function CommandPalette({ ws, onClose }: { ws: string; onClose: () => void }) {
   const run = (item: PaletteItem) => {
     onClose();
     if (item.kind !== "action") {
-      router.push(item.href);
+      onNavigate(item.href);
       return;
     }
     const target = item.target;
     switch (target.type) {
       case "go":
-        router.push(target.href);
+        onNavigate(target.href);
         break;
       case "log":
-        router.push(routes.company(target.companyId, "logOutreach"));
+        onNavigate(routes.company(target.companyId, "logOutreach"));
         break;
       case "claim": {
         const result = claim(target.companyId, target.name);
@@ -221,6 +257,21 @@ function CommandPalette({ ws, onClose }: { ws: string; onClose: () => void }) {
   };
 
   const onKey = (event: KeyboardEvent) => {
+    // Keep Tab inside the card: the search field and the close button are the only stops.
+    if (event.key === "Tab") {
+      const stops = Array.from(dialog.current?.querySelectorAll<HTMLElement>("input, button:not([disabled])") ?? []);
+      if (stops.length === 0) return;
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (event.target !== input.current) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -288,7 +339,7 @@ function CommandPalette({ ws, onClose }: { ws: string; onClose: () => void }) {
           </button>
         </div>
 
-        <div id={`${id}-list`} ref={list} role="listbox" aria-label="Results" className="lg-pal-list">
+        <div id={`${id}-list`} ref={list} role="listbox" aria-label="Results" className="lg-pal-list" tabIndex={-1}>
           {groups.map((group, g) => (
             <div key={group.id} role="group" aria-labelledby={`${id}-g-${group.id}`} className="lg-pal-group">
               <p id={`${id}-g-${group.id}`} className="lg-pal-head lg-sc">
