@@ -905,9 +905,28 @@ html.lenis body {
   margin-top: 10px;
 }
 
-@media (max-height: 800px) and (min-width: 901px) {
+@media (max-height: 820px) and (min-width: 901px) {
   .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub {
     display: none;
+  }
+  /* A short window shows the first five rows of the framed queue, and a one-line caption. */
+  .ld-seasons[data-motion="on"] .ld-frame .ldm-rows li:nth-child(n + 6),
+  .ld-seasons[data-motion="on"] .ld-frame-body {
+    display: none;
+  }
+}
+@media (max-width: 1180px) and (min-width: 901px) {
+  .ld-seasons[data-motion="on"] .ld-book {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+  .ld-seasons[data-motion="on"] .ld-page {
+    padding: 16px 16px;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-row .lg-margin {
+    display: none;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 @media (max-width: 1100px) {
