@@ -21,3 +21,6 @@ export function setupGsap() {
 
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 export const MOTION_OK = "(prefers-reduced-motion: no-preference)";
+// The pinned How it works scene needs room for three columns. Below 700 px wide a phone gets the same
+// static page that reduced motion gets: the scene in summer, the four steps as captions, the framed queue.
+export const PIN_OK = "(prefers-reduced-motion: no-preference) and (min-width: 700px)";

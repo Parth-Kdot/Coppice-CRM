@@ -6,9 +6,9 @@ import { SHOOTS_FIVE, SHOOTS_THREE, ShootSet, Stump, STOOL_VIEWBOX, pointOnShoot
 import { SEASONS } from "./copy";
 import { heroFinal } from "./hero-script";
 import { MiniQueue } from "./mini-queue";
-import { MOTION_OK, setupGsap } from "./motion";
+import { PIN_OK, setupGsap } from "./motion";
 
-// How it works, as one pinned scene about 150 vh long, scrubbed by the scroll position. Four seasons
+// How it works, as one pinned scene about 150 vh long (wide screens only; a phone gets the static page), scrubbed by the scroll position. Four seasons
 // of a board, each one a step of the product:
 //   Autumn, Import: three shoots grow and the imported sheet is noted on the right page.
 //   Winter, Claim: company names hang from the stems; a gilt ribbon drops on the one you claim.
@@ -20,7 +20,7 @@ import { MOTION_OK, setupGsap } from "./motion";
 // captions, the ledger, and the framed queue below.
 
 const CUT_Y = 262;
-const TOTAL = 5;
+const TOTAL = 5.6;
 const LABEL_T = [0.6, 0.64, 0.66, 0.62, 0.58];
 const LABEL_DX = [-6, -4, 4, 4, 6];
 // Where the three claim tags hang on the autumn shoots.
@@ -136,7 +136,7 @@ export function Seasons() {
     const { gsap, ScrollTrigger } = setupGsap();
     const mm = gsap.matchMedia();
 
-    mm.add(MOTION_OK, () => {
+    mm.add(PIN_OK, () => {
       el.dataset.motion = "on";
       el.dataset.season = "0";
       const ctx = gsap.context(() => {
@@ -201,11 +201,12 @@ export function Seasons() {
           tl.fromTo(tag, { opacity: 0, rotation: i % 2 ? 9 : -9, transformOrigin: "50% 0%" }, { opacity: 1, rotation: 0, duration: 0.16, ease: "back.out(1.6)" }, 3.78 + i * 0.05);
         });
 
-        // The queue, 4 to 5: the book gives way to a framed render of the real queue page.
-        tl.to(q(".ld-book"), { opacity: 0, scale: 0.97, duration: 0.4, ease: "power1.in" }, 4.0);
-        tl.fromTo(q(".ld-frame"), { opacity: 0, y: 28, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power3.out" }, 4.3);
+        // The queue, 3.9 to 5.6: the book gives way to a framed render of the real queue page, which is
+        // fully visible from 4.6 and holds there to the end of the pin (about a fifth of it).
+        tl.to(q(".ld-book"), { opacity: 0, scale: 0.97, duration: 0.3, ease: "power1.in" }, 3.9);
+        tl.fromTo(q(".ld-frame"), { opacity: 0, y: 28, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power3.out" }, 4.1);
 
-        // Keep the timeline exactly five units long.
+        // Keep the timeline exactly TOTAL units long, so the hold at the end is part of it.
         tl.to({}, { duration: 0.02 }, TOTAL - 0.02);
 
         ScrollTrigger.create({
@@ -213,7 +214,7 @@ export function Seasons() {
           start: "top top",
           end: "+=150%",
           pin: true,
-          scrub: 0.6,
+          scrub: 0.2,
           animation: tl,
           anticipatePin: 1,
           onUpdate: (self) => {
