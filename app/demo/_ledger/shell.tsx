@@ -72,15 +72,12 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
                   }}
                 >
                   {tab.icon}
-                  <span>{tab.label}</span>
+                  <span className="lg-tab-label">{tab.label}</span>
                 </Link>
               </li>
             );
           })}
         </ul>
-        <div className="lg-spine-title" aria-hidden="true">
-          <span>{workspace.name}</span>
-        </div>
         <UserMenu ws={ws} placement="spine" />
       </nav>
 

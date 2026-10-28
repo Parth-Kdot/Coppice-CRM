@@ -9,11 +9,14 @@
   }
 
   /* ---------- The spine ---------- */
+  /* Fixed to the whole viewport height, so the spine never stops mid-page. */
   .lg-spine {
-    position: sticky;
+    position: fixed;
     top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--spine-w);
     z-index: 40;
-    height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -22,7 +25,6 @@
       linear-gradient(90deg, rgb(31 27 20 / 0.05), transparent 38%),
       var(--paper-2);
     border-right: 1px solid var(--edge);
-    box-shadow: inset -1px 0 0 var(--gilt);
   }
   /* The stitching down the bound edge. */
   .lg-spine::after {
@@ -49,6 +51,8 @@
     display: flex;
     flex-direction: column;
     gap: 7px;
+    flex: 1;
+    min-height: 0;
   }
   .lg-tab {
     position: relative;
@@ -63,11 +67,9 @@
     padding: 4px 2px 3px;
     background: var(--paper);
     border: 1px solid var(--edge);
-    border-right: 3px solid var(--gilt);
+    border-right: 3px solid var(--edge);
     border-radius: 3px 9px 9px 3px;
     color: var(--ink);
-    font-size: 11.5px;
-    font-weight: 500;
     line-height: 1.1;
     text-decoration: none;
     transform: translateX(0);
@@ -80,37 +82,22 @@
     background: #fbf8f0;
     transform: translateX(2px);
   }
+  .lg-tab-label {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
   .lg-tab[aria-current="page"] {
     background: var(--moss);
     border-color: var(--moss);
-    border-right-color: var(--gilt);
+    border-right-color: var(--moss-2);
     color: var(--paper);
     transform: translateX(6px);
   }
   .lg-tab:focus-visible {
     outline-offset: 3px;
-  }
-  .lg-spine-title {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 14px 0;
-    overflow: hidden;
-  }
-  .lg-spine-title span {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    max-height: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 0.95rem;
-    color: var(--ink-2);
-    letter-spacing: 0.02em;
   }
   .lg-spine-user {
     position: relative;
@@ -233,6 +220,7 @@
 
   /* ---------- The page ---------- */
   .lg-pagecol {
+    grid-column: 2;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -324,24 +312,26 @@
     .lg-shell {
       grid-template-columns: minmax(0, 1fr);
     }
+    .lg-pagecol {
+      grid-column: 1;
+    }
     .lg-spine {
       position: fixed;
       top: auto;
       left: 0;
       right: 0;
       bottom: 0;
+      width: auto;
       height: 64px;
       padding: 0;
       flex-direction: row;
       align-items: flex-end;
       border-right: 0;
       border-top: 1px solid var(--edge);
-      box-shadow: inset 0 1px 0 var(--gilt);
       background: var(--paper-2);
     }
     .lg-spine::after,
     .lg-spine-mark,
-    .lg-spine-title,
     .lg-spine-user {
       display: none;
     }
@@ -358,9 +348,8 @@
       min-width: 0;
       height: 52px;
       margin: 0;
-      font-size: 11px;
       border: 1px solid var(--edge);
-      border-bottom: 3px solid var(--gilt);
+      border-bottom: 3px solid var(--edge);
       border-right-width: 1px;
       border-radius: 9px 9px 3px 3px;
       transform: translateY(0);
@@ -370,7 +359,7 @@
     }
     .lg-tab[aria-current="page"] {
       transform: translateY(-6px);
-      border-bottom-color: var(--gilt);
+      border-bottom-color: var(--moss-2);
       border-right-color: var(--moss);
       padding-bottom: 9px;
       height: 58px;
@@ -414,12 +403,6 @@
     }
     .lg-main {
       padding: 16px 16px 96px;
-    }
-  }
-
-  @media (max-height: 640px) and (min-width: 761px) {
-    .lg-spine-title {
-      display: none;
     }
   }
 }
