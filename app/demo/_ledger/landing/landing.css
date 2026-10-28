@@ -1785,3 +1785,17 @@ html.lenis body {
     stroke-dashoffset: 0 !important;
   }
 }
+
+/* Labels and buttons on the landing are 16 px or larger. */
+.ld .lg-sc {
+  font-size: 1rem;
+}
+.ld .lg-btn,
+.ld .lg-btn-sm {
+  font-size: 1rem;
+}
+.ld .lg-margin,
+.ld .lg-badge,
+.ld .lg-turnover-label {
+  font-size: 1rem;
+}
