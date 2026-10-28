@@ -56,6 +56,14 @@ function Card({
   const theirs = claim.state === "theirs";
   const until = claim.expiresAt ? formatDay(claim.expiresAt) : "";
   const error = claimAction.errors[company.id];
+  const form = useRef<HTMLDivElement>(null);
+  const formOpen = logging && mine;
+
+  // The log form opens at the foot of the card, which can lie below the fold on a short screen.
+  useEffect(() => {
+    if (!formOpen) return;
+    form.current?.scrollIntoView({ block: "nearest", behavior: reducedMotionNow() ? "auto" : "smooth" });
+  }, [formOpen]);
   const shaking = claimAction.shaking === company.id;
   return (
     <article ref={cardRef} className="lg-fcard lg-sheet" data-shake={shaking || undefined} aria-label={`${company.name}, ${row.timing}`}>
@@ -142,7 +150,7 @@ function Card({
         </p>
       )}
       {logging && mine && (
-        <div className="lg-fform">
+        <div className="lg-fform" ref={form}>
           <LogOutreachForm ws={ws} companyId={company.id} compact autoFocus onLogged={onLogged} onCancel={() => onLogging(false)} />
         </div>
       )}

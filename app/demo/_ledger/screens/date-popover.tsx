@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { addDaysYmd } from "@/demo/dates";
 import { ChevronLeftIcon, ChevronRightIcon } from "../icons";
 
@@ -66,6 +66,18 @@ export function CalendarPopover({
     for (let i = 0; i < list.length; i += 7) weeks.push(list.slice(i, i + 7));
     return weeks;
   }, [lead, total, y, m]);
+
+  // The calendar opens under its chip. When there is less room below than its height plus the 28 px
+  // status line and 8 px of air, and more room above, it opens above the chip instead.
+  useLayoutEffect(() => {
+    const el = root.current;
+    const anchor = el?.offsetParent;
+    if (!el || !anchor) return;
+    const box = anchor.getBoundingClientRect();
+    const need = el.getBoundingClientRect().height + 4 + 28 + 8;
+    const below = window.innerHeight - box.bottom;
+    if (below < need && box.top > below) el.dataset.flip = "up";
+  }, []);
 
   // Bring the whole calendar into view when it opens inside a panel that scrolls.
   useEffect(() => {

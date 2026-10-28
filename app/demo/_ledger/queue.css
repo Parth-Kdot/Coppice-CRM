@@ -98,6 +98,11 @@
     box-shadow: 0 16px 28px -16px rgb(31 27 20 / 0.45);
     animation: lg-rise 140ms var(--ease-out) both;
   }
+  .lg-cal[data-flip="up"] {
+    top: auto;
+    bottom: 100%;
+    margin: 0 0 4px;
+  }
   .lg-cal-head {
     display: flex;
     align-items: center;
