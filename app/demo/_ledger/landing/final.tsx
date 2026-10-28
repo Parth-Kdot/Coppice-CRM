@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { demoRoutes } from "@/demo/routes";
 import { LogoMark } from "../logo";
-import { SHOOTS_MANY, Stool, shootTips } from "../stool";
+import { SHOOTS_MANY, Stool } from "../stool";
 import { FINAL, FOOTER } from "./copy";
 import { MOTION_OK, setupGsap } from "./motion";
 
-// The final call to action: the stool now carries many stems and sways a few degrees in a slow
-// loop. The loop stops when the stool is off screen and is switched off for reduced motion.
+// The final call to action. When the stool scrolls into view its shoots draw once, one after
+// another, the leaves unfurl, and then "Coppice. Capisce?" settles in under the buttons. Nothing
+// repeats. With reduced motion (or without script) the finished stool and the line are simply there.
 export function Final() {
   const root = useRef<HTMLElement>(null);
 
@@ -19,28 +20,20 @@ export function Final() {
     const { gsap, ScrollTrigger } = setupGsap();
     const mm = gsap.matchMedia();
     mm.add(MOTION_OK, () => {
-      const tips = shootTips(SHOOTS_MANY);
       const ctx = gsap.context(() => {
-        const shoots = gsap.utils.toArray<SVGGElement>(".lg-shoot", el);
-        const tl = gsap.timeline({ paused: true });
+        const q = gsap.utils.selector(el);
+        const tl = gsap.timeline({ paused: true, defaults: { ease: "power2.out" } });
+        const shoots = q(".lg-shoot");
         shoots.forEach((shoot, i) => {
-          const base = tips[i]?.base;
-          if (!base) return;
-          const amp = 1.6 + (i % 3) * 0.55;
-          const dur = 3.4 + (i % 4) * 0.5;
-          tl.fromTo(
-            shoot,
-            { rotation: -amp, svgOrigin: `${base.x} ${base.y}` },
-            { rotation: amp, svgOrigin: `${base.x} ${base.y}`, duration: dur, ease: "sine.inOut", repeat: -1, yoyo: true },
-            -i * 0.35,
-          );
+          const start = i * 0.14;
+          tl.fromTo(shoot.querySelectorAll(".lg-stem, .lg-stem-thin"), { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.0, ease: "lgGrow" }, start);
+          shoot.querySelectorAll<SVGGElement>(".lg-leaf").forEach((leaf) => {
+            const t = Number(leaf.dataset.t ?? 1);
+            tl.fromTo(leaf, { scale: 0, transformOrigin: "0% 50%" }, { scale: 1, duration: 0.3, ease: "back.out(2.4)" }, start + 1.0 * (1 - Math.pow(1 - t, 1 / 3)));
+          });
         });
-        ScrollTrigger.create({
-          trigger: el.querySelector(".ld-final-art"),
-          start: "top bottom",
-          end: "bottom top",
-          onToggle: (self) => (self.isActive ? tl.play() : tl.pause()),
-        });
+        tl.fromTo(q(".ld-signoff"), { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6 }, 1.5);
+        ScrollTrigger.create({ trigger: el.querySelector(".ld-final-art"), start: "top 80%", once: true, onEnter: () => tl.play() });
       }, el);
       return () => ctx.revert();
     });

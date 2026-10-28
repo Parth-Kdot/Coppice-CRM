@@ -206,12 +206,6 @@ export const NAME = {
     "A student board works on a similar rhythm. Every spring the officers graduate, and what remains is the set of relationships with companies: who was asked, who said yes, who said to try again in the fall. Coppice keeps those in the workspace so the next board grows back from them.",
     "The name has a second reading in its first syllables, co-piece: working alongside someone, each of you holding a piece of the same list.",
   ],
-  lines: ["New board, same roots.", "Many stems, one root.", "Coppice. Capisce?"],
-  glossary: [
-    { term: "Stems", def: "the officers and boards that come and go on a cycle." },
-    { term: "Roots", def: "the companies, contacts, notes and history that stay." },
-    { term: "One base", def: "a single workspace that everyone on the team works from." },
-  ],
 };
 
 export const TRUST = {

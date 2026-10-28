@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useId, useRef, useState } from "react";
 import { SHOOTS_FIVE, Stool } from "../stool";
 import { AUDIENCE, NAME, TRUST } from "./copy";
-import { MOTION_OK, setupGsap } from "./motion";
 import { useReveal } from "./reveal";
 
-// Who it is for, the name story and trust and boundaries.
-
-export function Audience() {
+// Who it is for and the name, in one section. Four kinds of team as ruled ledger entries, then the
+// coppicing story as plain text beside the engraved stool. Nothing here scrubs or loops.
+export function WhoAndName() {
   const root = useRef<HTMLElement>(null);
   useReveal(root);
   return (
-    <section ref={root} className="ld-sec ld-audience" aria-labelledby="audience-title">
+    <section ref={root} id="name" className="ld-sec ld-who" aria-labelledby="audience-title">
       <div className="ld-wrap">
         <header className="ld-sec-head">
           <p className="ld-eyebrow">Who it is for</p>
@@ -21,112 +20,83 @@ export function Audience() {
           </h2>
           <p className="ld-sub">{AUDIENCE.subhead}</p>
         </header>
-        <ul className="ld-aud">
+        <ol className="ld-aud">
           {AUDIENCE.items.map((item, i) => (
             <li key={item.title} className="ld-reveal">
-              <p className="ld-aud-no lg-num">{String(i + 1).padStart(2, "0")}</p>
-              <h3 className="ld-h3">{item.title}</h3>
-              <p>{item.body}</p>
+              <span className="ld-aud-no lg-num" aria-hidden="true">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div>
+                <h3 className="ld-h3">{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
             </li>
           ))}
-        </ul>
+        </ol>
+
+        <div className="ld-name-grid">
+          <div className="ld-name-art ld-reveal">
+            <Stool shoots={SHOOTS_FIVE} title="An engraved coppice stool: a cut stump with five shoots rising from its rim" className="ld-stool ld-name-stool">
+              <g fontFamily="var(--font-sans)" fontSize={16} fill="var(--ink-2)" stroke="none">
+                <text x={384} y={52}>Stems</text>
+                <text x={22} y={430}>Roots</text>
+              </g>
+              <g fill="none" stroke="var(--ink-2)" strokeWidth={0.9} strokeLinecap="round">
+                <path d="M410 58 C408 84 404 110 398 136" />
+                <path d="M40 418 C44 404 52 392 62 384" />
+              </g>
+            </Stool>
+          </div>
+          <div className="ld-name-copy ld-reveal">
+            <p className="ld-eyebrow">The name</p>
+            <h2 id="name-title" className="ld-h2">
+              {NAME.headline}
+            </h2>
+            <p className="ld-sub">
+              {NAME.subhead} <span className="ld-chip lg-sc">{NAME.pronunciation}</span>
+            </p>
+            <p className="ld-bodybig">{NAME.lead}</p>
+            {NAME.paragraphs.map((p) => (
+              <p key={p} className="ld-bodybig">
+                {p}
+              </p>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-// The name story: a large engraved stool beside the explainer. The first paragraph reveals word by
-// word as it scrolls through the middle of the screen (blur 2 px and 30% opacity to sharp ink, in
-// reading order), and reverses when you scroll back.
-export function NameStory() {
-  const root = useRef<HTMLElement>(null);
-  useReveal(root);
-
-  useEffect(() => {
-    const el = root.current;
-    if (!el) return;
-    const { gsap } = setupGsap();
-    const mm = gsap.matchMedia();
-    mm.add(MOTION_OK, () => {
-      const para = el.querySelector<HTMLElement>(".ld-scrollwords");
-      if (!para) return;
-      const words = para.querySelectorAll<HTMLElement>(".ld-sw");
-      const ctx = gsap.context(() => {
-        gsap.fromTo(
-          words,
-          { opacity: 0.3, filter: "blur(2px)" },
-          {
-            opacity: 1,
-            filter: "blur(0px)",
-            ease: "none",
-            stagger: 0.12,
-            scrollTrigger: { trigger: para, start: "top 82%", end: "bottom 42%", scrub: true },
-          },
-        );
-      }, el);
-      return () => ctx.revert();
-    });
-    return () => mm.revert();
-  }, []);
-
-  const words = NAME.lead.split(" ");
+function Privacy() {
+  const id = useId();
+  const [open, setOpen] = useState(false);
   return (
-    <section ref={root} id="name" className="ld-sec ld-name" aria-labelledby="name-title">
-      <div className="ld-wrap ld-name-grid">
-        <div className="ld-name-art ld-reveal">
-          <Stool shoots={SHOOTS_FIVE} title="An engraved coppice stool: a cut stump with five shoots rising from its rim" className="ld-stool ld-name-stool">
-            <g fontFamily="var(--font-sans)" fontSize={13} fill="var(--ink-2)" stroke="none">
-              <text x={398} y={52}>Stems</text>
-              <text x={22} y={430}>Roots</text>
-            </g>
-            <g fill="none" stroke="var(--ink-2)" strokeWidth={0.9} strokeLinecap="round">
-              <path d="M410 58 C408 84 404 110 398 136" />
-              <path d="M40 418 C44 404 52 392 62 384" />
-            </g>
-          </Stool>
-        </div>
-        <div className="ld-name-copy">
-          <p className="ld-eyebrow">The name</p>
-          <h2 id="name-title" className="ld-h2">
-            {NAME.headline}
-          </h2>
-          <p className="ld-sub">
-            {NAME.subhead} <span className="ld-chip lg-sc">{NAME.pronunciation}</span>
-          </p>
-          <p className="ld-scrollwords ld-bodybig">
-            {words.map((w, i) => (
-              <span key={i}>
-                <span className="ld-sw">{w}</span>
-                {i < words.length - 1 ? " " : ""}
-              </span>
-            ))}
-          </p>
-          {NAME.paragraphs.map((p) => (
-            <p key={p} className="ld-bodybig ld-reveal">
-              {p}
-            </p>
-          ))}
-          <ul className="ld-pulls ld-reveal">
-            {NAME.lines.map((line) => (
-              <li key={line} className="lg-quote">
-                {line}
+    <div className="ld-priv">
+      <h3 className="ld-priv-h">
+        <button type="button" className="ld-priv-q" aria-expanded={open} aria-controls={`${id}-p`} onClick={() => setOpen((v) => !v)}>
+          <span>Privacy notes</span>
+          <span className="ld-faq-plus" aria-hidden="true" />
+        </button>
+      </h3>
+      <div className="lg-disclose" data-open={open}>
+        <div className="lg-disclose-inner">
+          <ul id={`${id}-p`} className="ld-ruled-list ld-ruled-two" inert={!open}>
+            {TRUST.privacy.map((item) => (
+              <li key={item.title}>
+                <h4 className="lg-sc ld-ruled-head">{item.title}</h4>
+                <p>{item.body}</p>
               </li>
             ))}
           </ul>
-          <dl className="ld-gloss ld-reveal">
-            {NAME.glossary.map((g) => (
-              <div key={g.term}>
-                <dt className="lg-sc">{g.term}</dt>
-                <dd>{g.def}</dd>
-              </div>
-            ))}
-          </dl>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
+// Trust: what Coppice will never do, what is coming next (and clearly not built), and the privacy
+// notes, which open on request so the section stays short.
 export function Trust() {
   const root = useRef<HTMLElement>(null);
   useReveal(root);
@@ -150,15 +120,23 @@ export function Trust() {
         </ul>
         <p className="ld-also">{TRUST.alsoOut}</p>
 
-        <h3 className="ld-h3 ld-priv-title">Privacy notes</h3>
-        <ul className="ld-ruled-list ld-ruled-two">
-          {TRUST.privacy.map((item) => (
-            <li key={item.title} className="ld-reveal">
-              <h4 className="lg-sc ld-ruled-head">{item.title}</h4>
-              <p>{item.body}</p>
-            </li>
-          ))}
-        </ul>
+        <Privacy />
+
+        <div className="ld-coming ld-reveal">
+          <h3 className="ld-h3">{TRUST.comingTitle}</h3>
+          <p className="ld-hint-line">{TRUST.comingNote}</p>
+          <ul>
+            {TRUST.coming.map((item) => (
+              <li key={item.title}>
+                <span className="ld-coming-tag lg-sc">{item.tag}</span>
+                <div>
+                  <p className="ld-coming-title">{item.title}</p>
+                  <p>{item.body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );

@@ -9,7 +9,7 @@ import { LandingNav } from "./nav";
 import { Problem } from "./problem";
 import { Seasons } from "./seasons";
 import { SmoothScroll } from "./smooth";
-import { Audience, NameStory, Trust } from "./story";
+import { Trust, WhoAndName } from "./story";
 import { GetStarted } from "./start";
 
 // The Coppice landing page at "/". Each section is its own client component with its own scroll
@@ -25,8 +25,7 @@ export function Landing() {
         <Seasons />
         <Features />
         <Example />
-        <Audience />
-        <NameStory />
+        <WhoAndName />
         <Trust />
         <GetStarted />
       </main>
