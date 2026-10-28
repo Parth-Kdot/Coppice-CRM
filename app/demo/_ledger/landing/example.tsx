@@ -120,6 +120,11 @@ export function Example() {
         tl.to(c, { scale: 1, duration: 0.14, ease: "power2.out" }, t + 0.07);
       };
 
+      // Start from the empty state as soon as the animated version mounts, long before it is scrolled to,
+      // so the result is never on the page before it plays. Each page footer ("Yours until Nov 11...")
+      // stays hidden until its page holds a claim. (Without script, or with reduced motion, the markup
+      // stays in its finished state.)
+      reset();
       tl.call(reset, [], 0);
       tl.set(cursors, { x: (i: number) => pages[i].clientWidth * 0.78, y: () => mayaPage.clientHeight * 0.9, opacity: 0, scale: 1 }, 0);
       tl.to(cursors, { opacity: 1, duration: 0.25, ease: "none" }, 0.15);
