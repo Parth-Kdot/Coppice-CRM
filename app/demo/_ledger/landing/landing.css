@@ -136,7 +136,7 @@ html.lenis body {
   letter-spacing: 0.1em;
 }
 .ld-sec {
-  padding: clamp(72px, 10vw, 128px) 0;
+  padding: clamp(56px, 6.4vw, 92px) 0;
 }
 .ld-sec-head {
   max-width: 780px;
@@ -580,7 +580,7 @@ html.lenis body {
   }
 }
 
-/* ---------- Four seasons: the pinned scene ---------- */
+/* ---------- How it works: four seasons, pinned, ending on the queue ---------- */
 .ld-seasons {
   position: relative;
   background: var(--paper);
@@ -612,8 +612,8 @@ html.lenis body {
 }
 .ld-seasons-in {
   position: relative;
-  padding-top: 88px;
-  padding-bottom: 72px;
+  padding-top: clamp(56px, 6vw, 88px);
+  padding-bottom: clamp(48px, 6vw, 80px);
 }
 .ld-seasons-head {
   display: flex;
@@ -625,11 +625,66 @@ html.lenis body {
 .ld-seasons-title {
   max-width: 720px;
 }
+.ld-season-tabs {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  list-style: none;
+}
+.ld-stab {
+  display: grid;
+  gap: 0;
+  padding: 4px 12px 5px;
+  border: 1px solid var(--edge);
+  border-bottom: 3px solid var(--gilt);
+  border-radius: 8px 8px 2px 2px;
+  background: var(--paper);
+  color: var(--ink-2);
+  line-height: 1.2;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+.ld-stab-season {
+  font-size: 1rem;
+}
+.ld-stab-step {
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ld-seasons[data-season="0"] .ld-stab[data-i="0"],
+.ld-seasons[data-season="1"] .ld-stab[data-i="1"],
+.ld-seasons[data-season="2"] .ld-stab[data-i="2"],
+.ld-seasons[data-season="3"] .ld-stab[data-i="3"],
+.ld-seasons[data-season="4"] .ld-stab[data-i="3"] {
+  background: var(--moss);
+  border-color: var(--moss);
+  border-bottom-color: var(--gilt);
+  color: var(--paper);
+}
+
+/* The stage holds the book (captions, scene, ledger) and the framed queue. */
+.ld-stage {
+  position: relative;
+}
 .ld-book {
   display: grid;
-  grid-template-columns: minmax(0, 0.76fr) minmax(0, 1.5fr) minmax(0, 0.76fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas:
+    "scene ledger"
+    "captions captions";
   gap: 18px;
   align-items: stretch;
+}
+.ld-page-left {
+  grid-area: captions;
+}
+.ld-scene-wrap {
+  grid-area: scene;
+}
+.ld-page-right {
+  grid-area: ledger;
 }
 .ld-page {
   position: relative;
@@ -639,36 +694,11 @@ html.lenis body {
   background: repeating-linear-gradient(to bottom, transparent 0 31px, rgb(217 205 180 / 0.45) 31px 32px), var(--sheet);
   box-shadow: 0 30px 40px -34px var(--shade);
 }
-.ld-season-tabs {
-  display: flex;
-  flex: none;
-  gap: 6px;
-  list-style: none;
-}
-.ld-stab {
-  padding: 3px 10px;
-  border: 1px solid var(--edge);
-  border-bottom: 3px solid var(--gilt);
-  border-radius: 8px 8px 2px 2px;
-  background: var(--paper);
-  color: var(--ink-2);
-  font-size: 1rem;
-  transition:
-    background-color 200ms ease,
-    color 200ms ease;
-}
-.ld-seasons[data-season="0"] .ld-stab[data-i="0"],
-.ld-seasons[data-season="1"] .ld-stab[data-i="1"],
-.ld-seasons[data-season="2"] .ld-stab[data-i="2"],
-.ld-seasons[data-season="3"] .ld-stab[data-i="3"] {
-  background: var(--moss);
-  border-color: var(--moss);
-  border-bottom-color: var(--gilt);
-  color: var(--paper);
-}
 .ld-captions {
+  list-style: none;
   display: grid;
-  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 22px;
 }
 .ld-caption p {
   color: var(--ink-2);
@@ -682,6 +712,11 @@ html.lenis body {
   font-weight: 600;
   font-size: 1.05rem;
 }
+.ld-caption .ld-caption-who {
+  margin-top: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
 .ld-scene-wrap {
   min-height: 0;
   display: flex;
@@ -691,15 +726,27 @@ html.lenis body {
 .ld-scene {
   display: block;
   width: 100%;
+  max-width: 560px;
   height: auto;
   max-height: 100%;
   overflow: visible;
   color: var(--moss);
 }
 .ld-ledger-title {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--ink-2);
   font-weight: 600;
+}
+.ld-import-card {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.ld-import-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink);
 }
 .ld-ledger-rows {
   list-style: none;
@@ -716,8 +763,43 @@ html.lenis body {
 .ld-ledger-when {
   color: var(--ink-2);
 }
+.ld-page-right .lg-turnover-label {
+  background: var(--sheet);
+  left: 24px;
+}
+.ld-turnover-wrap {
+  margin-top: 10px;
+}
 
-/* Without motion the scene shows summer, and the shoots of autumn and the falling slips stay away. */
+/* The framed queue. In the static page it follows the book. */
+.ld-frame {
+  margin: 32px auto 0;
+  max-width: 980px;
+}
+.ld-frame-win {
+  padding: 10px;
+  border: 1px solid var(--edge);
+  border-bottom-width: 3px;
+  background: var(--paper-2);
+  box-shadow: 0 40px 56px -40px var(--shade);
+}
+.ld-frame figcaption {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+  text-align: center;
+}
+.ld-frame-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+.ld-frame-body {
+  color: var(--ink-2);
+}
+
+/* Without motion the scene shows the regrown shoots, and the shoots of autumn and the falling slips stay away. */
 .ld-seasons:not([data-motion="on"]) .ld-shoots-a {
   display: none;
 }
@@ -726,10 +808,10 @@ html.lenis body {
   opacity: 0;
 }
 
-/* With motion: one pinned screen, captions cross-fading in place. */
+/* With motion: one pinned screen. The captions cross-fade in place, then the book gives way to the queue. */
 .ld-seasons[data-motion="on"] {
   height: 100svh;
-  min-height: 600px;
+  min-height: 640px;
   overflow: hidden;
 }
 .ld-seasons[data-motion="on"] .ld-seasons-in {
@@ -743,25 +825,32 @@ html.lenis body {
   margin-bottom: 14px;
 }
 .ld-seasons[data-motion="on"] .ld-seasons-head .ld-h2 {
-  font-size: clamp(1.8rem, 1.2rem + 1.8vw, 2.6rem);
+  font-size: clamp(1.7rem, 1.1rem + 1.5vw, 2.4rem);
   margin-top: 6px;
 }
 .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub {
   margin-top: 8px;
   font-size: 1rem;
 }
-.ld-seasons[data-motion="on"] .ld-book {
+.ld-seasons[data-motion="on"] .ld-stage {
   flex: 1;
   min-height: 0;
+}
+.ld-seasons[data-motion="on"] .ld-book {
+  height: 100%;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 0.8fr);
+  grid-template-areas: "captions scene ledger";
+  transform-origin: 50% 50%;
 }
 .ld-seasons[data-motion="on"] .ld-scene {
   height: 100%;
   width: 100%;
+  max-width: none;
 }
 .ld-seasons[data-motion="on"] .ld-captions {
   position: relative;
   display: block;
-  min-height: 250px;
+  min-height: 300px;
 }
 .ld-seasons[data-motion="on"] .ld-caption {
   position: absolute;
@@ -776,12 +865,36 @@ html.lenis body {
 .ld-seasons[data-motion="on"][data-season="0"] .ld-caption[data-i="0"],
 .ld-seasons[data-motion="on"][data-season="1"] .ld-caption[data-i="1"],
 .ld-seasons[data-motion="on"][data-season="2"] .ld-caption[data-i="2"],
-.ld-seasons[data-motion="on"][data-season="3"] .ld-caption[data-i="3"] {
+.ld-seasons[data-motion="on"][data-season="3"] .ld-caption[data-i="3"],
+.ld-seasons[data-motion="on"][data-season="4"] .ld-caption[data-i="3"] {
   opacity: 1;
   transform: none;
 }
 .ld-seasons[data-motion="on"] .ld-page {
   overflow: hidden;
+}
+.ld-seasons[data-motion="on"] .ld-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.ld-seasons[data-motion="on"][data-season="4"] .ld-frame {
+  pointer-events: auto;
+}
+.ld-seasons[data-motion="on"] .ld-frame-win {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.ld-seasons[data-motion="on"] .ld-frame figcaption {
+  margin-top: 10px;
 }
 
 @media (max-height: 800px) and (min-width: 901px) {
@@ -789,25 +902,29 @@ html.lenis body {
     display: none;
   }
 }
+@media (max-width: 1100px) {
+  .ld-season-tabs {
+    display: none;
+  }
+}
 @media (max-width: 900px) {
   .ld-book {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "scene"
+      "captions"
+      "ledger";
   }
-  .ld-scene-wrap {
-    order: -1;
-  }
-  .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub {
-    display: none;
+  .ld-captions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .ld-seasons-head {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 14px;
   }
-  .ld-season-tabs {
-    flex-wrap: wrap;
-  }
+  .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub,
   .ld-seasons[data-motion="on"] .ld-seasons-head .ld-eyebrow {
     display: none;
   }
@@ -815,11 +932,15 @@ html.lenis body {
     padding-top: 76px;
   }
   .ld-seasons[data-motion="on"] .ld-book {
-    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "scene"
+      "captions";
     gap: 8px;
   }
   .ld-seasons[data-motion="on"] .ld-captions {
-    min-height: 150px;
+    min-height: 210px;
   }
   .ld-seasons[data-motion="on"] .ld-page {
     padding: 12px 16px;
@@ -832,126 +953,22 @@ html.lenis body {
     margin-bottom: 4px;
   }
   .ld-seasons[data-motion="on"] .ld-caption p {
-    font-size: 1rem;
     line-height: 1.4;
   }
 }
-
-/* ---------- How it works: a ledger page that writes itself ---------- */
-.ld-how {
-  background: var(--paper);
-}
-.ld-leaf-page {
-  position: relative;
-  padding: 4px 40px 8px 24px;
-  border: 1px solid var(--edge);
-  background: var(--sheet);
-  box-shadow: 0 40px 60px -48px var(--shade);
-}
-.ld-leaf-page::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 88px;
-  width: 5px;
-  border-left: 1px solid var(--rule);
-  border-right: 1px solid var(--rule);
-}
-.ld-steps {
-  list-style: none;
-}
-.ld-step {
-  position: relative;
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 0 36px;
-  padding: 26px 0 28px;
-}
-.ld-step-rule {
-  position: absolute;
-  top: 0;
-  left: -24px;
-  right: -40px;
-  height: 1px;
-  background: var(--edge);
-}
-.ld-step:first-child .ld-step-rule {
-  height: 0;
-}
-.ld-step-margin {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-.ld-step-no {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 2rem;
-  line-height: 1;
-  color: var(--ink);
-}
-.ld-step-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 14px;
-  margin-bottom: 6px;
-}
-.ld-who {
-  color: var(--ink-2);
-}
-.ld-step-body p {
-  max-width: 52em;
-}
-.ld-numbers {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 40px;
-  border-top: 3px double var(--ink-2);
-}
-.ld-numbers li {
-  padding: 20px 20px 4px 0;
-}
-.ld-bignum {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: clamp(2.2rem, 1.6rem + 2vw, 3.4rem);
-  line-height: 1;
-  color: var(--moss);
-  font-variant-numeric: tabular-nums;
-}
-.ld-bignum .lg-sc {
-  font-size: 1.2rem;
-  color: var(--ink);
-}
-.ld-numcap {
-  margin-top: 6px;
-  color: var(--ink-2);
-  font-size: 1rem;
-}
-@media (max-width: 760px) {
-  .ld-leaf-page {
-    padding: 4px 16px 8px;
+@media (max-width: 560px) {
+  .ld-captions {
+    grid-template-columns: 1fr;
   }
-  .ld-leaf-page::before {
+  /* On a phone the framed queue shows its first five rows, so the frame and its caption fit one screen. */
+  .ld-frame .ldm-rows li:nth-child(n + 6) {
     display: none;
   }
-  .ld-step {
-    grid-template-columns: 40px minmax(0, 1fr);
-    gap: 0 14px;
+  .ld-frame-win {
+    padding: 6px;
   }
-  .ld-step-rule {
-    left: -16px;
-    right: -16px;
-  }
-  .ld-step-no {
-    font-size: 1.5rem;
-  }
-  .ld-numbers {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .ld-frame-title {
+    font-size: 1.15rem;
   }
 }
 
@@ -967,18 +984,32 @@ html.lenis body {
 }
 .ld-entry {
   display: grid;
-  grid-template-columns: 26px 52px minmax(0, 1fr);
-  gap: 0 14px;
-  padding: 28px 0 30px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 0 16px;
+  padding: 22px 0 24px;
   border-top: 1px solid var(--edge);
 }
-.ld-entry-no {
-  padding-top: 6px;
-  color: var(--ink-2);
-  font-size: 1rem;
-}
 .ld-entry-icon {
+  margin-top: 2px;
   color: var(--moss);
+}
+.ld-entry-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ld-entry-leader {
+  flex: 1 1 24px;
+  min-width: 16px;
+  border-bottom: 2px dotted var(--edge);
+  transform: translateY(-4px);
+}
+.ld-entry-page {
+  flex: none;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 500;
 }
 .ld-tag-chip {
   margin-left: 10px;
@@ -992,7 +1023,7 @@ html.lenis body {
   color: var(--ink-2);
 }
 .ld-entry-short {
-  margin: 4px 0 8px;
+  margin: 4px 0 6px;
   font-family: var(--font-display);
   font-style: italic;
   font-size: 1.12rem;
@@ -1002,69 +1033,21 @@ html.lenis body {
   font-size: 1rem;
   color: var(--ink-2);
 }
-.ld-coming {
-  margin-top: 64px;
-  padding: 28px;
-  border: 1.5px dashed var(--edge);
-}
-.ld-coming ul {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 40px;
-  margin-top: 18px;
-}
-.ld-coming li {
-  display: flex;
-  gap: 14px;
-  align-items: baseline;
-}
-.ld-coming-tag {
-  flex: none;
-  min-width: 56px;
-  padding: 0 8px;
-  border: 1px solid var(--edge);
-  border-radius: 2px;
-  text-align: center;
-  color: var(--ink);
-  font-weight: 600;
-}
-.ld-coming-title {
-  font-weight: 600;
-}
-.ld-roles {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0 32px;
-  margin-top: 48px;
-  padding-top: 22px;
-  border-top: 3px double var(--ink-2);
-  font-size: 1rem;
-}
-.ld-roles-title {
-  margin-bottom: 4px;
-  color: var(--moss);
-  font-weight: 600;
-  font-size: 1.05rem;
-}
 @media (max-width: 900px) {
   .ld-index {
     grid-template-columns: 1fr;
   }
-  .ld-coming ul,
-  .ld-roles {
-    grid-template-columns: 1fr;
-  }
-  .ld-roles {
-    gap: 16px;
-  }
 }
 @media (max-width: 520px) {
   .ld-entry {
-    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
-  .ld-entry-no {
+  .ld-entry-leader {
     display: none;
+  }
+  .ld-entry-title {
+    justify-content: space-between;
   }
 }
 

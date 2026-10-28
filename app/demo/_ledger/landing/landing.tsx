@@ -5,7 +5,6 @@ import { Example } from "./example";
 import { Features } from "./features";
 import { Final } from "./final";
 import { Hero } from "./hero";
-import { How } from "./how";
 import { LandingNav } from "./nav";
 import { Problem } from "./problem";
 import { Seasons } from "./seasons";
@@ -24,7 +23,6 @@ export function Landing() {
         <Hero />
         <Problem />
         <Seasons />
-        <How />
         <Features />
         <Example />
         <Audience />
