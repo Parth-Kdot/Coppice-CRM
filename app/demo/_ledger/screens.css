@@ -982,24 +982,24 @@
     border: 1px solid var(--edge);
     box-shadow: 0 24px 34px -30px var(--shade);
   }
+  /* The native file input is visually hidden; its label is the button, and the chosen name sits beside it. */
   .lg-file {
-    max-width: 100%;
-    padding: 6px;
-    border: 1px dashed var(--edge);
-    border-radius: 3px;
-    background: var(--paper);
-    font-size: 0.92rem;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
-  .lg-file::file-selector-button {
-    margin-right: 10px;
-    padding: 5px 12px;
-    border: 1px solid var(--edge);
-    border-radius: 3px;
-    background: var(--sheet);
-    color: var(--ink);
-    font: inherit;
-    font-weight: 500;
-    cursor: pointer;
+  .lg-file:focus-visible + .lg-btn {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-filename {
+    min-width: 0;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
   }
 
   /* Import */
@@ -1093,7 +1093,21 @@
     padding: 7px 10px;
     border-bottom: 1px solid var(--rule);
     vertical-align: top;
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+  .lg-table td.lg-c-industry {
+    min-width: 120px;
+  }
+  .lg-table td.lg-c-contact {
+    min-width: 200px;
+  }
+  .lg-email {
+    display: block;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .lg-table tr[data-bad] td {
     background: var(--rust-wash);

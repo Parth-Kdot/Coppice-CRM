@@ -61,9 +61,20 @@ function ReviewTable({ preview }: { preview: ImportPreview }) {
             <tr key={r.row} data-bad={r.errors.length > 0 || undefined}>
               <td className="lg-num">{r.row}</td>
               <td>{r.company.name || <span className="lg-muted">(empty)</span>}</td>
-              <td>{r.company.industry}</td>
+              <td className="lg-c-industry">{r.company.industry}</td>
               <td>{r.company.website}</td>
-              <td>{r.contact ? `${r.contact.name}${r.contact.email ? `, ${r.contact.email}` : ""}` : ""}</td>
+              <td className="lg-c-contact">
+                {r.contact && (
+                  <>
+                    <span>{r.contact.name}</span>
+                    {r.contact.email && (
+                      <span className="lg-email" title={r.contact.email}>
+                        {r.contact.email}
+                      </span>
+                    )}
+                  </>
+                )}
+              </td>
               <td className="lg-cellnote">{r.company.notes}</td>
               <td>
                 {r.errors.length > 0 && (
@@ -125,18 +136,28 @@ export function ImportScreen({ ws }: { ws: string }) {
               <div className="lg-actions">
                 <input
                   ref={input}
+                  id={`${id}-file`}
                   type="file"
                   accept=".csv,text/csv"
                   className="lg-file"
-                  aria-label="Choose a .csv file"
-                  onChange={(e) => flow.chooseFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    // The name shown beside the button comes from the import itself, so the sample file and a
+                    // chosen file can never leave a stale name. Clearing the input lets the same file be picked again.
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = "";
+                    void flow.chooseFile(file);
+                  }}
                 />
+                <label htmlFor={`${id}-file`} className="lg-btn">
+                  Choose a CSV file
+                </label>
                 <button type="button" className="lg-btn" onClick={flow.loadSample}>
                   Use the sample file
                 </button>
-                {flow.pending && <span className="lg-muted">Working...</span>}
+                <span className="lg-filename lg-muted" aria-live="polite">
+                  {flow.pending ? "Working..." : (flow.fileName ?? "No file chosen")}
+                </span>
               </div>
-              {flow.fileName && !flow.pending && <p className="lg-hint mt-2">Reading {flow.fileName}.</p>}
               {!preview && <ErrorLine>{flow.error}</ErrorLine>}
             </Entry>
 
