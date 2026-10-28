@@ -402,3 +402,17 @@
     white-space: nowrap;
   }
 }
+
+@layer components {
+  .lg-industry-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .lg-fchip-sm {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 0.82rem;
+  }
+}

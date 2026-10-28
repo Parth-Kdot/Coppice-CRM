@@ -8,6 +8,7 @@ import { useDemoActions, useIndustries } from "@/demo/store";
 import { COMPANY_LIMITS } from "@/demo/validation";
 import { DuplicateIcon } from "../icons";
 import { useNotify } from "../providers";
+import { IndustryField } from "./industry-field";
 import { ErrorLine, PageHead } from "./shared";
 
 type Match = { id: string; name: string; website: string | null; archived: boolean; matchedOn: ("name" | "website")[] };
@@ -69,17 +70,7 @@ export function NewCompanyScreen({ ws }: { ws: string }) {
           <p className="lg-hint">Required, up to {COMPANY_LIMITS.name} characters.</p>
         </div>
         <div className="lg-row2">
-          <div>
-            <label className="lg-label" htmlFor={`${id}-industry`}>
-              Industry
-            </label>
-            <input id={`${id}-industry`} className="lg-input" list={`${id}-industries`} value={industry} onChange={(e) => setIndustry(e.target.value)} />
-            <datalist id={`${id}-industries`}>
-              {industries.map((i) => (
-                <option key={i} value={i} />
-              ))}
-            </datalist>
-          </div>
+          <IndustryField value={industry} onChange={setIndustry} suggestions={industries} />
           <div>
             <label className="lg-label" htmlFor={`${id}-website`}>
               Website

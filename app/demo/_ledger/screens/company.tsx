@@ -17,6 +17,7 @@ import { ClaimTicket } from "./claim-ticket";
 import { DraftPanel } from "./draft-panel";
 import { LogOutreachForm } from "./log-form";
 import { isLongOverdue, OverdueMark } from "./overdue";
+import { IndustryField } from "./industry-field";
 import { RouteMap } from "./route-map";
 import { StageButtons } from "./stage-buttons";
 import { Empty, ErrorLine } from "./shared";
@@ -384,17 +385,7 @@ function DetailsBlock({ ws, detail }: { ws: string; detail: CompanyDetail }) {
           <input id={`${id}-name`} className="lg-input" value={fields.name} onChange={(e) => set("name")(e.target.value)} />
         </div>
         <div className="lg-row2">
-          <div>
-            <label className="lg-label" htmlFor={`${id}-industry`}>
-              Industry
-            </label>
-            <input id={`${id}-industry`} className="lg-input" list={`${id}-industries`} value={fields.industry} onChange={(e) => set("industry")(e.target.value)} />
-            <datalist id={`${id}-industries`}>
-              {detail.industries.map((i) => (
-                <option key={i} value={i} />
-              ))}
-            </datalist>
-          </div>
+          <IndustryField value={fields.industry} onChange={set("industry")} suggestions={detail.industries} />
           <div>
             <label className="lg-label" htmlFor={`${id}-website`}>
               Website
