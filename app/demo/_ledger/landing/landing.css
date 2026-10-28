@@ -458,14 +458,15 @@ html.lenis body {
 .ld-sheet-row {
   position: relative;
   display: grid;
-  grid-template-columns: 38px repeat(4, minmax(0, 1fr));
+  grid-template-columns: 44px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
   border: 1px solid var(--edge);
   background: #fff;
   font-size: 1rem;
+  line-height: 1.25;
   color: var(--ink);
 }
 .ld-sheet-num {
-  padding: 7px 6px;
+  padding: 9px 6px;
   background: var(--paper-2);
   color: var(--ink-2);
   text-align: center;
@@ -473,11 +474,9 @@ html.lenis body {
 }
 .ld-sheet-cell {
   min-width: 0;
-  padding: 7px 8px;
+  padding: 9px 8px;
   border-left: 1px solid var(--rule);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 .ld-strike {
   position: absolute;
@@ -497,7 +496,7 @@ html.lenis body {
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 500;
-  font-size: 1.12rem;
+  font-size: 1.25rem;
   color: var(--rust);
   transform: rotate(-1.2deg);
   transition:
@@ -517,6 +516,10 @@ html.lenis body {
 .ld-prob-body {
   margin-top: 8px;
   color: var(--ink-2);
+  font-size: 1.0625rem;
+}
+.ld-prob-fix p:not(.ld-fix-label) {
+  font-size: 1.0625rem;
 }
 [data-js="on"] .ld-prob:not(.is-in) .ld-strike {
   transform: scaleX(0);
@@ -556,12 +559,24 @@ html.lenis body {
   .ld-prob-sheet {
     padding: 20px 18px 18px;
   }
+  /* On a phone the four cells sit two by two beside the row number. */
   .ld-sheet-row {
-    grid-template-columns: 34px repeat(4, minmax(0, 1fr));
+    grid-template-columns: 38px repeat(2, minmax(0, 1fr));
     font-size: 1rem;
   }
+  .ld-sheet-num {
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+  }
   .ld-sheet-cell {
-    padding: 6px 5px;
+    padding: 8px 8px;
+  }
+  .ld-sheet-cell:nth-child(n + 4) {
+    border-top: 1px solid var(--rule);
+  }
+  .ld-sheet-cell:nth-child(4) {
+    border-left: 1px solid var(--rule);
   }
 }
 
