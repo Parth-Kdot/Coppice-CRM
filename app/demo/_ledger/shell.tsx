@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { demoRoutes, matchDemoRoute, type DemoScreen } from "@/demo/routes";
 import { useDemoState, useIsMember, useMe, useWorkspace, useWorkspaceStats } from "@/demo/store";
 import { boardYear } from "./marks";
@@ -162,10 +162,19 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
   const workspace = useWorkspace(ws);
   const pathname = usePathname();
   const state = useDemoState();
-  if (!workspace || !isMember) return <NotFoundPage />;
-
   const route = matchDemoRoute(pathname);
   const screen = route?.screen ?? "queue";
+
+  // Each page names itself in the tab: "Queue · Boilermaker Robotics Club", or the company's own name.
+  // The workspace and company names live in the demo's browser-side state, so the title is set here.
+  const companyName = route?.companyId ? state.companies.find((c) => c.id === route.companyId)?.name : undefined;
+  const pageTitle = screen === "company" ? (companyName ?? "Company") : (PAGE_NAMES[screen] ?? "Page");
+  const bookName = workspace && isMember ? workspace.name : null;
+  useEffect(() => {
+    document.title = bookName ? `${pageTitle} · ${bookName}` : "Not found · Coppice";
+  }, [pageTitle, bookName]);
+
+  if (!workspace || !isMember) return <NotFoundPage />;
   const volume = boardYear(state.now).long;
 
   return (
