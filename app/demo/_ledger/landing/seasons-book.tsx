@@ -69,6 +69,7 @@ export function RightPage() {
     <>
       {/* Autumn: the old sheet is read, its columns are mapped, a look-alike pair is decided, the summary lands. */}
       <section className="ld-pane ld-pane-import" data-i="0">
+        <p className="lg-sc ld-pane-season">Autumn</p>
         <p className="lg-sc ld-ledger-title">{sheet.title}</p>
         <div className="ld-old">
           <div className="ld-old-head">
@@ -121,6 +122,7 @@ export function RightPage() {
 
       {/* Winter: the claim ticket for Kestrel, then a second officer's attempt. */}
       <section className="ld-pane ld-pane-claim" data-i="1">
+        <p className="lg-sc ld-pane-season">Winter</p>
         <p className="lg-sc ld-ledger-title">{claim.title}</p>
         <div className="ld-ticket">
           <Ribbon size="lg" className="ld-ticket-ribbon" />
@@ -147,6 +149,7 @@ export function RightPage() {
       {/* Spring and summer: the log entry becomes the first ledger row, the company comes back when it
           is due, and at turnover the chair line changes while every row above stays. */}
       <section className="ld-pane ld-pane-ledger" data-i="2">
+        <p className="lg-sc ld-pane-season">Spring and summer</p>
         <div className="ld-log">
           <p className="lg-sc ld-ledger-title">{log.title}</p>
           <div className="ld-picks ld-log-channels">
