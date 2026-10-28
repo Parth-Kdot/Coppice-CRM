@@ -20,7 +20,10 @@ export function useFlip(container: RefObject<HTMLElement | null>, signature: str
   const last = useRef<Map<string, number>>(new Map());
   useIsoLayoutEffect(() => {
     const root = container.current;
-    if (!root) return;
+    if (!root) {
+      last.current = new Map();
+      return;
+    }
     const next = new Map<string, number>();
     const rows = root.querySelectorAll<HTMLElement>("[data-row]");
     const animate = !reducedMotionNow() && last.current.size > 0;

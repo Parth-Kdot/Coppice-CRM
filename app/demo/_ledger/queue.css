@@ -397,6 +397,17 @@
     text-underline-offset: 4px;
     text-decoration-thickness: 1.5px;
   }
+  /* A company name that is a plain link (the Companies table uses it). */
+  .lg-qlink {
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .lg-qlink:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1.5px;
+  }
   .lg-strike {
     position: absolute;
     left: 0;

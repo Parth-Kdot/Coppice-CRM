@@ -8,7 +8,6 @@ import { demoRoutes } from "@/demo/routes";
 import type { QueueRow } from "@/demo/selectors";
 import { CHANNEL_LABELS, STAGE_LABELS, type Channel } from "@/demo/types";
 import { ClaimIcon, ExternalIcon, LogIcon, StageGlyph } from "../icons";
-import { useNotify } from "../providers";
 import { ClaimChip } from "./claim-chip";
 import { LogOutreachForm } from "./log-form";
 import { OverdueMark } from "./overdue";
@@ -171,7 +170,6 @@ export function FocusMode({
   resetKey: string;
 }) {
   const router = useRouter();
-  const notify = useNotify();
   const [marks, setMarks] = useState<{
     key: string;
     skipped: string[];
