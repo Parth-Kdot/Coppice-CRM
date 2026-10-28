@@ -235,7 +235,7 @@
   }
   .lg-head-line {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 16px;
     padding-bottom: 8px;
   }
@@ -269,17 +269,6 @@
     flex: none;
     color: var(--ink-2);
   }
-  .lg-proto {
-    flex: none;
-    padding: 1px 7px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    color: var(--ink-2);
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
   .lg-main {
     flex: 1;
     min-width: 0;
@@ -307,6 +296,218 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+  }
+
+  /* ---------- The search bar in the page header ---------- */
+  .lg-searchbar {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: min(380px, 40vw);
+    min-height: 36px;
+    padding: 0 8px 0 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink-2);
+    font-size: 0.92rem;
+    text-align: left;
+    cursor: text;
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease;
+  }
+  .lg-searchbar:hover {
+    border-color: var(--ink-2);
+    background: #fffdf7;
+  }
+  .lg-searchbar svg {
+    flex: none;
+  }
+  .lg-searchbar-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-keycaps {
+    flex: none;
+    display: inline-flex;
+    gap: 4px;
+  }
+  .lg-keycaps kbd,
+  .lg-pal-foot kbd {
+    padding: 0 6px;
+    border: 1px solid var(--edge);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  /* ---------- The command palette: an index card ---------- */
+  .lg-pal {
+    margin: 11vh auto auto;
+    padding: 0;
+    width: min(660px, calc(100vw - 24px));
+    max-height: min(560px, 78vh);
+    overflow: hidden;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    box-shadow:
+      0 1px 0 var(--rule),
+      0 30px 60px -24px rgb(31 27 20 / 0.55);
+  }
+  .lg-pal[open] {
+    display: flex;
+    flex-direction: column;
+    animation: lg-pal-in 140ms var(--ease-out) both;
+  }
+  .lg-pal::backdrop {
+    background: rgb(31 27 20 / 0.34);
+  }
+  @keyframes lg-pal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .lg-pal-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .lg-pal-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px 10px;
+    border-bottom: 3px double var(--ink-2);
+    color: var(--ink-2);
+  }
+  .lg-pal-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 500;
+    outline: none;
+  }
+  .lg-pal-input::placeholder {
+    color: #6f6553;
+  }
+  .lg-pal-input:focus-visible {
+    outline: none;
+  }
+  .lg-pal-field:focus-within {
+    box-shadow: inset 0 -3px 0 var(--moss-2);
+  }
+  .lg-pal-close {
+    flex: none;
+    min-height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    color: var(--ink-2);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .lg-pal-close:hover {
+    background: var(--paper-2);
+  }
+  /* The margin line of an index card runs down the icon column. */
+  .lg-pal-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background-image: linear-gradient(90deg, transparent 47px, var(--rule) 47px 48px, transparent 48px);
+  }
+  .lg-pal-head {
+    padding: 8px 14px 4px 56px;
+    color: var(--ink-2);
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper-2);
+  }
+  .lg-pal-opt {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 52px;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+  }
+  .lg-pal-opt[data-active] {
+    background: var(--paper-2);
+    box-shadow: inset 3px 0 0 var(--moss);
+  }
+  .lg-pal-ico {
+    display: grid;
+    place-items: center;
+    color: var(--ink-2);
+  }
+  .lg-pal-opt[data-active] .lg-pal-ico {
+    color: var(--moss);
+  }
+  .lg-pal-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 6px 10px 6px 10px;
+  }
+  .lg-pal-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .lg-pal-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+    font-size: 0.85rem;
+  }
+  .lg-pal-meta {
+    max-width: 220px;
+    padding-right: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+  .lg-pal-none {
+    padding: 22px 16px 22px 56px;
+    color: var(--ink-2);
+  }
+  .lg-pal-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+    padding: 8px 14px;
+    border-top: 3px double var(--ink-2);
+    color: var(--ink-2);
+    font-size: 0.82rem;
+  }
+  .lg-pal-foot-end {
+    margin-left: auto;
   }
 
   /* ---------- Phone: the spine becomes a bottom tab strip ---------- */

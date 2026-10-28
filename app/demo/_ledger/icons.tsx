@@ -225,6 +225,17 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
+// Reset: a loop that winds back to where it began.
+export function ResetIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.2 10a5.8 5.8 0 1 0 1.9-4.3" />
+      <path d="M4 3.6v3.4h3.4" />
+      <path d="M10 7.2v3l2 1.3" strokeWidth={THIN} />
+    </Icon>
+  );
+}
+
 export function UserIcon(props: IconProps) {
   return (
     <Icon {...props}>

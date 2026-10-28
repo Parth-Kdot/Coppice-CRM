@@ -8,6 +8,7 @@ import { useDemoState, useIsMember, useWorkspace } from "@/demo/store";
 import { boardYear } from "./marks";
 import { BoardIcon, CompaniesIcon, FactsIcon, ImportIcon, QueueIcon, SettingsIcon } from "./icons";
 import { LogoMark } from "./logo";
+import { PaletteProvider, SearchBar } from "./palette";
 import { NotFoundPage } from "./not-found-page";
 import { UserMenu } from "./user-menu";
 
@@ -45,67 +46,62 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
   const volume = boardYear(state.now).long;
 
   return (
-    <div className="lg-shell">
-      <a className="lg-skip" href="#main">
-        Skip to the page
-      </a>
+    <PaletteProvider ws={ws}>
+      <div className="lg-shell">
+        <a className="lg-skip" href="#main">
+          Skip to the page
+        </a>
 
-      <nav className="lg-spine" aria-label="Workspace">
-        <div className="lg-spine-mark">
-          <Link href={demoRoutes.queue(ws)} aria-label="Coppice, back to the queue">
-            <LogoMark size={44} />
-          </Link>
-        </div>
-        <ul className="lg-tabs">
-          {TABS.map((tab) => {
-            const current = tab.active.includes(screen);
-            return (
-              <li key={tab.key}>
-                <Link
-                  href={tab.href(ws)}
-                  className="lg-tab"
-                  aria-current={current ? "page" : undefined}
-                >
-                  {tab.icon}
-                  <span className="lg-tab-label">{tab.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-        <UserMenu ws={ws} placement="spine" />
-      </nav>
-
-      <div className="lg-pagecol">
-        <div className="lg-bar">
-          <Link href={demoRoutes.queue(ws)} className="lg-bar-mark" aria-label="Coppice, back to the queue">
-            <LogoMark size={34} />
-          </Link>
-          <p className="lg-bar-title">{workspace.name}</p>
-          <UserMenu ws={ws} placement="bar" />
-        </div>
-
-        <header className="lg-head">
-          <div className="lg-head-line">
-            <p className="lg-book">
-              <Link href={demoRoutes.workspaces()} title="Switch workspace">
-                {workspace.name}
-              </Link>
-              , <em>Volume {volume}</em>
-            </p>
-            <Link href={demoRoutes.workspaces()} className="lg-link hidden text-sm sm:inline">
-              Switch workspace
+        <nav className="lg-spine" aria-label="Workspace">
+          <div className="lg-spine-mark">
+            <Link href={demoRoutes.queue(ws)} aria-label="Coppice, back to the queue">
+              <LogoMark size={44} />
             </Link>
-            <p className="lg-pagename lg-sc">{PAGE_NAMES[screen] ?? "Page"}</p>
-            <p className="lg-proto">Prototype</p>
           </div>
-          <div className="lg-double-rule" />
-        </header>
+          <ul className="lg-tabs">
+            {TABS.map((tab) => {
+              const current = tab.active.includes(screen);
+              return (
+                <li key={tab.key}>
+                  <Link href={tab.href(ws)} className="lg-tab" aria-current={current ? "page" : undefined}>
+                    {tab.icon}
+                    <span className="lg-tab-label">{tab.label}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <UserMenu ws={ws} placement="spine" />
+        </nav>
 
-        <main id="main" tabIndex={-1} className="lg-main">
-          {children}
-        </main>
+        <div className="lg-pagecol">
+          <div className="lg-bar">
+            <Link href={demoRoutes.queue(ws)} className="lg-bar-mark" aria-label="Coppice, back to the queue">
+              <LogoMark size={34} />
+            </Link>
+            <p className="lg-bar-title">{workspace.name}</p>
+            <UserMenu ws={ws} placement="bar" />
+          </div>
+
+          <header className="lg-head">
+            <div className="lg-head-line">
+              <p className="lg-book">
+                <Link href={demoRoutes.workspaces()} title="Switch workspace">
+                  {workspace.name}
+                </Link>
+                , <em>Volume {volume}</em>
+              </p>
+              <p className="lg-pagename lg-sc">{PAGE_NAMES[screen] ?? "Page"}</p>
+              <SearchBar />
+            </div>
+            <div className="lg-double-rule" />
+          </header>
+
+          <main id="main" tabIndex={-1} className="lg-main">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </PaletteProvider>
   );
 }
