@@ -66,7 +66,19 @@ export function CompaniesScreen({ ws }: { ws: string }) {
 
   return (
     <div className="lg-companies">
-      <PageHead title="Companies" count={list.rows.length} sub={filtered ? <>{list.matchTotal} of {list.workspaceTotal} match.</> : <>Every company in the book, one line each.</>}>
+      <PageHead
+        title="Companies"
+        count={list.rows.length}
+        sub={
+          filtered ? (
+            <>
+              {list.matchTotal} of {list.workspaceTotal} match.
+            </>
+          ) : (
+            <>Every company in the book, one line each.</>
+          )
+        }
+      >
         <Link href={demoRoutes.newCompany(ws)} className="lg-btn lg-btn-primary">
           <PlusIcon size={16} />
           New company
@@ -115,10 +127,14 @@ export function CompaniesScreen({ ws }: { ws: string }) {
           <p className="lg-empty-title">{filtered ? "No company matches." : "No companies yet."}</p>
           <p>
             {filtered ? (
-              <button type="button" className="lg-btn lg-btn-quiet" onClick={() => {
-                setQ("");
-                go({ q: "", stage: null });
-              }}>
+              <button
+                type="button"
+                className="lg-btn lg-btn-quiet"
+                onClick={() => {
+                  setQ("");
+                  go({ q: "", stage: null });
+                }}
+              >
                 Clear the search and the stage filter
               </button>
             ) : (
@@ -163,7 +179,11 @@ export function CompaniesScreen({ ws }: { ws: string }) {
                     )}
                   </span>
                   <span className="lg-cf">
-                    {row.daysOverdue !== null && row.followUpOn ? <OverdueMark days={row.daysOverdue} dueOn={row.followUpOn} /> : <span className="lg-muted">{row.closed ? "Closed" : "No follow-up set"}</span>}
+                    {row.daysOverdue !== null && row.followUpOn ? (
+                      <OverdueMark days={row.daysOverdue} dueOn={row.followUpOn} />
+                    ) : (
+                      <span className="lg-muted">{row.closed ? "Closed" : "No follow-up set"}</span>
+                    )}
                   </span>
                   <span className="lg-cl lg-num">{row.lastOutreachOn ?? <span className="lg-muted">Never</span>}</span>
                   {claimAction.errors[c.id] && (

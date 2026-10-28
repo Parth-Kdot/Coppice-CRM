@@ -45,7 +45,12 @@ export function LedgerMenu<T extends string>({
   }, [open, active]);
 
   const openMenu = () => {
-    setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+    setActive(
+      Math.max(
+        0,
+        options.findIndex((o) => o.value === value),
+      ),
+    );
     setOpen(true);
   };
 
