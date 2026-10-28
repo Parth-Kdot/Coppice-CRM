@@ -41,7 +41,6 @@ type RowProps = {
   leaving: boolean;
   open: boolean;
   logging: boolean;
-  dropping: boolean;
   shaking: boolean;
   flashing: boolean;
   error: string | undefined;
@@ -115,7 +114,7 @@ function QueueRowView(p: RowProps) {
         </span>
         <Timing row={row} />
         <span className="lg-qclaim">
-          <ClaimChip claim={row.claim} companyName={company.name} onClaim={p.onClaim} shaking={p.shaking} dropping={p.dropping} />
+          <ClaimChip claim={row.claim} companyName={company.name} onClaim={p.onClaim} shaking={p.shaking} />
         </span>
         <span className="lg-qact">
           {leaving ? (
@@ -282,7 +281,6 @@ export function QueueScreen({ ws }: { ws: string }) {
         leaving={isLeaving}
         open={openIds.has(id) && !isLeaving}
         logging={loggingId === id && !isLeaving}
-        dropping={claimAction.dropping === id}
         shaking={claimAction.shaking === id}
         flashing={flashing.has(id)}
         error={claimAction.errors[id]}

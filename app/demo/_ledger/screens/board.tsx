@@ -23,7 +23,6 @@ const matchText = (reasons: MatchReason[]) => (reasons.length === 2 ? "same name
 function Card({
   ws,
   card,
-  dropping,
   shaking,
   flashing,
   error,
@@ -33,7 +32,6 @@ function Card({
 }: {
   ws: string;
   card: BoardCard;
-  dropping: boolean;
   shaking: boolean;
   flashing: boolean;
   error: string | undefined;
@@ -57,7 +55,7 @@ function Card({
       </p>
       {!card.closed && (
         <div className="lg-cardclaim">
-          <ClaimChip claim={card.claim} companyName={c.name} onClaim={onClaim} shaking={shaking} dropping={dropping} />
+          <ClaimChip claim={card.claim} companyName={c.name} onClaim={onClaim} shaking={shaking} />
         </div>
       )}
       {error && (
@@ -120,7 +118,6 @@ function Column({
                   key={card.company.id}
                   ws={ws}
                   card={card}
-                  dropping={claimAction.dropping === card.company.id}
                   shaking={claimAction.shaking === card.company.id}
                   flashing={flashing.has(card.company.id)}
                   error={claimAction.errors[card.company.id]}

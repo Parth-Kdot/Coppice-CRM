@@ -174,7 +174,6 @@ export function CompaniesScreen({ ws }: { ws: string }) {
                         companyName={c.name}
                         onClaim={() => claimAction.claim(c.id, c.name)}
                         shaking={claimAction.shaking === c.id}
-                        dropping={claimAction.dropping === c.id}
                       />
                     )}
                   </span>

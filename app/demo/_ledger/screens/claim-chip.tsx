@@ -28,14 +28,12 @@ export function ClaimChip({
   companyName,
   onClaim,
   shaking = false,
-  dropping = false,
   className = "",
 }: {
   claim: ClaimView;
   companyName: string;
   onClaim: () => void;
   shaking?: boolean;
-  dropping?: boolean;
   className?: string;
 }) {
   const wrap = useRef<HTMLSpanElement>(null);
@@ -53,8 +51,14 @@ export function ClaimChip({
     const changed = lastState.current !== claim.state;
     lastState.current = claim.state;
     lastWidth.current = next;
-    if (!changed || before === null || Math.abs(before - next) < 2 || reducedMotion() || typeof el.animate !== "function") return;
-    el.animate([{ width: `${before}px` }, { width: `${next}px` }], { duration: 180, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+    if (!changed || reducedMotion() || typeof el.animate !== "function") return;
+    if (before !== null && Math.abs(before - next) >= 2) {
+      el.animate([{ width: `${before}px` }, { width: `${next}px` }], { duration: 180, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+    }
+    // The gilt ribbon drops into the chip from its top edge: 220 ms with a small overshoot.
+    if (claim.state === "mine") {
+      el.querySelector(".lg-ribbon")?.animate([{ transform: "translateY(-100%)" }, { transform: "translateY(0)" }], { duration: 220, easing: "cubic-bezier(0.3, 1.4, 0.5, 1)" });
+    }
   }, [claim.state]);
 
   // Measure again after text changes that keep the same state (a new expiry date), so the next morph starts from the right width.
@@ -77,7 +81,7 @@ export function ClaimChip({
         </button>
       ) : kind === "mine" ? (
         <span className="lg-chipbody lg-chip-mine" title={`You hold ${companyName} until ${until}`}>
-          <Ribbon size="sm" drop={dropping} className="lg-chip-ribbon" />
+          <Ribbon size="sm" className="lg-chip-ribbon" />
           Yours until {until}
         </span>
       ) : (
