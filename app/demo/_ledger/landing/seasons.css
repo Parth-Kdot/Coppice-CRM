@@ -724,6 +724,29 @@
     display: none;
   }
 }
+.ld-seasons[data-motion="on"] .ld-pane-season {
+  display: none;
+}
+@media (min-width: 1181px) and (max-width: 1280px), (max-height: 820px) and (min-width: 901px) {
+  .ld-seasons[data-motion="on"] .ld-page {
+    padding: 16px 16px;
+  }
+  .ld-seasons[data-motion="on"] .ld-pick {
+    padding-inline: 8px;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-row .lg-margin {
+    display: none;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 5px 0;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-what {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 @media (max-width: 1180px) and (min-width: 901px) {
   .ld-seasons[data-motion="on"] .ld-book {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.15fr);
