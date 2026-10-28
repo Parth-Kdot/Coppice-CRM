@@ -613,7 +613,7 @@ html.lenis body {
   gap: 0;
   padding: 4px 12px 5px;
   border: 1px solid var(--edge);
-  border-bottom: 3px solid var(--gilt);
+  border-bottom: 3px solid var(--edge);
   border-radius: 8px 8px 2px 2px;
   background: var(--paper);
   color: var(--ink-2);
@@ -637,7 +637,7 @@ html.lenis body {
 .ld-seasons[data-season="4"] .ld-stab[data-i="3"] {
   background: var(--moss);
   border-color: var(--moss);
-  border-bottom-color: var(--gilt);
+  border-bottom-color: var(--moss);
   color: var(--paper);
 }
 
@@ -1072,7 +1072,7 @@ html.lenis body {
 }
 .ld-setting {
   padding-left: 14px;
-  border-left: 2px solid var(--gilt);
+  border-left: 2px solid var(--moss);
   max-width: 46em;
   color: var(--ink);
 }
@@ -1607,7 +1607,7 @@ html.lenis body {
   position: relative;
   padding-top: clamp(48px, 6vw, 80px);
   background: var(--paper-2);
-  border-top: 3px double var(--gilt);
+  border-top: 3px double var(--ink-2);
 }
 .ld-final-grid {
   display: grid;
