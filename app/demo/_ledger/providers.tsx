@@ -10,6 +10,7 @@ import { WarningIcon } from "./icons";
 import "./ledger.css";
 import "./shell.css";
 import "./screens.css";
+import "./queue.css";
 
 // Three small services every Ledger screen shares: margin notes (toasts), a confirmation dialog, and
 // the reviewer's race switch (the next Claim loses to a teammate, so the refusal can be seen).

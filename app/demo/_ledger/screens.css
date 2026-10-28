@@ -906,14 +906,6 @@
     padding: 4px 10px;
     font-size: 1rem;
   }
-  .lg-logform-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .lg-logform-grid > :nth-child(3) {
-    grid-column: 1 / -1;
-  }
   .lg-row2 {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1128,7 +1120,6 @@
     }
     .lg-row2,
     .lg-row3,
-    .lg-logform-grid,
     .lg-draftform {
       grid-template-columns: 1fr;
     }
