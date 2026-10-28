@@ -159,7 +159,7 @@ export const FEATURES = {
     {
       icon: "draft",
       page: "p. 6",
-      title: "Pitch drafts that stick to verified facts",
+      title: "Drafts that stick to verified facts",
       short: "Drafts built only from facts your owner has checked.",
       tag: "AI, optional",
       detail: "Numbers that no verified fact supports, links, and lines like \"thanks for sponsoring us before\" are underlined for you to check. The draft opens in your own Gmail or Outlook, and you press Send there.",
@@ -241,8 +241,8 @@ export const START = {
   subhead: "You need a Google account and last year's sheet, if you have one.",
   steps: [
     { title: "Sign in with Google", body: "One click, with no new password to remember." },
-    { title: "Create a workspace, or open your chair's invite link", body: "The chair creates the workspace and becomes its Owner. Everyone else joins by opening the invite link they were sent." },
-    { title: "Invite your officers and set your claim window", body: "Owners invite officers with a copyable invite link and choose how long a claim lasts, from 1 to 60 days. The default is 14." },
+    { title: "Create a workspace, or join your chair's", body: "The chair creates the workspace and becomes its Owner. Everyone else signs in with the email address the chair invited and presses Join." },
+    { title: "Invite your officers and set your claim window", body: "Owners invite officers by email address and choose how long a claim lasts, from 1 to 60 days. The default is 14. Coppice does not send the invite, so tell them to sign in." },
     { title: "Import your sheet and start claiming", body: "Upload last year's CSV, review any duplicate groups, then press Claim on the first company you plan to contact." },
   ],
 };

@@ -136,11 +136,11 @@ html.lenis body {
   letter-spacing: 0.1em;
 }
 .ld-sec {
-  padding: clamp(56px, 6.4vw, 92px) 0;
+  padding: clamp(48px, 5vw, 72px) 0;
 }
 .ld-sec-head {
   max-width: 780px;
-  margin-bottom: clamp(32px, 5vw, 56px);
+  margin-bottom: clamp(24px, 3.4vw, 40px);
 }
 
 /* ---------- Nav ---------- */
@@ -437,13 +437,13 @@ html.lenis body {
   border-top: 0;
 }
 .ld-prob-sheet {
-  padding: 24px 28px 28px;
+  padding: 18px 28px 20px;
   background:
     linear-gradient(90deg, transparent 39px, rgb(217 205 180 / 0.5) 39px 40px, transparent 40px) 0 0 / 100% 100% no-repeat,
     #fffdf8;
 }
 .ld-prob-fix {
-  padding: 24px 28px 28px;
+  padding: 18px 28px 20px;
   border-left: 1px solid var(--edge);
   background: repeating-linear-gradient(to bottom, transparent 0 31px, rgb(217 205 180 / 0.3) 31px 32px), var(--sheet);
   color: var(--moss);
@@ -490,8 +490,16 @@ html.lenis body {
   transform-origin: left center;
   transition: transform 350ms var(--ease-out);
 }
+.ld-prob-titleline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
 .ld-note-hand {
-  margin: 6px 4px 14px;
+  margin: 0 4px 0 auto;
   text-align: right;
   font-family: var(--font-display);
   font-style: italic;
@@ -514,7 +522,7 @@ html.lenis body {
   font-variant-numeric: tabular-nums;
 }
 .ld-prob-body {
-  margin-top: 8px;
+  margin-top: 4px;
   color: var(--ink-2);
   font-size: 1.0625rem;
 }
@@ -538,7 +546,7 @@ html.lenis body {
   transform: translateY(6px);
 }
 .ld-closing {
-  margin-top: 40px;
+  margin-top: 28px;
   text-align: center;
   font-family: var(--font-display);
   font-style: italic;
@@ -986,7 +994,7 @@ html.lenis body {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   gap: 0 16px;
-  padding: 22px 0 24px;
+  padding: 18px 0 20px;
   border-top: 1px solid var(--edge);
 }
 .ld-entry-icon {
@@ -1012,6 +1020,7 @@ html.lenis body {
   font-weight: 500;
 }
 .ld-tag-chip {
+  white-space: nowrap;
   margin-left: 10px;
   padding: 0 9px;
   border: 1px solid var(--edge);
@@ -1608,7 +1617,7 @@ html.lenis body {
 /* ---------- Final call and footer ---------- */
 .ld-final {
   position: relative;
-  padding-top: clamp(72px, 9vw, 120px);
+  padding-top: clamp(48px, 6vw, 80px);
   background: var(--paper-2);
   border-top: 3px double var(--gilt);
 }
@@ -1632,8 +1641,8 @@ html.lenis body {
   line-height: 1;
 }
 .ld-footer {
-  margin-top: clamp(64px, 8vw, 104px);
-  padding: 36px 0 44px;
+  margin-top: clamp(40px, 5vw, 64px);
+  padding: 32px 0 36px;
   border-top: 1px solid var(--edge);
   font-size: 1rem;
   color: var(--ink-2);
