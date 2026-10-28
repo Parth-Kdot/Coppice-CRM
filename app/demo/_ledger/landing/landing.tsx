@@ -23,8 +23,8 @@ export function Landing() {
         <Hero />
         <Problem />
         <Seasons />
-        <Features />
         <Example />
+        <Features />
         <WhoAndName />
         <Trust />
         <GetStarted />

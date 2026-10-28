@@ -3,8 +3,8 @@
 
 export const NAV_LINKS = [
   { href: "#how", label: "How it works" },
-  { href: "#features", label: "Features" },
   { href: "#example", label: "Live example" },
+  { href: "#features", label: "Features" },
   { href: "#faq", label: "FAQ" },
 ];
 
@@ -66,7 +66,7 @@ export const PROBLEM = {
 
 export const SEASONS = {
   headline: "From last year's sheet to a pipeline the whole team can work from",
-  subhead: "A board's year has four seasons. Importing happens once, claiming and logging become part of an officer's week, and turnover comes around every spring.",
+  subhead: "A board's year has four seasons. Importing happens once, claiming and logging become part of an officer's week, and turnover comes around every summer.",
   steps: [
     {
       season: "Autumn",
@@ -98,16 +98,16 @@ export const SEASONS = {
     },
   ],
   queue: {
-    title: "Next fall, this is the first page the new chair opens",
-    body: "The companies that are due, most overdue first, with the last note beside each name.",
+    title: "This is the first page every officer opens",
+    body: "The companies that are due, most overdue first.",
   },
   imported: { title: "Imported from the sheet", body: "42 companies read. 2 groups of look-alike names are waiting for a person to decide." },
   rows: [
-    { who: "Maya", what: "Email to Kestrel Aerospace", when: "Oct 28" },
-    { who: "Maya", what: "Follow-up to Kestrel Aerospace", when: "Nov 4" },
-    { who: "Dev", what: "LinkedIn to Birchwood Foods", when: "Nov 11" },
-    { who: "Sam", what: "Call with Ridgeline Energy", when: "Feb 2" },
-    { who: "Priya", what: "Packet sent to Tern Optics", when: "Apr 28" },
+    { who: "Maya", what: "Email, Kestrel Aerospace", when: "Oct 28" },
+    { who: "Maya", what: "Follow-up, Kestrel Aerospace", when: "Nov 4" },
+    { who: "Dev", what: "LinkedIn, Birchwood Foods", when: "Nov 11" },
+    { who: "Sam", what: "Call, Ridgeline Energy", when: "Feb 2" },
+    { who: "Priya", what: "Packet, Tern Optics", when: "Apr 28" },
   ],
   claimTags: [
     { name: "Kestrel Aerospace", note: "Yours until Nov 11", mine: true },
@@ -274,11 +274,10 @@ export const FOOTER = {
   pronunciation: "KOP-iss",
   links: [
     { href: "#how", label: "How it works" },
-    { href: "#features", label: "Features" },
     { href: "#example", label: "Live example" },
+    { href: "#features", label: "Features" },
     { href: "#faq", label: "FAQ" },
   ],
-  handle: "@coppiceteam",
   origin: "Built by a student at Purdue, for teams that change hands every year.",
   disclaimer: "Coppice is an independent student project and is not an official Purdue University product.",
   copyright: "© 2026 Coppice",

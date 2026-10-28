@@ -55,9 +55,9 @@ export function Final() {
             <Link href={demoRoutes.signIn()} className="lg-btn lg-btn-primary ld-btn-lg">
               Start a workspace
             </Link>
-            <a href="#faq" className="lg-btn ld-btn-lg">
-              Read the FAQ
-            </a>
+            <Link href={demoRoutes.signIn()} className="lg-btn ld-btn-lg">
+              Sign in
+            </Link>
           </div>
           <p className="ld-signoff lg-quote">{FOOTER.tagline}</p>
         </div>
@@ -70,7 +70,6 @@ export function Final() {
               <LogoMark size={36} className="text-moss" />
               <span className="font-display text-[1.3rem] font-semibold tracking-[0.02em]">Coppice</span>
             </p>
-            <p className="lg-quote ld-foot-tag">{FOOTER.tagline}</p>
             <p className="ld-foot-small">
               Said <span className="ld-chip lg-sc">{FOOTER.pronunciation}</span>
             </p>
@@ -91,7 +90,6 @@ export function Final() {
             </ul>
           </nav>
           <div className="ld-foot-small">
-            <p>{FOOTER.handle}</p>
             <p>{FOOTER.origin}</p>
             <p>{FOOTER.disclaimer}</p>
             <p>{FOOTER.copyright}</p>

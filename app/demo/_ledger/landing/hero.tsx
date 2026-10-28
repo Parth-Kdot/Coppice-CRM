@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { demoRoutes } from "@/demo/routes";
-import { Ribbon } from "../marks";
 import { SHOOTS_THREE, Stool } from "../stool";
 import { HERO } from "./copy";
 import { HeroDemo } from "./hero-demo";
@@ -67,7 +66,6 @@ export function Hero() {
 
   return (
     <section ref={root} id="top-of-page" className="ld-hero ld-pre" aria-labelledby="hero-title">
-      <Ribbon size="lg" className="ld-hero-ribbon" />
       <div className="ld-wrap ld-hero-grid">
         <div className="ld-hero-copy">
           <Stool shoots={SHOOTS_THREE} className="ld-stool ld-hero-stool" />
