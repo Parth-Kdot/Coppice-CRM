@@ -365,13 +365,18 @@
   .lg-qn {
     position: relative;
     min-width: 0;
-    padding-left: 4px;
     overflow: hidden;
+  }
+  .lg-qname {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    vertical-align: top;
   }
   .lg-qopen {
     display: block;
     max-width: 100%;
-    padding: 6px 0;
+    padding: 6px 4px;
     background: none;
     color: var(--ink);
     font-size: 0.98rem;
@@ -382,6 +387,10 @@
     text-overflow: ellipsis;
     cursor: pointer;
   }
+  .lg-qopen:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -2px;
+  }
   .lg-qopen:hover:not(:disabled) {
     text-decoration: underline;
     text-decoration-color: var(--moss);
@@ -390,8 +399,8 @@
   }
   .lg-strike {
     position: absolute;
-    left: 4px;
-    right: 6px;
+    left: 0;
+    right: 0;
     top: 50%;
     height: 2px;
     margin-top: -1px;
@@ -815,7 +824,14 @@
   @container queue (max-width: 759px) {
     .lg-qhead,
     .lg-qgrid {
-      grid-template-columns: 52px 142px minmax(0, 1fr) 24px 178px 34px;
+      grid-template-columns: 50px 136px minmax(0, 1fr) 128px 168px 32px;
+      column-gap: 8px;
+    }
+  }
+  @container queue (max-width: 679px) {
+    .lg-qhead,
+    .lg-qgrid {
+      grid-template-columns: 52px 138px minmax(0, 1fr) 24px 170px 32px;
     }
     .lg-qstage-label {
       position: absolute;

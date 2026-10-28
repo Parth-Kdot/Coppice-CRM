@@ -322,10 +322,7 @@ export function FocusMode({
               logging={logging}
               canSkip={ordered.length > 1}
               onLogging={setLogging}
-              onLogged={() => {
-                notify(`Logged ${current.company.name}.`);
-                logged();
-              }}
+              onLogged={logged}
               onSkip={skip}
               cardRef={card}
             />

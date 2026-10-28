@@ -141,7 +141,7 @@ export function QueueScreen({ ws }: { ws: string }) {
     setActiveId(id);
     setPanelId(id);
     setLogging(options.logging ?? false);
-    if (options.focusPanel) requestAnimationFrame(() => panelRef.current?.focus());
+    if (options.focusPanel) requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
   }, []);
 
   const closePanel = useCallback(() => {

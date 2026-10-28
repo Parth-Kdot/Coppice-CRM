@@ -4,7 +4,7 @@ import { useEffect, useRef, type MouseEvent } from "react";
 import { formatDay } from "@/demo/dates";
 import type { QueueRow } from "@/demo/selectors";
 import { STAGE_LABELS } from "@/demo/types";
-import { ChevronDownIcon, ChevronRightIcon, StageGlyph, WarningIcon } from "../icons";
+import { ChevronLeftIcon, ChevronRightIcon, StageGlyph, WarningIcon } from "../icons";
 import { Tick, YearMargin } from "../marks";
 import { ClaimChip } from "./claim-chip";
 import { isLongOverdue, OverdueMark } from "./overdue";
@@ -99,17 +99,12 @@ export function QueueRowView(p: RowProps) {
         </span>
         <Timing row={row} />
         <span className="lg-qn">
-          <button
-            type="button"
-            className="lg-qopen"
-            aria-expanded={p.open}
-            aria-controls={p.panelId}
-            disabled={leaving}
-            onClick={() => p.onSelect(company.id)}
-          >
-            {company.name}
-          </button>
-          {leaving && <span className="lg-strike" aria-hidden="true" />}
+          <span className="lg-qname">
+            <button type="button" className="lg-qopen" aria-expanded={p.open} aria-controls={p.panelId} disabled={leaving} onClick={() => p.onSelect(company.id)}>
+              {company.name}
+            </button>
+            {leaving && <span className="lg-strike" aria-hidden="true" />}
+          </span>
         </span>
         <span className="lg-qstage" title={STAGE_LABELS[company.stage]}>
           <StageGlyph stage={company.stage} size={15} />
@@ -137,7 +132,7 @@ export function QueueRowView(p: RowProps) {
           onClick={() => p.onToggle(company.id)}
           disabled={leaving}
         >
-          {p.open ? <ChevronDownIcon size={18} className="lg-qchev-open" /> : <ChevronRightIcon size={18} />}
+          {p.open ? <ChevronLeftIcon size={18} /> : <ChevronRightIcon size={18} />}
         </button>
       </div>
 
