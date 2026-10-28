@@ -2,19 +2,54 @@
 
 import Lenis from "lenis";
 import { useEffect } from "react";
-import { REDUCED_MOTION, setupGsap } from "./motion";
+import { MOTION_OK, setupGsap } from "./motion";
 
-// Smooth scrolling on the landing only, wired to GSAP's ticker so ScrollTrigger and Lenis agree on
-// the scroll position. Off for reduced motion. Anchor links glide to their section.
+// Lenis smooth scrolling, on the landing only, wired to GSAP's ticker so ScrollTrigger and Lenis
+// agree on the scroll position.
+//
+// When it runs:
+//   - Only with no reduced-motion preference. If the preference changes while the page is open,
+//     Lenis is created or destroyed on the spot.
+//   - Never on touch-only devices (no hover, coarse pointer). Those keep the browser's native
+//     scrolling and momentum, and syncTouch stays off as well.
+//
+// What keeps working: Lenis only eases the wheel, so the keyboard (space, page up and down, home,
+// end, arrows) and the scrollbar scroll natively. In-page anchor links glide to their section (Lenis
+// anchors, with the fixed nav's height as the offset), and scroll-padding-top in landing.css keeps
+// native focus jumps clear of the nav.
+const TOUCH_ONLY = "(hover: none) and (pointer: coarse)";
+
 export function SmoothScroll() {
   useEffect(() => {
-    if (window.matchMedia(REDUCED_MOTION).matches) return;
     const { gsap, ScrollTrigger } = setupGsap();
-    const lenis = new Lenis({ lerp: 0.11, anchors: { offset: -72 } });
-    lenis.on("scroll", ScrollTrigger.update);
-    const tick = (time: number) => lenis.raf(time * 1000);
-    gsap.ticker.add(tick);
-    gsap.ticker.lagSmoothing(0);
+    const motion = window.matchMedia(MOTION_OK);
+    const touchOnly = window.matchMedia(TOUCH_ONLY);
+    let stop: (() => void) | null = null;
+
+    const start = () => {
+      const lenis = new Lenis({ lerp: 0.11, syncTouch: false, anchors: { offset: -72 } });
+      lenis.on("scroll", ScrollTrigger.update);
+      const tick = (time: number) => lenis.raf(time * 1000);
+      gsap.ticker.add(tick);
+      gsap.ticker.lagSmoothing(0);
+      return () => {
+        gsap.ticker.remove(tick);
+        gsap.ticker.lagSmoothing(500, 33);
+        lenis.destroy();
+      };
+    };
+
+    const sync = () => {
+      const want = motion.matches && !touchOnly.matches;
+      if (want && !stop) stop = start();
+      if (!want && stop) {
+        stop();
+        stop = null;
+      }
+    };
+    sync();
+    motion.addEventListener("change", sync);
+    touchOnly.addEventListener("change", sync);
 
     // Layout settles once the fonts are in; measure the pinned scenes again then.
     const refresh = () => ScrollTrigger.refresh();
@@ -23,8 +58,10 @@ export function SmoothScroll() {
 
     return () => {
       window.removeEventListener("load", refresh);
-      gsap.ticker.remove(tick);
-      lenis.destroy();
+      motion.removeEventListener("change", sync);
+      touchOnly.removeEventListener("change", sync);
+      stop?.();
+      stop = null;
     };
   }, []);
   return null;
