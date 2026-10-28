@@ -137,15 +137,42 @@ export function CalendarIcon(props: IconProps) {
   );
 }
 
-// Overdue: a small hourglass.
-export function OverdueIcon(props: IconProps) {
+// The hourglass. The glass is the same in every state; the sand says how much time is left.
+//   empty:   no sand drawn, a plain glass (a follow-up that is still ahead)
+//   half:    sand in both bulbs and a thin stream (due today, or a day or two late)
+//   low:     most of the sand has run down (overdue)
+//   drained: the top bulb is empty and the sand lies in the bottom (long overdue), with a heavier glass
+export type HourglassFill = "empty" | "half" | "low" | "drained";
+
+export function HourglassIcon({ sand = "empty", ...props }: IconProps & { sand?: HourglassFill }) {
+  const heavy = sand === "drained";
   return (
     <Icon {...props}>
-      <path d="M5.8 3h8.4M5.8 17h8.4" />
-      <path d="M6.8 3c0 3.2 3.2 4 3.2 7s-3.2 3.8-3.2 7M13.2 3c0 3.2-3.2 4-3.2 7s3.2 3.8 3.2 7" />
-      <path d="M8.6 15.4h2.8" strokeWidth={THIN} />
+      <path d="M5.8 3h8.4M5.8 17h8.4" strokeWidth={heavy ? 1.9 : 1.5} />
+      <path d="M6.8 3c0 3.2 3.2 4 3.2 7s-3.2 3.8-3.2 7M13.2 3c0 3.2-3.2 4-3.2 7s3.2 3.8 3.2 7" strokeWidth={heavy ? 1.9 : 1.5} />
+      {sand === "empty" && <path d="M8.6 15.4h2.8" strokeWidth={THIN} />}
+      {sand === "half" && (
+        <>
+          <path d="M8.1 5.2h3.8L10 8.4z" fill="currentColor" strokeWidth={0.6} />
+          <path d="M10 8.6v3.6" strokeWidth={THIN} />
+          <path d="M8.2 15.6h3.6L10 13.2z" fill="currentColor" strokeWidth={0.6} />
+        </>
+      )}
+      {sand === "low" && (
+        <>
+          <path d="M9.1 7.3h1.8L10 8.6z" fill="currentColor" strokeWidth={0.6} />
+          <path d="M10 8.8v3.2" strokeWidth={THIN} />
+          <path d="M7.6 15.7h4.8L10 12.3z" fill="currentColor" strokeWidth={0.6} />
+        </>
+      )}
+      {sand === "drained" && <path d="M7.2 15.7h5.6c-.2-1.9-1.5-2.9-2.8-4.6-1.3 1.7-2.6 2.7-2.8 4.6z" fill="currentColor" strokeWidth={0.6} />}
     </Icon>
   );
+}
+
+// The original single-state hourglass, kept for places that only need the glass.
+export function OverdueIcon(props: IconProps) {
+  return <HourglassIcon sand="empty" {...props} />;
 }
 
 // Duplicate: two overlapping slips.

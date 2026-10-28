@@ -598,6 +598,19 @@
     margin-top: 8px;
     color: var(--ink-2);
   }
+  .lg-cofollow {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 12px;
+  }
+  /* The margin note on a long overdue company: small caps, rust, never a filled background. */
+  .lg-od-note {
+    padding-left: 10px;
+    border-left: 3px solid var(--rust);
+    color: var(--rust);
+    font-weight: 600;
+  }
   .lg-stagechip {
     display: inline-flex;
     align-items: center;

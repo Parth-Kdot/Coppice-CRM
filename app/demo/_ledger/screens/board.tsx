@@ -7,10 +7,11 @@ import type { BoardCard, BoardColumn, DuplicatePair } from "@/demo/selectors";
 import { demoRoutes } from "@/demo/routes";
 import { useBoard, useBoardFilters, useDemoActions } from "@/demo/store";
 import type { MatchReason, Stage } from "@/demo/types";
-import { CalendarIcon, ChevronDownIcon, ChevronRightIcon, DuplicateIcon, OverdueIcon, PaperclipIcon, PlusIcon, SearchIcon, StageGlyph } from "../icons";
+import { ChevronDownIcon, ChevronRightIcon, DuplicateIcon, PaperclipIcon, PlusIcon, SearchIcon, StageGlyph } from "../icons";
 import { Ribbon } from "../marks";
 import { useConfirm, useNotify } from "../providers";
 import { FIND_EVENT } from "../shell";
+import { isLongOverdue, OverdueMark } from "./overdue";
 import { StageControl } from "./stage-control";
 import { ClaimBadge, Count, Empty, ErrorLine, PageHead, useClaimAction, useFlash } from "./shared";
 
@@ -43,25 +44,15 @@ function Card({
 }) {
   const c = card.company;
   return (
-    <li className={`lg-card ${flashing ? "lg-settle" : ""}`} data-stage={c.stage}>
+    <li className={`lg-card lg-rule-row ${flashing ? "lg-settle" : ""}`} data-stage={c.stage} data-od={isLongOverdue(card.daysOverdue) ? "long" : undefined}>
       {card.claim.state === "mine" && <Ribbon size="md" drop={dropping} className="lg-cardribbon" />}
       <h3 className="lg-cardname">
         <Link href={demoRoutes.company(ws, c.id)}>{c.name}</Link>
       </h3>
       {c.industry && <p className="lg-cardind">{c.industry}</p>}
       <p className="lg-cardfollow">
-        {card.followUp ? (
-          card.overdue ? (
-            <span className="lg-late">
-              <OverdueIcon size={15} />
-              Follow up {card.followUp} (overdue)
-            </span>
-          ) : (
-            <span>
-              <CalendarIcon size={15} />
-              Follow up {card.followUp}
-            </span>
-          )
+        {card.followUp && card.daysOverdue !== null ? (
+          <OverdueMark days={card.daysOverdue} dueOn={card.followUp} size={15} />
         ) : (
           <span className="lg-muted">No follow-up set</span>
         )}

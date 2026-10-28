@@ -226,6 +226,8 @@ export type BoardCard = {
   // "Oct 30", or null when no follow-up is set.
   followUp: string | null;
   overdue: boolean;
+  // Whole calendar days past the follow-up date (negative before it), null when none is set.
+  daysOverdue: number | null;
   // Committed and Declined cards cannot be claimed.
   closed: boolean;
 };
@@ -300,6 +302,7 @@ export function selectBoard(state: DemoState, ws: string, filters: BoardFilters 
         claim: claimView(state, company),
         followUp: company.nextFollowUpAt ? formatDay(company.nextFollowUpAt) : null,
         overdue: company.nextFollowUpAt !== null && Date.parse(company.nextFollowUpAt) < Date.parse(state.now),
+        daysOverdue: company.nextFollowUpAt ? daysOverdue(company.nextFollowUpAt, state.now) : null,
         closed: isTerminalStage(company.stage),
       }),
     );
@@ -394,6 +397,8 @@ export type CompanyDetail = {
   nextFollowUp: string | null;
   // "Due today", "3 days overdue", "Due in 5 days", or null.
   followUpLabel: string | null;
+  // Whole calendar days past the follow-up date (negative before it), null when none is set.
+  followUpDays: number | null;
   // The first line under the name: "Contacted · Aerospace · acme.com".
   headline: string;
 };
@@ -493,6 +498,7 @@ export function selectCompany(state: DemoState, ws: string, companyId: string): 
     lastContacted: company.lastContactedAt ? formatDay(company.lastContactedAt) : null,
     nextFollowUp: company.nextFollowUpAt ? formatDay(company.nextFollowUpAt) : null,
     followUpLabel: company.nextFollowUpAt ? dueLabel(company.nextFollowUpAt, state.now) : null,
+    followUpDays: company.nextFollowUpAt ? daysOverdue(company.nextFollowUpAt, state.now) : null,
     headline,
   };
 }

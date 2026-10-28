@@ -473,6 +473,44 @@
     font-weight: 600;
   }
 
+  /* ---------- Overdue levels (screens/overdue.tsx) ---------- */
+  .lg-od {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+  .lg-od svg {
+    flex: none;
+  }
+  .lg-od[data-level="upcoming"] {
+    color: var(--ink-2);
+  }
+  .lg-od[data-level="overdue"] {
+    color: var(--rust);
+  }
+  .lg-od[data-level="long"] {
+    color: var(--rust);
+    font-weight: 600;
+  }
+  /* A long overdue row carries a solid 3 px rust rule down its left edge, in the margin column. */
+  .lg-rule-row[data-od="long"] {
+    position: relative;
+  }
+  .lg-rule-row[data-od="long"]::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--rust);
+    pointer-events: none;
+  }
+
   /* ---------- Disclosure: a row grows to fit, in 200 ms ---------- */
   .lg-disclose {
     display: grid;

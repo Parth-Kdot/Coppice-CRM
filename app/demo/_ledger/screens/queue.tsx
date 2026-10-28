@@ -8,9 +8,10 @@ import type { QueueRow } from "@/demo/selectors";
 import { demoRoutes } from "@/demo/routes";
 import { useMe, useQueue, useQueueFilters } from "@/demo/store";
 import { CHANNEL_LABELS, type Channel } from "@/demo/types";
-import { CalendarIcon, ChevronDownIcon, ChevronRightIcon, ExternalIcon, LogIcon, OverdueIcon, PlusIcon, WarningIcon } from "../icons";
+import { ChevronDownIcon, ChevronRightIcon, ExternalIcon, LogIcon, PlusIcon, WarningIcon } from "../icons";
 import { Ribbon, Tick, YearMargin } from "../marks";
 import { LogOutreachForm } from "./log-form";
+import { isLongOverdue, OverdueMark } from "./overdue";
 import { ClaimBadge, Count, Empty, PageHead, useClaimAction, useFlash, useLatestOutreach } from "./shared";
 
 // The queue: who should I follow up with today? Rows are ruled, most overdue first, with the
@@ -24,18 +25,9 @@ function Timing({ row }: { row: QueueRow }) {
   if (row.daysOverdue === null) {
     return <span className="lg-qtime lg-muted">{row.timing}</span>;
   }
-  if (row.daysOverdue > 0) {
-    return (
-      <span className="lg-qtime lg-late">
-        <OverdueIcon size={16} />
-        {row.timing}
-      </span>
-    );
-  }
   return (
     <span className="lg-qtime">
-      <CalendarIcon size={16} />
-      {row.timing}
+      <OverdueMark days={row.daysOverdue} />
     </span>
   );
 }
@@ -104,7 +96,8 @@ function QueueRowView(p: RowProps) {
       data-row={company.id}
       data-active={p.active || undefined}
       data-leaving={leaving || undefined}
-      className={`lg-qrow ${p.flashing ? "lg-settle" : ""}`}
+      data-od={isLongOverdue(row.daysOverdue) ? "long" : undefined}
+      className={`lg-qrow lg-rule-row ${p.flashing ? "lg-settle" : ""}`}
     >
       <div className="lg-qgrid">
         {mine && <Ribbon size="sm" drop={p.dropping} className="lg-qribbon" />}

@@ -9,12 +9,13 @@ import type { CompanyDetail } from "@/demo/selectors";
 import { useCompany, useDemoActions } from "@/demo/store";
 import { COMPANY_LIMITS, CONTACT_LIMITS, websiteHref } from "@/demo/validation";
 import type { Contact } from "@/demo/types";
-import { CalendarIcon, ChevronLeftIcon, ClaimIcon, DuplicateIcon, ExternalIcon, OverdueIcon, ReleaseIcon, StageGlyph } from "../icons";
+import { ChevronLeftIcon, ClaimIcon, DuplicateIcon, ExternalIcon, ReleaseIcon, StageGlyph } from "../icons";
 import { Ribbon, Tick, TurnoverRule, YearMargin, boardYear } from "../marks";
 import { NotFoundPage } from "../not-found-page";
 import { useConfirm, useNotify } from "../providers";
 import { DraftPanel } from "./draft-panel";
 import { LogOutreachForm } from "./log-form";
+import { isLongOverdue, OverdueMark } from "./overdue";
 import { StageControl } from "./stage-control";
 import { Empty, ErrorLine, useClaimAction } from "./shared";
 
@@ -584,7 +585,7 @@ export function CompanyScreen({ ws, companyId }: { ws: string; companyId: string
   if (!detail) return <NotFoundPage inline />;
   const c = detail.company;
   const href = websiteHref(c.website);
-  const overdue = c.nextFollowUpAt && detail.followUpLabel?.includes("overdue");
+  const longOverdue = isLongOverdue(detail.followUpDays);
 
   return (
     <article className="lg-company">
@@ -609,11 +610,11 @@ export function CompanyScreen({ ws, companyId }: { ws: string; companyId: string
         </p>
         <p className="lg-coline">
           <span>{detail.lastContacted ? `Last contacted ${detail.lastContacted}` : "Never contacted"}</span>
-          {detail.nextFollowUp && (
-            <span className={overdue ? "lg-late" : ""}>
-              {overdue ? <OverdueIcon size={15} className="mr-1 inline-block align-[-2px]" /> : <CalendarIcon size={15} className="mr-1 inline-block align-[-2px]" />}
-              Follow up {detail.nextFollowUp}
-              {detail.followUpLabel ? `, ${detail.followUpLabel.toLowerCase()}` : ""}
+          {detail.nextFollowUp && detail.followUpDays !== null && (
+            <span className="lg-cofollow">
+              <span>Follow up {detail.nextFollowUp}</span>
+              <OverdueMark days={detail.followUpDays} dueOn={detail.nextFollowUp} size={15} />
+              {longOverdue && <span className="lg-od-note lg-sc">Long overdue</span>}
             </span>
           )}
         </p>
