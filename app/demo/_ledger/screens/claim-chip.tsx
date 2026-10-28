@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { formatDay } from "@/demo/dates";
 import type { ClaimView } from "@/demo/selectors";
+import { ClaimIcon } from "../icons";
 import { Ribbon } from "../marks";
 
 // The claim control, in three states that never rely on color. All three are drawn in ink.
@@ -23,12 +24,21 @@ export function shortName(name: string | null): string {
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// "Priya Raghunathan" becomes "PR"
+export function initials(name: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
 export function ClaimChip({
   claim,
   companyName,
   onClaim,
   shaking = false,
   readOnly = false,
+  compact = false,
   className = "",
 }: {
   claim: ClaimView;
@@ -38,6 +48,9 @@ export function ClaimChip({
   // Show the state only: a free company reads "Not claimed" instead of offering the button, because
   // the screen has its own Claim button. The morph and the ribbon still play when it becomes yours.
   readOnly?: boolean;
+  // The board slip's size: "Claim", "You" or the holder's initials. The full text stays in the title
+  // and for screen readers.
+  compact?: boolean;
   className?: string;
 }) {
   const wrap = useRef<HTMLSpanElement>(null);
@@ -72,7 +85,7 @@ export function ClaimChip({
 
   const holderFull = claim.holderName ?? "someone";
   return (
-    <span ref={wrap} className={`lg-claimchip ${className}`} data-kind={kind}>
+    <span ref={wrap} className={`lg-claimchip ${className}`} data-kind={kind} data-compact={compact || undefined}>
       {kind === "free" && readOnly ? (
         <span className="lg-chipbody lg-chip-none">{claim.state === "expired" ? "Claim expired" : "Not claimed"}</span>
       ) : kind === "free" ? (
@@ -82,22 +95,30 @@ export function ClaimChip({
           onClick={onClaim}
           title={claim.state === "expired" ? `${holderFull}'s claim expired ${until}` : undefined}
         >
-          Claim
-          <span className="lg-sr"> {companyName}</span>
+          <span className="lg-claimword" aria-hidden={compact || undefined}>
+            Claim
+          </span>
+          {compact && <ClaimIcon size={15} className="lg-claimico" />}
+          <span className="lg-sr">{compact ? `Claim ${companyName}` : ` ${companyName}`}</span>
         </button>
       ) : kind === "mine" ? (
         <span className="lg-chipbody lg-chip-mine" title={`You hold ${companyName} until ${until}`}>
           <Ribbon size="sm" className="lg-chip-ribbon" />
-          Yours until {until}
+          {compact ? (
+            <>
+              <span aria-hidden="true">You</span>
+              <span className="lg-sr">Yours until {until}</span>
+            </>
+          ) : (
+            <>Yours until {until}</>
+          )}
         </span>
       ) : (
         <span className="lg-chipbody lg-chip-theirs" title={`Held by ${holderFull} until ${until}`}>
           <span className="lg-sr">
             Held by {holderFull} until {until}
           </span>
-          <span aria-hidden="true">
-            {shortName(claim.holderName)} until {until}
-          </span>
+          <span aria-hidden="true">{compact ? initials(claim.holderName) : `${shortName(claim.holderName)} until ${until}`}</span>
         </span>
       )}
     </span>

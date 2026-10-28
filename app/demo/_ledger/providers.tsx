@@ -11,6 +11,7 @@ import "./ledger.css";
 import "./shell.css";
 import "./screens.css";
 import "./queue.css";
+import "./board.css";
 
 // Three small services every Ledger screen shares: margin notes (toasts), a confirmation dialog, and
 // the reviewer's race switch (the next Claim loses to a teammate, so the refusal can be seen).
@@ -42,7 +43,9 @@ export const useConfirm = (): Confirm => useContext(ConfirmContext);
 // One service for every way of moving a stage (the palette, the board's Move to menu, the company
 // page): Committed and Declined ask first, and a move to Replied or later asks which outreach got
 // the reply. Resolves to true when the company moved.
-export type MoveRequest = { ws: string; companyId: string; companyName: string; to: Stage };
+// onError takes a refusal ("Sam Lee holds this company until...") when the caller shows it in its own
+// margin instead of in the status line.
+export type MoveRequest = { ws: string; companyId: string; companyName: string; to: Stage; onError?: (message: string) => void };
 type MoveStage = (request: MoveRequest) => Promise<boolean>;
 
 const MoveContext = createContext<MoveStage>(() => Promise.resolve(false));
@@ -112,7 +115,8 @@ export function LedgerProviders({ children }: { children: ReactNode }) {
     (request: MoveRequest, replyOutreachId?: string | null): boolean => {
       const result = actions.moveStage(request.ws, request.companyId, request.to, replyOutreachId === undefined ? undefined : { replyOutreachId });
       if (!result.ok) {
-        notify(result.error, "error");
+        if (request.onError) request.onError(result.error);
+        else notify(result.error, "error");
         return false;
       }
       notify(`${request.companyName} moved to ${STAGE_LABELS[request.to]}.`);
