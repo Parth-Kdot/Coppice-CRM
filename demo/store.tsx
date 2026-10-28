@@ -2,12 +2,23 @@
 
 import { useSearchParams } from "next/navigation";
 import { createContext, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { DEFAULT_BOARD_FILTERS, DEFAULT_QUEUE_FILTERS, parseBoardFilters, parseQueueFilters, type BoardFilters, type QueueFilters } from "./routes";
+import {
+  DEFAULT_BOARD_FILTERS,
+  DEFAULT_COMPANIES_FILTERS,
+  DEFAULT_QUEUE_FILTERS,
+  parseBoardFilters,
+  parseCompaniesFilters,
+  parseQueueFilters,
+  type BoardFilters,
+  type CompaniesFilters,
+  type QueueFilters,
+} from "./routes";
 import {
   myMembership,
   selectActivity,
   selectBoard,
   selectCompany,
+  selectCompanyList,
   selectFactSheet,
   selectIndustries,
   selectMe,
@@ -109,6 +120,21 @@ export function useBoard(ws: string, filters: BoardFilters = DEFAULT_BOARD_FILTE
   const key = keyOf(filters);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `filters`
   return useMemo(() => selectBoard(state, ws, filters), [state, ws, key]);
+}
+
+export function useCompanyList(ws: string, filters: CompaniesFilters = DEFAULT_COMPANIES_FILTERS) {
+  const state = useDemoState();
+  const key = keyOf(filters);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `filters`
+  return useMemo(() => selectCompanyList(state, ws, filters), [state, ws, key]);
+}
+
+// The Companies filters as they are in the page's URL (?q=acme&stage=REPLIED&sort=name).
+export function useCompaniesFilters(): CompaniesFilters {
+  const params = useSearchParams();
+  const text = params.toString();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `text` stands for `params`
+  return useMemo(() => parseCompaniesFilters(params), [text]);
 }
 
 // The queue filters as they are in the page's URL (?mine=1&never=1&all=due), parsed the way the

@@ -1,4 +1,4 @@
-import { DEFAULT_BOARD_FILTERS, DEFAULT_QUEUE_FILTERS, type BoardFilters, type QueueFilters } from "./routes";
+import { DEFAULT_BOARD_FILTERS, DEFAULT_COMPANIES_FILTERS, DEFAULT_QUEUE_FILTERS, type BoardFilters, type CompaniesFilters, type QueueFilters } from "./routes";
 import { addDaysYmd, daysOverdue, dueLabel, formatDay, formatWhen, localYmd, overdueLabel } from "./dates";
 import { personName } from "./engine-core";
 import { MAX_FOLLOW_UP_DAYS, DEFAULT_FOLLOW_UP_DAYS } from "./engine-claims";
@@ -321,6 +321,68 @@ export function selectBoard(state: DemoState, ws: string, filters: BoardFilters 
     duplicatePairs: pairs,
     duplicatePairsCapped: pairs.length >= DUPLICATE_PAIR_LIMIT,
   };
+}
+
+// ----- The Companies list -----
+
+export type CompanyListRow = {
+  company: Company;
+  claim: ClaimView;
+  // Whole calendar days past the follow-up date (negative before it), null when none is set.
+  daysOverdue: number | null;
+  // "Nov 2", or null when no follow-up is set.
+  followUpOn: string | null;
+  // The date the margin column and the sort use: the last outreach, or the day it was added.
+  datedAt: IsoDateTime;
+  // "Oct 20", or null when it was never contacted.
+  lastOutreachOn: string | null;
+  closed: boolean;
+};
+
+export type CompanyList = {
+  filters: CompaniesFilters;
+  rows: CompanyListRow[];
+  // Every active company in the workspace, and how many match the search (before the stage filter).
+  workspaceTotal: number;
+  matchTotal: number;
+  stageCounts: Record<Stage, number>;
+};
+
+// Every active company in the workspace, searched, filtered by stage and sorted.
+export function selectCompanyList(state: DemoState, ws: string, filters: CompaniesFilters = DEFAULT_COMPANIES_FILTERS): CompanyList {
+  const active = inWorkspace(state, ws).filter((c) => c.archivedAt === null);
+  const contacts = state.contacts.filter((c) => c.workspaceId === ws);
+  const q = filters.q.trim().toLowerCase();
+  const searched = q
+    ? active.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.industry?.toLowerCase().includes(q) ||
+          c.website?.toLowerCase().includes(q) ||
+          contacts.some((k) => k.companyId === c.id && (k.name.toLowerCase().includes(q) || k.email?.toLowerCase().includes(q))),
+      )
+    : active;
+  const stageCounts = Object.fromEntries(STAGES.map((s) => [s, searched.filter((c) => c.stage === s).length])) as Record<Stage, number>;
+  const shown = filters.stage ? searched.filter((c) => c.stage === filters.stage) : searched;
+  const datedAt = (c: Company) => c.lastContactedAt ?? c.createdAt;
+  const sorters: Record<CompaniesFilters["sort"], (a: Company, b: Company) => number> = {
+    recent: (a, b) => Date.parse(datedAt(b)) - Date.parse(datedAt(a)) || byName(a, b),
+    followup: (a, b) => time(a.nextFollowUpAt) - time(b.nextFollowUpAt) || byName(a, b),
+    name: byName,
+    stage: (a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) || byName(a, b),
+  };
+  const rows = [...shown].sort(sorters[filters.sort]).map(
+    (company): CompanyListRow => ({
+      company,
+      claim: claimView(state, company),
+      daysOverdue: company.nextFollowUpAt ? daysOverdue(company.nextFollowUpAt, state.now) : null,
+      followUpOn: company.nextFollowUpAt ? formatDay(company.nextFollowUpAt) : null,
+      datedAt: datedAt(company),
+      lastOutreachOn: company.lastContactedAt ? formatDay(company.lastContactedAt) : null,
+      closed: isTerminalStage(company.stage),
+    }),
+  );
+  return { filters, rows, workspaceTotal: active.length, matchTotal: searched.length, stageCounts };
 }
 
 // ----- Search -----

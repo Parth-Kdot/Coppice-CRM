@@ -11,6 +11,7 @@ export const DEMO_ROUTE_PATTERNS = {
   workspaces: "/demo/workspaces",
   queue: "/demo/w/[ws]",
   board: "/demo/w/[ws]/board",
+  companies: "/demo/w/[ws]/companies",
   company: "/demo/w/[ws]/companies/[companyId]",
   newCompany: "/demo/w/[ws]/companies/new",
   import: "/demo/w/[ws]/import",
@@ -45,6 +46,19 @@ export type BoardFilters = {
   dupes: boolean;
 };
 
+// The Companies screen: the whole workspace as one ruled table.
+export const COMPANY_SORTS = ["recent", "followup", "name", "stage"] as const;
+export type CompanySort = (typeof COMPANY_SORTS)[number];
+
+export type CompaniesFilters = {
+  // Search by name, industry, website, contact name or email.
+  q: string;
+  // One stage, or null for all of them.
+  stage: Stage | null;
+  sort: CompanySort;
+};
+
+export const DEFAULT_COMPANIES_FILTERS: CompaniesFilters = { q: "", stage: null, sort: "recent" };
 export const DEFAULT_QUEUE_FILTERS: QueueFilters = { mine: false, never: false, all: null };
 export const DEFAULT_BOARD_FILTERS: BoardFilters = { q: "", industry: "", show: [], all: null, archived: false, dupes: false };
 
@@ -82,6 +96,27 @@ export function parseBoardFilters(params: SearchParamsInput): BoardFilters {
     archived: firstParam(params, "archived") === "1",
     dupes: firstParam(params, "dupes") === "1",
   };
+}
+
+export function parseCompaniesFilters(params: SearchParamsInput): CompaniesFilters {
+  const stage = firstParam(params, "stage");
+  const sort = firstParam(params, "sort");
+  return {
+    q: (firstParam(params, "q") ?? "").trim().slice(0, 100),
+    stage: stage && isStage(stage) ? stage : null,
+    sort: sort && (COMPANY_SORTS as readonly string[]).includes(sort) ? (sort as CompanySort) : DEFAULT_COMPANIES_FILTERS.sort,
+  };
+}
+
+// The query string for a Companies view, "" when every filter is at its default.
+export function companiesQuery(filters: Partial<CompaniesFilters> = {}): string {
+  const f = { ...DEFAULT_COMPANIES_FILTERS, ...filters };
+  const params = new URLSearchParams();
+  if (f.q) params.set("q", f.q);
+  if (f.stage) params.set("stage", f.stage);
+  if (f.sort !== DEFAULT_COMPANIES_FILTERS.sort) params.set("sort", f.sort);
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 // The query string for a queue view, "" when every filter is at its default.
@@ -123,6 +158,7 @@ export const demoRoutes = {
   workspaces: (): string => "/demo/workspaces",
   queue: (ws: string, filters?: Partial<QueueFilters>): string => `${workspacePath(ws)}${queueQuery(filters)}`,
   board: (ws: string, filters?: Partial<BoardFilters>): string => `${workspacePath(ws)}/board${boardQuery(filters)}`,
+  companies: (ws: string, filters?: Partial<CompaniesFilters>): string => `${workspacePath(ws)}/companies${companiesQuery(filters)}`,
   company: (ws: string, companyId: string, options?: { anchor?: keyof typeof COMPANY_ANCHORS }): string =>
     `${workspacePath(ws)}/companies/${seg(companyId)}${options?.anchor ? `#${COMPANY_ANCHORS[options.anchor]}` : ""}`,
   newCompany: (ws: string): string => `${workspacePath(ws)}/companies/new`,
@@ -133,13 +169,14 @@ export const demoRoutes = {
 
 // ----- Navigation helpers -----
 
-export type WorkspaceNavKey = "queue" | "board" | "newCompany" | "import" | "facts" | "settings";
+export type WorkspaceNavKey = "queue" | "board" | "companies" | "newCompany" | "import" | "facts" | "settings";
 
 // The destinations the real app links to from a workspace, in the order its header lists them.
 // The real header has no link to the fact sheet (Settings links to it); a design may promote it.
 export const WORKSPACE_NAV: readonly { key: WorkspaceNavKey; label: string; href: (ws: string) => string }[] = [
   { key: "queue", label: "Queue", href: (ws) => demoRoutes.queue(ws) },
   { key: "board", label: "Board", href: (ws) => demoRoutes.board(ws) },
+  { key: "companies", label: "Companies", href: (ws) => demoRoutes.companies(ws) },
   { key: "newCompany", label: "Add company", href: (ws) => demoRoutes.newCompany(ws) },
   { key: "import", label: "Import", href: (ws) => demoRoutes.import(ws) },
   { key: "facts", label: "Fact sheet", href: (ws) => demoRoutes.facts(ws) },
@@ -160,6 +197,7 @@ export function matchDemoRoute(pathname: string): MatchedRoute | null {
   const rest = parts.slice(3);
   if (rest.length === 0) return { screen: "queue", ws, companyId: null };
   if (rest.length === 1 && rest[0] === "board") return { screen: "board", ws, companyId: null };
+  if (rest.length === 1 && rest[0] === "companies") return { screen: "companies", ws, companyId: null };
   if (rest.length === 1 && rest[0] === "import") return { screen: "import", ws, companyId: null };
   if (rest.length === 1 && rest[0] === "facts") return { screen: "facts", ws, companyId: null };
   if (rest.length === 1 && rest[0] === "settings") return { screen: "settings", ws, companyId: null };
