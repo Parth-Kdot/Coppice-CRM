@@ -9,10 +9,11 @@ import { demoRoutes } from "@/demo/routes";
 import { useMe, useQueue, useQueueFilters } from "@/demo/store";
 import { CHANNEL_LABELS, type Channel } from "@/demo/types";
 import { ChevronDownIcon, ChevronRightIcon, ExternalIcon, LogIcon, PlusIcon, WarningIcon } from "../icons";
-import { Ribbon, Tick, YearMargin } from "../marks";
+import { Tick, YearMargin } from "../marks";
+import { ClaimChip } from "./claim-chip";
 import { LogOutreachForm } from "./log-form";
 import { isLongOverdue, OverdueMark } from "./overdue";
-import { ClaimBadge, Count, Empty, PageHead, useClaimAction, useFlash, useLatestOutreach } from "./shared";
+import { Count, Empty, PageHead, useClaimAction, useFlash, useLatestOutreach } from "./shared";
 
 // The queue: who should I follow up with today? Rows are ruled, most overdue first, with the
 // board-year margin on the left. Claim in place (a gilt ribbon drops onto the row), log outreach in
@@ -100,7 +101,6 @@ function QueueRowView(p: RowProps) {
       className={`lg-qrow lg-rule-row ${p.flashing ? "lg-settle" : ""}`}
     >
       <div className="lg-qgrid">
-        {mine && <Ribbon size="sm" drop={p.dropping} className="lg-qribbon" />}
         <span className="lg-qm">
           <YearMargin iso={company.lastContactedAt ?? company.createdAt} />
         </span>
@@ -115,7 +115,7 @@ function QueueRowView(p: RowProps) {
         </span>
         <Timing row={row} />
         <span className="lg-qclaim">
-          <ClaimBadge claim={row.claim} />
+          <ClaimChip claim={row.claim} companyName={company.name} onClaim={p.onClaim} shaking={p.shaking} dropping={p.dropping} />
         </span>
         <span className="lg-qact">
           {leaving ? (
@@ -123,10 +123,6 @@ function QueueRowView(p: RowProps) {
               <Tick size={20} />
               Logged
             </span>
-          ) : row.action === "claim" ? (
-            <button type="button" className={`lg-btn lg-btn-primary lg-btn-sm ${p.shaking ? "lg-btn-shake" : ""}`} onClick={p.onClaim}>
-              Claim
-            </button>
           ) : row.action === "log-outreach" ? (
             <button type="button" className="lg-btn lg-btn-sm" onClick={p.onOpenLog} aria-expanded={p.logging} aria-controls={detailId}>
               <LogIcon size={16} />

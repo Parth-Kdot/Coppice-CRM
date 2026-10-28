@@ -38,6 +38,57 @@
     color: var(--paper);
   }
 
+  /* ---------- The claim chip (screens/claim-chip.tsx) ---------- */
+  .lg-claimchip {
+    display: inline-flex;
+    max-width: 100%;
+    overflow: clip;
+    vertical-align: middle;
+  }
+  .lg-chipbody {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .lg-chip-free {
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+  .lg-chip-free:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .lg-chip-mine {
+    padding-left: 24px;
+    background: var(--ink);
+    color: var(--paper);
+    cursor: default;
+  }
+  .lg-chip-ribbon {
+    left: 8px;
+    top: 0;
+  }
+  .lg-chip-theirs {
+    border-style: dashed;
+    font-weight: 500;
+    cursor: default;
+  }
+
   /* ---------- Queue ---------- */
   .lg-queue {
     container: queue / inline-size;
@@ -148,9 +199,6 @@
   .lg-qchev:hover:not(:disabled) {
     background: var(--paper-2);
     color: var(--ink);
-  }
-  .lg-qribbon {
-    left: 64px;
   }
   .lg-qdetail {
     padding: 4px 14px 16px 72px;
@@ -273,9 +321,6 @@
     .lg-qchev {
       grid-area: c;
     }
-    .lg-qribbon {
-      left: 56px;
-    }
     .lg-qdetail {
       padding-left: 62px;
     }
@@ -299,9 +344,6 @@
     }
     .lg-qtime {
       padding-left: 22px;
-    }
-    .lg-qribbon {
-      left: 42px;
     }
     .lg-qdetail {
       padding-left: 48px;
@@ -425,9 +467,6 @@
   }
   .lg-card[data-stage="DECLINED"] .lg-cardname a {
     color: var(--ink-2);
-  }
-  .lg-cardribbon {
-    right: 12px;
   }
   .lg-cardname {
     padding-right: 22px;

@@ -8,12 +8,12 @@ import { demoRoutes } from "@/demo/routes";
 import { useBoard, useBoardFilters, useDemoActions } from "@/demo/store";
 import type { MatchReason, Stage } from "@/demo/types";
 import { ChevronDownIcon, ChevronRightIcon, DuplicateIcon, PaperclipIcon, PlusIcon, SearchIcon, StageGlyph } from "../icons";
-import { Ribbon } from "../marks";
 import { useConfirm, useNotify } from "../providers";
 import { FIND_EVENT } from "../shell";
+import { ClaimChip } from "./claim-chip";
 import { isLongOverdue, OverdueMark } from "./overdue";
 import { StageControl } from "./stage-control";
-import { ClaimBadge, Count, Empty, ErrorLine, PageHead, useClaimAction, useFlash } from "./shared";
+import { Count, Empty, ErrorLine, PageHead, useClaimAction, useFlash } from "./shared";
 
 // The board: six ruled columns, one per stage, with the cards as paper slips. Search and industry
 // live in the URL. Committed and Declined start collapsed. Claim a card, move it between stages,
@@ -45,7 +45,6 @@ function Card({
   const c = card.company;
   return (
     <li className={`lg-card lg-rule-row ${flashing ? "lg-settle" : ""}`} data-stage={c.stage} data-od={isLongOverdue(card.daysOverdue) ? "long" : undefined}>
-      {card.claim.state === "mine" && <Ribbon size="md" drop={dropping} className="lg-cardribbon" />}
       <h3 className="lg-cardname">
         <Link href={demoRoutes.company(ws, c.id)}>{c.name}</Link>
       </h3>
@@ -59,13 +58,7 @@ function Card({
       </p>
       {!card.closed && (
         <div className="lg-cardclaim">
-          {card.claim.state === "mine" || card.claim.state === "theirs" ? (
-            <ClaimBadge claim={card.claim} />
-          ) : (
-            <button type="button" className={`lg-btn lg-btn-primary lg-btn-sm ${shaking ? "lg-btn-shake" : ""}`} onClick={onClaim}>
-              Claim
-            </button>
-          )}
+          <ClaimChip claim={card.claim} companyName={c.name} onClaim={onClaim} shaking={shaking} dropping={dropping} />
         </div>
       )}
       {error && (
