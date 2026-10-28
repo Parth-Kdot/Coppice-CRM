@@ -3,8 +3,9 @@ import { CustomEase } from "gsap/CustomEase";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 // GSAP for the landing page only. Called inside effects (never on the server), cleaned up with
-// gsap.context or gsap.matchMedia in each section. Everything animates transform, opacity, filter
-// or SVG stroke offsets, so scrolling stays smooth.
+// gsap.context or gsap.matchMedia in each section. Most of the motion is transform and opacity. Two
+// kinds are not: the self-drawing pen strokes and the stool animate SVG stroke-dashoffset (a paint
+// property, kept to small SVGs), and the headline's ink bleed animates a filter blur.
 
 let ready = false;
 
