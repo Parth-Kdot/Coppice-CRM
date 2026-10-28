@@ -15,8 +15,8 @@ import { MOTION_OK, setupGsap } from "./motion";
 //
 // What keeps working: Lenis only eases the wheel, so the keyboard (space, page up and down, home,
 // end, arrows) and the scrollbar scroll natively. In-page anchor links glide to their section (Lenis
-// anchors, with the fixed nav's height as the offset), and scroll-padding-top in landing.css keeps
-// native focus jumps clear of the nav.
+// anchors, which honors scroll-padding-top from landing.css so a section lands just below the fixed
+// nav, the same as a native jump does).
 const TOUCH_ONLY = "(hover: none) and (pointer: coarse)";
 
 export function SmoothScroll() {
@@ -27,7 +27,7 @@ export function SmoothScroll() {
     let stop: (() => void) | null = null;
 
     const start = () => {
-      const lenis = new Lenis({ lerp: 0.11, syncTouch: false, anchors: { offset: -72 } });
+      const lenis = new Lenis({ lerp: 0.11, syncTouch: false, anchors: true });
       lenis.on("scroll", ScrollTrigger.update);
       const tick = (time: number) => lenis.raf(time * 1000);
       gsap.ticker.add(tick);
