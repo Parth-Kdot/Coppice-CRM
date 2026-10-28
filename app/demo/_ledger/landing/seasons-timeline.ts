@@ -127,6 +127,7 @@ export function buildSeasonsTimeline(el: HTMLElement, g: Gsap) {
   // ---- Spring, Log and follow up. A fast log entry fills in and is saved into the first ledger row;
   // later the company is due again, and a reply fills its stage glyph.
   const S = 2;
+  const U = 3;
   tl.fromTo(pane(2), { opacity: 0 }, { opacity: 1, duration: 0.1 }, at(S, 0.02));
   const ledgerRows = q(".ld-ledger-row");
   pick(one(".ld-log-channels .ld-pick[data-on='true']"), at(S, 0.18));
@@ -135,6 +136,7 @@ export function buildSeasonsTimeline(el: HTMLElement, g: Gsap) {
   beat(S, 0, at(S, 0.74));
   pick(one(".ld-log-save"), at(S, 0.84));
   tl.to(q(".ld-log"), { opacity: 0, y: -10, duration: 0.12, ease: "power1.in" }, at(S, 0.94));
+  tl.fromTo(q(".ld-kept-title"), { opacity: 0 }, { opacity: 1, duration: 0.1 }, at(S, 0.9));
   tl.fromTo(ledgerRows[0], { opacity: 0, x: 18 }, { opacity: 1, x: 0, duration: 0.14, ease: "power2.out" }, at(S, 0.9));
   draw(one(".ld-row-tick path"), at(S, 1.02));
   beat(S, 1, at(S, 1.06));
@@ -146,13 +148,12 @@ export function buildSeasonsTimeline(el: HTMLElement, g: Gsap) {
   tl.fromTo(q(".ld-due .ld-glyph-q2"), { opacity: 0 }, { opacity: 1, duration: 0.14 }, at(S, 1.36));
   beat(S, 2, at(S, 1.5));
   ledgerRows.slice(1).forEach((row, i) => {
-    tl.fromTo(row, { opacity: 0, x: 18 }, { opacity: 1, x: 0, duration: 0.12, ease: "power2.out" }, at(S, i === 0 ? 1.28 : 1.34 + (i - 1) * 0.04));
+    tl.fromTo(row, { opacity: 0, x: 18 }, { opacity: 1, x: 0, duration: 0.12, ease: "power2.out" }, i === 0 ? at(S, 1.28) : at(U, 0.06 + (i - 1) * 0.05));
   });
 
   // ---- Summer, Turnover. A clean cut sweeps down to the stump and the leaves fall as slips. The old
   // chair line is struck through, the double rule closes the board year, the new chair is written
   // under it and five shoots regrow from the same roots. The rows above the rule stay.
-  const U = 3;
   const rect = one(".ld-cut-rect");
   const line = one(".ld-cutline");
   tl.to(q(".ld-due"), { opacity: 0, duration: 0.1 }, at(U, 0));
