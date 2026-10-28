@@ -28,12 +28,16 @@ export function ClaimChip({
   companyName,
   onClaim,
   shaking = false,
+  readOnly = false,
   className = "",
 }: {
   claim: ClaimView;
   companyName: string;
   onClaim: () => void;
   shaking?: boolean;
+  // Show the state only: a free company reads "Not claimed" instead of offering the button, because
+  // the screen has its own Claim button. The morph and the ribbon still play when it becomes yours.
+  readOnly?: boolean;
   className?: string;
 }) {
   const wrap = useRef<HTMLSpanElement>(null);
@@ -69,7 +73,9 @@ export function ClaimChip({
   const holderFull = claim.holderName ?? "someone";
   return (
     <span ref={wrap} className={`lg-claimchip ${className}`} data-kind={kind}>
-      {kind === "free" ? (
+      {kind === "free" && readOnly ? (
+        <span className="lg-chipbody lg-chip-none">{claim.state === "expired" ? "Claim expired" : "Not claimed"}</span>
+      ) : kind === "free" ? (
         <button
           type="button"
           className={`lg-chipbody lg-chip-free ${shaking ? "lg-btn-shake" : ""}`}

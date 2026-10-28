@@ -2,215 +2,179 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatDay } from "@/demo/dates";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { demoRoutes, type QueueFilters, type QueueSort, type QueueView } from "@/demo/routes";
 import type { QueueRow } from "@/demo/selectors";
-import { demoRoutes } from "@/demo/routes";
-import { useMe, useQueue, useQueueFilters } from "@/demo/store";
-import { CHANNEL_LABELS, type Channel } from "@/demo/types";
-import { ChevronDownIcon, ChevronRightIcon, ExternalIcon, LogIcon, PlusIcon, WarningIcon } from "../icons";
-import { Tick, YearMargin } from "../marks";
-import { ClaimChip } from "./claim-chip";
-import { LogOutreachForm } from "./log-form";
-import { isLongOverdue, OverdueMark } from "./overdue";
+import { useMe, useQueueBook, useQueueFilters } from "@/demo/store";
+import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "../icons";
+import { useNotify } from "../providers";
+import { FocusMode } from "./queue-focus";
+import { buildQueue } from "./queue-model";
+import { useFlip, useGlide, useMediaQuery } from "./queue-motion";
+import { PANEL_ID, QueuePanel } from "./queue-panel";
+import { QueueRowView } from "./queue-rows";
+import { TABPANEL_ID, Toolbar, Totals, type TotalKey } from "./queue-toolbar";
 import { Count, Empty, PageHead, useClaimAction, useFlash, useLatestOutreach } from "./shared";
 
-// The queue: who should I follow up with today? Rows are ruled, most overdue first, with the
-// board-year margin on the left. Claim in place (a gilt ribbon drops onto the row), log outreach in
-// place (the check draws, the name is struck, the row slides out and the rows below close the gap),
-// open the last note with the chevron, and work it from the keyboard.
+// The queue, the workspace home: who should I follow up with today?
+//
+//   a totals line that filters (Overdue, Due this week, Held by you, Never contacted)
+//   a toolbar: view tabs, a ledger-style sort menu, and the One at a time switch
+//   ruled rows on one 44 px line, with a moss bar that glides to the selected row
+//   a side panel (the facing page) for the selected company, with its last three entries and a fast log form
+//   keys: j and k move, Enter opens the panel, c claims, l logs, Escape closes it, / and Ctrl K search
+//   focus mode: one company at a time, as a card
+//
+// The view, the sort and the Overdue filter live in the URL, so a view can be bookmarked and Back works.
+
+const PAGE_CAP = 50;
+const FOCUS_KEY = "coppice:queue:one-at-a-time";
+
+// The One at a time switch, remembered in localStorage. Every read and write is guarded: the store
+// can be missing or blocked (private windows, blocked site data), and the switch then simply works for
+// this visit and is forgotten after it.
+const flagListeners = new Set<() => void>();
+let flagCache: boolean | null = null;
+function readFlag(): boolean {
+  if (flagCache === null) {
+    try {
+      flagCache = window.localStorage.getItem(FOCUS_KEY) === "1";
+    } catch {
+      flagCache = false;
+    }
+  }
+  return flagCache;
+}
+function subscribeFlag(notify: () => void) {
+  const onStorage = () => {
+    flagCache = null;
+    notify();
+  };
+  flagListeners.add(notify);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    flagListeners.delete(notify);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+function writeFlag(next: boolean) {
+  flagCache = next;
+  try {
+    window.localStorage.setItem(FOCUS_KEY, next ? "1" : "0");
+  } catch {
+    // Nothing remembers the choice.
+  }
+  flagListeners.forEach((listener) => listener());
+}
+const useOneAtATime = (): [boolean, (on: boolean) => void] => [useSyncExternalStore(subscribeFlag, readFlag, () => false), writeFlag];
 
 type Leaving = { row: QueueRow; index: number };
 
-function Timing({ row }: { row: QueueRow }) {
-  if (row.daysOverdue === null) {
-    return <span className="lg-qtime lg-muted">{row.timing}</span>;
-  }
-  return (
-    <span className="lg-qtime">
-      <OverdueMark days={row.daysOverdue} />
-    </span>
-  );
-}
-
-type RowProps = {
-  ws: string;
-  row: QueueRow;
-  index: number;
-  active: boolean;
-  leaving: boolean;
-  open: boolean;
-  logging: boolean;
-  shaking: boolean;
-  flashing: boolean;
-  error: string | undefined;
-  latest: { sentAt: string; by: string; channel: string; note: string | null } | undefined;
-  onClaim: () => void;
-  onToggle: () => void;
-  onOpenLog: () => void;
-  onCloseLog: () => void;
-  onLogged: () => void;
-  onLeft: () => void;
-  onDismissError: () => void;
-};
-
-function QueueRowView(p: RowProps) {
-  const { row } = p;
-  const company = row.company;
-  const li = useRef<HTMLLIElement>(null);
-  const detailId = `qd-${company.id}`;
-
-  // After a log, the row waits 400 ms (the check draws, the name is struck) and then slides down and out
-  // while the rows below close the gap, 240 ms.
-  const { leaving, onLeft } = p;
-  useEffect(() => {
-    if (!leaving) return;
-    const el = li.current;
-    if (!el) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(
-      () => {
-        if (reduce || typeof el.animate !== "function") {
-          onLeft();
-          return;
-        }
-        const height = el.getBoundingClientRect().height;
-        const anim = el.animate(
-          [
-            { height: `${height}px`, minHeight: `${height}px`, opacity: 1, transform: "translateY(0)" },
-            { height: "0px", minHeight: "0px", opacity: 0, transform: "translateY(14px)" },
-          ],
-          { duration: 240, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)", fill: "forwards" },
-        );
-        anim.onfinish = () => onLeft();
-      },
-      reduce ? 700 : 400,
-    );
-    return () => window.clearTimeout(timer);
-  }, [leaving, onLeft]);
-
-  const mine = row.claim.state === "mine";
-  return (
-    <li
-      ref={li}
-      data-row={company.id}
-      data-active={p.active || undefined}
-      data-leaving={leaving || undefined}
-      data-od={isLongOverdue(row.daysOverdue) ? "long" : undefined}
-      className={`lg-qrow lg-rule-row ${p.flashing ? "lg-settle" : ""}`}
-    >
-      <div className="lg-qgrid">
-        <span className="lg-qm">
-          <YearMargin iso={company.lastContactedAt ?? company.createdAt} />
-        </span>
-        <span className="lg-qn">
-          <Link href={demoRoutes.company(p.ws, company.id)} className="lg-qlink">
-            {company.name}
-          </Link>
-          {leaving && <span className="lg-strike" aria-hidden="true" />}
-        </span>
-        <span className="lg-qnote lg-quote" title={row.lastNote ?? undefined}>
-          {row.lastNote ? <>&ldquo;{row.lastNote}&rdquo;</> : <span className="lg-muted">No note yet</span>}
-        </span>
-        <Timing row={row} />
-        <span className="lg-qclaim">
-          <ClaimChip claim={row.claim} companyName={company.name} onClaim={p.onClaim} shaking={p.shaking} />
-        </span>
-        <span className="lg-qact">
-          {leaving ? (
-            <span className="lg-ok" role="status">
-              <Tick size={20} />
-              Logged
-            </span>
-          ) : row.action === "log-outreach" ? (
-            <button type="button" className="lg-btn lg-btn-sm" onClick={p.onOpenLog} aria-expanded={p.logging} aria-controls={detailId}>
-              <LogIcon size={16} />
-              Log outreach
-            </button>
-          ) : null}
-        </span>
-        <button
-          type="button"
-          className="lg-qchev"
-          aria-expanded={p.open}
-          aria-controls={detailId}
-          aria-label={`${p.open ? "Hide" : "Show"} the last outreach for ${company.name}`}
-          onClick={p.onToggle}
-          disabled={leaving}
-        >
-          {p.open ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
-        </button>
-      </div>
-
-      <div className="lg-disclose" data-open={p.open} id={detailId}>
-        <div className="lg-disclose-inner" inert={!p.open}>
-          <div className="lg-qdetail lg-disclose-fade">
-            {p.latest ? (
-              <>
-                <p className="lg-sc lg-muted">
-                  Last outreach, {formatDay(p.latest.sentAt)}, {CHANNEL_LABELS[p.latest.channel as Channel]}, by {p.latest.by}
-                </p>
-                {p.latest.note && <p className="lg-quote lg-qfull">&ldquo;{p.latest.note}&rdquo;</p>}
-              </>
-            ) : (
-              <p className="lg-muted">No outreach has been logged on this company yet.</p>
-            )}
-            <div className="lg-qdetail-actions">
-              <Link href={demoRoutes.company(p.ws, company.id, { anchor: "logOutreach" })} className="lg-link">
-                Open the company page
-                <ExternalIcon size={14} className="inline-block align-[-2px] ml-1" />
-              </Link>
-              {mine && !p.logging && (
-                <button type="button" className="lg-btn lg-btn-sm" onClick={p.onOpenLog}>
-                  <LogIcon size={16} />
-                  Log outreach here
-                </button>
-              )}
-            </div>
-            {p.logging && <LogOutreachForm ws={p.ws} companyId={company.id} compact autoFocus onLogged={p.onLogged} onCancel={p.onCloseLog} />}
-          </div>
-        </div>
-      </div>
-
-      {p.error && (
-        <div className="lg-rownote" role="alert">
-          <WarningIcon size={16} />
-          <span>{p.error}</span>
-          <button type="button" className="lg-btn lg-btn-quiet lg-btn-sm" onClick={p.onDismissError}>
-            Dismiss
-          </button>
-        </div>
-      )}
-    </li>
-  );
-}
+const rowFocusTarget = (id: string) => document.querySelector<HTMLElement>(`[data-row="${CSS.escape(id)}"] .lg-qopen`);
 
 export function QueueScreen({ ws }: { ws: string }) {
   const router = useRouter();
+  const notify = useNotify();
   const filters = useQueueFilters();
-  const queue = useQueue(ws, filters);
+  const book = useQueueBook(ws);
   const me = useMe(ws);
   const latest = useLatestOutreach(ws);
   const { flashing, flash } = useFlash();
   const claimAction = useClaimAction(ws, flash);
-  const [leaving, setLeaving] = useState<Leaving[]>([]);
-  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
-  const [loggingId, setLoggingId] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [focus, setFocus] = useOneAtATime();
+  const inline = useMediaQuery("(min-width: 1280px)");
 
-  // The due list as shown: live rows, with a row that has just been logged held in place until its exit finishes.
-  const dueRows = useMemo(() => {
-    const leavingIds = new Set(leaving.map((l) => l.row.company.id));
-    const rows = queue.due.filter((r) => !leavingIds.has(r.company.id));
+  const model = useMemo(() => buildQueue(book, filters), [book, filters]);
+  const [leaving, setLeaving] = useState<Leaving[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [panelId, setPanelId] = useState<string | null>(null);
+  const [logging, setLogging] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const glide = useRef<HTMLSpanElement>(null);
+
+  // ----- Rows as shown: capped, with a row that has just been logged held in place until it has left -----
+  const mainCap = filters.all === (model.view === "never" ? "never" : "due") ? 2000 : PAGE_CAP;
+  const freshCap = filters.all === "never" ? 2000 : PAGE_CAP;
+  const modelIds = useMemo(() => new Set(model.rows.map((r) => r.company.id)), [model.rows]);
+  const leavingIds = useMemo(() => new Set(leaving.filter((l) => !modelIds.has(l.row.company.id)).map((l) => l.row.company.id)), [leaving, modelIds]);
+  const mainRows = useMemo(() => {
+    const rows = model.rows.slice(0, mainCap);
     [...leaving]
+      .filter((l) => leavingIds.has(l.row.company.id))
       .sort((a, b) => a.index - b.index)
       .forEach((l) => rows.splice(Math.min(l.index, rows.length), 0, l.row));
     return rows;
-  }, [queue.due, leaving]);
-  const neverRows = useMemo(() => queue.never ?? [], [queue.never]);
-  const leavingIds = useMemo(() => new Set(leaving.map((l) => l.row.company.id)), [leaving]);
+  }, [model.rows, mainCap, leaving, leavingIds]);
+  const freshRows = useMemo(() => (filters.never ? model.fresh.slice(0, freshCap) : []), [filters.never, model.fresh, freshCap]);
+  const navRows = useMemo(() => [...mainRows, ...freshRows].filter((r) => !leavingIds.has(r.company.id)), [mainRows, freshRows, leavingIds]);
+  const signature = useMemo(() => [...mainRows, ...freshRows].map((r) => r.company.id).join(","), [mainRows, freshRows]);
 
-  const navRows = useMemo(() => [...dueRows, ...neverRows].filter((r) => !leavingIds.has(r.company.id)), [dueRows, neverRows, leavingIds]);
+  // The panel closes when its company is no longer in the workspace's open list.
+  const panelOpen = panelId !== null && !focus && book.some((r) => r.company.id === panelId);
+  const sheet = panelOpen && !inline;
+
+  useFlip(body, focus ? "" : signature);
+  useGlide(body, glide, focus ? null : activeId, `${signature}|${panelOpen}|${inline}`);
+
+  // ----- Changing the URL filters -----
+  const go = useCallback(
+    (patch: Partial<QueueFilters>) => {
+      const next: QueueFilters = { ...filters, all: null, ...patch };
+      next.mine = next.view === "mine";
+      router.replace(demoRoutes.queue(ws, next), { scroll: false });
+    },
+    [filters, router, ws],
+  );
+  const pickView = (view: QueueView) => go({ view, overdue: false });
+  const pickSort = (sort: QueueSort) => go({ sort });
+  const pickTotal = (key: TotalKey) => {
+    if (key === "overdue") go(model.overdue ? { overdue: false } : { view: "all", overdue: true });
+    else {
+      const view: QueueView = key === "week" ? "week" : key === "mine" ? "mine" : "never";
+      go(model.view === view ? { view: "all", overdue: false } : { view, overdue: false });
+    }
+  };
+
+  // ----- Selecting, opening and closing -----
+  const select = useCallback((id: string, options: { logging?: boolean; focusPanel?: boolean } = {}) => {
+    setActiveId(id);
+    setPanelId(id);
+    setLogging(options.logging ?? false);
+    if (options.focusPanel) requestAnimationFrame(() => panelRef.current?.focus());
+  }, []);
+
+  const closePanel = useCallback(() => {
+    const id = panelId;
+    setPanelId(null);
+    setLogging(false);
+    if (id) requestAnimationFrame(() => rowFocusTarget(id)?.focus());
+  }, [panelId]);
+
+  const toggle = useCallback(
+    (id: string) => {
+      if (panelId === id) closePanel();
+      else select(id, { focusPanel: true });
+    },
+    [closePanel, panelId, select],
+  );
+
+  // ----- Logging from the panel: the row is struck and leaves, or stays if it still belongs in the view -----
+  const logged = useCallback(
+    (id: string) => {
+      const index = mainRows.findIndex((r) => r.company.id === id);
+      const row = mainRows[index] ?? freshRows.find((r) => r.company.id === id);
+      setPanelId(null);
+      setLogging(false);
+      flash(id);
+      if (!row) return;
+      setLeaving((cur) => [...cur.filter((l) => l.row.company.id !== id), { row, index: Math.max(index, 0) }]);
+      // A row that still belongs in this view never leaves; its held copy is dropped a moment later.
+      window.setTimeout(() => setLeaving((cur) => cur.filter((l) => l.row.company.id !== id)), 2400);
+    },
+    [flash, freshRows, mainRows],
+  );
+
   const navRef = useRef(navRows);
   const activeRef = useRef(activeId);
   useEffect(() => {
@@ -218,37 +182,45 @@ export function QueueScreen({ ws }: { ws: string }) {
     activeRef.current = activeId;
   });
 
-  const toggleOpen = useCallback((id: string) => {
-    setOpenIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const openLog = useCallback((id: string) => {
-    setOpenIds((current) => new Set(current).add(id));
-    setLoggingId(id);
-  }, []);
-
-  // Keyboard: j and k move the row highlight, c claims, l logs outreach, Enter opens the company.
+  const leavingRef = useRef(leaving);
   useEffect(() => {
+    leavingRef.current = leaving;
+  });
+  const onLeft = useCallback((id: string) => {
+    // The highlight moves to the row that closes the gap, and the keyboard carries on from there.
+    const rows = navRef.current;
+    const index = leavingRef.current.find((l) => l.row.company.id === id)?.index ?? 0;
+    const neighbour = rows[Math.min(index, rows.length - 1)];
+    setLeaving((cur) => cur.filter((l) => l.row.company.id !== id));
+    if (activeRef.current === id && neighbour) {
+      setActiveId(neighbour.company.id);
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) rowFocusTarget(neighbour.company.id)?.focus();
+      });
+    }
+  }, []);
+
+  // ----- Keyboard -----
+  useEffect(() => {
+    if (focus) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
-      if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return;
+      if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable || target.closest('[role="listbox"], .lg-insp, .lg-cal'))) return;
       if (document.querySelector("dialog[open]")) return;
+      const key = event.key.toLowerCase();
       const rows = navRef.current;
       if (rows.length === 0) return;
       const current = rows.findIndex((r) => r.company.id === activeRef.current);
-      const key = event.key.toLowerCase();
       if (key === "j" || key === "k") {
         event.preventDefault();
         const next = key === "j" ? Math.min(rows.length - 1, current + 1) : Math.max(0, current < 0 ? 0 : current - 1);
         const id = rows[next].company.id;
         setActiveId(id);
-        requestAnimationFrame(() => document.querySelector(`[data-row="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
+        // The panel follows the selection. Focus follows too, so Enter and Space act on what is lit.
+        setPanelId((open) => (open ? id : open));
+        setLogging(false);
+        rowFocusTarget(id)?.focus();
         return;
       }
       const row = current >= 0 ? rows[current] : undefined;
@@ -256,58 +228,88 @@ export function QueueScreen({ ws }: { ws: string }) {
       if (key === "c" && row.action === "claim") {
         event.preventDefault();
         claimAction.claim(row.company.id, row.company.name);
-      } else if (key === "l" && row.action === "log-outreach") {
+      } else if (key === "l") {
         event.preventDefault();
-        openLog(row.company.id);
+        if (row.action === "log-outreach") select(row.company.id, { logging: true });
+        else if (row.action === "claim") notify("Claim it first, then log your outreach.");
       } else if (key === "enter" && (document.activeElement === document.body || document.activeElement === null)) {
         event.preventDefault();
-        router.push(demoRoutes.company(ws, row.company.id));
+        select(row.company.id, { focusPanel: true });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [claimAction, openLog, router, ws]);
+  }, [claimAction, focus, notify, select]);
 
-  const renderRow = (row: QueueRow, index: number) => {
+  // Escape closes the inline panel and puts focus back on its row. (As a sheet, the dialog does it.)
+  useEffect(() => {
+    if (!panelOpen || sheet) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      closePanel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [closePanel, panelOpen, sheet]);
+
+  // ----- Pieces -----
+  const renderRow = (row: QueueRow) => {
     const id = row.company.id;
-    const isLeaving = leavingIds.has(id);
     return (
       <QueueRowView
         key={id}
-        ws={ws}
         row={row}
-        index={index}
-        active={activeId === id}
-        leaving={isLeaving}
-        open={openIds.has(id) && !isLeaving}
-        logging={loggingId === id && !isLeaving}
+        active={activeId === id && !focus}
+        open={panelOpen && panelId === id}
+        leaving={leavingIds.has(id)}
         shaking={claimAction.shaking === id}
         flashing={flashing.has(id)}
         error={claimAction.errors[id]}
-        latest={latest.get(id)}
-        onClaim={() => claimAction.claim(id, row.company.name)}
-        onToggle={() => toggleOpen(id)}
-        onOpenLog={() => openLog(id)}
-        onCloseLog={() => setLoggingId(null)}
-        onLogged={() => {
-          setLeaving((cur) => [...cur, { row, index }]);
-          setLoggingId(null);
-          flash(id);
-        }}
-        onLeft={() => setLeaving((cur) => cur.filter((l) => l.row.company.id !== id))}
-        onDismissError={() => claimAction.dismiss(id)}
+        panelId={PANEL_ID}
+        onSelect={(rowId) => select(rowId, { focusPanel: true })}
+        onToggle={toggle}
+        onClaim={claimAction.claim}
+        onLeft={onLeft}
+        onDismissError={claimAction.dismiss}
       />
     );
   };
 
-  const neverHref = demoRoutes.queue(ws, { mine: filters.mine, never: !filters.never });
+  const focusRows = useMemo(() => [...model.rows].sort((a, b) => (b.daysOverdue ?? -1e9) - (a.daysOverdue ?? -1e9) || a.company.name.localeCompare(b.company.name)), [model.rows]);
+
+  const emptyTitle = model.overdue ? "Nothing is overdue." : model.view === "mine" ? "Nothing of yours is due." : model.view === "week" ? "Nothing is due this week." : model.view === "never" ? "No fresh leads." : "Nothing is due.";
+  const emptyHint =
+    model.view === "mine"
+      ? "Claim a company from All due and it shows here."
+      : model.view === "all" && !model.overdue
+        ? "Log outreach with a follow-up date and it comes back here when it's due."
+        : model.view === "never"
+          ? "Every company has been contacted or is held by someone."
+          : "Try another tab.";
+  const viewName = model.view === "mine" ? "Mine" : model.view === "week" ? "This week" : model.view === "never" ? "Never contacted" : "All due";
+  const neverHref = demoRoutes.queue(ws, { ...filters, never: !filters.never, all: null });
+  const allHref = demoRoutes.queue(ws, { ...filters, all: model.view === "never" ? "never" : "due" });
+
+  const panel = panelOpen && panelId && (
+    <QueuePanel
+      key={panelId}
+      ref={panelRef}
+      ws={ws}
+      companyId={panelId}
+      sheet={sheet}
+      logging={logging}
+      claimAction={claimAction}
+      onLogging={setLogging}
+      onLogged={logged}
+      onClose={closePanel}
+    />
+  );
 
   return (
     <div className="lg-queue">
-      <PageHead title="Follow-ups due" count={queue.dueCount} sub={<>You are {me.roleLabel}.</>}>
-        <Link href={demoRoutes.queue(ws, { mine: !filters.mine, never: filters.never })} scroll={false} className="lg-toggle lg-sc" aria-pressed={filters.mine} data-on={filters.mine || undefined}>
-          Only mine
-        </Link>
+      <PageHead title="Follow-ups due" count={model.totals.due} sub={<>You are {me.roleLabel}.</>}>
         <Link href={demoRoutes.import(ws)} className="lg-btn">
           Import
         </Link>
@@ -317,79 +319,113 @@ export function QueueScreen({ ws }: { ws: string }) {
         </Link>
       </PageHead>
 
-      <div className="lg-qhead" aria-hidden="true">
-        <span className="lg-qm lg-sc">Board</span>
-        <span className="lg-qn lg-sc">Company</span>
-        <span className="lg-qnote lg-sc">Last note</span>
-        <span className="lg-qtime lg-sc">When</span>
-        <span className="lg-qclaim lg-sc">Claim</span>
-        <span className="lg-qact" />
-        <span className="lg-qchev" />
+      <Totals totals={model.totals} view={model.view} overdue={model.overdue} onPick={pickTotal} />
+      <Toolbar view={model.view} sort={filters.sort} focus={focus} onView={pickView} onSort={pickSort} onFocus={setFocus} />
+
+      <div className="lg-qlayout" data-panel={panelOpen && inline ? "inline" : undefined}>
+        <div className="lg-qmain" role="tabpanel" id={TABPANEL_ID} aria-labelledby={`queue-tab-${model.view}`}>
+          {focus ? (
+            <FocusMode
+              ws={ws}
+              rows={focusRows}
+              claimAction={claimAction}
+              latest={latest}
+              emptyTitle="All caught up"
+              emptyHint={model.view === "all" && !model.overdue ? "Nothing is due. Log outreach with a follow-up date and it comes back here when it's due." : `Nothing left in ${viewName}${model.overdue ? ", overdue" : ""}.`}
+              resetKey={`${model.view}|${model.overdue}`}
+            />
+          ) : (
+            <div className="lg-qtable">
+              <div className="lg-qhead" aria-hidden="true">
+                <span className="lg-qm lg-sc">Board</span>
+                <span className="lg-qtime lg-sc">When</span>
+                <span className="lg-qn lg-sc">Company</span>
+                <span className="lg-qstage lg-sc">Stage</span>
+                <span className="lg-qnote lg-sc">Last note</span>
+                <span className="lg-qclaim lg-sc">Claim</span>
+                <span className="lg-qchev" />
+              </div>
+
+              <div className="lg-qbody" ref={body}>
+                <span className="lg-qglide" ref={glide} aria-hidden="true" data-hidden="true" />
+                {mainRows.length === 0 ? (
+                  <Empty kind={`queue-${model.view}`}>
+                    <p className="lg-empty-title">{emptyTitle}</p>
+                    <p>{emptyHint}</p>
+                  </Empty>
+                ) : (
+                  <ul className="lg-qlist" aria-label={viewName}>
+                    {mainRows.map(renderRow)}
+                  </ul>
+                )}
+                {model.rows.length > mainCap && (
+                  <p className="mt-3">
+                    <Link href={allHref} className="lg-link">
+                      Show all {model.rows.length}
+                    </Link>
+                  </p>
+                )}
+
+                {model.view !== "never" && (
+                  <section className="lg-never" aria-labelledby="never-title">
+                    <h2 id="never-title" className="lg-never-title">
+                      <Link href={neverHref} scroll={false} aria-expanded={filters.never} className="lg-never-toggle">
+                        {filters.never ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
+                        <span className="lg-h2">Never contacted</span>
+                        <span className="lg-never-count">
+                          <Count value={model.fresh.length} />
+                        </span>
+                      </Link>
+                    </h2>
+                    {filters.never && (
+                      <>
+                        {freshRows.length === 0 ? (
+                          <p className="lg-muted py-4">No fresh leads{model.view === "mine" ? " that you hold" : ""}.</p>
+                        ) : (
+                          <ul className="lg-qlist" aria-label="Never contacted">
+                            {freshRows.map(renderRow)}
+                          </ul>
+                        )}
+                        {model.fresh.length > freshCap && (
+                          <p className="mt-3">
+                            <Link href={demoRoutes.queue(ws, { ...filters, never: true, all: "never" })} className="lg-link">
+                              Show all {model.fresh.length}
+                            </Link>
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </section>
+                )}
+              </div>
+
+              <aside className="lg-keys" aria-label="Keyboard shortcuts">
+                <span className="lg-sc">Key</span>
+                <span>
+                  <kbd>j</kbd> <kbd>k</kbd> move the highlight
+                </span>
+                <span>
+                  <kbd>Enter</kbd> opens the side panel
+                </span>
+                <span>
+                  <kbd>c</kbd> claims
+                </span>
+                <span>
+                  <kbd>l</kbd> logs outreach
+                </span>
+                <span>
+                  <kbd>Esc</kbd> closes the panel
+                </span>
+                <span>
+                  <kbd>/</kbd> searches
+                </span>
+              </aside>
+            </div>
+          )}
+        </div>
+        {panelOpen && inline && panel}
       </div>
-
-      {dueRows.length === 0 ? (
-        <Empty kind="queue">
-          <p className="lg-empty-title">{filters.mine ? "Nothing of yours is due." : "Nothing is due."}</p>
-          {!filters.mine && <p>Log outreach with a follow-up date and it comes back here when it&apos;s due.</p>}
-        </Empty>
-      ) : (
-        <ul className="lg-qlist" aria-label="Follow-ups due">
-          {dueRows.map((row, i) => renderRow(row, i))}
-        </ul>
-      )}
-      {queue.hasMoreDue && (
-        <p className="mt-3">
-          <Link href={demoRoutes.queue(ws, { mine: filters.mine, never: filters.never, all: "due" })} className="lg-link">
-            Show all {queue.dueCount}
-          </Link>
-        </p>
-      )}
-
-      <section className="lg-never" aria-labelledby="never-title">
-        <h2 id="never-title" className="lg-never-title">
-          <Link href={neverHref} scroll={false} aria-expanded={filters.never} className="lg-never-toggle">
-            {filters.never ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
-            <span className="lg-h2">Never contacted</span>
-            <span className="lg-never-count">
-              <Count value={queue.neverCount} />
-            </span>
-          </Link>
-        </h2>
-        {filters.never && queue.never && (
-          <>
-            {neverRows.length === 0 ? (
-              <p className="lg-muted py-4">No fresh leads{filters.mine ? " that you hold" : ""}.</p>
-            ) : (
-              <ul className="lg-qlist" aria-label="Never contacted">
-                {neverRows.map((row, i) => renderRow(row, dueRows.length + i))}
-              </ul>
-            )}
-            {queue.hasMoreNever && (
-              <p className="mt-3">
-                <Link href={demoRoutes.queue(ws, { mine: filters.mine, never: true, all: "never" })} className="lg-link">
-                  Show all {queue.neverCount}
-                </Link>
-              </p>
-            )}
-          </>
-        )}
-      </section>
-
-      <aside className="lg-keys" aria-label="Keyboard shortcuts">
-        <span className="lg-sc">Key</span>
-        <span>
-          <kbd>j</kbd> <kbd>k</kbd> move the highlight
-        </span>
-        <span>
-          <kbd>c</kbd> claims
-        </span>
-        <span>
-          <kbd>l</kbd> logs outreach
-        </span>
-        <span>
-          <kbd>Enter</kbd> opens the company
-        </span>
-      </aside>
+      {sheet && panel}
     </div>
   );
 }

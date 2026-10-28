@@ -176,3 +176,740 @@
     border-top: 1px solid var(--rule);
   }
 }
+
+/* ---------- Totals, toolbar, rows, panel, focus mode ---------- */
+@keyframes lg-insp-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes lg-sheet-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes lg-card-rise {
+  from {
+    opacity: 0.4;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@layer components {
+  /* ---------- The totals line ---------- */
+  .lg-totals {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 2px 0 12px;
+    border-top: 1px solid var(--rule);
+    border-bottom: 3px double var(--ink-2);
+  }
+  .lg-total {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 50px;
+    padding: 6px 14px;
+    border-right: 1px solid var(--rule);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+  .lg-total:last-child {
+    border-right: 0;
+  }
+  .lg-total:hover {
+    background: var(--paper-2);
+  }
+  .lg-total .lg-sc {
+    font-size: 1rem;
+  }
+  .lg-total-n {
+    margin-left: auto;
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 600;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-total-n[data-rust] {
+    color: var(--rust);
+  }
+  .lg-total[aria-pressed="true"] {
+    background: var(--moss);
+    color: var(--paper);
+  }
+  .lg-total[aria-pressed="true"] .lg-total-n {
+    color: var(--paper);
+  }
+
+  /* ---------- Toolbar ---------- */
+  .lg-qtools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-bottom: 14px;
+  }
+  .lg-tabs-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .lg-vtab {
+    min-height: 38px;
+    padding: 0 14px;
+    border-bottom: 2px solid transparent;
+    color: var(--ink-2);
+    font-size: 0.95rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      color 120ms ease,
+      border-color 120ms ease,
+      background-color 120ms ease;
+  }
+  .lg-vtab:hover {
+    background: var(--paper-2);
+    color: var(--ink);
+  }
+  .lg-vtab[aria-selected="true"] {
+    border-bottom-color: var(--moss);
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .lg-qtools-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ---------- Layout: the table, and the facing page beside it ---------- */
+  .lg-qlayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .lg-qlayout[data-panel="inline"] {
+    grid-template-columns: minmax(0, 1fr) 420px;
+    column-gap: 24px;
+  }
+  .lg-qmain {
+    min-width: 0;
+  }
+  .lg-qtable {
+    container: queue / inline-size;
+  }
+
+  /* ---------- Rows: one 44 px line ---------- */
+  .lg-qhead,
+  .lg-qgrid {
+    display: grid;
+    grid-template-columns: 62px 150px minmax(130px, 1.1fr) 140px minmax(0, 1.4fr) 186px 36px;
+    column-gap: 10px;
+    align-items: center;
+  }
+  .lg-qhead {
+    padding-bottom: 4px;
+    border-bottom: 3px double var(--ink-2);
+    color: var(--ink-2);
+  }
+  .lg-qbody {
+    position: relative;
+  }
+  .lg-qlist {
+    list-style: none;
+  }
+  .lg-qrow {
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+    overflow: clip;
+    scroll-margin: 12px 0 44px;
+  }
+  .lg-qrow:hover:not([data-leaving]) {
+    background: rgb(239 231 214 / 0.55);
+  }
+  .lg-qrow[data-active],
+  .lg-qrow[data-open] {
+    background: var(--paper-2);
+  }
+  .lg-qgrid {
+    min-height: 44px;
+    padding: 2px 0;
+  }
+  .lg-qm {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--rule);
+    padding-left: 10px;
+  }
+  .lg-qn {
+    position: relative;
+    min-width: 0;
+    padding-left: 4px;
+    overflow: hidden;
+  }
+  .lg-qopen {
+    display: block;
+    max-width: 100%;
+    padding: 6px 0;
+    background: none;
+    color: var(--ink);
+    font-size: 0.98rem;
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .lg-qopen:hover:not(:disabled) {
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1.5px;
+  }
+  .lg-strike {
+    position: absolute;
+    left: 4px;
+    right: 6px;
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    background: var(--ink);
+    transform-origin: left center;
+    animation: lg-strike 200ms var(--ease-out) both;
+  }
+  .lg-qstage {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+  .lg-qstage svg {
+    flex: none;
+  }
+  .lg-qstage-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lg-qnote {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.98rem;
+    color: var(--ink-2);
+  }
+  .lg-qtime {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .lg-qclaim {
+    min-width: 0;
+  }
+  .lg-qchev {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 3px;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .lg-qchev:hover:not(:disabled) {
+    background: var(--sheet);
+    color: var(--ink);
+  }
+  .lg-qchev[aria-expanded="true"] {
+    color: var(--moss);
+    background: var(--sheet);
+  }
+  .lg-rownote {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 8px 72px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--rust);
+    background: var(--rust-wash);
+    color: var(--rust);
+    font-weight: 500;
+    font-size: 0.92rem;
+    animation: lg-note-in 200ms var(--ease-out) both;
+  }
+
+  /* The moss bar that glides between rows. */
+  .lg-qglide {
+    position: absolute;
+    z-index: 2;
+    left: 5px;
+    top: 0;
+    width: 3px;
+    height: var(--gh, 44px);
+    border-radius: 1px;
+    background: var(--moss);
+    transform: translateY(var(--gy, 0px));
+    transition:
+      transform 90ms var(--ease-out),
+      height 90ms var(--ease-out);
+    pointer-events: none;
+  }
+  .lg-qglide[data-hidden] {
+    opacity: 0;
+  }
+
+  /* A refusal shakes the chip for 120 ms. */
+  .lg-claimchip .lg-btn-shake {
+    animation-duration: 120ms;
+  }
+  .lg-chip-none {
+    border-color: transparent;
+    padding-left: 0;
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+
+  /* ---------- The never-contacted section and the key footnote ---------- */
+  .lg-never {
+    margin-top: 40px;
+  }
+  .lg-never-title {
+    border-top: 3px double var(--ink-2);
+  }
+  .lg-never-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .lg-never-toggle:hover .lg-h2 {
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+    text-underline-offset: 5px;
+  }
+  .lg-never-count {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    color: var(--moss);
+    font-weight: 600;
+  }
+  .lg-keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 20px;
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-2);
+    font-size: 0.88rem;
+  }
+  .lg-keys kbd {
+    padding: 0 6px;
+    border: 1px solid var(--edge);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+  @media (pointer: coarse) {
+    .lg-keys {
+      display: none;
+    }
+  }
+
+  /* ---------- The facing page (side panel) ---------- */
+  .lg-insp {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100dvh - 12px - 28px - 16px);
+    overflow-y: auto;
+    padding: 14px 20px 22px;
+    border: 1px solid var(--rule);
+    border-top: 3px double var(--ink-2);
+    background: var(--sheet);
+    color: var(--ink);
+    box-shadow:
+      inset 10px 0 10px -10px rgb(31 27 20 / 0.16),
+      0 12px 24px -20px var(--shade);
+    animation: lg-insp-in 160ms var(--ease-out) both;
+    outline: none;
+  }
+  .lg-insp:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -3px;
+  }
+  .lg-insp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-insp-name {
+    margin-top: 12px;
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+  }
+  .lg-insp-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+    margin-top: 6px;
+  }
+  .lg-insp-due {
+    margin-top: 6px;
+  }
+  .lg-insp-sec {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-insp-claim {
+    font-weight: 600;
+  }
+  .lg-insp-claim[data-state="mine"] {
+    color: var(--moss);
+  }
+  .lg-insp-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .lg-insp-sec .lg-hint {
+    margin-top: 8px;
+  }
+  .lg-insp-contact {
+    margin-top: 4px;
+  }
+  .lg-insp-email {
+    display: block;
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+  }
+  .lg-insp-log {
+    list-style: none;
+    margin-top: 4px;
+  }
+  .lg-insp-log > li {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-insp-log > li:last-child {
+    border-bottom: 0;
+  }
+  .lg-insp-note {
+    margin-top: 2px;
+    color: var(--ink-2);
+    font-size: 1.02rem;
+    overflow-wrap: anywhere;
+  }
+
+  /* Below 1280 px it is a modal sheet from the right, and on a phone a sheet from the bottom. */
+  .lg-insp-sheet {
+    position: fixed;
+    inset: 0 0 0 auto;
+    margin: 0;
+    width: min(440px, 100vw);
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-top-width: 1px;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    animation: lg-sheet-right 240ms var(--ease-out) both;
+  }
+  .lg-insp-sheet::backdrop {
+    background: rgb(31 27 20 / 0.38);
+  }
+  @media (max-width: 760px) {
+    .lg-insp-sheet {
+      inset: auto 0 0 0;
+      width: 100vw;
+      height: auto;
+      max-height: 88dvh;
+      border: 0;
+      border-top: 1px solid var(--edge);
+      border-radius: 12px 12px 0 0;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom));
+      animation: lg-sheet-up 240ms var(--ease-out) both;
+    }
+  }
+
+  /* ---------- One at a time ---------- */
+  .lg-focus {
+    max-width: 680px;
+    margin: 6px auto 0;
+  }
+  .lg-focus-count {
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .lg-fstack {
+    position: relative;
+    padding-bottom: 30px;
+  }
+  .lg-fwrap {
+    position: relative;
+  }
+  .lg-fslip {
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--rule);
+    background: var(--paper-2);
+    box-shadow: 0 8px 16px -14px var(--shade);
+  }
+  .lg-fslip[data-i="1"] {
+    transform: translateY(8px) scaleX(0.985);
+    opacity: 0.92;
+  }
+  .lg-fslip[data-i="2"] {
+    transform: translateY(16px) scaleX(0.97);
+    opacity: 0.78;
+  }
+  .lg-fslip[data-i="3"] {
+    transform: translateY(24px) scaleX(0.955);
+    opacity: 0.62;
+  }
+  .lg-fcard-in {
+    position: relative;
+    animation: lg-card-rise 240ms var(--ease-out) both;
+  }
+  .lg-fghost-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .lg-fcard {
+    padding: 22px 30px 26px;
+    border: 1px solid var(--rule);
+    border-top: 3px double var(--ink-2);
+    background: var(--sheet);
+    box-shadow:
+      inset 10px 0 10px -10px rgb(31 27 20 / 0.14),
+      0 14px 26px -20px var(--shade);
+  }
+  .lg-fcard[data-shake] {
+    animation: lg-shake 120ms ease-in-out;
+  }
+  .lg-fcard-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 14px;
+  }
+  .lg-fcard-name {
+    margin-top: 10px;
+    font-family: var(--font-display);
+    font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.6rem);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.012em;
+    overflow-wrap: anywhere;
+  }
+  .lg-fcard-when {
+    margin-top: 8px;
+    font-size: 1.1rem;
+  }
+  .lg-fcard-when .lg-od {
+    font-size: 1.1rem;
+  }
+  .lg-fcard-quote {
+    margin: 16px 0 0;
+    padding-left: 14px;
+    border-left: 2px solid var(--rule);
+  }
+  .lg-fcard-quote blockquote {
+    font-size: 1.2rem;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .lg-fcard-quote figcaption {
+    margin-top: 4px;
+  }
+  .lg-fcard-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 24px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-fcard-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .lg-fcard-note {
+    margin: 12px 0 0;
+  }
+  .lg-fform {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-focus-keys {
+    justify-content: center;
+    margin-top: 14px;
+  }
+
+  /* ---------- A narrower table: the note goes first, then the stage label ---------- */
+  @container queue (max-width: 939px) {
+    .lg-qhead,
+    .lg-qgrid {
+      grid-template-columns: 54px 144px minmax(0, 1fr) 140px 180px 34px;
+      column-gap: 8px;
+    }
+    .lg-qnote {
+      display: none;
+    }
+  }
+  @container queue (max-width: 759px) {
+    .lg-qhead,
+    .lg-qgrid {
+      grid-template-columns: 52px 142px minmax(0, 1fr) 24px 178px 34px;
+    }
+    .lg-qstage-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    .lg-qhead .lg-qstage {
+      font-size: 0;
+    }
+  }
+  /* A phone: each row is a small card of up to four lines. */
+  @container queue (max-width: 599px) {
+    .lg-qhead {
+      display: none;
+    }
+    .lg-qgrid {
+      grid-template-columns: 44px minmax(0, 1fr) auto 34px;
+      grid-template-areas:
+        "m n n c"
+        "m t s s"
+        "m note note note"
+        "m claim claim claim";
+      row-gap: 2px;
+      padding: 6px 0 8px;
+    }
+    .lg-qm {
+      grid-area: m;
+      padding-left: 6px;
+    }
+    .lg-qn {
+      grid-area: n;
+    }
+    .lg-qtime {
+      grid-area: t;
+      padding-left: 4px;
+    }
+    .lg-qstage {
+      grid-area: s;
+      justify-self: end;
+    }
+    .lg-qstage-label {
+      position: static;
+      width: auto;
+      height: auto;
+      clip: auto;
+    }
+    .lg-qnote {
+      display: block;
+      grid-area: note;
+      padding-left: 4px;
+    }
+    .lg-qclaim {
+      grid-area: claim;
+      padding-left: 4px;
+      padding-top: 4px;
+    }
+    .lg-qchev {
+      grid-area: c;
+    }
+    .lg-rownote {
+      margin-left: 48px;
+    }
+  }
+  @media (max-width: 760px) {
+    .lg-totals {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lg-total {
+      min-height: 46px;
+      padding: 4px 12px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .lg-total:nth-child(2n) {
+      border-right: 0;
+    }
+    .lg-total:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+    .lg-qtools-right {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .lg-vtab {
+      padding: 0 10px;
+      font-size: 0.9rem;
+    }
+    .lg-fcard {
+      padding: 18px 18px 22px;
+    }
+    .lg-fcard-facts {
+      grid-template-columns: 1fr;
+    }
+  }
+}
