@@ -87,8 +87,10 @@
   .lg-tab-label {
     font-size: 12px;
     font-weight: 600;
-    font-variant-caps: small-caps;
-    letter-spacing: 0.04em;
+    font-variant-caps: normal;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.03em;
     white-space: nowrap;
   }
   .lg-tab[aria-current="page"] {
@@ -256,6 +258,9 @@
   .lg-book a {
     color: inherit;
     text-decoration: none;
+  }
+  .lg-book a:focus-visible {
+    outline-offset: -2px;
   }
   .lg-book a:hover {
     text-decoration: underline;

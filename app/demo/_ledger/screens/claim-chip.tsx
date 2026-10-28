@@ -70,7 +70,12 @@ export function ClaimChip({
     lastWidth.current = next;
     if (!changed || reducedMotion() || typeof el.animate !== "function") return;
     if (before !== null && Math.abs(before - next) >= 2) {
-      el.animate([{ width: `${before}px` }, { width: `${next}px` }], { duration: 180, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+      // The wrapper clips only while it morphs, so the focus ring on the chip is never cut off at rest.
+      el.classList.add("lg-morphing");
+      const morph = el.animate([{ width: `${before}px` }, { width: `${next}px` }], { duration: 180, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
+      const done = () => el.classList.remove("lg-morphing");
+      morph.addEventListener("finish", done);
+      morph.addEventListener("cancel", done);
     }
     // The gilt ribbon drops into the chip from its top edge: 220 ms with a small overshoot.
     if (claim.state === "mine") {

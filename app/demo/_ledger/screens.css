@@ -42,8 +42,15 @@
   .lg-claimchip {
     display: inline-flex;
     max-width: 100%;
-    overflow: clip;
+    overflow: visible;
+    padding: 3px;
     vertical-align: middle;
+  }
+  .lg-claimchip.lg-morphing {
+    overflow: clip;
+  }
+  .lg-chipbody:focus-visible {
+    outline-offset: -3px;
   }
   .lg-chipbody {
     position: relative;
