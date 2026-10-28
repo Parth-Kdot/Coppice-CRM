@@ -157,6 +157,16 @@
   padding-left: 0;
   border-left: 0;
 }
+.ldm-totals .ldm-total[data-pressed="true"] {
+  padding-block: 2px;
+  border-left-color: transparent;
+  border-radius: 3px;
+  background: var(--moss);
+  color: var(--paper);
+}
+.ldm-totals .ldm-total[data-pressed="true"] b {
+  color: var(--paper);
+}
 .ldm-totals b {
   margin-left: 5px;
   color: var(--ink);
@@ -182,6 +192,10 @@
 }
 .ldm-rows {
   position: relative;
+}
+/* While the list is narrowed to the company you hold, the window keeps the height of the full list. */
+.ldm-rows[data-hold="true"] {
+  min-height: calc(var(--ldm-row-h, 45px) * 7);
 }
 .ldm-rows ul {
   list-style: none;
@@ -604,6 +618,9 @@
   }
   .ldm-totals span {
     padding: 0 10px;
+  }
+  .ldm-rows {
+    --ldm-row-h: 59px;
   }
   .ldm-row {
     height: 58px;

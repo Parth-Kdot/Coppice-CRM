@@ -112,7 +112,7 @@ export function HeroDemo({ settled }: { settled: boolean }) {
       </div>
       <p className="lg-sr">
         An example of the queue. A cursor opens the search with the slash key, types lilly and presses Enter to pick Eli Lilly. Pressing C claims it: a gold ribbon drops in and the button reads Yours until
-        Nov 11. The list re-sorts so the company you hold is first, J and K move the selection, and L opens the form that logs outreach with a 7 day follow-up.
+        Nov 11. The Held by you total narrows the list to the company you hold and then brings the full list back, J and K move the selection, and L opens the form that logs outreach with a 7 day follow-up.
       </p>
     </div>
   );

@@ -22,6 +22,8 @@ export type MiniState = {
   pressing: string | null;
   // The row whose ribbon should drop in (it has just been claimed).
   fresh: string | null;
+  // The "Held by you" total is pressed: the list shows only the companies you hold.
+  onlyMine: boolean;
   palette: { open: boolean; query: string };
   log: boolean;
   note: { text: string; open: boolean } | null;
@@ -68,7 +70,7 @@ export function MiniQueue({ state, children }: { state: MiniState; children?: Re
           <span>
             Due this week <b key={week} className="lg-count">{week}</b>
           </span>
-          <span>
+          <span className="ldm-total" data-mini="total-mine" data-pressed={state.onlyMine}>
             Held by you <b key={mine} className="lg-count">{mine}</b>
           </span>
           <span className="ldm-totals-never">
@@ -115,10 +117,11 @@ export function MiniQueue({ state, children }: { state: MiniState; children?: Re
 // ----- The rows -----
 
 function MiniRows({ state }: { state: MiniState }) {
+  const shown = state.onlyMine ? state.rows.filter((r) => r.claim.kind === "mine") : state.rows;
   const list = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLSpanElement>(null);
   const seen = useRef<Map<string, number>>(new Map());
-  const order = state.rows.map((r) => r.id).join("|");
+  const order = shown.map((r) => r.id).join("|");
   const lastOrder = useRef(order);
 
   // FLIP: remember where each row was, read where it is now, and play the difference (a row that
@@ -136,6 +139,11 @@ function MiniRows({ state }: { state: MiniState }) {
         const id = el.dataset.flip as string;
         const was = seen.current.get(id);
         const now = next.get(id);
+        // A row that was not on the list before fades in where it lands.
+        if (was === undefined && now !== undefined && seen.current.size > 0) {
+          el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: EASE });
+          continue;
+        }
         if (was === undefined || now === undefined || was === now) continue;
         const d = was - now;
         if (!biggest || Math.abs(d) > Math.abs(biggest.d)) biggest = { el, d };
@@ -165,10 +173,10 @@ function MiniRows({ state }: { state: MiniState }) {
   }, [order, state.selectedId]);
 
   return (
-    <div ref={list} className="ldm-rows">
+    <div ref={list} className="ldm-rows" data-hold={state.onlyMine || undefined}>
       <span ref={bar} className="ldm-bar" data-hidden="true" />
       <ul>
-        {state.rows.map((row) => (
+        {shown.map((row) => (
           <MiniRowItem key={row.id} row={row} selected={row.id === state.selectedId} pressing={state.pressing === row.id} fresh={state.fresh === row.id} />
         ))}
       </ul>
