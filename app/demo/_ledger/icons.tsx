@@ -140,8 +140,8 @@ export function CalendarIcon(props: IconProps) {
 // The hourglass. The glass is the same in every state; the sand says how much time is left.
 //   empty:   no sand drawn, a plain glass (a follow-up that is still ahead)
 //   half:    sand in both bulbs and a thin stream (due today, or a day or two late)
-//   low:     most of the sand has run down (overdue)
-//   drained: the top bulb is empty and the sand lies in the bottom (long overdue), with a heavier glass
+//   low:     the top bulb is empty and a small mound lies in the lower bulb (overdue)
+//   drained: no sand in either bulb, drawn with a heavier glass (long overdue)
 export type HourglassFill = "empty" | "half" | "low" | "drained";
 
 export function HourglassIcon({ sand = "empty", ...props }: IconProps & { sand?: HourglassFill }) {
@@ -158,14 +158,8 @@ export function HourglassIcon({ sand = "empty", ...props }: IconProps & { sand?:
           <path d="M8.2 15.6h3.6L10 13.2z" fill="currentColor" strokeWidth={0.6} />
         </>
       )}
-      {sand === "low" && (
-        <>
-          <path d="M9.1 7.3h1.8L10 8.6z" fill="currentColor" strokeWidth={0.6} />
-          <path d="M10 8.8v3.2" strokeWidth={THIN} />
-          <path d="M7.6 15.7h4.8L10 12.3z" fill="currentColor" strokeWidth={0.6} />
-        </>
-      )}
-      {sand === "drained" && <path d="M7.2 15.7h5.6c-.2-1.9-1.5-2.9-2.8-4.6-1.3 1.7-2.6 2.7-2.8 4.6z" fill="currentColor" strokeWidth={0.6} />}
+      {sand === "low" && <path d="M8 15.7h4c-.1-1.1-.9-1.7-2-2.8-1.1 1.1-1.9 1.7-2 2.8z" fill="currentColor" strokeWidth={0.6} />}
+      {/* drained: a heavy glass with no sand in either bulb */}
     </Icon>
   );
 }

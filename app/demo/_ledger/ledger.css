@@ -491,6 +491,7 @@
   }
   .lg-od[data-level="overdue"] {
     color: var(--rust);
+    font-weight: 500;
   }
   .lg-od[data-level="long"] {
     color: var(--rust);

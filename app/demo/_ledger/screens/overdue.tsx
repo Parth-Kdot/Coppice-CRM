@@ -7,8 +7,8 @@ import { HourglassIcon, type HourglassFill } from "../icons";
 //   upcoming  due in the future            ink-2 text, plain hourglass
 //   today     due today                    ink text, hourglass with sand in both bulbs
 //   late      1 to 2 days overdue          ink text, same hourglass, no rust
-//   overdue   3 to 6 days overdue          rust text, rust hourglass, most sand run down
-//   long      7 or more days overdue       rust semibold text, emptied hourglass, and the row
+//   overdue   3 to 6 days overdue          rust text, rust hourglass, a small mound of sand below
+//   long      7 or more days overdue       rust semibold text, heavy hourglass with no sand, and the row
 //                                          gets a 3 px rust rule in its margin (class lg-rule-row, data-od="long")
 //
 // Rust always comes with words and a glass, never as a color alone, and never as a filled background.
