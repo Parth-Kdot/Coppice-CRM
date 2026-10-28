@@ -105,6 +105,9 @@ export function useClaimAction(ws: string, onClaimed?: (companyId: string) => vo
     [actions, notify, onClaimed, raceNext, setRaceNext, ws],
   );
 
+  // A margin note in a row for a key that cannot do what it says (c on a row someone else holds).
+  const say = useCallback((companyId: string, message: string) => setErrors((current) => ({ ...current, [companyId]: message })), []);
+
   const dismiss = useCallback(
     (companyId: string) =>
       setErrors((current) => {
@@ -115,7 +118,7 @@ export function useClaimAction(ws: string, onClaimed?: (companyId: string) => vo
     [],
   );
 
-  return { claim, errors, dropping, shaking, dismiss };
+  return { claim, errors, dropping, shaking, dismiss, say };
 }
 
 // A message under the control that caused it: rust, announced to screen readers, never color alone.

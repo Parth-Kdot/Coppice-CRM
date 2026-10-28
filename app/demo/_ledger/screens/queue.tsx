@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { demoRoutes, type QueueFilters, type QueueSort, type QueueView } from "@/demo/routes";
 import type { QueueRow } from "@/demo/selectors";
+import { formatDay } from "@/demo/dates";
 import { useMe, useQueueBook, useQueueFilters } from "@/demo/store";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "../icons";
-import { useNotify } from "../providers";
+import { shortName } from "./claim-chip";
 import { FocusMode } from "./queue-focus";
 import { buildQueue } from "./queue-model";
 import { useFlip, useGlide, useMediaQuery } from "./queue-motion";
@@ -74,7 +75,6 @@ const rowFocusTarget = (id: string) => document.querySelector<HTMLElement>(`[dat
 
 export function QueueScreen({ ws }: { ws: string }) {
   const router = useRouter();
-  const notify = useNotify();
   const filters = useQueueFilters();
   const book = useQueueBook(ws);
   const me = useMe(ws);
@@ -225,13 +225,18 @@ export function QueueScreen({ ws }: { ws: string }) {
       }
       const row = current >= 0 ? rows[current] : undefined;
       if (!row) return;
-      if (key === "c" && row.action === "claim") {
+      // A key that cannot act on this row says why in the row's own margin, instead of doing nothing.
+      const heldNote = `Held by ${shortName(row.claim.holderName)} until ${row.claim.expiresAt ? formatDay(row.claim.expiresAt) : "its claim expires"}.`;
+      if (key === "c") {
         event.preventDefault();
-        claimAction.claim(row.company.id, row.company.name);
+        if (row.action === "claim") claimAction.claim(row.company.id, row.company.name);
+        else if (row.action === "none") claimAction.say(row.company.id, heldNote);
+        else claimAction.say(row.company.id, `You already hold ${row.company.name}${row.claim.expiresAt ? ` until ${formatDay(row.claim.expiresAt)}` : ""}.`);
       } else if (key === "l") {
         event.preventDefault();
         if (row.action === "log-outreach") select(row.company.id, { logging: true });
-        else if (row.action === "claim") notify("Claim it first, then log your outreach.");
+        else if (row.action === "claim") claimAction.say(row.company.id, "Claim it first (c).");
+        else claimAction.say(row.company.id, heldNote);
       } else if (key === "enter" && (document.activeElement === document.body || document.activeElement === null)) {
         event.preventDefault();
         select(row.company.id, { focusPanel: true });
@@ -239,7 +244,7 @@ export function QueueScreen({ ws }: { ws: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [claimAction, focus, notify, select]);
+  }, [claimAction, focus, select]);
 
   // Escape closes the inline panel and puts focus back on its row. (As a sheet, the dialog does it.)
   useEffect(() => {
@@ -289,6 +294,16 @@ export function QueueScreen({ ws }: { ws: string }) {
           ? "Every company has been contacted or is held by someone."
           : "Try another tab.";
   const viewName = model.view === "mine" ? "Mine" : model.view === "week" ? "This week" : model.view === "never" ? "Never contacted" : "All due";
+  // The heading names the open view, so it never says "Follow-ups due" over a different list.
+  const heading = model.overdue
+    ? { title: "Overdue", count: model.rows.length }
+    : model.view === "mine"
+      ? { title: "Held by you", count: model.totals.mine }
+      : model.view === "week"
+        ? { title: "Due this week", count: model.totals.week }
+        : model.view === "never"
+          ? { title: "Never contacted", count: model.totals.never }
+          : { title: "Follow-ups due", count: model.totals.due };
   const neverHref = demoRoutes.queue(ws, { ...filters, never: !filters.never, all: null });
   const allHref = demoRoutes.queue(ws, { ...filters, all: model.view === "never" ? "never" : "due" });
 
@@ -309,7 +324,7 @@ export function QueueScreen({ ws }: { ws: string }) {
 
   return (
     <div className="lg-queue">
-      <PageHead title="Follow-ups due" count={model.totals.due} sub={<>You are {me.roleLabel}.</>}>
+      <PageHead title={heading.title} count={heading.count} sub={<>You are {me.roleLabel}.</>}>
         <Link href={demoRoutes.import(ws)} className="lg-btn">
           Import
         </Link>
