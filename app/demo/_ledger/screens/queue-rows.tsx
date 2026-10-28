@@ -126,6 +126,8 @@ export function QueueRowView(p: RowProps) {
         <button
           type="button"
           className="lg-qchev"
+          // The name button and Enter already open the panel, so the chevron is a mouse extra, not a third tab stop.
+          tabIndex={-1}
           aria-expanded={p.open}
           aria-controls={p.panelId}
           aria-label={`${p.open ? "Close" : "Open"} the side panel for ${company.name}`}

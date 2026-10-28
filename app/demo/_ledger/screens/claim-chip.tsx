@@ -90,7 +90,16 @@ export function ClaimChip({
 
   const holderFull = claim.holderName ?? "someone";
   return (
-    <span ref={wrap} className={`lg-claimchip ${className}`} data-kind={kind} data-compact={compact || undefined}>
+    <span
+      ref={wrap}
+      className={`lg-claimchip ${className}`}
+      data-kind={kind}
+      data-compact={compact || undefined}
+      // The padding around the chip is a larger touch area. A tap on it claims, like a tap on the chip.
+      onClick={(event) => {
+        if (kind === "free" && !readOnly && event.target === event.currentTarget) onClaim();
+      }}
+    >
       {kind === "free" && readOnly ? (
         <span className="lg-chipbody lg-chip-none">{claim.state === "expired" ? "Claim expired" : "Not claimed"}</span>
       ) : kind === "free" ? (

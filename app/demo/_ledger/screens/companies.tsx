@@ -72,7 +72,7 @@ export function CompaniesScreen({ ws }: { ws: string }) {
         sub={
           filtered ? (
             <>
-              {list.matchTotal} of {list.workspaceTotal} match.
+              {list.rows.length} of {list.workspaceTotal} match.
             </>
           ) : (
             <>Every company in the book, one line each.</>
@@ -161,9 +161,9 @@ export function CompaniesScreen({ ws }: { ws: string }) {
                       {c.name}
                     </Link>
                   </span>
-                  <span className="lg-cs">
+                  <span className="lg-cs" title={STAGE_LABELS[c.stage]}>
                     <StageGlyph stage={c.stage} size={15} />
-                    <span>{STAGE_LABELS[c.stage]}</span>
+                    <span className="lg-cs-label">{STAGE_LABELS[c.stage]}</span>
                   </span>
                   <span className="lg-cc">
                     {row.closed ? (
