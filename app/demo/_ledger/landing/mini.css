@@ -80,7 +80,7 @@
   min-width: 0;
   overflow: hidden;
   font-family: var(--font-display);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -88,7 +88,7 @@
 }
 .ldm-search {
   display: inline-flex;
-  flex: 0 1 300px;
+  flex: 0 0 322px;
   min-width: 0;
   height: 34px;
   align-items: center;
@@ -579,7 +579,7 @@
     vertical-align: -1px;
   }
   .ldm-search {
-    flex-basis: 250px;
+    flex: 0 1 250px;
   }
 }
 
@@ -594,7 +594,7 @@
     gap: 8px;
   }
   .ldm-search {
-    flex-basis: auto;
+    flex: 0 0 auto;
   }
   .ldm-title {
     font-size: 0.8125rem;
