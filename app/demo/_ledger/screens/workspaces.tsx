@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
 import { demoRoutes } from "@/demo/routes";
 import { useDemoActions, useDemoState, useWorkspaceList } from "@/demo/store";
-import { boardYear, Ribbon } from "../marks";
+import { boardYear } from "../marks";
 import { LogoMark } from "../logo";
 import { useNotify } from "../providers";
 import { UserMenu } from "../user-menu";
@@ -124,7 +124,6 @@ export function WorkspacesScreen() {
                 <ul className="lg-invites">
                   {list.invitations.map((inv) => (
                     <li key={inv.id}>
-                      <Ribbon size="sm" className="lg-invribbon" />
                       <div>
                         <p>
                           <strong>{inv.workspaceName}</strong> as {inv.role === "owner" ? "Owner" : "Officer"}

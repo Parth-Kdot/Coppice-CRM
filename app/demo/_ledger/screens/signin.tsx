@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { demoRoutes } from "@/demo/routes";
 import { useDemoActions } from "@/demo/store";
-import { Ribbon } from "../marks";
 import { SHOOTS_THREE, Stool } from "../stool";
 import { Wordmark } from "../logo";
 
@@ -32,7 +31,6 @@ export function SignInScreen() {
         Skip to the page
       </a>
       <main id="main" className="lg-auth-page lg-page-enter">
-        <Ribbon size="lg" className="lg-auth-ribbon" />
         <Stool shoots={SHOOTS_THREE} className="lg-auth-stool" />
         <h1 className="lg-auth-title">
           <Wordmark />
