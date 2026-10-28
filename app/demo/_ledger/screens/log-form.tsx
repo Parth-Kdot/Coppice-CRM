@@ -31,6 +31,9 @@ export function LogOutreachForm({
   onLogged,
   onCancel,
   autoFocus = false,
+  aiDraftId,
+  initialNote = "",
+  label = "Log outreach",
 }: {
   ws: string;
   companyId: string;
@@ -38,6 +41,10 @@ export function LogOutreachForm({
   onLogged?: () => void;
   onCancel?: () => void;
   autoFocus?: boolean;
+  // Logging a letter that came from an AI draft: the log records which draft it was.
+  aiDraftId?: string;
+  initialNote?: string;
+  label?: string;
 }) {
   const detail = useCompany(ws, companyId);
   const actions = useDemoActions();
@@ -52,7 +59,7 @@ export function LogOutreachForm({
   const [followMode, setFollowMode] = useState<FollowMode>("7");
   const [followPicked, setFollowPicked] = useState<string | null>(null);
   const [open, setOpen] = useState<Open>(null);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialNote);
   const [templateId, setTemplateId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(0);
@@ -69,7 +76,7 @@ export function LogOutreachForm({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    const result = actions.logOutreach(ws, companyId, { channel, note, followUpOn, sentOn, templateId: templateId || null });
+    const result = actions.logOutreach(ws, companyId, { channel, note, followUpOn, sentOn, templateId: templateId || null, ...(aiDraftId ? { aiDraftId } : {}) });
     if (!result.ok) {
       setError(result.error);
       setSaved(0);
@@ -137,7 +144,7 @@ export function LogOutreachForm({
   const templateOptions = [{ value: "", label: "None, written by hand" }, ...detail.templates.map((t) => ({ value: t.id, label: t.name }))];
 
   return (
-    <form ref={form} noValidate onSubmit={submit} className={`lg-logform ${compact ? "lg-logform-compact" : ""}`} aria-label="Log outreach">
+    <form ref={form} noValidate onSubmit={submit} className={`lg-logform ${compact ? "lg-logform-compact" : ""}`} aria-label={label}>
       <ChipGroup legend="Channel" value={channel} options={channelOptions} onChange={setChannel} />
 
       <div className="lg-logrow">

@@ -6,18 +6,20 @@ import { Fragment, useId, useState, type FormEvent } from "react";
 import { formatWhen } from "@/demo/dates";
 import { demoRoutes } from "@/demo/routes";
 import type { CompanyDetail } from "@/demo/selectors";
-import { useCompany, useDemoActions } from "@/demo/store";
+import { useCompany, useDemoActions, useFactSheet } from "@/demo/store";
 import { COMPANY_LIMITS, CONTACT_LIMITS, websiteHref } from "@/demo/validation";
 import type { Contact } from "@/demo/types";
-import { ChevronLeftIcon, ClaimIcon, DuplicateIcon, ExternalIcon, ReleaseIcon, StageGlyph } from "../icons";
-import { Ribbon, Tick, TurnoverRule, YearMargin, boardYear } from "../marks";
+import { ChevronLeftIcon, DuplicateIcon, ExternalIcon, StageGlyph } from "../icons";
+import { Tick, TurnoverRule, YearMargin, boardYear } from "../marks";
 import { NotFoundPage } from "../not-found-page";
 import { useConfirm, useNotify } from "../providers";
+import { ClaimTicket } from "./claim-ticket";
 import { DraftPanel } from "./draft-panel";
 import { LogOutreachForm } from "./log-form";
 import { isLongOverdue, OverdueMark } from "./overdue";
-import { StageControl } from "./stage-control";
-import { Empty, ErrorLine, useClaimAction } from "./shared";
+import { RouteMap } from "./route-map";
+import { StageButtons } from "./stage-buttons";
+import { Empty, ErrorLine } from "./shared";
 
 // The company page, as a two-page spread. Left page: the name, the claim, the log outreach form, the
 // stage and the contacts. Right page: the outreach log as dated ledger entries with the board-year
@@ -32,72 +34,6 @@ function Block({ id, title, children, className = "" }: { id?: string; title: st
       </h2>
       {children}
     </section>
-  );
-}
-
-// ----- Claim -----
-
-function ClaimBlock({ ws, detail }: { ws: string; detail: CompanyDetail }) {
-  const actions = useDemoActions();
-  const confirm = useConfirm();
-  const notify = useNotify();
-  const claimAction = useClaimAction(ws);
-  const [error, setError] = useState<string | null>(null);
-  const { company, claim } = detail;
-  const holder = claim.holderName ?? "Someone";
-
-  let text: string;
-  if (detail.closed) text = `This company is ${detail.stageLabel}, so it can't be claimed.`;
-  else if (claim.state === "mine") text = `You hold this until ${formatWhen(claim.expiresAt as string)}.`;
-  else if (claim.state === "theirs") text = `Held by ${holder} until ${formatWhen(claim.expiresAt as string)}.`;
-  else if (claim.state === "expired") text = `${holder}'s claim expired ${formatWhen(claim.expiresAt as string)}.`;
-  else text = "Not claimed.";
-
-  const release = async (force: boolean) => {
-    const ok = await confirm({
-      message: force ? `Release ${holder}'s claim on ${company.name}?` : `Release your claim on ${company.name}?`,
-      confirmLabel: force ? "Force release" : "Release",
-    });
-    if (!ok) return;
-    const result = force ? actions.forceRelease(ws, company.id) : actions.releaseClaim(ws, company.id);
-    if (!result.ok) setError(result.error);
-    else {
-      setError(null);
-      notify(force ? `${holder}'s claim on ${company.name} was released.` : `You released ${company.name}.`);
-    }
-  };
-
-  return (
-    <Block title="Claim" className="lg-claimblock">
-      {claim.state === "mine" && <Ribbon size="lg" drop={claimAction.dropping === company.id} className="lg-claimribbon" />}
-      <p className={`lg-claimtext ${claim.state === "mine" ? "lg-claimtext-mine" : ""}`} aria-live="polite">
-        {claim.state === "theirs" ? <span className="lg-badge lg-badge-theirs lg-badge-big">{text}</span> : text}
-      </p>
-      <div className="lg-actions mt-3">
-        {detail.canClaim && (
-          <button type="button" className={`lg-btn lg-btn-primary ${claimAction.shaking === company.id ? "lg-btn-shake" : ""}`} onClick={() => claimAction.claim(company.id, company.name)}>
-            <ClaimIcon size={18} />
-            Claim
-          </button>
-        )}
-        {detail.canRelease && (
-          <button type="button" className="lg-btn" onClick={() => release(false)}>
-            <ReleaseIcon size={18} />
-            Release
-          </button>
-        )}
-        {detail.canForceRelease && (
-          <button type="button" className="lg-btn" onClick={() => release(true)}>
-            <ReleaseIcon size={18} />
-            Force release
-          </button>
-        )}
-      </div>
-      {claim.state === "theirs" && !detail.canForceRelease && !detail.closed && (
-        <p className="lg-hint mt-2">There is no outreach form while someone else holds this company. Ask them, or an owner.</p>
-      )}
-      <ErrorLine>{claimAction.errors[company.id] ?? error}</ErrorLine>
-    </Block>
   );
 }
 
@@ -243,6 +179,35 @@ function ContactsBlock({ ws, detail }: { ws: string; detail: CompanyDetail }) {
           <ErrorLine>{error}</ErrorLine>
         </form>
       )}
+    </Block>
+  );
+}
+
+// ----- Relevant facts -----
+
+// The verified facts the AI draws on, so the officer sees what the club can truthfully say.
+function FactsBlock({ ws }: { ws: string }) {
+  const sheet = useFactSheet(ws);
+  const shown = sheet.verified.slice(0, 3);
+  return (
+    <Block title="Relevant facts">
+      {shown.length === 0 ? (
+        <p className="lg-muted">No verified facts yet. An owner verifies them on the fact sheet.</p>
+      ) : (
+        <ul className="lg-factlist">
+          {shown.map((f) => (
+            <li key={f.id}>
+              <p className="lg-quote">&ldquo;{f.text}&rdquo;</p>
+              <p className="lg-hint">{f.sourceLabel}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2">
+        <Link href={demoRoutes.facts(ws)} className="lg-link">
+          {sheet.verified.length > shown.length ? `See all ${sheet.verified.length} on the fact sheet` : "Open the fact sheet"}
+        </Link>
+      </p>
     </Block>
   );
 }
@@ -576,36 +541,10 @@ export function CompanyScreen({ ws, companyId }: { ws: string; companyId: string
 
   return (
     <article className="lg-company">
-      <header className="lg-cohead">
-        <Link href={demoRoutes.queue(ws)} className="lg-back">
-          <ChevronLeftIcon size={18} />
-          Back
-        </Link>
-        <h1 className="lg-h1">{c.name}</h1>
-        <p className="lg-coline">
-          <span className="lg-stagechip lg-sc" data-stage={c.stage}>
-            <StageGlyph stage={c.stage} size={15} />
-            {detail.stageLabel}
-          </span>
-          {c.industry && <span>{c.industry}</span>}
-          {href && (
-            <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
-              {c.website}
-              <ExternalIcon size={14} className="ml-1 inline-block align-[-2px]" />
-            </a>
-          )}
-        </p>
-        <p className="lg-coline">
-          <span>{detail.lastContacted ? `Last contacted ${detail.lastContacted}` : "Never contacted"}</span>
-          {detail.nextFollowUp && detail.followUpDays !== null && (
-            <span className="lg-cofollow">
-              <span>Follow up {detail.nextFollowUp}</span>
-              <OverdueMark days={detail.followUpDays} dueOn={detail.nextFollowUp} size={15} />
-              {longOverdue && <span className="lg-od-note lg-sc">Long overdue</span>}
-            </span>
-          )}
-        </p>
-      </header>
+      <Link href={demoRoutes.queue(ws)} className="lg-back">
+        <ChevronLeftIcon size={18} />
+        Back
+      </Link>
 
       {detail.archived && (
         <div className="lg-archivedbanner" role="status">
@@ -625,30 +564,86 @@ export function CompanyScreen({ ws, companyId }: { ws: string; companyId: string
       )}
 
       <div className="lg-spread">
-        <div className="lg-leaf-page lg-sheet lg-leaf-left">
-          {!detail.archived && <ClaimBlock ws={ws} detail={detail} />}
-          {detail.canLogOutreach && (
-            <Block id="log-outreach" title="Log outreach" className="lg-logblock">
-              <p className="lg-hint mb-3">After you reach out from your own inbox or in person. Saving renews your claim.</p>
-              <LogOutreachForm ws={ws} companyId={c.id} />
-            </Block>
-          )}
+        <div className="lg-leaf-page lg-leaf-left">
+          <header className="lg-cohead lg-o-title">
+            <h1 className="lg-h1">{c.name}</h1>
+            <p className="lg-coline">
+              <span className="lg-stagechip lg-sc" data-stage={c.stage}>
+                <StageGlyph stage={c.stage} size={15} />
+                {detail.stageLabel}
+              </span>
+              {c.industry && <span>{c.industry}</span>}
+              {href && (
+                <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
+                  {c.website}
+                  <ExternalIcon size={14} className="ml-1 inline-block align-[-2px]" />
+                </a>
+              )}
+            </p>
+            <p className="lg-coline">
+              <span>{detail.lastContacted ? `Last contacted ${detail.lastContacted}` : "Never contacted"}</span>
+              {detail.nextFollowUp && detail.followUpDays !== null && (
+                <span className="lg-cofollow">
+                  <span>Follow up {detail.nextFollowUp}</span>
+                  <OverdueMark days={detail.followUpDays} dueOn={detail.nextFollowUp} size={15} />
+                  {longOverdue && <span className="lg-od-note lg-sc">Long overdue</span>}
+                </span>
+              )}
+            </p>
+          </header>
+          <div className="lg-o-route">
+            <RouteMap detail={detail} />
+          </div>
+          <div className="lg-o-contacts">
+            <ContactsBlock ws={ws} detail={detail} />
+          </div>
+          <div className="lg-o-facts">
+            <FactsBlock ws={ws} />
+          </div>
           {!detail.archived && (
-            <Block title="Stage">
-              <StageControl key={c.stage} ws={ws} companyId={c.id} companyName={c.name} stage={c.stage} />
-            </Block>
+            <div className="lg-o-stage">
+              <Block title="Stage">
+                <StageButtons ws={ws} companyId={c.id} companyName={c.name} stage={c.stage} />
+              </Block>
+            </div>
           )}
-          <ContactsBlock ws={ws} detail={detail} />
+          <div className="lg-o-history">
+            <HistoryBlock detail={detail} />
+          </div>
+          <div className="lg-o-details">
+            <DetailsBlock key={`${c.id}-${c.archivedAt ? "a" : "x"}`} ws={ws} detail={detail} />
+          </div>
+          {!detail.archived && (
+            <div className="lg-o-archive">
+              <ArchiveBlock ws={ws} detail={detail} />
+            </div>
+          )}
         </div>
-        <div className="lg-leaf-page lg-sheet lg-leaf-right">
-          <OutreachBlock ws={ws} detail={detail} />
-          <HistoryBlock detail={detail} />
-          <DetailsBlock key={`${c.id}-${c.archivedAt ? "a" : "x"}`} ws={ws} detail={detail} />
-          {!detail.archived && <ArchiveBlock ws={ws} detail={detail} />}
+
+        <div className="lg-leaf-page lg-leaf-right">
+          {!detail.archived && (
+            <div className="lg-o-claim">
+              <ClaimTicket ws={ws} detail={detail} />
+            </div>
+          )}
+          {detail.canLogOutreach && (
+            <div className="lg-o-log">
+              <Block id="log-outreach" title="Log outreach" className="lg-logblock">
+                <p className="lg-hint mb-3">After you reach out from your own inbox or in person. Saving renews your claim.</p>
+                <LogOutreachForm ws={ws} companyId={c.id} />
+              </Block>
+            </div>
+          )}
+          <div className="lg-o-outreach">
+            <OutreachBlock ws={ws} detail={detail} />
+          </div>
+          {detail.canDraft && (
+            <div className="lg-o-draft">
+              <DraftPanel ws={ws} detail={detail} />
+            </div>
+          )}
         </div>
       </div>
-
-      {detail.canDraft && <DraftPanel ws={ws} detail={detail} />}
     </article>
   );
 }

@@ -7,10 +7,11 @@ import { checkRules, composeLinks } from "@/demo/rules";
 import type { CompanyDetail } from "@/demo/selectors";
 import { useDemoActions, useDemoState } from "@/demo/store";
 import { DRAFT_KIND_LABELS, FINDING_LABELS, type Draft, type DraftKind, type Finding } from "@/demo/types";
-import { DRAFT_NOTE_MAX, NOTE_MAX } from "@/demo/validation";
+import { DRAFT_NOTE_MAX } from "@/demo/validation";
 import { AiDraftIcon, CopyLinkIcon, ExternalIcon, WarningIcon } from "../icons";
-import { Tick } from "../marks";
-import { useNotify } from "../providers";
+import { ChipGroup, type ChipOption } from "./chips";
+import { LedgerMenu, type MenuOption } from "./ledger-menu";
+import { LogOutreachForm } from "./log-form";
 import { ErrorLine } from "./shared";
 
 // The draft letter: two AI drafts built only from verified facts, each with a Claim Checker that
@@ -67,17 +68,12 @@ function Flagged({ text, quotes }: { text: string; quotes: string[] }) {
 function DraftCard({ ws, detail, draft, index }: { ws: string; detail: CompanyDetail; draft: Draft; index: number }) {
   const actions = useDemoActions();
   const state = useDemoState();
-  const notify = useNotify();
   const id = useId();
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
   const [copied, setCopied] = useState<string | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [followUpOn, setFollowUpOn] = useState(detail.defaultFollowUpOn);
-  const [logNote, setLogNote] = useState(`Sent: ${draft.subject}`);
-  const [logError, setLogError] = useState<string | null>(null);
-  const [logged, setLogged] = useState(0);
 
   const live = state.drafts.find((d) => d.id === draft.id) ?? draft;
   const check = live.check;
@@ -112,18 +108,6 @@ function DraftCard({ ws, detail, draft, index }: { ws: string; detail: CompanyDe
     const result = await actions.checkDraft(ws, draft.id, { subject, body });
     setChecking(false);
     if (!result.ok) setCheckError(result.error);
-  };
-
-  const logIt = (e: FormEvent) => {
-    e.preventDefault();
-    const result = actions.logOutreach(ws, detail.company.id, { channel: "EMAIL", note: logNote, followUpOn, aiDraftId: draft.id });
-    if (!result.ok) {
-      setLogError(result.error);
-      return;
-    }
-    setLogError(null);
-    setLogged((n) => n + 1);
-    notify("Logged.");
   };
 
   return (
@@ -208,32 +192,9 @@ function DraftCard({ ws, detail, draft, index }: { ws: string; detail: CompanyDe
 
       <details className="lg-more mt-3">
         <summary>I sent it: log the outreach</summary>
-        <form noValidate onSubmit={logIt} className="lg-contactform">
-          <div>
-            <label className="lg-label" htmlFor={`${id}-follow`}>
-              Follow up on
-            </label>
-            <input id={`${id}-follow`} type="date" className="lg-input lg-num" value={followUpOn} min={detail.today} max={detail.maxFollowUpOn} onChange={(e) => setFollowUpOn(e.target.value)} required />
-          </div>
-          <div>
-            <label className="lg-label" htmlFor={`${id}-note`}>
-              Note
-            </label>
-            <textarea id={`${id}-note`} className="lg-textarea" rows={2} maxLength={NOTE_MAX} value={logNote} onChange={(e) => setLogNote(e.target.value)} />
-          </div>
-          <div className="lg-actions">
-            <button type="submit" className="lg-btn lg-btn-primary lg-btn-sm">
-              Log outreach
-            </button>
-            {logged > 0 && !logError && (
-              <span className="lg-ok" role="status">
-                <Tick key={logged} size={18} />
-                Logged.
-              </span>
-            )}
-          </div>
-          <ErrorLine>{logError}</ErrorLine>
-        </form>
+        <div className="lg-sentlog">
+          <LogOutreachForm ws={ws} companyId={detail.company.id} compact aiDraftId={draft.id} initialNote={`Sent: ${draft.subject}`} label={`Log outreach for draft ${index + 1}`} />
+        </div>
       </details>
     </article>
   );
@@ -277,37 +238,20 @@ export function DraftPanel({ ws, detail }: { ws: string; detail: CompanyDetail }
   };
 
   const n = detail.verifiedFactCount;
+  const kindOptions: ChipOption<DraftKind>[] = (["FIRST_TOUCH", "FOLLOW_UP"] as const).map((k) => ({ value: k, label: DRAFT_KIND_LABELS[k] }));
+  const contactOptions: MenuOption<string>[] = [
+    { value: "", label: 'No contact yet (greets "Hi there")' },
+    ...detail.draftContacts.map((c) => ({ value: c.id, label: `${c.name}${c.title ? `, ${c.title}` : ""}${c.email ? "" : " (no email)"}` })),
+  ];
   return (
     <section id="draft-email" className="lg-draftpanel" aria-labelledby={`${id}-h`}>
       <h2 id={`${id}-h`} className="lg-h2">
         Draft letter
       </h2>
       <form onSubmit={submit} className="lg-draftform">
-        <fieldset>
-          <legend className="lg-label">Kind</legend>
-          <div className="lg-radios">
-            {(["FIRST_TOUCH", "FOLLOW_UP"] as const).map((k) => (
-              <label key={k} className="lg-radio">
-                <input type="radio" className="lg-check" name={`${id}-kind`} checked={kind === k} onChange={() => setKind(k)} />
-                {DRAFT_KIND_LABELS[k]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <ChipGroup legend="Kind" value={kind} options={kindOptions} onChange={setKind} />
         <div>
-          <label className="lg-label" htmlFor={`${id}-to`}>
-            Send to
-          </label>
-          <select id={`${id}-to`} className="lg-select" value={contactId} onChange={(e) => setContactId(e.target.value)}>
-            <option value="">No contact yet (greets &quot;Hi there&quot;)</option>
-            {detail.draftContacts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.title ? `, ${c.title}` : ""}
-                {c.email ? "" : " (no email)"}
-              </option>
-            ))}
-          </select>
+          <LedgerMenu label="Send to" value={contactId} options={contactOptions} onChange={setContactId} />
         </div>
         <div className="lg-draftnote">
           <label className="lg-label" htmlFor={`${id}-note`}>

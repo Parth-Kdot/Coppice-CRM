@@ -1,0 +1,404 @@
+/* ==========================================================================================
+   Ledger, the company page: a two-page spread. Left page: the name, the route map, contacts, facts,
+   the stage buttons, history and details. Right page: the claim ticket, the fast log form, the
+   outreach entries and the draft letter. Plain CSS in a file, so the strict style-src policy allows
+   it. Motion is 100 to 240 ms and never blocks input.
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- The spread ---------- */
+  .lg-company > .lg-back {
+    margin-bottom: 12px;
+  }
+  .lg-leaf-page .lg-block {
+    border-top: 1px solid var(--rule);
+  }
+  .lg-leaf-page > :first-child > .lg-block:first-child {
+    border-top: 0;
+  }
+  .lg-leaf-left > .lg-o-title {
+    margin: 14px 0 0;
+  }
+  .lg-leaf-left .lg-h1 {
+    font-size: clamp(2rem, 1.4rem + 1.4vw, 2.7rem);
+  }
+
+  /* ---------- The route map ---------- */
+  .lg-route {
+    display: flex;
+    flex-direction: column-reverse;
+    margin: 4px 0 18px;
+    padding: 6px 0 4px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-route ol {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    list-style: none;
+  }
+  .lg-route-stop {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+  .lg-route-dot {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--edge);
+    border-radius: 999px;
+    background: var(--sheet);
+  }
+  /* The line between stops: solid ink once the company has been there, dashed ahead of it. */
+  .lg-route-stop::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    right: 50%;
+    width: 100%;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--edge) 0 6px, transparent 6px 10px);
+  }
+  .lg-route-stop:first-child::before {
+    display: none;
+  }
+  .lg-route-stop[data-state="passed"]::before,
+  .lg-route-stop[data-state="current"]::before {
+    background: var(--ink);
+  }
+  .lg-route-stop[data-state="passed"] .lg-route-dot {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  /* The current stop is ringed in moss, with a gap of paper between the dot and the ring. */
+  .lg-route-stop[data-state="current"] .lg-route-dot,
+  .lg-route-branch[data-state="current"] .lg-route-dot {
+    background: var(--ink);
+    border-color: var(--ink);
+    box-shadow:
+      0 0 0 2.5px var(--sheet),
+      0 0 0 4.5px var(--moss);
+  }
+  .lg-route-label {
+    display: block;
+    max-width: 100%;
+    color: var(--ink-2);
+    font-size: 0.86rem;
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+  .lg-route-stop[data-state="passed"] .lg-route-label {
+    color: var(--ink);
+  }
+  .lg-route-stop[data-state="current"] .lg-route-label,
+  .lg-route-branch[data-state="current"] .lg-route-label {
+    color: var(--moss);
+    font-weight: 700;
+  }
+
+  /* The Declined branch: a stub above the line, leaving at the stage the company left from. */
+  .lg-route-branchrow {
+    height: 34px;
+  }
+  .lg-route-branch {
+    position: relative;
+    height: 100%;
+  }
+  .lg-route-branch[data-col="0"] {
+    grid-column: 1;
+  }
+  .lg-route-branch[data-col="1"] {
+    grid-column: 2;
+  }
+  .lg-route-branch[data-col="2"] {
+    grid-column: 3;
+  }
+  .lg-route-branch[data-col="3"] {
+    grid-column: 4;
+  }
+  .lg-route-branch[data-col="4"] {
+    grid-column: 5;
+  }
+  .lg-route-branch .lg-route-dot {
+    position: absolute;
+    top: 6px;
+    left: calc(50% - 8px);
+    width: 14px;
+    height: 14px;
+    margin-left: 1px;
+  }
+  .lg-route-elbow {
+    position: absolute;
+    top: 20px;
+    bottom: -8px;
+    left: calc(50% - 1px);
+    width: 2px;
+    background: repeating-linear-gradient(180deg, var(--edge) 0 4px, transparent 4px 7px);
+  }
+  .lg-route-branch[data-state="current"] .lg-route-elbow {
+    background: var(--ink);
+  }
+  .lg-route-branch .lg-route-label {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 14px);
+    white-space: nowrap;
+  }
+
+  /* ---------- The claim ticket ---------- */
+  .lg-ticket {
+    position: relative;
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    margin: 20px 0 8px;
+    background: var(--paper-2);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    box-shadow: 0 8px 14px -12px var(--shade);
+  }
+  .lg-ticket[data-kind="mine"] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-ticket[data-kind="theirs"] {
+    border-style: dashed;
+    border-color: var(--ink-2);
+  }
+  /* The perforation: a dashed line down the stub, with a half circle cut out at each end. */
+  .lg-ticket::before,
+  .lg-ticket::after {
+    content: "";
+    position: absolute;
+    left: 68px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: var(--sheet);
+  }
+  .lg-ticket::before {
+    top: -9px;
+    clip-path: inset(50% 0 0 0);
+  }
+  .lg-ticket::after {
+    bottom: -9px;
+    clip-path: inset(0 0 50% 0);
+  }
+  .lg-ticket-stub {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-height: 96px;
+    padding: 10px 6px 14px;
+    overflow: hidden;
+    border-right: 2px dashed var(--edge);
+    color: var(--ink-2);
+  }
+  .lg-ticket[data-kind="mine"] .lg-ticket-stub {
+    color: var(--moss);
+    font-weight: 600;
+  }
+  .lg-ticket-ribbon {
+    top: 0;
+    left: calc(50% - 8px);
+  }
+  .lg-ticket-body {
+    min-width: 0;
+    padding: 14px 18px 16px;
+  }
+  .lg-ticket-title {
+    color: var(--ink-2);
+  }
+  .lg-ticket-text {
+    margin: 2px 0 12px;
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .lg-ticket-hint {
+    margin-top: 10px;
+  }
+  .lg-ticket-note {
+    margin: 12px 0 0;
+  }
+
+  /* ---------- Stage buttons ---------- */
+  .lg-stagebtns-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lg-stagebtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 0 12px 0 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: 0.92rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
+  }
+  .lg-stagebtn:hover:not([aria-disabled]) {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-stagebtn[aria-pressed="true"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+    font-weight: 600;
+    cursor: default;
+  }
+  .lg-stagebtn[aria-disabled]:not([aria-pressed="true"]) {
+    opacity: 0.6;
+    cursor: progress;
+  }
+
+  /* ---------- Relevant facts ---------- */
+  .lg-factlist {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+  }
+  .lg-factlist li {
+    padding-left: 12px;
+    border-left: 2px solid var(--rule);
+  }
+
+  /* ---------- The right page: draft letter as a block of the page ---------- */
+  .lg-leaf-right .lg-draftpanel {
+    margin-top: 0;
+    padding: 18px 0 0;
+    border: 0;
+    border-top: 1px solid var(--rule);
+    background: transparent;
+    box-shadow: none;
+  }
+  .lg-leaf-right .lg-draftpanel > .lg-h2 {
+    font-size: 1.28rem;
+  }
+  .lg-leaf-right .lg-draftform {
+    grid-template-columns: 1fr;
+  }
+  .lg-leaf-right .lg-letters {
+    grid-template-columns: 1fr;
+  }
+  .lg-leaf-right .lg-letter {
+    padding: 16px 16px 18px;
+  }
+
+  /* ---------- One long sheet when the two pages would be too narrow ---------- */
+  @media (max-width: 1100px) {
+    .lg-spread {
+      display: flex;
+      flex-direction: column;
+      padding: 6px 30px 26px;
+      background: var(--sheet);
+    }
+    .lg-leaf-page {
+      display: contents;
+    }
+    .lg-leaf-left {
+      border: 0;
+    }
+    .lg-o-title {
+      order: 1;
+    }
+    .lg-o-route {
+      order: 2;
+    }
+    .lg-o-claim {
+      order: 3;
+    }
+    .lg-o-log {
+      order: 4;
+    }
+    .lg-o-outreach {
+      order: 5;
+    }
+    .lg-o-draft {
+      order: 6;
+    }
+    .lg-o-contacts {
+      order: 7;
+    }
+    .lg-o-facts {
+      order: 8;
+    }
+    .lg-o-stage {
+      order: 9;
+    }
+    .lg-o-history {
+      order: 10;
+    }
+    .lg-o-details {
+      order: 11;
+    }
+    .lg-o-archive {
+      order: 12;
+    }
+    /* The first block of each wrapper has no rule above it only on the first wrapper. */
+    .lg-spread > .lg-o-claim .lg-ticket {
+      margin-top: 4px;
+    }
+    .lg-leaf-page > :first-child > .lg-block:first-child {
+      border-top: 1px solid var(--rule);
+    }
+  }
+  @media (max-width: 640px) {
+    .lg-spread {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+    .lg-ticket {
+      grid-template-columns: 62px minmax(0, 1fr);
+    }
+    .lg-ticket::before,
+    .lg-ticket::after {
+      left: 54px;
+    }
+    .lg-ticket-body {
+      padding: 12px 12px 14px;
+    }
+    .lg-ticket-text {
+      font-size: 1.1rem;
+    }
+    .lg-route-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+    }
+  }
+}
+
+@layer components {
+  .lg-sentlog {
+    padding: 10px 0 4px;
+  }
+  .lg-draftform .lg-lmenu,
+  .lg-draftform .lg-lmenu-btn {
+    max-width: 100%;
+  }
+  .lg-draftform .lg-lmenu-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

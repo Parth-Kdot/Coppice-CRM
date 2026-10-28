@@ -283,29 +283,6 @@
     min-width: 80px;
     font-size: 0.9rem;
   }
-  .lg-stage {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--rule);
-  }
-  .lg-stage-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .lg-stage-row .lg-select {
-    min-width: 0;
-    flex: 1;
-    min-height: 32px;
-    padding: 4px 22px 4px 8px;
-    background-position: right 7px center;
-    font-size: 0.82rem;
-  }
-  .lg-stage-compact .lg-btn {
-    min-height: 32px;
-    padding: 0 10px;
-    font-size: 0.86rem;
-  }
   .lg-reply-list {
     display: grid;
     gap: 8px;
@@ -492,13 +469,6 @@
     font-weight: 600;
     font-size: 1.28rem;
     line-height: 1.2;
-  }
-  .lg-claimblock {
-    padding-right: 40px;
-  }
-  .lg-claimribbon {
-    top: 0;
-    right: 16px;
   }
   .lg-claimtext {
     font-size: 1.05rem;
@@ -727,9 +697,6 @@
     .lg-row3,
     .lg-draftform {
       grid-template-columns: 1fr;
-    }
-    .lg-claimblock {
-      padding-right: 30px;
     }
   }
 }
