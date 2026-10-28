@@ -218,6 +218,21 @@ export function selectQueue(state: DemoState, ws: string, filters: QueueFilters 
   };
 }
 
+// Every open company of the workspace as a queue row, in no particular order. The queue screen
+// filters and sorts these itself (view tabs, the totals line, the sort menu), so one change in the
+// store updates every count at once. Rows without a follow-up date have daysOverdue null.
+export function selectQueueBook(state: DemoState, ws: string): QueueRow[] {
+  const notes = latestNotes(state, ws);
+  return inWorkspace(state, ws)
+    .filter(isOpen)
+    .sort(byName)
+    .map((c) => {
+      const days = c.nextFollowUpAt !== null ? daysOverdue(c.nextFollowUpAt, state.now) : null;
+      const timing = c.nextFollowUpAt !== null ? dueLabel(c.nextFollowUpAt, state.now) : c.stage === "NOT_CONTACTED" ? "No outreach yet" : "No follow-up set";
+      return queueRow(state, c, timing, days, notes);
+    });
+}
+
 // ----- The board -----
 
 export type BoardCard = {

@@ -23,9 +23,21 @@ export type DemoScreen = keyof typeof DEMO_ROUTE_PATTERNS;
 
 // ----- Filters that live in the URL, like the real app (a view can be bookmarked and Back works) -----
 
+// The queue's view tabs: everything due, only what I hold, due within the week, and fresh leads.
+export const QUEUE_VIEWS = ["all", "mine", "week", "never"] as const;
+export type QueueView = (typeof QUEUE_VIEWS)[number];
+// How the queue is ordered: most overdue first, closest to today, by name, or by stage.
+export const QUEUE_SORTS = ["overdue", "due", "company", "stage"] as const;
+export type QueueSort = (typeof QUEUE_SORTS)[number];
+
 export type QueueFilters = {
-  // Only companies I hold with a live claim.
+  // Only companies I hold with a live claim. The same thing as view "mine": ?mine=1 still works.
   mine: boolean;
+  // Which tab is open.
+  view: QueueView;
+  sort: QueueSort;
+  // Only what is already past its follow-up date.
+  overdue: boolean;
   // The "Never contacted" section is open.
   never: boolean;
   // One section showing everything instead of the first 50.
@@ -59,7 +71,7 @@ export type CompaniesFilters = {
 };
 
 export const DEFAULT_COMPANIES_FILTERS: CompaniesFilters = { q: "", stage: null, sort: "recent" };
-export const DEFAULT_QUEUE_FILTERS: QueueFilters = { mine: false, never: false, all: null };
+export const DEFAULT_QUEUE_FILTERS: QueueFilters = { mine: false, view: "all", sort: "overdue", overdue: false, never: false, all: null };
 export const DEFAULT_BOARD_FILTERS: BoardFilters = { q: "", industry: "", show: [], all: null, archived: false, dupes: false };
 
 // Anything that reads like search params: the URLSearchParams from useSearchParams(), or the plain
@@ -78,8 +90,14 @@ const isStage = (value: string): value is Stage => (STAGES as readonly string[])
 // Malformed values are dropped instead of failing, the same way the real app treats a hand-edited URL.
 export function parseQueueFilters(params: SearchParamsInput): QueueFilters {
   const all = firstParam(params, "all");
+  const viewParam = firstParam(params, "view");
+  const sortParam = firstParam(params, "sort");
+  const view: QueueView = (QUEUE_VIEWS as readonly string[]).includes(viewParam ?? "") ? (viewParam as QueueView) : firstParam(params, "mine") === "1" ? "mine" : "all";
   return {
-    mine: firstParam(params, "mine") === "1",
+    mine: view === "mine",
+    view,
+    sort: (QUEUE_SORTS as readonly string[]).includes(sortParam ?? "") ? (sortParam as QueueSort) : DEFAULT_QUEUE_FILTERS.sort,
+    overdue: firstParam(params, "overdue") === "1",
     never: firstParam(params, "never") === "1",
     all: all === "due" || all === "never" ? all : null,
   };
@@ -122,8 +140,11 @@ export function companiesQuery(filters: Partial<CompaniesFilters> = {}): string 
 // The query string for a queue view, "" when every filter is at its default.
 export function queueQuery(filters: Partial<QueueFilters> = {}): string {
   const f = { ...DEFAULT_QUEUE_FILTERS, ...filters };
+  const view: QueueView = f.view === "all" && f.mine ? "mine" : f.view;
   const params = new URLSearchParams();
-  if (f.mine) params.set("mine", "1");
+  if (view !== "all") params.set("view", view);
+  if (f.sort !== DEFAULT_QUEUE_FILTERS.sort) params.set("sort", f.sort);
+  if (f.overdue) params.set("overdue", "1");
   if (f.never) params.set("never", "1");
   if (f.all) params.set("all", f.all);
   const query = params.toString();

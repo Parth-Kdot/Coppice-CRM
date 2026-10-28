@@ -23,6 +23,7 @@ import {
   selectIndustries,
   selectMe,
   selectQueue,
+  selectQueueBook,
   selectReplyChoice,
   selectSearch,
   selectSettings,
@@ -113,6 +114,12 @@ export function useQueue(ws: string, filters: QueueFilters = DEFAULT_QUEUE_FILTE
   const key = keyOf(filters);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `filters`
   return useMemo(() => selectQueue(state, ws, filters), [state, ws, key]);
+}
+
+// Every open company as a queue row, for the screen that filters and sorts them itself.
+export function useQueueBook(ws: string) {
+  const state = useDemoState();
+  return useMemo(() => selectQueueBook(state, ws), [state, ws]);
 }
 
 export function useBoard(ws: string, filters: BoardFilters = DEFAULT_BOARD_FILTERS) {
