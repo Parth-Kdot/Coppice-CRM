@@ -1320,6 +1320,9 @@ html.lenis body {
   .ld-rr-note {
     grid-column: 1 / -1;
   }
+  .ld-rr[data-row="0"] {
+    grid-template-rows: 50px 48px;
+  }
   .ld-rr-btn,
   .ld-rr-chip {
     padding: 0 8px;
@@ -1749,4 +1752,25 @@ html.lenis body {
 .ld .lg-badge,
 .ld .lg-turnover-label {
   font-size: 1rem;
+}
+
+/* Touch targets: links and buttons in the nav, Replay and the footer have at least 44 px to tap. */
+.ld-nav-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 2px;
+}
+.ld-nav-signin {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.ld-nav .lg-btn {
+  min-height: 44px;
+}
+.ld .ldm-replay,
+.ld .ld-replay {
+  min-height: 44px;
+  padding: 0 14px;
 }
