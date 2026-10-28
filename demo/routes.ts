@@ -48,6 +48,8 @@ export type BoardFilters = {
   // Search by company name.
   q: string;
   industry: string;
+  // One station picked in the strip above the columns, or null for the whole board.
+  stage: Stage | null;
   // Committed and Declined start collapsed; these are the ones opened.
   show: Stage[];
   // One column showing every card instead of the first 50.
@@ -72,7 +74,7 @@ export type CompaniesFilters = {
 
 export const DEFAULT_COMPANIES_FILTERS: CompaniesFilters = { q: "", stage: null, sort: "recent" };
 export const DEFAULT_QUEUE_FILTERS: QueueFilters = { mine: false, view: "all", sort: "overdue", overdue: false, never: false, all: null };
-export const DEFAULT_BOARD_FILTERS: BoardFilters = { q: "", industry: "", show: [], all: null, archived: false, dupes: false };
+export const DEFAULT_BOARD_FILTERS: BoardFilters = { q: "", industry: "", stage: null, show: [], all: null, archived: false, dupes: false };
 
 // Anything that reads like search params: the URLSearchParams from useSearchParams(), or the plain
 // object a page receives as searchParams.
@@ -106,9 +108,11 @@ export function parseQueueFilters(params: SearchParamsInput): QueueFilters {
 export function parseBoardFilters(params: SearchParamsInput): BoardFilters {
   const show = (firstParam(params, "show") ?? "").split(",").filter(isStage);
   const all = firstParam(params, "all");
+  const stage = firstParam(params, "stage");
   return {
     q: (firstParam(params, "q") ?? "").trim().slice(0, 100),
     industry: (firstParam(params, "industry") ?? "").trim().slice(0, 80),
+    stage: stage && isStage(stage) ? stage : null,
     show,
     all: all && isStage(all) ? all : null,
     archived: firstParam(params, "archived") === "1",
@@ -157,6 +161,7 @@ export function boardQuery(filters: Partial<BoardFilters> = {}): string {
   const params = new URLSearchParams();
   if (f.q) params.set("q", f.q);
   if (f.industry) params.set("industry", f.industry);
+  if (f.stage) params.set("stage", f.stage);
   if (f.show.length > 0) params.set("show", f.show.join(","));
   if (f.all) params.set("all", f.all);
   if (f.archived) params.set("archived", "1");
