@@ -719,3 +719,13 @@
     }
   }
 }
+
+/* A control reached by keyboard scrolls into view above the sticky footer line, not under it. */
+html {
+  scroll-padding-bottom: 56px;
+}
+@media (max-width: 760px) {
+  html {
+    scroll-padding-bottom: 130px;
+  }
+}
