@@ -1,0 +1,686 @@
+/* ==========================================================================================
+   Ledger, the board: a page that fits the viewport, a station strip of six stages, columns that
+   scroll on their own, 64 px slips, the Move to menu, and the drag. Plain CSS in a file, so the
+   strict style-src policy allows it. Motion is 100 to 240 ms and never blocks input.
+   ========================================================================================== */
+
+@keyframes lg-settle-sheet {
+  from {
+    background-color: var(--moss-wash);
+  }
+  to {
+    background-color: var(--sheet);
+  }
+}
+
+@layer components {
+  /* ---------- The page fits the viewport ---------- */
+  /* The shell is one screen tall here. The columns take what the header, the toolbar and the status
+     line leave, and scroll inside it. */
+  .lg-pagecol:has(.lg-board) {
+    height: 100dvh;
+  }
+  .lg-main:has(.lg-board) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-top: 16px;
+    padding-bottom: 14px;
+    overflow: hidden;
+  }
+  /* The template's page-enter wrapper sits between the main column and the board. */
+  .lg-main:has(.lg-board) > .lg-page-enter {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .lg-board {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .lg-board .lg-h1 {
+    font-size: 2rem;
+  }
+
+  /* ---------- The title and the toolbar: one wrapping line ---------- */
+  .lg-btop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+    margin-bottom: 10px;
+  }
+  .lg-btop-title {
+    flex: none;
+    margin-right: 8px;
+  }
+  .lg-bsearch {
+    position: relative;
+    flex: 0 1 300px;
+    min-width: 180px;
+  }
+  .lg-bsearch svg {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .lg-bsearch .lg-input {
+    min-height: 40px;
+    padding-left: 36px;
+  }
+  .lg-btools-end {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .lg-btop .lg-toggle {
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .lg-btop .lg-toggle[aria-expanded="true"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+  }
+  .lg-btop .lg-loading {
+    min-width: 0;
+  }
+  .lg-btop-add {
+    min-height: 40px;
+  }
+  .lg-bhint {
+    margin: -2px 0 8px;
+    font-size: 0.88rem;
+  }
+
+  /* ---------- The ruled columns ---------- */
+  .lg-bd {
+    display: flex;
+    flex: 1;
+    align-items: stretch;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-bcol {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 176px;
+    min-height: 0;
+    border-left: 1px solid var(--edge);
+  }
+  .lg-bcol:first-child {
+    border-left: 0;
+  }
+  /* Committed over Declined: a little wider than the others, so neither half is a sliver. */
+  .lg-bcol[data-split] {
+    flex-grow: 1.15;
+    min-width: 196px;
+  }
+  .lg-bstage {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+    transition: background-color 120ms ease;
+  }
+  .lg-bcol[data-split] .lg-bstage + .lg-bstage {
+    border-top: 3px double var(--ink-2);
+  }
+  .lg-bstage[data-over] {
+    background: var(--moss-wash);
+  }
+
+  /* The station strip: a dot with the stage glyph, the stage name in small caps, a ruled line, and the count. */
+  .lg-st-h {
+    flex: none;
+    border-bottom: 3px double var(--ink-2);
+    background: var(--paper-2);
+  }
+  .lg-st {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 12px;
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .lg-st:hover .lg-st-name {
+    text-decoration: underline;
+    text-decoration-color: var(--edge);
+    text-underline-offset: 4px;
+  }
+  .lg-st:focus-visible {
+    outline-offset: -3px;
+  }
+  .lg-st-dot {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+    background: var(--sheet);
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+  .lg-st-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  /* The line of the strip, between the name and the count. */
+  .lg-st::after {
+    content: "";
+    order: 3;
+    flex: 1 1 8px;
+    min-width: 8px;
+    height: 1.5px;
+    background: var(--edge);
+  }
+  .lg-st-n {
+    order: 4;
+    flex: none;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-st[aria-pressed="true"] .lg-st-dot {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+  }
+  .lg-st[aria-pressed="true"] .lg-st-name {
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+
+  /* ---------- A column's own scroll ---------- */
+  .lg-bbody {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--edge) transparent;
+  }
+  .lg-slips {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    list-style: none;
+  }
+  .lg-colempty {
+    padding: 8px 14px 14px;
+    color: var(--ink-2);
+    font-size: 0.92rem;
+  }
+  .lg-colmore {
+    padding: 0 14px 14px;
+  }
+  .lg-dropline {
+    display: flex;
+    align-items: center;
+    min-height: 26px;
+    border-top: 3px double var(--moss);
+    color: var(--moss);
+    font-weight: 600;
+  }
+
+  /* ---------- One stage picked in the strip ---------- */
+  .lg-bd[data-focus] .lg-bcol[data-rail] {
+    flex: 0 0 64px;
+    min-width: 64px;
+  }
+  .lg-bd[data-focus] .lg-bcol:not([data-rail]) {
+    flex-grow: 6;
+    min-width: 280px;
+  }
+  .lg-bstage[data-state="focus"] .lg-slips {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    align-content: start;
+  }
+  /* A stage that is not picked shrinks to its header. */
+  .lg-bstage[data-state="rail"] {
+    flex: 0 0 auto;
+  }
+  .lg-bstage[data-state="rail"] .lg-st-h {
+    border-bottom: 0;
+  }
+  .lg-bcol[data-rail] .lg-bstage[data-state="rail"] {
+    flex: 1 1 0;
+  }
+  .lg-bcol[data-rail] .lg-st {
+    flex-direction: column;
+    justify-content: flex-start;
+    height: 100%;
+    padding: 12px 0;
+    gap: 10px;
+  }
+  .lg-bcol[data-rail] .lg-st::after {
+    display: none;
+  }
+  .lg-bcol[data-rail] .lg-st-n {
+    order: 2;
+  }
+  .lg-bcol[data-rail] .lg-st-name {
+    order: 3;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 0.95rem;
+  }
+
+  /* ---------- A slip: 64 px ---------- */
+  .lg-slipcard {
+    position: relative;
+    display: grid;
+    grid-template-rows: 26px 24px;
+    row-gap: 2px;
+    min-height: 64px;
+    padding: 6px 8px 6px 12px;
+    container: slip / inline-size;
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    box-shadow:
+      0 1px 0 var(--rule),
+      0 6px 10px -10px var(--shade);
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      border-color 100ms ease,
+      box-shadow 100ms ease;
+  }
+  .lg-slipcard:hover {
+    border-color: var(--ink-2);
+  }
+  .lg-slipcard.lg-settle {
+    animation-name: lg-settle-sheet;
+  }
+  .lg-slipcard[data-stage="DECLINED"] .lg-slip-name a {
+    color: var(--ink-2);
+  }
+  /* The slip it was lifted from stays behind as a dashed outline. */
+  .lg-slipcard[data-lifted] {
+    border-style: dashed;
+    border-color: var(--edge);
+    box-shadow: none;
+  }
+  .lg-slipcard[data-lifted] > * {
+    opacity: 0.35;
+  }
+  .lg-slip-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 200;
+    margin: 0;
+    border-color: var(--ink-2);
+    box-shadow:
+      0 18px 28px -12px rgb(31 27 20 / 0.4),
+      0 2px 0 var(--rule);
+    cursor: grabbing;
+    pointer-events: none;
+    will-change: transform;
+  }
+  body[data-board-dragging],
+  body[data-board-dragging] * {
+    cursor: grabbing !important;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .lg-slip-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .lg-slip-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.02rem;
+    line-height: 1.2;
+  }
+  .lg-slip-name a {
+    color: var(--ink);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lg-slip-name a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-underline-offset: 3px;
+  }
+  .lg-slip-move {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin-right: -4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .lg-slip-move:hover,
+  .lg-slip-move[aria-expanded="true"] {
+    border-color: var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-slip-sub {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+  }
+  .lg-slip-due {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.8rem;
+  }
+  .lg-slip-due .lg-od {
+    max-width: 100%;
+    font-size: 0.8rem;
+  }
+  .lg-slip-due .lg-od-text,
+  .lg-slip-none {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-slip-none {
+    display: block;
+  }
+  .lg-slip-claim {
+    flex: none;
+  }
+  .lg-slip-claim .lg-chipbody {
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .lg-slip-claim .lg-chip-mine {
+    padding-left: 20px;
+    cursor: default;
+  }
+  .lg-slip-claim .lg-chip-theirs {
+    cursor: default;
+  }
+  .lg-claimico {
+    display: none;
+  }
+  .lg-slip-note {
+    grid-column: 1 / -1;
+    margin: 6px 0 0;
+    font-size: 0.85rem;
+  }
+  /* In a narrow column the Claim button keeps its bookmark and drops its word. */
+  @container slip (max-width: 178px) {
+    .lg-claimword {
+      display: none;
+    }
+    .lg-claimico {
+      display: block;
+    }
+    .lg-slip-claim .lg-chip-free {
+      padding: 0 4px;
+    }
+  }
+
+  /* ---------- The Move to menu ---------- */
+  .lg-movemenu {
+    position: fixed;
+    z-index: 120;
+    width: 220px;
+    padding: 4px 0 6px;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    border-top: 3px double var(--ink-2);
+    border-radius: 2px;
+    box-shadow: 0 14px 28px -12px rgb(31 27 20 / 0.4);
+    animation: lg-fade 100ms var(--ease-out) both;
+  }
+  .lg-movemenu-head {
+    padding: 6px 14px 4px;
+    color: var(--ink-2);
+  }
+  .lg-movemenu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 14px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+  }
+  .lg-movemenu-item:hover:not([aria-disabled]),
+  .lg-movemenu-item:focus-visible {
+    background: var(--moss-wash);
+  }
+  .lg-movemenu-item:focus-visible {
+    outline-offset: -2px;
+  }
+  .lg-movemenu-item[aria-disabled] {
+    color: var(--ink-2);
+    cursor: default;
+  }
+  .lg-movemenu-here {
+    margin-left: auto;
+    color: var(--moss);
+  }
+
+  /* ---------- Sheets: look-alikes and archived ---------- */
+  .lg-bsheet {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: min(600px, 100vw);
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    padding: 18px 22px 28px;
+    overflow-y: auto;
+    border: 0;
+    border-left: 1px solid var(--edge);
+    border-top: 3px double var(--ink-2);
+    border-radius: 0;
+    background: var(--sheet);
+    color: var(--ink);
+    box-shadow: -16px 0 30px -22px var(--shade);
+    animation: lg-sheet-right 240ms var(--ease-out) both;
+  }
+  .lg-bsheet::backdrop {
+    background: rgb(31 27 20 / 0.38);
+  }
+  .lg-bsheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .lg-bsheet-count {
+    margin-left: 6px;
+    color: var(--moss);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Narrow desktop ---------- */
+  @media (max-width: 1100px) {
+    .lg-bhint {
+      display: none;
+    }
+    .lg-main:has(.lg-board) {
+      padding-right: 20px;
+    }
+    .lg-bcol {
+      min-width: 168px;
+    }
+    .lg-bcol[data-split] {
+      min-width: 184px;
+    }
+    .lg-btop .lg-toggle svg {
+      display: none;
+    }
+  }
+  /* A station strip in a narrow column: smaller dot, the name wraps onto two lines instead of being cut. */
+  .lg-bcol {
+    container: bcol / inline-size;
+  }
+  @container bcol (max-width: 205px) {
+    .lg-st {
+      gap: 6px;
+      padding: 0 8px;
+    }
+    .lg-st-dot {
+      width: 22px;
+      height: 22px;
+    }
+    .lg-st-name {
+      flex: 1 1 auto;
+      font-size: 0.9rem;
+      letter-spacing: 0.04em;
+      line-height: 1.05;
+      white-space: normal;
+      text-wrap: balance;
+    }
+    .lg-st::after {
+      display: none;
+    }
+    .lg-slips {
+      gap: 6px;
+      padding: 6px;
+    }
+    .lg-slipcard {
+      padding-left: 10px;
+      padding-right: 6px;
+    }
+  }
+
+  /* ---------- Phone: an intentionally scrollable strip of columns with snap ---------- */
+  @media (max-width: 760px) {
+    .lg-main:has(.lg-board) {
+      padding: 10px 0 calc(66px + env(safe-area-inset-bottom));
+    }
+    .lg-board > .lg-btop,
+    .lg-board > .lg-empty {
+      margin-left: 16px;
+      margin-right: 16px;
+    }
+    .lg-btop {
+      gap: 8px;
+    }
+    .lg-btop-title {
+      order: 0;
+      margin-right: 0;
+      font-size: 1.6rem;
+    }
+    .lg-btop-add {
+      order: 1;
+      margin-left: auto;
+    }
+    .lg-bsearch {
+      order: 2;
+      flex: 1 1 150px;
+      min-width: 150px;
+    }
+    .lg-btop .lg-lmenu {
+      order: 3;
+    }
+    .lg-btop .lg-lmenu-btn .lg-sc {
+      display: none;
+    }
+    .lg-btop .lg-loading {
+      display: none;
+    }
+    .lg-btools-end {
+      order: 4;
+      margin-left: 0;
+      width: 100%;
+    }
+    .lg-btools-end .lg-toggle {
+      flex: 1 1 0;
+      justify-content: center;
+      padding: 0 8px;
+      font-size: 0.9rem;
+    }
+    .lg-bd {
+      scroll-snap-type: x mandatory;
+      border-left: 0;
+      border-right: 0;
+    }
+    .lg-bcol,
+    .lg-bcol[data-split] {
+      flex: 0 0 82%;
+      min-width: 0;
+      scroll-snap-align: start;
+    }
+    .lg-bd[data-focus] .lg-bcol:not([data-rail]) {
+      flex: 0 0 82%;
+      min-width: 0;
+    }
+    .lg-bd[data-focus] .lg-bcol[data-rail] {
+      flex: 0 0 56px;
+      min-width: 56px;
+    }
+    .lg-bsheet {
+      inset: auto 0 0 0;
+      width: 100vw;
+      height: auto;
+      max-height: 88dvh;
+      border-left: 0;
+      border-radius: 12px 12px 0 0;
+      padding-bottom: calc(28px + env(safe-area-inset-bottom));
+      animation: lg-sheet-up 240ms var(--ease-out) both;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-bsheet,
+  .lg-movemenu {
+    animation: none !important;
+  }
+}

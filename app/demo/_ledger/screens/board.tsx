@@ -2,216 +2,63 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
-import type { BoardCard, BoardColumn, DuplicatePair } from "@/demo/selectors";
-import { demoRoutes } from "@/demo/routes";
-import { useBoard, useBoardFilters, useDemoActions } from "@/demo/store";
-import type { MatchReason, Stage } from "@/demo/types";
-import { ChevronDownIcon, ChevronRightIcon, DuplicateIcon, PaperclipIcon, PlusIcon, SearchIcon, StageGlyph } from "../icons";
-import { useConfirm, useNotify } from "../providers";
-import { ClaimChip } from "./claim-chip";
-import { isLongOverdue, OverdueMark } from "./overdue";
-import { StageControl } from "./stage-control";
-import { Count, Empty, ErrorLine, PageHead, useClaimAction, useFlash } from "./shared";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { BoardColumn } from "@/demo/selectors";
+import { demoRoutes, type BoardFilters } from "@/demo/routes";
+import { useBoard, useBoardFilters } from "@/demo/store";
+import { STAGE_LABELS, type Stage } from "@/demo/types";
+import { CloseIcon, DuplicateIcon, PlusIcon, SearchIcon, StageGlyph } from "../icons";
+import { useMoveStage } from "../providers";
+import { useBoardDrag } from "./board-drag";
+import { ArchivedSheet, DuplicatesSheet } from "./board-sheets";
+import { Slip } from "./board-slip";
+import { LedgerMenu, type MenuOption } from "./ledger-menu";
+import { MoveMenu } from "./move-menu";
+import { Count, Empty, useClaimAction, useFlash } from "./shared";
 
-// The board: six ruled columns, one per stage, with the cards as paper slips. Search and industry
-// live in the URL. Committed and Declined start collapsed. Claim a card, move it between stages,
-// settle look-alike companies, and bring archived ones back.
+// The board. It fits the viewport: five ruled columns side by side (the last one holds Committed over
+// Declined) and each column scrolls on its own. The row of stage names across the top is a station
+// strip: every station shows its glyph, its name and its count, and pressing one shows only that
+// stage (press it again to clear). Slips move three ways: drag one onto another stage, press its
+// stage glyph button for a one-click Move to menu, or press m while it has focus. Look-alike and
+// archived companies sit in two sheets behind the toolbar. Search and industry live in the URL.
 
-const matchText = (reasons: MatchReason[]) => (reasons.length === 2 ? "same name and website" : reasons[0] === "website" ? "same website" : "same name");
+const GROUPS: readonly (readonly Stage[])[] = [["NOT_CONTACTED"], ["CONTACTED"], ["REPLIED"], ["IN_CONVERSATION"], ["COMMITTED", "DECLINED"]];
+// Both outcomes are always open on this board: the split column keeps them readable.
+const OPEN_BOTH: Stage[] = ["COMMITTED", "DECLINED"];
 
-function Card({
-  ws,
-  card,
-  shaking,
-  flashing,
-  error,
-  onClaim,
-  onDismiss,
-  onMoved,
-}: {
-  ws: string;
-  card: BoardCard;
-  shaking: boolean;
-  flashing: boolean;
-  error: string | undefined;
-  onClaim: () => void;
-  onDismiss: () => void;
-  onMoved: () => void;
-}) {
-  const c = card.company;
-  return (
-    <li className={`lg-card lg-rule-row ${flashing ? "lg-settle" : ""}`} data-stage={c.stage} data-od={isLongOverdue(card.daysOverdue) ? "long" : undefined}>
-      <h3 className="lg-cardname">
-        <Link href={demoRoutes.company(ws, c.id)}>{c.name}</Link>
-      </h3>
-      {c.industry && <p className="lg-cardind">{c.industry}</p>}
-      <p className="lg-cardfollow">
-        {card.followUp && card.daysOverdue !== null ? (
-          <OverdueMark days={card.daysOverdue} dueOn={card.followUp} size={15} />
-        ) : (
-          <span className="lg-muted">No follow-up set</span>
-        )}
-      </p>
-      {!card.closed && (
-        <div className="lg-cardclaim">
-          <ClaimChip claim={card.claim} companyName={c.name} onClaim={onClaim} shaking={shaking} />
-        </div>
-      )}
-      {error && (
-        <div className="lg-rownote lg-cardnote" role="alert">
-          <span>{error}</span>
-          <button type="button" className="lg-btn lg-btn-quiet lg-btn-sm" onClick={onDismiss}>
-            Dismiss
-          </button>
-        </div>
-      )}
-      <StageControl key={c.stage} ws={ws} companyId={c.id} companyName={c.name} stage={c.stage} compact onMoved={onMoved} />
-    </li>
-  );
-}
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function Column({
-  ws,
-  col,
-  hrefs,
-  claimAction,
-  flashing,
-  flash,
-}: {
-  ws: string;
-  col: BoardColumn;
-  hrefs: { toggle: string | null; all: string };
-  claimAction: ReturnType<typeof useClaimAction>;
-  flashing: ReadonlySet<string>;
-  flash: (id: string) => void;
-}) {
-  const heading = (
-    <>
-      <StageGlyph stage={col.stage} size={15} className="lg-colglyph" />
-      <span className="lg-colname">{col.label}</span>
-      <span className="lg-colcount">
-        (<Count value={col.count} />)
-      </span>
-    </>
-  );
-  return (
-    <section className="lg-col" data-open={col.open} aria-labelledby={`col-${col.stage}`}>
-      <h2 id={`col-${col.stage}`} className="lg-colhead">
-        {hrefs.toggle ? (
-          <Link href={hrefs.toggle} scroll={false} aria-expanded={col.open} className="lg-coltoggle">
-            {col.open ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
-            {heading}
-          </Link>
-        ) : (
-          <span className="lg-coltoggle lg-coltoggle-static">{heading}</span>
-        )}
-      </h2>
-      {col.open && (
-        <>
-          {col.cards.length === 0 ? (
-            <p className="lg-colempty">Nothing in this column.</p>
-          ) : (
-            <ul className="lg-cards">
-              {col.cards.map((card) => (
-                <Card
-                  key={card.company.id}
-                  ws={ws}
-                  card={card}
-                  shaking={claimAction.shaking === card.company.id}
-                  flashing={flashing.has(card.company.id)}
-                  error={claimAction.errors[card.company.id]}
-                  onClaim={() => claimAction.claim(card.company.id, card.company.name)}
-                  onDismiss={() => claimAction.dismiss(card.company.id)}
-                  onMoved={() => flash(card.company.id)}
-                />
-              ))}
-            </ul>
-          )}
-          {col.hasMore && (
-            <p className="lg-colmore">
-              <Link href={hrefs.all} className="lg-link" scroll={false}>
-                Show all {col.count}
-              </Link>
-            </p>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-function DuplicatePairRow({ ws, pair }: { ws: string; pair: DuplicatePair }) {
-  const actions = useDemoActions();
-  const confirm = useConfirm();
-  const notify = useNotify();
-  const [error, setError] = useState<string | null>(null);
-
-  const archive = async (keep: DuplicatePair["a"], drop: DuplicatePair["a"]) => {
-    const ok = await confirm({ message: `Archive ${drop.name} and keep ${keep.name}? You can unarchive it later.`, confirmLabel: `Archive ${drop.name}` });
-    if (!ok) return;
-    const result = actions.archiveDuplicate(ws, keep.id, drop.id);
-    if (!result.ok) setError(result.error);
-    else notify(`${drop.name} archived. ${keep.name} kept.`);
-  };
-
-  return (
-    <li className="lg-pair">
-      <PaperclipIcon size={22} className="lg-pair-clip" />
-      <div className="lg-pair-slips">
-        {[pair.a, pair.b].map((side) => (
-          <div key={side.id} className="lg-slip lg-pair-slip">
-            <Link href={demoRoutes.company(ws, side.id)} className="lg-link font-semibold">
-              {side.name}
-            </Link>
-            <p className="lg-muted text-sm">{side.website ?? "No website"}</p>
-          </div>
-        ))}
-      </div>
-      <p className="lg-pair-why">
-        <DuplicateIcon size={16} /> Matches on {matchText(pair.matchedOn)}.
-      </p>
-      <div className="lg-actions">
-        <button type="button" className="lg-btn lg-btn-sm" onClick={() => archive(pair.b, pair.a)}>
-          Same company: archive {pair.a.name}
-        </button>
-        <button type="button" className="lg-btn lg-btn-sm" onClick={() => archive(pair.a, pair.b)}>
-          Same company: archive {pair.b.name}
-        </button>
-        <button
-          type="button"
-          className="lg-btn lg-btn-sm"
-          onClick={() => {
-            const result = actions.keepSeparate(ws, pair.a.id, pair.b.id);
-            if (!result.ok) setError(result.error);
-            else notify("Kept as separate entries. They will not be flagged again.");
-          }}
-        >
-          Separate entries
-        </button>
-      </div>
-      <ErrorLine>{error}</ErrorLine>
-    </li>
-  );
-}
+type Menu = { id: string; anchor: HTMLButtonElement };
+type Landing = { id: string; stage: Stage; rect: DOMRect; focus: boolean };
 
 export function BoardScreen({ ws }: { ws: string }) {
   const router = useRouter();
-  const actions = useDemoActions();
-  const notify = useNotify();
-  const filters = useBoardFilters();
+  const urlFilters = useBoardFilters();
+  const filters = useMemo<BoardFilters>(() => ({ ...urlFilters, show: OPEN_BOTH }), [urlFilters]);
   const board = useBoard(ws, filters);
+  const moveStage = useMoveStage();
   const { flashing, flash } = useFlash();
   const claimAction = useClaimAction(ws, flash);
-  const [q, setQ] = useState(filters.q);
+  const [q, setQ] = useState(urlFilters.q);
   const [pending, startTransition] = useTransition();
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const [moveErrors, setMoveErrors] = useState<Record<string, string>>({});
   const timer = useRef<number | undefined>(undefined);
-  const search = useRef<HTMLInputElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const landing = useRef<Landing | null>(null);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const go = (patch: Partial<typeof filters>) => {
-    startTransition(() => router.replace(demoRoutes.board(ws, { ...filters, ...patch }), { scroll: false }));
+  // The URL is the source of truth for the query: when the palette or the Back button changes it, the box follows.
+  const [seenQ, setSeenQ] = useState(urlFilters.q);
+  if (seenQ !== urlFilters.q) {
+    setSeenQ(urlFilters.q);
+    if (q.trim() !== urlFilters.q) setQ(urlFilters.q);
+  }
+
+  const go = (patch: Partial<BoardFilters>) => {
+    startTransition(() => router.replace(demoRoutes.board(ws, { ...urlFilters, ...patch }), { scroll: false }));
   };
 
   const onSearch = (value: string) => {
@@ -220,62 +67,176 @@ export function BoardScreen({ ws }: { ws: string }) {
     timer.current = window.setTimeout(() => go({ q: value.trim().slice(0, 100), all: null }), 300);
   };
 
-  const loading = pending || q.trim() !== filters.q;
-  const filtered = Boolean(filters.q || filters.industry);
+  const byStage = useMemo(() => new Map(board.columns.map((c) => [c.stage, c] as const)), [board.columns]);
+  const cardOf = (id: string) => board.columns.flatMap((c) => c.cards).find((x) => x.company.id === id);
 
-  const toggleShow = (stage: Stage) => {
-    const show = filters.show.includes(stage) ? filters.show.filter((s) => s !== stage) : [...filters.show, stage];
-    return demoRoutes.board(ws, { ...filters, show });
+  // Moving a slip: the shared service asks first for Committed and Declined and asks which outreach
+  // got the reply for Replied and later. Once it moves, the slip glides from where it was to its new column.
+  const requestMove = (id: string, to: Stage, from: DOMRect, focus: boolean) => {
+    const card = cardOf(id);
+    if (!card) return;
+    setMoveErrors((current) => {
+      if (!(id in current)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    landing.current = { id, stage: card.company.stage, rect: from, focus };
+    void moveStage({
+      ws,
+      companyId: id,
+      companyName: card.company.name,
+      to,
+      onError: (message) => setMoveErrors((current) => ({ ...current, [id]: message })),
+    }).then((moved) => {
+      if (moved) flash(id);
+      else if (landing.current?.id === id) landing.current = null;
+    });
+  };
+
+  const drag = useBoardDrag({ scroller, onDrop: (id, to, from) => requestMove(id, to, from, false) });
+
+  useLayoutEffect(() => {
+    const land = landing.current;
+    if (!land) return;
+    const el = document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(land.id)}"]`);
+    if (!el || el.dataset.stage === land.stage) return;
+    landing.current = null;
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (land.focus) el.querySelector<HTMLElement>("a")?.focus({ preventScroll: true });
+    if (reducedMotion() || typeof el.animate !== "function") return;
+    const to = el.getBoundingClientRect();
+    el.animate([{ transform: `translate(${land.rect.left - to.left}px, ${land.rect.top - to.top}px)` }, { transform: "translate(0, 0)" }], {
+      duration: 220,
+      easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
+    });
+  }, [board]);
+
+  const openMenu = (id: string, anchor: HTMLButtonElement) => setMenu((current) => (current?.id === id ? null : { id, anchor }));
+  const menuCard = menu ? cardOf(menu.id) : undefined;
+
+  const toggleStage = (stage: Stage) => go({ stage: urlFilters.stage === stage ? null : stage, all: null });
+  const filtered = Boolean(urlFilters.q || urlFilters.industry);
+  const loading = pending || q.trim() !== urlFilters.q;
+
+  const industryOptions: MenuOption<string>[] = [{ value: "", label: "All industries" }, ...board.industries.map((i) => ({ value: i, label: i }))];
+
+  const renderStage = (col: BoardColumn) => {
+    const focus = urlFilters.stage;
+    const rail = focus !== null && focus !== col.stage;
+    return (
+      <div key={col.stage} className="lg-bstage" data-drop-stage={col.stage} data-state={rail ? "rail" : focus ? "focus" : undefined} data-over={drag.over === col.stage || undefined}>
+        <h2 className="lg-st-h">
+          <button
+            type="button"
+            className="lg-st"
+            aria-pressed={focus === col.stage}
+            title={focus === col.stage ? "Show every stage again" : `Show only ${col.label}`}
+            onClick={() => toggleStage(col.stage)}
+          >
+            <span className="lg-st-dot">
+              <StageGlyph stage={col.stage} size={16} />
+            </span>
+            <span className="lg-st-name lg-sc">{col.label}</span>
+            <span className="lg-st-n">
+              <Count value={col.count} />
+              <span className="lg-sr"> {col.count === 1 ? "company" : "companies"}</span>
+            </span>
+          </button>
+        </h2>
+        {!rail && (
+          <div className="lg-bbody">
+            <ul className="lg-slips" aria-label={`${col.label}, ${col.count}`}>
+              {drag.over === col.stage && (
+                <li className="lg-dropline" aria-hidden="true">
+                  <span className="lg-sc">Move to {col.label}</span>
+                </li>
+              )}
+              {col.cards.map((card) => (
+                <Slip
+                  key={card.company.id}
+                  ws={ws}
+                  card={card}
+                  shaking={claimAction.shaking === card.company.id}
+                  flashing={flashing.has(card.company.id)}
+                  lifted={drag.dragging === card.company.id}
+                  error={claimAction.errors[card.company.id] ?? moveErrors[card.company.id]}
+                  menuOpen={menu?.id === card.company.id}
+                  onClaim={() => claimAction.claim(card.company.id, card.company.name)}
+                  onDismiss={() => {
+                    claimAction.dismiss(card.company.id);
+                    setMoveErrors((current) => {
+                      const next = { ...current };
+                      delete next[card.company.id];
+                      return next;
+                    });
+                  }}
+                  onOpenMenu={(button) => openMenu(card.company.id, button)}
+                  onPointerDown={drag.onPointerDown}
+                />
+              ))}
+            </ul>
+            {col.cards.length === 0 && !drag.dragging && <p className="lg-colempty">Nothing in this stage.</p>}
+            {col.hasMore && (
+              <p className="lg-colmore">
+                <Link href={demoRoutes.board(ws, { ...urlFilters, all: col.stage })} className="lg-link" scroll={false}>
+                  Show all {col.count}
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
     <div className="lg-board">
-      <PageHead title="Board" count={board.total}>
-        <Link href={demoRoutes.queue(ws)} className="lg-btn">
-          Back
-        </Link>
-        <Link href={demoRoutes.newCompany(ws)} className="lg-btn lg-btn-primary">
-          <PlusIcon size={16} />
-          Add company
-        </Link>
-      </PageHead>
-
-      <form className="lg-filters" role="search" onSubmit={(e) => e.preventDefault()}>
-        <div className="lg-search">
+      <div className="lg-btop">
+        <h1 className="lg-h1 lg-btop-title">
+          Board{" "}
+          <span className="lg-h1-count">
+            <Count value={board.total} />
+          </span>
+        </h1>
+        <form className="lg-bsearch" role="search" onSubmit={(e) => e.preventDefault()}>
           <SearchIcon size={18} />
           <label className="lg-sr" htmlFor="company-search">
             Search companies
           </label>
-          <input
-            id="company-search"
-            ref={search}
-            type="search"
-            className="lg-input"
-            placeholder="Search companies"
-            maxLength={100}
-            value={q}
-            onChange={(e) => onSearch(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="lg-sr" htmlFor="industry-filter">
-            Industry
-          </label>
-          <select id="industry-filter" className="lg-select" value={filters.industry} onChange={(e) => go({ industry: e.target.value, all: null })}>
-            <option value="">All industries</option>
-            {board.industries.map((i) => (
-              <option key={i} value={i}>
-                {i}
-              </option>
-            ))}
-          </select>
-        </div>
+          <input id="company-search" type="search" className="lg-input" placeholder="Search companies" maxLength={100} value={q} onChange={(e) => onSearch(e.target.value)} />
+        </form>
+        <LedgerMenu label="Industry" value={urlFilters.industry} options={industryOptions} onChange={(industry) => go({ industry, all: null })} />
+        {urlFilters.stage && (
+          <button type="button" className="lg-fchip" onClick={() => go({ stage: null, all: null })}>
+            <span>Only {STAGE_LABELS[urlFilters.stage]}</span>
+            <CloseIcon size={14} />
+            <span className="lg-sr">Show every stage again</span>
+          </button>
+        )}
         <p className="lg-muted lg-loading" role="status" aria-live="polite">
           {loading ? "Loading..." : ""}
         </p>
-      </form>
+        <div className="lg-btools-end">
+          <button type="button" className="lg-toggle" aria-haspopup="dialog" aria-expanded={urlFilters.dupes} onClick={() => go({ dupes: !urlFilters.dupes, archived: false })}>
+            <DuplicateIcon size={16} />
+            <span>
+              Possible duplicates <span className="lg-num">{board.duplicatePairsCapped ? "50+" : board.duplicatePairs.length}</span>
+            </span>
+          </button>
+          <button type="button" className="lg-toggle" aria-haspopup="dialog" aria-expanded={urlFilters.archived} onClick={() => go({ archived: !urlFilters.archived, dupes: false })}>
+            <span>
+              Archived <span className="lg-num">{board.archivedCount}</span>
+            </span>
+          </button>
+        </div>
+        <Link href={demoRoutes.newCompany(ws)} className="lg-btn lg-btn-primary lg-btop-add">
+          <PlusIcon size={16} />
+          Add company
+        </Link>
+      </div>
 
-      {board.total === 0 && board.columns.every((c) => c.count === 0) && (
+      {board.total === 0 ? (
         <Empty kind="board">
           <p className="lg-empty-title">{filtered ? "No companies match." : "No companies yet."}</p>
           {!filtered && (
@@ -286,90 +247,55 @@ export function BoardScreen({ ws }: { ws: string }) {
             </p>
           )}
         </Empty>
+      ) : (
+        <>
+          <p className="lg-bhint lg-muted">Drag a slip to another stage, or press m on one. The glyph on a slip opens the same menu.</p>
+          <div
+            ref={scroller}
+            className="lg-bd"
+            role="region"
+            aria-label="Pipeline, one column per stage"
+            data-focus={urlFilters.stage ?? undefined}
+            data-dragging={drag.dragging ? "" : undefined}
+          >
+            {GROUPS.map((group) => {
+              const cols = group.map((stage) => byStage.get(stage) as BoardColumn);
+              const allRail = urlFilters.stage !== null && !group.includes(urlFilters.stage);
+              return (
+                <section
+                  key={group.join("-")}
+                  className="lg-bcol"
+                  data-split={group.length > 1 || undefined}
+                  data-rail={allRail || undefined}
+                  aria-label={group.map((s) => STAGE_LABELS[s]).join(" and ")}
+                >
+                  {cols.map(renderStage)}
+                </section>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      <div className="lg-cols" tabIndex={0} role="region" aria-label="Pipeline columns, scrolls sideways on small screens">
-        {board.columns.map((col) => (
-          <Column
-            key={col.stage}
-            ws={ws}
-            col={col}
-            hrefs={{
-              toggle: col.stage === "COMMITTED" || col.stage === "DECLINED" ? toggleShow(col.stage) : null,
-              all: demoRoutes.board(ws, { ...filters, all: col.stage }),
-            }}
-            claimAction={claimAction}
-            flashing={flashing}
-            flash={flash}
-          />
-        ))}
-      </div>
+      {menu && menuCard && (
+        <MoveMenu
+          anchor={menu.anchor}
+          companyName={menuCard.company.name}
+          current={menuCard.company.stage}
+          onClose={(restore) => {
+            setMenu(null);
+            if (restore) menu.anchor.focus();
+          }}
+          onPick={(stage) => {
+            const from = (menu.anchor.closest("[data-slip]") as HTMLElement | null)?.getBoundingClientRect() ?? menu.anchor.getBoundingClientRect();
+            setMenu(null);
+            requestMove(menu.id, stage, from, true);
+          }}
+        />
+      )}
 
-      <section className="lg-boardsect" aria-labelledby="dupes-title">
-        <h2 id="dupes-title" className="lg-never-title">
-          <Link href={demoRoutes.board(ws, { ...filters, dupes: !filters.dupes })} scroll={false} aria-expanded={filters.dupes} className="lg-never-toggle">
-            {filters.dupes ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
-            <span className="lg-h2">Possible duplicates</span>
-            <span className="lg-never-count">{board.duplicatePairsCapped ? "50+" : <Count value={board.duplicatePairs.length} />}</span>
-          </Link>
-        </h2>
-        {filters.dupes && (
-          <>
-            <p className="lg-hint max-w-[60ch]">
-              Companies that look alike (same name ignoring case and Inc/LLC/Corp, or same website). Archive the copy, or keep both as separate entries so they stop being flagged.
-            </p>
-            {board.duplicatePairs.length === 0 ? (
-              <p className="lg-muted py-4">No look-alike pairs right now.</p>
-            ) : (
-              <ul className="lg-pairs">
-                {board.duplicatePairs.map((pair) => (
-                  <DuplicatePairRow key={`${pair.a.id}|${pair.b.id}`} ws={ws} pair={pair} />
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-      </section>
-
-      <section className="lg-boardsect" aria-labelledby="archived-title">
-        <h2 id="archived-title" className="lg-never-title">
-          <Link href={demoRoutes.board(ws, { ...filters, archived: !filters.archived })} scroll={false} aria-expanded={filters.archived} className="lg-never-toggle">
-            {filters.archived ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
-            <span className="lg-h2">Archived</span>
-            <span className="lg-never-count">
-              <Count value={board.archivedCount} />
-            </span>
-          </Link>
-        </h2>
-        {filters.archived &&
-          (board.archived === null ? (
-            <p className="lg-muted py-4">Nothing is archived.</p>
-          ) : (
-            <ul className="lg-archived">
-              {board.archived.map((c) => (
-                <li key={c.id}>
-                  <div>
-                    <Link href={demoRoutes.company(ws, c.id)} className="lg-link font-semibold">
-                      {c.name}
-                    </Link>
-                    {c.industry && <span className="lg-muted">, {c.industry}</span>}
-                  </div>
-                  <button
-                    type="button"
-                    className="lg-btn lg-btn-sm"
-                    onClick={() => {
-                      const result = actions.unarchiveCompany(ws, c.id);
-                      if (result.ok) notify(`${c.name} is back on the board.`);
-                      else notify(result.error, "error");
-                    }}
-                  >
-                    Unarchive
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ))}
-      </section>
+      {urlFilters.dupes && <DuplicatesSheet ws={ws} pairs={board.duplicatePairs} capped={board.duplicatePairsCapped} onClose={() => go({ dupes: false })} />}
+      {urlFilters.archived && <ArchivedSheet ws={ws} count={board.archivedCount} list={board.archived} onClose={() => go({ archived: false })} />}
     </div>
   );
 }
