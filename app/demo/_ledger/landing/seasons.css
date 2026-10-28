@@ -1,0 +1,411 @@
+/* ---------- How it works: four seasons, pinned, ending on the queue ---------- */
+.ld-seasons {
+  position: relative;
+  background: var(--paper);
+}
+.ld-tints i {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 700ms ease;
+  pointer-events: none;
+}
+.ld-tint-0 {
+  background: var(--season-autumn);
+}
+.ld-tint-1 {
+  background: var(--season-winter);
+}
+.ld-tint-2 {
+  background: var(--season-spring);
+}
+.ld-tint-3 {
+  background: var(--season-summer);
+}
+.ld-seasons[data-season="0"] .ld-tint-0,
+.ld-seasons[data-season="1"] .ld-tint-1,
+.ld-seasons[data-season="2"] .ld-tint-2,
+.ld-seasons[data-season="3"] .ld-tint-3 {
+  opacity: 1;
+}
+.ld-seasons-in {
+  position: relative;
+  padding-top: clamp(56px, 6vw, 88px);
+  padding-bottom: clamp(48px, 6vw, 80px);
+}
+.ld-seasons-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.ld-seasons-title {
+  max-width: 720px;
+}
+.ld-season-tabs {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  list-style: none;
+}
+.ld-stab {
+  display: grid;
+  gap: 0;
+  padding: 4px 12px 5px;
+  border: 1px solid var(--edge);
+  border-bottom: 3px solid var(--edge);
+  border-radius: 8px 8px 2px 2px;
+  background: var(--paper);
+  color: var(--ink-2);
+  line-height: 1.2;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+.ld-stab-season {
+  font-size: 1rem;
+}
+.ld-stab-step {
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ld-seasons[data-season="0"] .ld-stab[data-i="0"],
+.ld-seasons[data-season="1"] .ld-stab[data-i="1"],
+.ld-seasons[data-season="2"] .ld-stab[data-i="2"],
+.ld-seasons[data-season="3"] .ld-stab[data-i="3"],
+.ld-seasons[data-season="4"] .ld-stab[data-i="3"] {
+  background: var(--moss);
+  border-color: var(--moss);
+  border-bottom-color: var(--moss);
+  color: var(--paper);
+}
+
+/* The stage holds the book (captions, scene, ledger) and the framed queue. */
+.ld-stage {
+  position: relative;
+}
+.ld-book {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas:
+    "scene ledger"
+    "captions captions";
+  gap: 18px;
+  align-items: stretch;
+}
+.ld-page-left {
+  grid-area: captions;
+}
+.ld-scene-wrap {
+  grid-area: scene;
+}
+.ld-page-right {
+  grid-area: ledger;
+}
+.ld-page {
+  position: relative;
+  align-self: start;
+  padding: 22px 24px;
+  border: 1px solid var(--edge);
+  background: repeating-linear-gradient(to bottom, transparent 0 31px, rgb(217 205 180 / 0.45) 31px 32px), var(--sheet);
+  box-shadow: 0 30px 40px -34px var(--shade);
+}
+.ld-captions {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 22px;
+}
+.ld-caption p {
+  color: var(--ink-2);
+}
+.ld-caption .ld-h3 {
+  margin: 2px 0 8px;
+  color: var(--ink);
+}
+.ld-caption-season {
+  color: var(--moss);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.ld-caption .ld-caption-who {
+  margin-top: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.ld-scene-wrap {
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ld-scene {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  max-height: 100%;
+  overflow: visible;
+  color: var(--moss);
+}
+.ld-ledger-title {
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.ld-import-card {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.ld-import-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink);
+}
+.ld-ledger-rows {
+  list-style: none;
+}
+.ld-ledger-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 1rem;
+}
+.ld-ledger-when {
+  color: var(--ink-2);
+}
+.ld-page-right .lg-turnover-label {
+  background: var(--sheet);
+  left: 24px;
+}
+.ld-turnover-wrap {
+  margin-top: 10px;
+}
+
+/* The framed queue. In the static page it follows the book. */
+.ld-frame {
+  margin: 32px auto 0;
+  max-width: 980px;
+}
+.ld-frame-win {
+  padding: 10px;
+  border: 1px solid var(--edge);
+  border-bottom-width: 3px;
+  background: var(--paper-2);
+  box-shadow: 0 40px 56px -40px var(--shade);
+}
+.ld-frame figcaption {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+  text-align: center;
+}
+.ld-frame-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+.ld-frame-body {
+  color: var(--ink-2);
+}
+
+/* Without motion the scene shows the regrown shoots, and the shoots of autumn and the falling slips stay away. */
+.ld-seasons:not([data-motion="on"]) .ld-shoots-a {
+  display: none;
+}
+.ld-slip,
+.ld-cutline {
+  opacity: 0;
+}
+
+/* With motion: one pinned screen. The captions cross-fade in place, then the book gives way to the queue. */
+.ld-seasons[data-motion="on"] {
+  height: 100svh;
+  min-height: 640px;
+  overflow: hidden;
+}
+.ld-seasons[data-motion="on"] .ld-seasons-in {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-top: 84px;
+  padding-bottom: 20px;
+}
+.ld-seasons[data-motion="on"] .ld-seasons-head {
+  margin-bottom: 14px;
+}
+.ld-seasons[data-motion="on"] .ld-seasons-head .ld-h2 {
+  font-size: clamp(1.7rem, 1.1rem + 1.5vw, 2.4rem);
+  margin-top: 6px;
+}
+.ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub {
+  margin-top: 8px;
+  font-size: 1rem;
+}
+.ld-seasons[data-motion="on"] .ld-stage {
+  flex: 1;
+  min-height: 0;
+}
+.ld-seasons[data-motion="on"] .ld-book {
+  height: 100%;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 0.8fr);
+  grid-template-areas: "captions scene ledger";
+  transform-origin: 50% 50%;
+}
+.ld-seasons[data-motion="on"] .ld-scene {
+  height: 100%;
+  width: 100%;
+  max-width: none;
+}
+.ld-seasons[data-motion="on"] .ld-captions {
+  position: relative;
+  display: block;
+  min-height: 300px;
+}
+.ld-seasons[data-motion="on"] .ld-caption {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 420ms ease,
+    transform 420ms var(--ease-out);
+}
+.ld-seasons[data-motion="on"][data-season="0"] .ld-caption[data-i="0"],
+.ld-seasons[data-motion="on"][data-season="1"] .ld-caption[data-i="1"],
+.ld-seasons[data-motion="on"][data-season="2"] .ld-caption[data-i="2"],
+.ld-seasons[data-motion="on"][data-season="3"] .ld-caption[data-i="3"],
+.ld-seasons[data-motion="on"][data-season="4"] .ld-caption[data-i="3"] {
+  opacity: 1;
+  transform: none;
+}
+.ld-seasons[data-motion="on"] .ld-page {
+  overflow: hidden;
+}
+.ld-seasons[data-motion="on"] .ld-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.ld-seasons[data-motion="on"][data-season="4"] .ld-frame {
+  pointer-events: auto;
+}
+.ld-seasons[data-motion="on"] .ld-frame-win {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.ld-seasons[data-motion="on"] .ld-frame figcaption {
+  margin-top: 10px;
+}
+
+@media (max-height: 820px) and (min-width: 901px) {
+  .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub {
+    display: none;
+  }
+  /* A short window shows the first five rows of the framed queue, and a one-line caption. */
+  .ld-seasons[data-motion="on"] .ld-frame .ldm-rows li:nth-child(n + 6),
+  .ld-seasons[data-motion="on"] .ld-frame-body {
+    display: none;
+  }
+}
+@media (max-width: 1180px) and (min-width: 901px) {
+  .ld-seasons[data-motion="on"] .ld-book {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+  .ld-seasons[data-motion="on"] .ld-page {
+    padding: 16px 16px;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-row .lg-margin {
+    display: none;
+  }
+  .ld-seasons[data-motion="on"] .ld-ledger-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+@media (max-width: 1100px) {
+  .ld-season-tabs {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .ld-book {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "scene"
+      "captions"
+      "ledger";
+  }
+  .ld-captions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ld-seasons-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .ld-seasons[data-motion="on"] .ld-seasons-head .ld-sub,
+  .ld-seasons[data-motion="on"] .ld-seasons-head .ld-eyebrow {
+    display: none;
+  }
+  .ld-seasons[data-motion="on"] .ld-seasons-in {
+    padding-top: 76px;
+  }
+  .ld-seasons[data-motion="on"] .ld-book {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "scene"
+      "captions";
+    gap: 8px;
+  }
+  .ld-seasons[data-motion="on"] .ld-captions {
+    min-height: 210px;
+  }
+  .ld-seasons[data-motion="on"] .ld-page {
+    padding: 12px 16px;
+  }
+  .ld-seasons[data-motion="on"] .ld-page-right {
+    display: none;
+  }
+  .ld-seasons[data-motion="on"] .ld-caption .ld-h3 {
+    font-size: 1.1rem;
+    margin-bottom: 4px;
+  }
+  .ld-seasons[data-motion="on"] .ld-caption p {
+    line-height: 1.4;
+  }
+}
+@media (max-width: 560px) {
+  .ld-captions {
+    grid-template-columns: 1fr;
+  }
+  /* On a phone the framed queue shows its first five rows, so the frame and its caption fit one screen. */
+  .ld-frame .ldm-rows li:nth-child(n + 6) {
+    display: none;
+  }
+  .ld-frame-win {
+    padding: 6px;
+  }
+  .ld-frame-title {
+    font-size: 1.15rem;
+  }
+}
+

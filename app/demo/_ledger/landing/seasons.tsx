@@ -7,6 +7,7 @@ import { SEASONS } from "./copy";
 import { heroFinal } from "./hero-script";
 import { MiniQueue } from "./mini-queue";
 import { PIN_OK, setupGsap } from "./motion";
+import "./seasons.css";
 
 // How it works, as one pinned scene about 150 vh long (wide screens only; a phone gets the static page), scrubbed by the scroll position. Four seasons
 // of a board, each one a step of the product:
