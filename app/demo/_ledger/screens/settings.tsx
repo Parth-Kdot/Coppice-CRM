@@ -11,7 +11,9 @@ import { CopyLinkIcon } from "../icons";
 import { boardYear, TurnoverRule, YearMargin } from "../marks";
 import { NotFoundPage } from "../not-found-page";
 import { useConfirm, useNotify } from "../providers";
+import { ChipGroup } from "./chips";
 import { ErrorLine, PageHead } from "./shared";
+import { Stepper } from "./stepper";
 
 // Settings: the members as a register (name, role, joined) with the board-year margin, invitations
 // with a copyable link in a ruled box, the claim window, and the AI switch.
@@ -222,15 +224,15 @@ export function SettingsScreen({ ws }: { ws: string }) {
               </label>
               <input id={`${id}-email`} className="lg-input" placeholder="name@purdue.edu" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
-            <div>
-              <label className="lg-label" htmlFor={`${id}-role`}>
-                Role
-              </label>
-              <select id={`${id}-role`} className="lg-select" value={role} onChange={(e) => setRole(e.target.value as "member" | "owner")}>
-                <option value="member">Officer</option>
-                <option value="owner">Owner</option>
-              </select>
-            </div>
+            <ChipGroup
+              legend="Role"
+              value={role}
+              onChange={setRole}
+              options={[
+                { value: "member", label: "Officer" },
+                { value: "owner", label: "Owner" },
+              ]}
+            />
             <button type="submit" className="lg-btn lg-btn-primary">
               Invite
             </button>
@@ -259,10 +261,18 @@ export function SettingsScreen({ ws }: { ws: string }) {
                 setDaysMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error });
               }}
             >
-              <label className="lg-sr" htmlFor={`${id}-days`}>
-                Claim window in days
-              </label>
-              <input id={`${id}-days`} className="lg-input lg-num lg-narrow" type="number" inputMode="numeric" min={1} max={60} value={windowValue} onChange={(e) => { setDays(e.target.value); setDaysMsg(null); }} />
+              <Stepper
+                id={`${id}-days`}
+                label="Claim window in days"
+                value={windowValue}
+                min={1}
+                max={60}
+                fallback={s.claimWindowDays}
+                onChange={(v) => {
+                  setDays(v);
+                  setDaysMsg(null);
+                }}
+              />
               <span>days</span>
               <button type="submit" className="lg-btn">
                 Save
@@ -312,7 +322,19 @@ export function SettingsScreen({ ws }: { ws: string }) {
                 <label className="lg-label !mb-0" htmlFor={`${id}-limit`}>
                   Limit
                 </label>
-                <input id={`${id}-limit`} className="lg-input lg-num lg-narrow" type="number" inputMode="numeric" min={0} max={5000} value={limitValue} onChange={(e) => { setLimit(e.target.value); setAiMsg(null); }} />
+                <Stepper
+                  id={`${id}-limit`}
+                  label="Limit"
+                  value={limitValue}
+                  min={0}
+                  max={5000}
+                  step={10}
+                  fallback={s.ai.limit}
+                  onChange={(v) => {
+                    setLimit(v);
+                    setAiMsg(null);
+                  }}
+                />
                 <span>calls per {s.ai.windowDays} days</span>
                 <button type="submit" className="lg-btn">
                   Save

@@ -312,7 +312,7 @@
       padding: 6px 30px 26px;
       background: var(--sheet);
     }
-    .lg-leaf-page {
+    .lg-spread > .lg-leaf-page {
       display: contents;
     }
     .lg-leaf-left {
