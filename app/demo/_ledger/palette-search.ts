@@ -194,5 +194,7 @@ export function searchPalette(state: DemoState, ws: string, query: string, route
     { id: "people", title: "People", items: people },
     { id: "actions", title: "Actions", items: actionHits },
   ];
+  // Typing a command ("claim lilly", "move lilly replied") puts the actions first, so Enter runs it.
+  if (tokens.some((t) => t === "claim" || t === "log" || t === "move")) groups.unshift(...groups.splice(2, 1));
   return groups.filter((g) => g.items.length > 0);
 }

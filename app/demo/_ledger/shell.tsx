@@ -9,6 +9,7 @@ import { boardYear } from "./marks";
 import { BoardIcon, ChevronRightIcon, CloseIcon, CompaniesIcon, FactsIcon, ImportIcon, QueueIcon, SearchIcon, SettingsIcon, UserIcon } from "./icons";
 import { LogoMark } from "./logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
+import { useNoteLane } from "./providers";
 import { NotFoundPage } from "./not-found-page";
 import { UserMenu, UserMenuPanel } from "./user-menu";
 
@@ -38,10 +39,12 @@ const TABS: Tab[] = [
 function StatusLine({ ws, claimWindowDays }: { ws: string; claimWindowDays: number }) {
   const stats = useWorkspaceStats(ws);
   const me = useMe(ws);
+  const setLane = useNoteLane();
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   return (
-    <footer className="lg-status" aria-label="Workspace status">
-      <p>
+    <footer className="lg-foot" aria-label="Workspace status">
+      <div className="lg-notes-lane" ref={setLane} aria-live="polite" aria-atomic="false" />
+      <p className="lg-status">
         <span>{plural(stats.total, "company", "companies")}</span>
         <span aria-hidden="true"> &middot; </span>
         <span>{stats.overdue} overdue</span>

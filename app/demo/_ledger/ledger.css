@@ -727,9 +727,10 @@
   }
 
   /* ---------- Margin notes: the one place feedback is written ---------- */
-  /* Anchored at the bottom left of the content column, above the status line. 360 px at most, the
-     text wraps inside its box, and a note holds 3 s and then fades. A refusal that belongs to a row
-     is written in that row's own margin instead (.lg-rownote). */
+  /* In the workspace shell a note is written in the lane at the foot of the content column (the
+     footer, above the status line), so it never lies over the rows. Elsewhere it is fixed at the
+     bottom left. 360 px at most, the text wraps inside its box, and a note holds 3 s and then fades.
+     A refusal that belongs to a row is written in that row's own margin instead (.lg-rownote). */
   .lg-notes {
     position: fixed;
     z-index: 120;
@@ -742,13 +743,9 @@
     width: min(360px, calc(100vw - 48px));
     pointer-events: none;
   }
-  body:has(.lg-shell) .lg-notes {
-    left: calc(var(--spine-w) + 36px);
-    width: min(360px, calc(100vw - var(--spine-w) - 72px));
-  }
   .lg-note {
     position: relative;
-    max-width: 100%;
+    max-width: min(360px, 100%);
     padding: 9px 14px 10px 14px;
     background: var(--sheet);
     border: 1px solid var(--rule);
@@ -771,10 +768,9 @@
     color: var(--rust);
   }
   @media (max-width: 760px) {
-    .lg-notes,
-    body:has(.lg-shell) .lg-notes {
+    .lg-notes {
       left: 12px;
-      bottom: 76px;
+      bottom: 24px;
       width: calc(100vw - 24px);
     }
   }
