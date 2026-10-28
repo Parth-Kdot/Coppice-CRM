@@ -511,6 +511,90 @@
     pointer-events: none;
   }
 
+  /* ---------- A ledger menu: a ruled choice card where a native select would be ---------- */
+  .lg-lmenu {
+    position: relative;
+    display: inline-block;
+  }
+  .lg-lmenu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 10px 0 12px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
+  }
+  .lg-lmenu-btn:hover,
+  .lg-lmenu-btn[aria-expanded="true"] {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-lmenu-value {
+    font-weight: 600;
+  }
+  .lg-lmenu-list {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 250px;
+    padding: 4px 0;
+    list-style: none;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    box-shadow: 0 18px 30px -18px rgb(31 27 20 / 0.5);
+    animation: lg-rise 120ms var(--ease-out) both;
+  }
+  .lg-lmenu-right {
+    left: auto;
+    right: 0;
+  }
+  .lg-lmenu-opt {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-height: 36px;
+    padding: 6px 14px 6px 8px;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+    outline: none;
+  }
+  .lg-lmenu-opt:last-child {
+    border-bottom: 0;
+  }
+  .lg-lmenu-opt[data-active] {
+    background: var(--paper-2);
+    box-shadow: inset 3px 0 0 var(--moss);
+  }
+  .lg-lmenu-opt[aria-selected="true"] {
+    font-weight: 600;
+  }
+  .lg-lmenu-opt:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -2px;
+  }
+  .lg-lmenu-tick {
+    display: inline-flex;
+    flex: none;
+    width: 18px;
+    align-self: center;
+    color: var(--moss);
+  }
+  .lg-lmenu-hint {
+    margin-left: auto;
+    font-size: 0.85rem;
+    font-weight: 400;
+  }
+
   /* ---------- Disclosure: a row grows to fit, in 200 ms ---------- */
   .lg-disclose {
     display: grid;

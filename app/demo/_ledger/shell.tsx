@@ -14,6 +14,7 @@ import { UserMenu } from "./user-menu";
 const PAGE_NAMES: Partial<Record<DemoScreen, string>> = {
   queue: "Queue",
   board: "Board",
+  companies: "Companies",
   company: "Company",
   newCompany: "Add a company",
   import: "Import",
@@ -26,14 +27,11 @@ type Tab = { key: string; label: string; href: (ws: string) => string; icon: Rea
 const TABS: Tab[] = [
   { key: "queue", label: "Queue", href: (ws) => demoRoutes.queue(ws), icon: <QueueIcon />, active: ["queue"] },
   { key: "board", label: "Board", href: (ws) => demoRoutes.board(ws), icon: <BoardIcon />, active: ["board"] },
-  // Companies opens the board with its search box focused (the board listens for the event).
-  { key: "companies", label: "Companies", href: (ws) => `${demoRoutes.board(ws)}#find`, icon: <CompaniesIcon />, active: ["company", "newCompany"] },
+  { key: "companies", label: "Companies", href: (ws) => demoRoutes.companies(ws), icon: <CompaniesIcon />, active: ["companies", "company", "newCompany"] },
   { key: "import", label: "Import", href: (ws) => demoRoutes.import(ws), icon: <ImportIcon />, active: ["import"] },
   { key: "facts", label: "Facts", href: (ws) => demoRoutes.facts(ws), icon: <FactsIcon />, active: ["facts"] },
   { key: "settings", label: "Settings", href: (ws) => demoRoutes.settings(ws), icon: <SettingsIcon />, active: ["settings"] },
 ];
-
-export const FIND_EVENT = "lg:find-company";
 
 export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNode }) {
   const isMember = useIsMember(ws);
@@ -67,9 +65,6 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
                   href={tab.href(ws)}
                   className="lg-tab"
                   aria-current={current ? "page" : undefined}
-                  onClick={() => {
-                    if (tab.key === "companies") window.dispatchEvent(new Event(FIND_EVENT));
-                  }}
                 >
                   {tab.icon}
                   <span className="lg-tab-label">{tab.label}</span>

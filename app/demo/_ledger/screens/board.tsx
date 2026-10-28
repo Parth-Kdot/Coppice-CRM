@@ -9,7 +9,6 @@ import { useBoard, useBoardFilters, useDemoActions } from "@/demo/store";
 import type { MatchReason, Stage } from "@/demo/types";
 import { ChevronDownIcon, ChevronRightIcon, DuplicateIcon, PaperclipIcon, PlusIcon, SearchIcon, StageGlyph } from "../icons";
 import { useConfirm, useNotify } from "../providers";
-import { FIND_EVENT } from "../shell";
 import { ClaimChip } from "./claim-chip";
 import { isLongOverdue, OverdueMark } from "./overdue";
 import { StageControl } from "./stage-control";
@@ -211,17 +210,6 @@ export function BoardScreen({ ws }: { ws: string }) {
   const [pending, startTransition] = useTransition();
   const timer = useRef<number | undefined>(undefined);
   const search = useRef<HTMLInputElement>(null);
-
-  // The Companies tab in the spine lands here with the search box ready.
-  useEffect(() => {
-    const focus = () => {
-      search.current?.focus();
-      search.current?.select();
-    };
-    if (window.location.hash === "#find") focus();
-    window.addEventListener(FIND_EVENT, focus);
-    return () => window.removeEventListener(FIND_EVENT, focus);
-  }, []);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
