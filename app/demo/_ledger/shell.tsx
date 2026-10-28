@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { demoRoutes, matchDemoRoute, type DemoScreen } from "@/demo/routes";
 import { useDemoState, useIsMember, useMe, useWorkspace, useWorkspaceStats } from "@/demo/store";
 import { boardYear } from "./marks";
-import { BoardIcon, CompaniesIcon, FactsIcon, ImportIcon, QueueIcon, SettingsIcon } from "./icons";
+import { BoardIcon, ChevronRightIcon, CloseIcon, CompaniesIcon, FactsIcon, ImportIcon, QueueIcon, SearchIcon, SettingsIcon, UserIcon } from "./icons";
 import { LogoMark } from "./logo";
-import { PaletteProvider, SearchBar } from "./palette";
+import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { NotFoundPage } from "./not-found-page";
-import { UserMenu } from "./user-menu";
+import { UserMenu, UserMenuPanel } from "./user-menu";
 
 const PAGE_NAMES: Partial<Record<DemoScreen, string>> = {
   queue: "Queue",
@@ -54,6 +54,106 @@ function StatusLine({ ws, claimWindowDays }: { ws: string; claimWindowDays: numb
   );
 }
 
+// On a phone the spine gives way to a bottom tab bar: Queue, Board, Search, Companies and More.
+// Search opens the palette full screen. More opens a sheet with Import, Facts, Settings and the user menu.
+function PhoneTabs({ ws, screen }: { ws: string; screen: DemoScreen }) {
+  const { open } = usePalette();
+  const [more, setMore] = useState(false);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const link = (key: string, label: string, icon: ReactNode) => {
+    const tab = TABS.find((t) => t.key === key) as Tab;
+    return (
+      <li>
+        <Link href={tab.href(ws)} className="lg-tabbar-item" aria-current={tab.active.includes(screen) ? "page" : undefined}>
+          {icon}
+          <span className="lg-tab-label">{label}</span>
+        </Link>
+      </li>
+    );
+  };
+  const moreActive = ["import", "facts", "settings"].some((k) => (TABS.find((t) => t.key === k) as Tab).active.includes(screen));
+  const closeMore = () => {
+    setMore(false);
+    requestAnimationFrame(() => moreButton.current?.focus());
+  };
+  return (
+    <>
+      <nav className="lg-tabbar" aria-label="Workspace, phone">
+        <ul>
+          {link("queue", "Queue", <QueueIcon />)}
+          {link("board", "Board", <BoardIcon />)}
+          <li>
+            <button type="button" className="lg-tabbar-item" onClick={open} aria-haspopup="dialog">
+              <SearchIcon />
+              <span className="lg-tab-label">Search</span>
+            </button>
+          </li>
+          {link("companies", "Companies", <CompaniesIcon />)}
+          <li>
+            <button
+              ref={moreButton}
+              type="button"
+              className="lg-tabbar-item"
+              aria-haspopup="dialog"
+              aria-expanded={more}
+              aria-current={moreActive ? "page" : undefined}
+              onClick={() => setMore(true)}
+            >
+              <UserIcon />
+              <span className="lg-tab-label">More</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+      {more && (
+        <dialog
+          className="lg-more-sheet"
+          aria-label="More"
+          ref={(el) => {
+            if (el && !el.open) el.showModal();
+          }}
+          onCancel={(event) => {
+            event.preventDefault();
+            closeMore();
+          }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeMore();
+          }}
+        >
+          <div className="lg-more-body">
+            <div className="lg-more-head">
+              <h2 className="lg-h3">More</h2>
+              <button type="button" className="lg-btn lg-btn-sm" onClick={closeMore} aria-label="Close this sheet">
+                <CloseIcon size={16} />
+                Close
+              </button>
+            </div>
+            <ul className="lg-more-links">
+              {TABS.filter((t) => ["import", "facts", "settings"].includes(t.key)).map((tab) => (
+                <li key={tab.key}>
+                  <Link
+                    href={tab.href(ws)}
+                    className="lg-more-link"
+                    aria-current={tab.active.includes(screen) ? "page" : undefined}
+                    onClick={() => setMore(false)}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                    <ChevronRightIcon size={18} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <div className="lg-more-user">
+              <UserMenuPanel ws={ws} onClose={() => setMore(false)} />
+            </div>
+          </div>
+        </dialog>
+      )}
+    </>
+  );
+}
+
 export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNode }) {
   const isMember = useIsMember(ws);
   const workspace = useWorkspace(ws);
@@ -94,13 +194,14 @@ export function WorkspaceShell({ ws, children }: { ws: string; children: ReactNo
           <UserMenu ws={ws} placement="spine" />
         </nav>
 
+        <PhoneTabs ws={ws} screen={screen} />
+
         <div className="lg-pagecol">
           <div className="lg-bar">
             <Link href={demoRoutes.queue(ws)} className="lg-bar-mark" aria-label="Coppice, back to the queue">
               <LogoMark size={34} />
             </Link>
             <p className="lg-bar-title">{workspace.name}</p>
-            <UserMenu ws={ws} placement="bar" />
           </div>
 
           <header className="lg-head">
