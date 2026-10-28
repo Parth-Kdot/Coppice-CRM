@@ -146,7 +146,7 @@ export function buildSeasonsTimeline(el: HTMLElement, g: Gsap) {
   tl.fromTo(q(".ld-due .ld-glyph-q2"), { opacity: 0 }, { opacity: 1, duration: 0.14 }, at(S, 1.36));
   beat(S, 2, at(S, 1.5));
   ledgerRows.slice(1).forEach((row, i) => {
-    tl.fromTo(row, { opacity: 0, x: 18 }, { opacity: 1, x: 0, duration: 0.12, ease: "power2.out" }, at(S, i === 0 ? 1.28 : 1.4 + (i - 1) * 0.06));
+    tl.fromTo(row, { opacity: 0, x: 18 }, { opacity: 1, x: 0, duration: 0.12, ease: "power2.out" }, at(S, i === 0 ? 1.28 : 1.34 + (i - 1) * 0.04));
   });
 
   // ---- Summer, Turnover. A clean cut sweeps down to the stump and the leaves fall as slips. The old
