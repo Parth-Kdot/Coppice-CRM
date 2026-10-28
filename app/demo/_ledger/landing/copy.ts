@@ -22,42 +22,41 @@ export const HERO = {
 
 export const PROBLEM = {
   headline: "Five ways a shared spreadsheet lets your team down",
-  subhead:
-    "A sheet with an owner column and a few cell colors holds up for the first weeks of outreach. Somewhere around the time the third officer starts adding rows, these five things begin to happen.",
+  subhead: "A sheet with an owner column holds up for the first weeks of outreach. Around the time the third officer starts adding rows, these five things begin to happen.",
   closing: "You can import last year's sheet as it is, columns and all, and sort out the rest as you go.",
   items: [
     {
       title: "Two officers pitch the same company",
-      body: "The owner cell was empty, or out of date, or filled in a minute after the other officer pressed Send. The sponsor receives two introductions from one club, sometimes with different asks.",
-      fix: "You claim a company before you can log outreach on it. The database lets exactly one officer hold it, and everyone else sees that officer's name and the date the claim ends.",
+      body: "The owner cell was empty, or a minute out of date.",
+      fix: "You claim a company before you can log outreach on it. Everyone else sees who holds it and until when.",
       note: "two owners, one lead",
       sheet: { row: 12, cells: ["Kestrel Aerospace", "Maya", "Dev", "sent?"] },
     },
     {
       title: "Follow-ups slip",
-      body: "Nothing in a sheet says which rows are due today. The reply that needed an answer on the 9th is still sitting in row 84 on the 20th, and the only reminder is whoever happens to scroll past it.",
-      fix: "Each outreach entry carries a follow-up date, set to 7 days out unless you change it. The home screen lists every company that is due, most overdue first.",
+      body: "Nothing in a sheet says which rows are due today.",
+      fix: "Each outreach entry carries a follow-up date, 7 days out unless you change it. The home screen lists what is due, most overdue first.",
       note: "row 84, still waiting on the 20th",
       sheet: { row: 84, cells: ["Birchwood Foods", "Replied", "Oct 9", "answer?"] },
     },
     {
       title: "Nobody knows which pitch works",
-      body: "Three versions of the intro email went out this semester. Replies came back to six different inboxes, and the one \"Replied?\" column was last updated in October.",
-      fix: "Every outreach entry already records its channel, its date and who sent it, and when you send one of Coppice's drafts the entry can record which draft it was. Reply rate per pitch template is the next feature being built, so that comparison will sit in one place.",
+      body: "Replies came back to six inboxes, and the sheet was not updated.",
+      fix: "Every entry records its channel, its date and who sent it. Reply rate per pitch template is the next feature being built.",
       note: "which email worked?",
       sheet: { row: 31, cells: ["Intro v1, v2, v3", "Replied?", "", "last edit Oct"] },
     },
     {
       title: "Duplicate rows",
-      body: "\"Acme Corp\" is in row 12 and \"acme corp\" is in row 140. Two more rows list acme.com and www.acme.com. Each one has a different officer's name next to it.",
-      fix: "It flags look-alike names and websites and shows them together. It never merges or deletes anything. A person looks and decides.",
+      body: "\"Acme Corp\" is in row 12 and \"acme corp\" is in row 140.",
+      fix: "Look-alike names and websites are flagged and shown together. Nothing is merged or deleted until a person decides.",
       note: "same company, four times",
       sheet: { row: 140, cells: ["acme corp", "acme.com", "www.acme.com", "Sofia"] },
     },
     {
-      title: "History leaves with the graduating board",
-      body: "The context lived in a senior's head and in a Drive folder that gets cleaned out in May. In August the new chair inherits a list of company names and has to guess who was contacted, who said no, and why.",
-      fix: "Notes, channels, dates and stage changes sit on each company, inside a workspace that outlives its officers.",
+      title: "History leaves with the board",
+      body: "The context lived in a senior's head and a Drive folder.",
+      fix: "Notes, channels, dates and stage changes sit on each company, in a workspace that outlives its officers.",
       note: "ask Jake (Jake graduated)",
       sheet: { row: 57, cells: ["Hollis Machine", "Owner: Jake", "ask Jake", "?"] },
     },
@@ -119,7 +118,6 @@ export const SEASONS = {
 
 export const FEATURES = {
   headline: "What is in the workspace today",
-  subhead: "Each of these exists in the app now. Importing a sheet and keeping history across boards are covered above.",
   items: [
     {
       icon: "claim",
@@ -170,7 +168,7 @@ export const FEATURES = {
 export const EXAMPLE = {
   headline: "Maya and Dev, same company, same second",
   subhead: "A made-up club, a real race. Both officers go for the same lead on a Wednesday morning, and the database lets one of them through.",
-  setting: "Alder State Rocketry Club is a fictional student org with a 14-day claim window. Kestrel Aerospace came in from last year's sheet and has never been contacted.",
+  setting: "Alder State Rocketry Club is a fictional student org with a 14-day claim window. Kestrel Aerospace has never been contacted.",
   when: "Wed, Oct 28, 9:02 AM",
   company: "Kestrel Aerospace",
   until: "Nov 11",
@@ -187,12 +185,12 @@ export const EXAMPLE = {
 
 export const AUDIENCE = {
   headline: "Teams that change hands every year",
-  subhead: "Coppice started at Purdue for sponsorship outreach and works for any school or organization where the people doing the asking rotate out.",
+  subhead: "Any school or organization where the people doing the asking rotate out.",
   items: [
-    { title: "Student organizations", body: "Sponsorship chairs and officer teams who pass a spreadsheet to a new board every spring, and want the new board to know who was already asked." },
-    { title: "Hackathons", body: "Organizing teams that approach dozens of companies for sponsorship before one weekend, then hand the whole list to next year's crew." },
-    { title: "Nonprofits", body: "Volunteer boards that ask local businesses and corporate partners for support, where whoever has an hour that week sends the email." },
-    { title: "Alumni boards", body: "Chapter officers who reach out to employers for speakers, mentors and event support, with officers rotating on a term or two." },
+    { title: "Student organizations", body: "Officer teams that hand a spreadsheet to a new board each spring." },
+    { title: "Hackathons", body: "Organizers who ask dozens of companies, then pass the list on." },
+    { title: "Nonprofits", body: "Volunteer boards that ask local businesses for support." },
+    { title: "Alumni boards", body: "Chapter officers who ask employers for speakers and mentors." },
   ],
 };
 
@@ -200,17 +198,12 @@ export const NAME = {
   headline: "Many stems, one root",
   subhead: "Coppice is said KOP-iss. The first syllable sounds like \"cop.\"",
   pronunciation: "KOP-iss",
-  lead:
-    "Coppicing is an old woodland practice. A woodcutter fells a tree down to its stump on a regular cycle, and the stump answers by sending up a crop of new stems from the same roots. Some coppiced stumps have been cut and regrown for centuries.",
-  paragraphs: [
-    "A student board works on a similar rhythm. Every spring the officers graduate, and what remains is the set of relationships with companies: who was asked, who said yes, who said to try again in the fall. Coppice keeps those in the workspace so the next board grows back from them.",
-    "The name has a second reading in its first syllables, co-piece: working alongside someone, each of you holding a piece of the same list.",
-  ],
+  paragraph:
+    "Coppicing is an old woodland practice. A woodcutter fells a tree down to its stump, and the stump answers by sending up new stems from the same roots. A student board works the same way: every spring the officers graduate, and the relationships with companies stay in the workspace, so the next board grows back from them.",
 };
 
 export const TRUST = {
   headline: "What Coppice will never do",
-  subhead: "These are limits built into how the app works, and each one has a specific mechanism behind it.",
   items: [
     { title: "Send email for you", body: "Coppice has no send button. A draft opens in your own Gmail or Outlook compose window, and you press Send from your own address. Coppice never connects to your inbox." },
     { title: "Merge your data silently", body: "Look-alike companies are flagged and shown together. Nothing is merged, blocked or deleted until a person decides what to do with the group." },
@@ -219,7 +212,7 @@ export const TRUST = {
   ],
   alsoOut: "Also out of scope: payments, and public pages for companies to visit.",
   comingTitle: "Coming next",
-  comingNote: "These are announced and not built yet. Nothing here exists in the app today.",
+  comingNote: "Announced, not built yet. Nothing here exists in the app today.",
   coming: [
     { tag: "Next", title: "Reply rate per pitch template", body: "See which version of your pitch gets answers, so the next board starts from what worked." },
     { tag: "Later", title: "Pipeline Copilot", body: "A chat that answers questions about your pipeline. Anything it proposes changing waits for a person to confirm." },
@@ -241,8 +234,8 @@ export const START = {
   subhead: "You need a Google account and last year's sheet, if you have one.",
   steps: [
     { title: "Sign in with Google", body: "One click, with no new password to remember." },
-    { title: "Create a workspace, or join your chair's", body: "The chair creates the workspace and becomes its Owner. Everyone else signs in with the email address the chair invited and presses Join." },
-    { title: "Invite your officers and set your claim window", body: "Owners invite officers by email address and choose how long a claim lasts, from 1 to 60 days. The default is 14. Coppice does not send the invite, so tell them to sign in." },
+    { title: "Create a workspace, or join your chair's", body: "The chair creates it and becomes its Owner. Everyone else signs in with the invited email address and presses Join." },
+    { title: "Invite your officers and set your claim window", body: "Owners invite officers by email address and set the claim window, 1 to 60 days, 14 by default. Coppice does not send the invite, so tell them to sign in." },
     { title: "Import your sheet and start claiming", body: "Upload last year's CSV, review any duplicate groups, then press Claim on the first company you plan to contact." },
   ],
 };

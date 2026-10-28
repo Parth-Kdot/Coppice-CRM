@@ -27,7 +27,6 @@ export function Features() {
           <h2 id="features-title" className="ld-h2">
             {FEATURES.headline}
           </h2>
-          <p className="ld-sub">{FEATURES.subhead}</p>
         </header>
 
         <ol className="ld-index">

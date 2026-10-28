@@ -78,8 +78,8 @@ html.lenis body {
   margin-top: 12px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: clamp(2rem, 1.35rem + 2.7vw, 3.5rem);
-  line-height: 1.04;
+  font-size: clamp(1.9rem, 1.3rem + 2.1vw, 3rem);
+  line-height: 1.06;
   letter-spacing: -0.016em;
   text-wrap: balance;
 }
@@ -97,8 +97,8 @@ html.lenis body {
   color: var(--ink);
 }
 .ld-sub {
-  margin-top: 16px;
-  max-width: 42em;
+  margin-top: 10px;
+  max-width: 58em;
   font-size: 1.12rem;
   line-height: 1.55;
   color: var(--ink-2);
@@ -136,11 +136,11 @@ html.lenis body {
   letter-spacing: 0.1em;
 }
 .ld-sec {
-  padding: clamp(48px, 5vw, 72px) 0;
+  padding: clamp(32px, 3.4vw, 48px) 0;
 }
 .ld-sec-head {
-  max-width: 780px;
-  margin-bottom: clamp(24px, 3.4vw, 40px);
+  max-width: 980px;
+  margin-bottom: clamp(20px, 2.4vw, 30px);
 }
 
 /* ---------- Nav ---------- */
@@ -225,7 +225,7 @@ html.lenis body {
 /* ---------- Hero ---------- */
 .ld-hero {
   position: relative;
-  padding: 96px 0 40px;
+  padding: 88px 0 24px;
   overflow: hidden;
   background:
     repeating-linear-gradient(to bottom, transparent 0 39px, rgb(217 205 180 / 0.55) 39px 40px),
@@ -251,8 +251,8 @@ html.lenis body {
 .ld-hero-grid {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.26fr);
-  gap: clamp(28px, 3vw, 44px);
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  gap: clamp(28px, 3vw, 40px);
   align-items: center;
 }
 .ld-hero-copy {
@@ -262,8 +262,8 @@ html.lenis body {
   font-size: clamp(2.9rem, 1.5rem + 3.2vw, 4.4rem);
 }
 .ld-hero-copy .ld-lede {
-  margin-top: 20px;
-  max-width: 31em;
+  margin-top: 16px;
+  max-width: 33em;
 }
 .ld-hero-copy .ld-cta-row {
   margin-top: 26px;
@@ -278,7 +278,7 @@ html.lenis body {
   color: var(--moss);
 }
 .ld-hero-stool {
-  width: 172px;
+  width: 124px;
   max-width: 100%;
   margin: 0 0 4px -10px;
 }
@@ -315,12 +315,12 @@ html.lenis body {
   list-style: none;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 40px;
+  margin-top: 24px;
   border-top: 3px double var(--ink-2);
   background: rgb(246 241 230 / 0.85);
 }
 .ld-strip li {
-  padding: 20px 24px 6px;
+  padding: 14px 24px 4px;
   border-left: 1px solid var(--rule);
   font-size: 1rem;
   color: var(--ink);
@@ -406,13 +406,16 @@ html.lenis body {
   border-top: 0;
 }
 .ld-prob-sheet {
-  padding: 18px 28px 20px;
+  padding: 12px 28px 10px;
   background:
     linear-gradient(90deg, transparent 39px, rgb(217 205 180 / 0.5) 39px 40px, transparent 40px) 0 0 / 100% 100% no-repeat,
     #fffdf8;
 }
 .ld-prob-fix {
-  padding: 18px 28px 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 10px 28px;
   border-left: 1px solid var(--edge);
   background: repeating-linear-gradient(to bottom, transparent 0 31px, rgb(217 205 180 / 0.3) 31px 32px), var(--sheet);
   color: var(--moss);
@@ -420,14 +423,18 @@ html.lenis body {
   line-height: 1.6;
 }
 .ld-fix-label {
-  margin-bottom: 6px;
-  color: var(--ink-2);
-  font-weight: 600;
+  /* On the wide spread the "In Coppice" tab names this column, so the label is for screen readers. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .ld-sheet-row {
   position: relative;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: 44px repeat(4, minmax(max-content, 1fr));
   border: 1px solid var(--edge);
   background: #fff;
   font-size: 1rem;
@@ -463,9 +470,9 @@ html.lenis body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px 16px;
+  gap: 4px 16px;
   flex-wrap: wrap;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 .ld-note-hand {
   margin: 0 4px 0 auto;
@@ -515,7 +522,7 @@ html.lenis body {
   transform: translateY(6px);
 }
 .ld-closing {
-  margin-top: 28px;
+  margin-top: 20px;
   text-align: center;
   font-family: var(--font-display);
   font-style: italic;
@@ -530,8 +537,19 @@ html.lenis body {
     grid-template-columns: 1fr;
   }
   .ld-prob-fix {
+    display: block;
     border-left: 4px solid var(--moss);
-    padding: 18px 20px 22px;
+    padding: 14px 20px 16px;
+  }
+  .ld-fix-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin-bottom: 4px;
+    overflow: visible;
+    clip: auto;
+    color: var(--ink-2);
+    font-weight: 600;
   }
   .ld-prob-sheet {
     padding: 20px 18px 18px;
@@ -982,7 +1000,7 @@ html.lenis body {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   gap: 0 16px;
-  padding: 18px 0 20px;
+  padding: 14px 0 16px;
   border-top: 1px solid var(--edge);
 }
 .ld-entry-icon {
@@ -1139,10 +1157,14 @@ html.lenis body {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: 54px 28px;
+  grid-template-rows: 50px 0;
   column-gap: 10px;
   align-items: center;
   border-bottom: 1px solid var(--rule);
+}
+/* Only the first row has room for the refusal note on Dev's page; both pages reserve it so they line up. */
+.ld-rr[data-row="0"] {
+  grid-template-rows: 50px 28px;
 }
 .ld-rr-name {
   font-weight: 600;
@@ -1246,7 +1268,7 @@ html.lenis body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0 32px;
-  margin-top: 40px;
+  margin-top: 24px;
 }
 .ld-after li {
   padding-top: 16px;
@@ -1330,7 +1352,7 @@ html.lenis body {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
   gap: 0 12px;
-  padding: 18px 0 20px;
+  padding: 12px 0 14px;
   border-top: 1px solid var(--edge);
 }
 .ld-aud-no {
@@ -1346,17 +1368,17 @@ html.lenis body {
 }
 .ld-name-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-  gap: 56px;
+  grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.4fr);
+  gap: 48px;
   align-items: center;
-  margin-top: clamp(48px, 6vw, 84px);
+  margin-top: clamp(32px, 4vw, 48px);
 }
 .ld-name-stool {
-  max-width: 440px;
+  max-width: 240px;
   margin: 0 auto;
 }
 .ld-bodybig {
-  margin-top: 16px;
+  margin-top: 14px;
   max-width: 38em;
   font-size: 1.18rem;
   line-height: 1.6;
@@ -1371,7 +1393,7 @@ html.lenis body {
     gap: 24px;
   }
   .ld-name-stool {
-    max-width: 300px;
+    max-width: 220px;
   }
 }
 
@@ -1385,7 +1407,7 @@ html.lenis body {
   gap: 0 64px;
 }
 .ld-ruled-list li {
-  padding: 16px 0 20px;
+  padding: 12px 0 14px;
   border-top: 1px solid var(--edge);
 }
 .ld-ruled-head {
@@ -1406,9 +1428,21 @@ html.lenis body {
   font-size: 1.15rem;
 }
 .ld-priv {
-  margin-top: 28px;
+  margin-top: 20px;
   border-top: 1px solid var(--edge);
   border-bottom: 1px solid var(--edge);
+}
+.ld-priv + .ld-priv {
+  margin-top: 0;
+  border-top: 0;
+}
+.ld-priv-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 400;
 }
 .ld-priv-q {
   display: flex;
@@ -1416,7 +1450,8 @@ html.lenis body {
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  padding: 16px 4px;
+  min-height: 56px;
+  padding: 12px 4px;
   background: transparent;
   color: var(--ink);
   font-family: var(--font-display);
@@ -1436,16 +1471,11 @@ html.lenis body {
   padding-bottom: 8px;
 }
 .ld-coming {
-  margin-top: 36px;
-  padding: 24px 28px;
-  border: 1.5px dashed var(--edge);
-}
-.ld-coming ul {
   list-style: none;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px 40px;
-  margin-top: 16px;
+  padding: 6px 4px 24px;
 }
 .ld-coming li {
   display: flex;
@@ -1467,7 +1497,7 @@ html.lenis body {
 }
 @media (max-width: 860px) {
   .ld-ruled-list,
-  .ld-coming ul {
+  .ld-coming {
     grid-template-columns: 1fr;
   }
 }
@@ -1483,7 +1513,7 @@ html.lenis body {
   gap: 0 28px;
 }
 .ld-start-steps li {
-  padding-top: 18px;
+  padding-top: 14px;
   border-top: 3px double var(--ink-2);
 }
 .ld-start-no {
@@ -1491,7 +1521,7 @@ html.lenis body {
   margin-bottom: 8px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 3rem;
+  font-size: 2.4rem;
   line-height: 1;
   color: var(--moss);
 }
@@ -1503,18 +1533,16 @@ html.lenis body {
   color: var(--ink-2);
   font-size: 1rem;
 }
-.ld-start-cta {
-  display: flex;
-  justify-content: center;
-  margin-top: 40px;
-}
 .ld-faq {
   max-width: 880px;
-  margin: clamp(56px, 7vw, 88px) auto 0;
+  margin: clamp(36px, 4vw, 52px) auto 0;
+}
+.ld-faq > .ld-h2 {
+  font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.3rem);
 }
 .ld-faq > ul {
   list-style: none;
-  margin-top: 24px;
+  margin-top: 14px;
   border-bottom: 1px solid var(--edge);
 }
 .ld-faq-item {
@@ -1529,7 +1557,8 @@ html.lenis body {
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  padding: 18px 4px;
+  min-height: 56px;
+  padding: 12px 4px;
   background: transparent;
   color: var(--ink);
   font-family: var(--font-display);
@@ -1605,40 +1634,51 @@ html.lenis body {
 /* ---------- Final call and footer ---------- */
 .ld-final {
   position: relative;
-  padding-top: clamp(48px, 6vw, 80px);
+  padding-top: clamp(32px, 4vw, 48px);
   background: var(--paper-2);
   border-top: 3px double var(--ink-2);
 }
 .ld-final-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 48px;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  gap: 40px;
   align-items: center;
 }
 .ld-final-stool {
-  max-width: 520px;
+  max-width: 280px;
   margin: 0 auto;
 }
 .ld-final-h {
-  font-size: clamp(1.9rem, 1.3rem + 2.4vw, 3.1rem);
+  font-size: clamp(1.8rem, 1.3rem + 1.9vw, 2.7rem);
 }
 .ld-signoff {
-  margin-top: 40px;
+  margin-top: 24px;
   color: var(--moss);
-  font-size: clamp(2.3rem, 1.5rem + 3.2vw, 4rem);
+  font-size: clamp(2rem, 1.4rem + 2.2vw, 3.1rem);
   line-height: 1;
 }
 .ld-footer {
-  margin-top: clamp(40px, 5vw, 64px);
-  padding: 32px 0 36px;
+  margin-top: clamp(24px, 3vw, 36px);
+  padding: 22px 0 24px;
   border-top: 1px solid var(--edge);
   font-size: 1rem;
   color: var(--ink-2);
 }
 .ld-footer-grid {
   display: grid;
-  grid-template-columns: 1.1fr 1fr 1.4fr;
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 28px;
+  align-items: center;
+}
+.ld-footer-grid > .ld-foot-small {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 24px;
+  margin-top: 0;
+}
+.ld-footer-grid > .ld-foot-small p + p {
+  margin-top: 0;
 }
 .ld-foot-mark {
   display: flex;
@@ -1646,6 +1686,7 @@ html.lenis body {
   gap: 8px;
   color: var(--ink);
 }
+
 .ld-foot-tag {
   margin-top: 10px;
   font-size: 1.4rem;
@@ -1659,10 +1700,14 @@ html.lenis body {
 }
 .ld-foot-links {
   list-style: none;
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
 }
 .ld-foot-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--ink);
   text-decoration: underline;
   text-decoration-color: var(--rule);

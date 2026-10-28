@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { useId, useRef, useState } from "react";
-import { demoRoutes } from "@/demo/routes";
 import { FAQ, START } from "./copy";
 import { useReveal } from "./reveal";
 
@@ -61,12 +59,6 @@ export function GetStarted() {
             </li>
           ))}
         </ol>
-        <div className="ld-start-cta">
-          <Link href={demoRoutes.signIn()} className="lg-btn lg-btn-primary ld-btn-lg">
-            Start a workspace
-          </Link>
-        </div>
-
         <div id="faq" className="ld-faq">
           <h2 className="ld-h2">Questions, answered</h2>
           <ul>

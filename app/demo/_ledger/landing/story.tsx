@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { SHOOTS_FIVE, Stool } from "../stool";
 import { AUDIENCE, NAME, TRUST } from "./copy";
 import { useReveal } from "./reveal";
@@ -55,12 +55,7 @@ export function WhoAndName() {
             <p className="ld-sub">
               {NAME.subhead} <span className="ld-chip lg-sc">{NAME.pronunciation}</span>
             </p>
-            <p className="ld-bodybig">{NAME.lead}</p>
-            {NAME.paragraphs.map((p) => (
-              <p key={p} className="ld-bodybig">
-                {p}
-              </p>
-            ))}
+            <p className="ld-bodybig">{NAME.paragraph}</p>
           </div>
         </div>
       </div>
@@ -68,27 +63,26 @@ export function WhoAndName() {
   );
 }
 
-function Privacy() {
+// A closed accordion in the trust section. The panel is inert while closed, so nothing in it can take focus.
+function Accordion({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   return (
     <div className="ld-priv">
       <h3 className="ld-priv-h">
         <button type="button" className="ld-priv-q" aria-expanded={open} aria-controls={`${id}-p`} onClick={() => setOpen((v) => !v)}>
-          <span>Privacy notes</span>
+          <span>
+            {title}
+            {note && <span className="ld-priv-note">{note}</span>}
+          </span>
           <span className="ld-faq-plus" aria-hidden="true" />
         </button>
       </h3>
       <div className="lg-disclose" data-open={open}>
         <div className="lg-disclose-inner">
-          <ul id={`${id}-p`} className="ld-ruled-list ld-ruled-two" inert={!open}>
-            {TRUST.privacy.map((item) => (
-              <li key={item.title}>
-                <h4 className="lg-sc ld-ruled-head">{item.title}</h4>
-                <p>{item.body}</p>
-              </li>
-            ))}
-          </ul>
+          <div id={`${id}-p`} inert={!open}>
+            {children}
+          </div>
         </div>
       </div>
     </div>
@@ -108,7 +102,6 @@ export function Trust() {
           <h2 id="trust-title" className="ld-h2">
             {TRUST.headline}
           </h2>
-          <p className="ld-sub">{TRUST.subhead}</p>
         </header>
         <ul className="ld-ruled-list">
           {TRUST.items.map((item) => (
@@ -120,12 +113,19 @@ export function Trust() {
         </ul>
         <p className="ld-also">{TRUST.alsoOut}</p>
 
-        <Privacy />
+        <Accordion title="Privacy notes">
+          <ul className="ld-ruled-list ld-ruled-two">
+            {TRUST.privacy.map((item) => (
+              <li key={item.title}>
+                <h4 className="lg-sc ld-ruled-head">{item.title}</h4>
+                <p>{item.body}</p>
+              </li>
+            ))}
+          </ul>
+        </Accordion>
 
-        <div className="ld-coming ld-reveal">
-          <h3 className="ld-h3">{TRUST.comingTitle}</h3>
-          <p className="ld-hint-line">{TRUST.comingNote}</p>
-          <ul>
+        <Accordion title={TRUST.comingTitle} note={TRUST.comingNote}>
+          <ul className="ld-coming">
             {TRUST.coming.map((item) => (
               <li key={item.title}>
                 <span className="ld-coming-tag lg-sc">{item.tag}</span>
@@ -136,7 +136,7 @@ export function Trust() {
               </li>
             ))}
           </ul>
-        </div>
+        </Accordion>
       </div>
     </section>
   );
