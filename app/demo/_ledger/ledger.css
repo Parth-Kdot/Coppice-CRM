@@ -73,7 +73,7 @@
 @keyframes lg-note-in {
   from {
     opacity: 0;
-    transform: translateX(12px);
+    transform: translateX(-10px);
   }
   to {
     opacity: 1;
@@ -726,64 +726,63 @@
     animation: lg-quill-write 1500ms linear infinite;
   }
 
-  /* ---------- Margin notes (toasts) ---------- */
+  /* ---------- Margin notes: the one place feedback is written ---------- */
+  /* Anchored at the bottom left of the content column, above the status line. 360 px at most, the
+     text wraps inside its box, and a note holds 3 s and then fades. A refusal that belongs to a row
+     is written in that row's own margin instead (.lg-rownote). */
   .lg-notes {
     position: fixed;
     z-index: 120;
-    bottom: 28px;
-    right: 0;
+    left: 24px;
+    bottom: 36px;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 8px;
-    max-width: min(420px, 100vw);
+    width: min(360px, calc(100vw - 48px));
     pointer-events: none;
+  }
+  body:has(.lg-shell) .lg-notes {
+    left: calc(var(--spine-w) + 36px);
+    width: min(360px, calc(100vw - var(--spine-w) - 72px));
   }
   .lg-note {
     position: relative;
-    pointer-events: auto;
-    padding: 10px 18px 12px 14px;
+    max-width: 100%;
+    padding: 9px 14px 10px 14px;
     background: var(--sheet);
     border: 1px solid var(--rule);
-    border-right: 0;
-    border-radius: 3px 0 0 3px;
+    border-left: 3px solid var(--moss);
+    border-radius: 2px;
     box-shadow: 0 10px 18px -14px var(--shade);
+    color: var(--ink);
     font-size: 0.92rem;
     font-weight: 500;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+    pointer-events: auto;
     animation:
-      lg-note-in 240ms var(--ease-out) both,
+      lg-note-in 200ms var(--ease-out) both,
       lg-note-out 360ms ease 3000ms forwards;
   }
-  .lg-note::after {
-    content: "";
-    position: absolute;
-    left: 14px;
-    right: 18px;
-    bottom: 6px;
-    height: 1.5px;
-    background: var(--moss);
-    transform-origin: left;
-    animation: lg-underline-draw 380ms var(--ease-out) 160ms both;
-  }
   .lg-note-error {
+    border-left-color: var(--rust);
     color: var(--rust);
   }
   @media (max-width: 760px) {
-    .lg-notes {
-      bottom: 82px;
+    .lg-notes,
+    body:has(.lg-shell) .lg-notes {
+      left: 12px;
+      bottom: 76px;
+      width: calc(100vw - 24px);
     }
-  }
-  .lg-note-error::after {
-    background: var(--rust);
   }
 }
 
 /* ---------- Skip toasts timing under reduced motion: a note stays until it is removed ---------- */
 @media (prefers-reduced-motion: reduce) {
   .lg-note {
-    animation: none;
-  }
-  .lg-note::after {
     animation: none;
   }
   .lg-quill-wait path {
