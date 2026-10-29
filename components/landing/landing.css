@@ -246,7 +246,7 @@ html.lenis body {
 /* ---------- Hero: the product, finished, cropped by the edge of the window ---------- */
 .ld-hero {
   position: relative;
-  height: min(100svh, 940px);
+  height: min(100svh, 840px);
   min-height: 660px;
   padding-top: 64px;
   overflow: hidden;

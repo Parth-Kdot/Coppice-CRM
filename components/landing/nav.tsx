@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "../ledger/logo";
 import { NAV_LINKS } from "./copy";
 
-// The landing nav: the mark and word, the section links, Sign in and the main button. The bar is
+// The landing nav: the mark and word, the section links and the main button. The bar is
 // solid paper. Below 860 px the section links sit in a menu that opens under the bar.
 export function LandingNav({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
@@ -49,11 +49,6 @@ export function LandingNav({ signedIn }: { signedIn: boolean }) {
           {open ? "Close" : "Menu"}
         </button>
         <div className="ld-nav-cta">
-          {!signedIn && (
-            <Link href="/signin" className="ld-nav-signin">
-              Sign in
-            </Link>
-          )}
           <Link href={main.href} className="lg-btn lg-btn-primary">
             {main.label}
           </Link>

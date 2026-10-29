@@ -265,6 +265,13 @@
   white-space: nowrap;
 }
 
+/* ----- Mid-width windows (the hero): no room for the last note, so the company name gets it ----- */
+@container ldmw (min-width: 641px) and (max-width: 900px) {
+  .ldm-note {
+    display: none;
+  }
+}
+
 /* ----- Narrow windows: each company takes two lines, name over follow-up, with its claim at the right ----- */
 @container ldmw (max-width: 640px) {
   .ldm {
