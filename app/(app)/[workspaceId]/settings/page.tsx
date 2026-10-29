@@ -2,8 +2,7 @@ import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { WarningIcon } from "@/components/ledger/icons";
 import { InviteForm } from "@/components/ledger/invite-form";
-import { boardYear } from "@/components/ledger/board-year";
-import { TurnoverRule, YearMargin } from "@/components/ledger/marks";
+import { YearMargin } from "@/components/ledger/marks";
 import { PageHead } from "@/components/ledger/shared";
 import { Stepper } from "@/components/ledger/stepper";
 import { isConfigured } from "@/lib/ai/client";
@@ -76,12 +75,10 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           </div>
           <div className="lg-sec-body">
             <ol className="lg-register">
-              {members.map((member, i) => {
+              {members.map((member) => {
                 const role: Role = member.role === "owner" ? "owner" : "member";
                 const otherRole: Role = role === "owner" ? "member" : "owner";
                 const isMe = member.userId === me.userId;
-                const next = members[i + 1];
-                const crosses = next && boardYear(next.createdAt).start !== boardYear(member.createdAt).start;
                 return (
                   <li key={member.id} className="lg-memberitem">
                     <div className="lg-member">
@@ -130,7 +127,6 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                         )}
                       </div>
                     </div>
-                    {crosses && <TurnoverRule endsYear={boardYear(member.createdAt).long} />}
                   </li>
                 );
               })}
