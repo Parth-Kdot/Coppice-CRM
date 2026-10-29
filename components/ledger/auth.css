@@ -145,7 +145,7 @@
     list-style: none;
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 22px 30px;
     margin-top: 28px;
     padding: 0 18px;
@@ -245,13 +245,6 @@
     max-width: 520px;
     margin-top: 12px;
   }
-  .lg-createform form {
-    flex-wrap: nowrap;
-    align-items: flex-end;
-  }
-  .lg-createform form > label {
-    flex: 1;
-  }
   @media (max-width: 640px) {
     .lg-shelf {
       justify-content: center;
@@ -265,9 +258,6 @@
     }
     .lg-wsme-name {
       display: none;
-    }
-    .lg-createform form {
-      flex-wrap: wrap;
     }
   }
 }

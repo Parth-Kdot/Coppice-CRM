@@ -119,7 +119,7 @@ export default async function WorkspacesPage() {
             </h2>
             <p className="lg-sub mt-1">You become its Owner. Invite your officers from Settings afterwards.</p>
             <div className="lg-createform">
-              <ActionForm action={createWorkspace} submitLabel="Create" primary>
+              <ActionForm action={createWorkspace} submitLabel="Create" primary className="flex flex-wrap items-end gap-2">
                 <label className="block flex-1">
                   <span className="lg-label">Workspace name</span>
                   <input name="name" required placeholder="Your org's name" className="lg-input" autoComplete="off" />

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { cache, type ReactNode } from "react";
+import { cache } from "react";
 import { boardYear } from "@/components/ledger/board-year";
 import { WorkspaceShell } from "@/components/ledger/shell";
 import { AuthzError, checkMembership, requireUser, roleLabel } from "@/lib/authz";

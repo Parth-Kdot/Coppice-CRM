@@ -3,7 +3,6 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "@/components/auth-buttons";
-import { LogoMark } from "@/components/ledger/logo";
 import { SHOOTS_THREE, Stool } from "@/components/ledger/stool";
 import { auth } from "@/lib/auth";
 import "@/components/ledger/ledger.css";
@@ -25,9 +24,6 @@ export default async function SignInPage() {
         <p className="lg-auth-line">New board, same roots.</p>
       </div>
       <main id="main" tabIndex={-1} className="lg-auth-main lg-page-enter">
-        <span className="lg-auth-word">
-          <LogoMark size={36} />
-        </span>
         <h1 className="lg-auth-title">Coppice</h1>
         <p className="lg-auth-sub">Your team&apos;s shared outreach book. Sign in with Google to open it.</p>
         <GoogleSignInButton />

@@ -13,12 +13,14 @@ type Props = {
   confirmMessage?: string;
   // The main button of its page: a moss fill.
   primary?: boolean;
+  // Layout of the form's row; the default wraps the button and any message under the fields.
+  className?: string;
   children?: ReactNode;
 };
 
 // Runs a server action. A refusal is written under the form, where the person is looking; a
 // success is written as a margin note.
-export function ActionForm({ action, submitLabel, successMessage, confirmMessage, primary = false, children }: Props) {
+export function ActionForm({ action, submitLabel, successMessage, confirmMessage, primary = false, className = "flex flex-wrap items-center gap-2", children }: Props) {
   const [state, formAction, pending] = useActionState(action, null);
   const notify = useNotify();
 
@@ -32,7 +34,7 @@ export function ActionForm({ action, submitLabel, successMessage, confirmMessage
       onSubmit={(e) => {
         if (confirmMessage && !window.confirm(confirmMessage)) e.preventDefault();
       }}
-      className="flex flex-wrap items-center gap-2"
+      className={className}
     >
       {children}
       <button type="submit" disabled={pending} className={`lg-btn ${primary ? "lg-btn-primary" : ""}`}>
