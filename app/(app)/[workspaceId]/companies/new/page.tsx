@@ -1,22 +1,25 @@
 import Link from "next/link";
 import { CompanyForm } from "@/components/company-form";
+import { PageHead } from "@/components/ledger/shared";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { listIndustries } from "@/lib/companies";
 import { createCompany, unarchiveCompany } from "../actions";
+import "@/components/ledger/company.css";
 
+// Add one company by hand. Look-alikes, archived ones included, are shown before anything is saved:
+// open the existing one, bring an archived one back, or keep both as separate entries.
 export default async function NewCompanyPage({ params }: PageProps<"/[workspaceId]/companies/new">) {
   const { workspaceId } = await params;
   const { userId } = await requireMembershipOr404(workspaceId);
   const industries = await listIndustries({ userId, workspaceId });
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 p-8">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Add a company</h1>
-        <Link href={`/${workspaceId}`} className="rounded border px-3 py-1">
+    <div className="lg-sheetwrap">
+      <PageHead title="Add a company" sub="Check the name against the workspace first: a look-alike is shown before anything is saved.">
+        <Link href={`/${workspaceId}`} className="lg-btn">
           Back
         </Link>
-      </header>
+      </PageHead>
       <CompanyForm mode="create" workspaceId={workspaceId} industries={industries} save={createCompany} unarchive={unarchiveCompany} />
     </div>
   );

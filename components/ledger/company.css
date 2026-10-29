@@ -1,0 +1,1183 @@
+/* ==========================================================================================
+   Ledger, the company page and the new company page. A two-page spread: the left page holds the name,
+   the route map, the stage, the contacts and the facts the AI may use; the right page holds the claim
+   ticket, the fast log form, the outreach entries and the stage history. Under the spread, the draft
+   letter runs the full width with its two drafts side by side, then the details and the archive.
+   Plain CSS in a file, so the strict style-src policy allows it. Motion is 120 to 220 ms.
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- Chip groups: real radio inputs drawn as ruled chips ---------- */
+  .lg-chipset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .lg-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lg-chipx {
+    position: relative;
+    display: inline-flex;
+  }
+  .lg-chipx input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .lg-chipx span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 13px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    line-height: 1.1;
+    white-space: nowrap;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease,
+      color var(--dur-fast) ease;
+  }
+  .lg-chipx:hover span {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-chipx input:checked + span {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+    font-weight: 600;
+  }
+  .lg-chipx input:focus-visible + span {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+
+  /* The industry chips under the industry box: a push button that fills the box. */
+  .lg-industry-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .lg-ichip {
+    min-height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+  .lg-ichip:hover {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-ichip[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+
+  /* ---------- The fast log form ---------- */
+  .lg-logform {
+    display: grid;
+    gap: 14px;
+  }
+  .lg-logform-compact {
+    gap: 12px;
+  }
+  .lg-logform > .lg-btn {
+    justify-self: start;
+  }
+  .lg-logrow {
+    position: relative;
+    min-width: 0;
+  }
+  .lg-followon {
+    margin-top: 6px;
+  }
+  .lg-logfoot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+  }
+
+  /* ---------- The ruled calendar ---------- */
+  .lg-cal {
+    position: absolute;
+    z-index: 40;
+    top: 100%;
+    left: 0;
+    width: min(300px, calc(100vw - 32px));
+    margin-top: 4px;
+    padding: 10px 12px 8px;
+    border: 1px solid var(--ink-2);
+    border-radius: 3px;
+    background: var(--sheet);
+    box-shadow: 2px 2px 0 var(--rule);
+    animation: lg-rise var(--dur-fast) var(--ease-out) both;
+  }
+  .lg-cal[data-flip="up"] {
+    top: auto;
+    bottom: 100%;
+    margin: 0 0 4px;
+  }
+  .lg-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--ink-2);
+  }
+  .lg-cal-title {
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+  }
+  .lg-cal-nav {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 3px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .lg-cal-nav:hover:not(:disabled) {
+    background: var(--paper-2);
+  }
+  .lg-cal-nav:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .lg-cal-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cal-row:last-child {
+    border-bottom: 0;
+  }
+  .lg-cal-dow {
+    padding: 4px 0;
+    text-align: center;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-cal-day {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 36px;
+    border-radius: 3px;
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .lg-cal-day:hover:not(:disabled) {
+    background: var(--paper-2);
+  }
+  .lg-cal-day:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -2px;
+  }
+  .lg-cal-day:disabled {
+    color: var(--ink-2);
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .lg-cal-day[data-today] {
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+  }
+  .lg-cal-day[data-picked] {
+    background: var(--moss);
+    color: var(--paper);
+    font-weight: 600;
+  }
+  .lg-cal-foot {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* ---------- The spread ---------- */
+  .lg-company > .lg-back {
+    margin-bottom: 12px;
+  }
+  .lg-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 32px;
+    margin-left: -4px;
+    color: var(--ink-2);
+    font-size: var(--fs-2);
+    text-decoration: none;
+  }
+  .lg-back:hover {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .lg-spread {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-leaf-page {
+    min-width: 0;
+    padding: 6px 30px 26px;
+  }
+  .lg-leaf-left {
+    border-right: 1px solid var(--edge);
+  }
+  /* The draft letter and the back of the book run under both pages. */
+  .lg-leaf-wide,
+  .lg-leaf-back {
+    grid-column: 1 / -1;
+    min-width: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .lg-block {
+    position: relative;
+    padding: 18px 0 22px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-leaf-page > :first-child > .lg-block:first-child,
+  .lg-leaf-page > .lg-block:first-child {
+    border-top: 0;
+  }
+  .lg-bh {
+    margin-bottom: 10px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-bh-note {
+    margin: -4px 0 12px;
+    max-width: 62ch;
+  }
+
+  /* ---------- The name and its line ---------- */
+  .lg-cohead {
+    margin: 14px 0 6px;
+  }
+  .lg-leaf-left .lg-h1 {
+    font-size: clamp(2rem, 1.4rem + 1.4vw, 2.7rem);
+  }
+  .lg-coline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 18px;
+    margin-top: 8px;
+    color: var(--ink-2);
+  }
+  .lg-cofollow {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 12px;
+  }
+  .lg-stagechip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px 2px 8px;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+  }
+  .lg-stagechip[data-stage="COMMITTED"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+  }
+  .lg-stagechip[data-stage="DECLINED"] {
+    border-style: dashed;
+    color: var(--ink-2);
+  }
+  .lg-archivedbanner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 12px 16px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-archivedbanner form {
+    flex: none;
+  }
+
+  /* ---------- The route map ---------- */
+  .lg-route {
+    display: flex;
+    flex-direction: column-reverse;
+    margin: 4px 0 18px;
+    padding: 6px 0 4px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-route ol {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    list-style: none;
+  }
+  .lg-route-stop {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+  .lg-route-dot {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--edge);
+    border-radius: 999px;
+    background: var(--sheet);
+  }
+  /* The line between stops: solid ink once the company has been there, dashed ahead of it. */
+  .lg-route-stop::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    right: 50%;
+    width: 100%;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--edge) 0 6px, transparent 6px 10px);
+  }
+  .lg-route-stop:first-child::before {
+    display: none;
+  }
+  .lg-route-stop[data-state="passed"]::before,
+  .lg-route-stop[data-state="current"]::before {
+    background: var(--ink);
+  }
+  .lg-route-stop[data-state="passed"] .lg-route-dot {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  /* The current stop is ringed in moss, with a gap of paper between the dot and the ring. */
+  .lg-route-stop[data-state="current"] .lg-route-dot,
+  .lg-route-branch[data-state="current"] .lg-route-dot {
+    background: var(--ink);
+    border-color: var(--ink);
+    box-shadow:
+      0 0 0 2.5px var(--sheet),
+      0 0 0 4.5px var(--moss);
+  }
+  .lg-route-label {
+    display: block;
+    max-width: 100%;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+  .lg-route-stop[data-state="passed"] .lg-route-label {
+    color: var(--ink);
+  }
+  .lg-route-stop[data-state="current"] .lg-route-label,
+  .lg-route-branch[data-state="current"] .lg-route-label {
+    color: var(--moss);
+    font-weight: 700;
+  }
+  /* The Declined branch: a stub above the line, leaving at the stage the company left from. */
+  .lg-route-branchrow {
+    height: 34px;
+  }
+  .lg-route-branch {
+    position: relative;
+    height: 100%;
+  }
+  .lg-route-branch[data-col="0"] {
+    grid-column: 1;
+  }
+  .lg-route-branch[data-col="1"] {
+    grid-column: 2;
+  }
+  .lg-route-branch[data-col="2"] {
+    grid-column: 3;
+  }
+  .lg-route-branch[data-col="3"] {
+    grid-column: 4;
+  }
+  .lg-route-branch[data-col="4"] {
+    grid-column: 5;
+  }
+  .lg-route-branch .lg-route-dot {
+    position: absolute;
+    top: 6px;
+    left: calc(50% - 8px);
+    width: 14px;
+    height: 14px;
+    margin-left: 1px;
+  }
+  .lg-route-elbow {
+    position: absolute;
+    top: 20px;
+    bottom: -8px;
+    left: calc(50% - 1px);
+    width: 2px;
+    background: repeating-linear-gradient(180deg, var(--edge) 0 4px, transparent 4px 7px);
+  }
+  .lg-route-branch[data-state="current"] .lg-route-elbow {
+    background: var(--ink);
+  }
+  .lg-route-branch .lg-route-label {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 14px);
+    white-space: nowrap;
+  }
+
+  /* ---------- The claim ticket ---------- */
+  .lg-ticket {
+    position: relative;
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    margin: 20px 0 8px;
+    background: var(--paper-2);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+  }
+  .lg-ticket[data-kind="mine"] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-ticket[data-kind="theirs"] {
+    border-color: var(--ink-2);
+  }
+  /* The perforation: a dashed line down the stub, with a half circle cut out at each end. */
+  .lg-ticket::before,
+  .lg-ticket::after {
+    content: "";
+    position: absolute;
+    left: 68px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: var(--sheet);
+  }
+  .lg-ticket[data-kind="mine"]::before,
+  .lg-ticket[data-kind="mine"]::after {
+    border-color: var(--moss);
+  }
+  .lg-ticket::before {
+    top: -9px;
+    clip-path: inset(50% 0 0 0);
+  }
+  .lg-ticket::after {
+    bottom: -9px;
+    clip-path: inset(0 0 50% 0);
+  }
+  .lg-ticket-stub {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-height: 96px;
+    padding: 10px 6px 14px;
+    overflow: hidden;
+    border-right: 2px dashed var(--edge);
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lg-ticket[data-kind="mine"] .lg-ticket-stub {
+    color: var(--moss);
+    border-right-color: var(--moss);
+  }
+  .lg-ticket-ribbon {
+    top: 0;
+    left: calc(50% - 8px);
+  }
+  .lg-ticket-body {
+    min-width: 0;
+    padding: 14px 18px 16px;
+  }
+  .lg-ticket-title {
+    color: var(--ink-2);
+  }
+  .lg-ticket-text {
+    margin: 2px 0 12px;
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.3;
+  }
+  .lg-ticket[data-kind="mine"] .lg-ticket-text {
+    color: var(--moss);
+  }
+  .lg-ticket-hint {
+    margin-top: 10px;
+  }
+  .lg-ticket-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  /* ---------- Stage buttons ---------- */
+  .lg-stagebtns-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lg-stagebtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 38px;
+    padding: 0 13px 0 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+  .lg-stagebtn:hover:not([aria-disabled]) {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-stagebtn:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-stagebtn[aria-pressed="true"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+    font-weight: 600;
+    cursor: default;
+  }
+  .lg-stagebtn[aria-disabled]:not([aria-pressed="true"]) {
+    opacity: 0.6;
+    cursor: progress;
+  }
+
+  /* ---------- Contacts ---------- */
+  .lg-contacts {
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+  .lg-contact p {
+    overflow-wrap: anywhere;
+  }
+  .lg-more > summary {
+    display: inline-block;
+    cursor: pointer;
+    padding: 4px 0;
+    color: var(--moss);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+    text-underline-offset: 4px;
+  }
+  .lg-more > summary:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-contactform {
+    display: grid;
+    gap: 10px;
+    padding: 8px 0 4px;
+  }
+  .lg-contactform > .lg-btn {
+    justify-self: start;
+  }
+  .lg-addcontact {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--edge);
+  }
+  .lg-addcontact > p {
+    margin-bottom: 8px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-row2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .lg-row3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .lg-contactform .lg-label,
+  .lg-detailsform .lg-label,
+  .lg-newform .lg-label {
+    margin-bottom: 4px;
+  }
+
+  /* ---------- Relevant facts ---------- */
+  .lg-factlist {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+  }
+  .lg-factlist li {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-factlist li:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  /* ---------- Entries: the outreach log and the stage history ---------- */
+  .lg-entries {
+    list-style: none;
+  }
+  .lg-entry {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-entry > .lg-margin {
+    flex: 0 0 54px;
+    padding-top: 2px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-entrybody {
+    min-width: 0;
+    flex: 1;
+  }
+  .lg-entryhead {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: var(--fs-2);
+  }
+  .lg-entryby {
+    color: var(--ink-2);
+    font-size: var(--fs-2);
+  }
+  .lg-entrynote {
+    margin-top: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .lg-history .lg-entrybody {
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Details, matches and conflicts ---------- */
+  .lg-detailsform,
+  .lg-newform {
+    display: grid;
+    gap: 14px;
+  }
+  .lg-readonly {
+    display: grid;
+    grid-template-columns: 90px minmax(0, 1fr);
+    gap: 6px 12px;
+  }
+  .lg-readonly dt {
+    color: var(--ink-2);
+  }
+  .lg-readonly dd {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .lg-matches {
+    list-style: none;
+    display: grid;
+    gap: 14px;
+    margin-top: 10px;
+  }
+  .lg-matches li {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-matchacts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .lg-warn-box .lg-warn-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-weight: 600;
+  }
+  .lg-warn-box .lg-warn-title svg {
+    flex: none;
+    margin-top: 2px;
+  }
+  .lg-sheetwrap {
+    max-width: 760px;
+  }
+  .lg-newform {
+    padding: 22px 26px 26px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+
+  /* ---------- The back of the book: details, then the archive ---------- */
+  .lg-back-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+  .lg-back-grid > .lg-leaf-page:first-child {
+    border-right: 1px solid var(--edge);
+  }
+
+  /* ---------- The draft letter ---------- */
+  .lg-draftpanel {
+    padding: 22px 30px 30px;
+  }
+  .lg-draft-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 24px;
+  }
+  .lg-draft-head .lg-hint {
+    max-width: 52ch;
+  }
+  .lg-draftform {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+    gap: 16px 32px;
+    margin-top: 16px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-draftside {
+    display: grid;
+    align-content: start;
+    gap: 14px;
+  }
+  .lg-draftnote {
+    min-width: 0;
+  }
+  .lg-draftgo {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+  }
+  .lg-draftgo .lg-hint {
+    flex: 1 1 320px;
+    max-width: 70ch;
+  }
+  .lg-draftoff {
+    display: grid;
+    gap: 6px;
+    max-width: 62ch;
+    margin-top: 12px;
+  }
+  .lg-draftlimit {
+    grid-column: 1 / -1;
+  }
+  .lg-letters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    margin-top: 22px;
+  }
+  .lg-letter {
+    min-width: 0;
+    padding: 18px 20px 20px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-letter-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ink-2);
+  }
+  .lg-letter-head .lg-h3 {
+    font-size: var(--fs-4);
+  }
+  .lg-letter-no {
+    color: var(--ink-2);
+  }
+  .lg-letter-to {
+    margin: 8px 0 12px;
+    overflow-wrap: anywhere;
+  }
+  .lg-letter .lg-textarea {
+    min-height: 220px;
+    line-height: 1.5;
+  }
+  .lg-letter-send {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .lg-send-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .lg-send-label {
+    flex: none;
+    min-width: 62px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-send-status {
+    min-height: 1.4em;
+    margin-top: 2px;
+  }
+
+  /* ---------- The claim check ---------- */
+  .lg-claimcheck {
+    margin-top: 16px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-cc-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--rule);
+    font-weight: 600;
+  }
+  .lg-cc-head svg {
+    flex: none;
+  }
+  .lg-cc-head[data-tone="flag"] {
+    color: var(--rust);
+  }
+  .lg-cc-head[data-tone="clean"] {
+    color: var(--moss);
+  }
+  .lg-cc-title {
+    color: var(--ink);
+  }
+  .lg-cc-sum {
+    font-weight: 600;
+  }
+  .lg-cc-part {
+    padding: 11px 14px 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cc-part:last-of-type {
+    border-bottom: 0;
+  }
+  .lg-cc-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 12px;
+    margin-bottom: 4px;
+  }
+  .lg-cc-label strong {
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lg-findings {
+    list-style: none;
+    display: grid;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: var(--fs-2);
+  }
+  .lg-findings li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 2px;
+    align-items: baseline;
+  }
+  .lg-fkind {
+    display: inline-block;
+    min-width: 92px;
+    padding: 1px 6px;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .lg-fwhy {
+    display: block;
+    color: var(--ink-2);
+    font-size: var(--fs-2);
+  }
+  .lg-flag {
+    background: transparent;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline wavy var(--rust);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+  }
+  .lg-cc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 8px;
+  }
+  .lg-preview {
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--rule);
+    background: var(--sheet);
+  }
+  .lg-preview-text {
+    max-height: 15rem;
+    margin-top: 4px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: var(--font-display);
+    font-size: var(--fs-2);
+    line-height: 1.55;
+  }
+  .lg-sent {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-sent > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    cursor: pointer;
+    list-style: none;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+  .lg-sent > summary::-webkit-details-marker {
+    display: none;
+  }
+  .lg-sent > summary:hover {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-sent > summary:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-sent[open] > summary {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+  .lg-sentlog {
+    padding: 14px 0 2px;
+  }
+
+  /* ---------- One long sheet when the two pages would be too narrow ---------- */
+  @media (max-width: 1100px) {
+    .lg-spread {
+      display: flex;
+      flex-direction: column;
+      padding: 6px 30px 26px;
+    }
+    .lg-spread > .lg-leaf-page,
+    .lg-spread > .lg-leaf-back,
+    .lg-back-grid,
+    .lg-back-grid > .lg-leaf-page {
+      display: contents;
+    }
+    .lg-leaf-page {
+      padding: 0;
+    }
+    .lg-leaf-left {
+      border: 0;
+    }
+    .lg-leaf-wide {
+      border: 0;
+    }
+    .lg-back-grid > .lg-leaf-page:first-child {
+      border: 0;
+    }
+    .lg-o-title {
+      order: 1;
+    }
+    .lg-o-route {
+      order: 2;
+    }
+    .lg-o-claim {
+      order: 3;
+    }
+    .lg-o-log {
+      order: 4;
+    }
+    .lg-o-draft {
+      order: 5;
+    }
+    .lg-o-outreach {
+      order: 6;
+    }
+    .lg-o-stage {
+      order: 7;
+    }
+    .lg-o-contacts {
+      order: 8;
+    }
+    .lg-o-facts {
+      order: 9;
+    }
+    .lg-o-history {
+      order: 10;
+    }
+    .lg-o-details {
+      order: 11;
+    }
+    .lg-o-archive {
+      order: 12;
+    }
+    .lg-spread > .lg-o-title + * {
+      margin-top: 0;
+    }
+    .lg-spread .lg-block {
+      border-top: 1px solid var(--rule);
+    }
+    .lg-spread .lg-o-title,
+    .lg-spread .lg-o-route {
+      border-top: 0;
+    }
+    .lg-draftpanel {
+      padding: 18px 0 8px;
+      border-top: 1px solid var(--rule);
+    }
+    .lg-draftform {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-letters {
+      grid-template-columns: 1fr;
+    }
+    .lg-o-claim .lg-ticket {
+      margin-top: 4px;
+    }
+  }
+  @media (max-width: 640px) {
+    .lg-spread {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+    .lg-row2,
+    .lg-row3 {
+      grid-template-columns: 1fr;
+    }
+    .lg-ticket {
+      grid-template-columns: 62px minmax(0, 1fr);
+    }
+    .lg-ticket::before,
+    .lg-ticket::after {
+      left: 54px;
+    }
+    .lg-ticket-body {
+      padding: 12px 12px 14px;
+    }
+    .lg-ticket-text {
+      font-size: var(--fs-3);
+    }
+    .lg-route-label {
+      font-size: 0.75rem;
+    }
+    .lg-chipx span,
+    .lg-stagebtn,
+    .lg-sent > summary {
+      min-height: 44px;
+    }
+    .lg-ichip {
+      min-height: 36px;
+    }
+    .lg-btn-sm {
+      min-height: 40px;
+    }
+    .lg-newform {
+      padding: 16px;
+    }
+    .lg-letter {
+      padding: 14px 14px 16px;
+    }
+    .lg-fkind {
+      min-width: 0;
+    }
+    .lg-findings li {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-send-label {
+      flex-basis: 100%;
+    }
+  }
+}
