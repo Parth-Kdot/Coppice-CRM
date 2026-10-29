@@ -166,7 +166,15 @@
     font-family: var(--font-display);
     font-style: italic;
   }
-  .lg-num {
+  /* Tabular figures only where numbers line up: counts, dates, overdue words, chips and the status line.
+     Running text keeps its proportional figures and its normal hyphen. */
+  .lg-num,
+  .lg-od,
+  .lg-chipbody,
+  .lg-status,
+  .lg-h1-count,
+  .lg-total-n,
+  .lg-qtime {
     font-variant-numeric: tabular-nums;
   }
   .lg-muted {
