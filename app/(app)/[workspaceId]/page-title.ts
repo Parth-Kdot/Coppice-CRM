@@ -12,5 +12,5 @@ const workspaceName = cache(async (workspaceId: string) => {
 });
 
 export async function pageTitle(workspaceId: string, page: string): Promise<Metadata> {
-  return { title: `${page}, ${await workspaceName(workspaceId)}` };
+  return { title: { absolute: `${page}, ${await workspaceName(workspaceId)}` } };
 }

@@ -1,16 +1,16 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { LogoMark } from "@/components/ledger/logo";
-
-export const metadata: Metadata = { title: "Page not found" };
 
 // Shown for any address the app does not have, and for a workspace or company the signed-in
 // person cannot open. It is our own page because the framework's default one adds an inline
 // style element, which the Content-Security-Policy rightly blocks. It uses only utility classes
-// so that no extra stylesheet is loaded on every other page.
+// so that no extra stylesheet is loaded on every other page. The title is an element because exported
+// metadata never reached the head on a 404 in the production build, for an unknown address or a
+// layout calling notFound().
 export default function NotFound() {
   return (
     <main className="mx-auto grid min-h-dvh max-w-[640px] content-center justify-items-start gap-3.5 px-5 py-12 sm:px-12">
+      <title>Page not found</title>
       <Link href="/" className="inline-flex items-center gap-2 text-moss" aria-label="Coppice home">
         <LogoMark size={32} />
         <span className="font-display text-[1.375rem] text-ink">Coppice</span>
