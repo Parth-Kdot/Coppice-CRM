@@ -194,8 +194,8 @@
   place-items: center;
   width: 21px;
   height: 21px;
-  border: 1.5px solid var(--edge);
-  border-radius: 50%;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
 }
 /* The moss check is drawn by the timeline; without it, every check is already drawn. */
 .ld-seasons:not([data-motion="on"]) .ld-tick path {
@@ -823,6 +823,17 @@
   }
   .ld-seasons[data-motion="on"] .ld-caption p {
     line-height: 1.4;
+  }
+}
+/* On a phone the page is compact: the captions and the framed queue, without the finished panes. */
+@media (max-width: 699px) {
+  .ld-seasons:not([data-motion="on"]) .ld-page-right {
+    display: none;
+  }
+  .ld-seasons:not([data-motion="on"]) .ld-book {
+    grid-template-areas:
+      "scene"
+      "captions";
   }
 }
 @media (max-width: 560px) {
