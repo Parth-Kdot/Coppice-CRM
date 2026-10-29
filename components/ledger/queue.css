@@ -1,13 +1,13 @@
 /* The queue: a totals line, a ruled table of follow-ups, and the never-contacted list under it. */
 
 @layer components {
-  /* ---------- The totals line: four counts across one double rule ---------- */
+  /* ---------- The totals line: four counts across one rule ---------- */
   .lg-totals {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     margin: 2px 0 20px;
     border-top: 1px solid var(--rule);
-    border-bottom: 3px double var(--ink-2);
+    border-bottom: 1px solid var(--ink-2);
   }
   .lg-total {
     display: flex;
@@ -65,7 +65,7 @@
   }
   .lg-qhead {
     padding-bottom: 6px;
-    border-bottom: 3px double var(--ink-2);
+    border-bottom: 2px solid var(--ink-2);
     color: var(--ink-2);
   }
   .lg-qlist {
@@ -151,7 +151,7 @@
     margin-top: 44px;
   }
   .lg-never-title {
-    border-top: 3px double var(--ink-2);
+    border-top: 1px solid var(--ink-2);
   }
   .lg-never-toggle {
     display: flex;

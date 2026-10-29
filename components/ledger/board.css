@@ -187,7 +187,7 @@
     transition: background-color 120ms ease;
   }
   .lg-bcol[data-split] .lg-bstage + .lg-bstage {
-    border-top: 3px double var(--ink-2);
+    border-top: 1px solid var(--ink-2);
   }
   .lg-bstage[data-over] {
     background: var(--moss-wash);
@@ -196,7 +196,7 @@
   /* The station strip: a dot with the stage glyph, the stage name in small caps, a ruled line, and the count. */
   .lg-st-h {
     flex: none;
-    border-bottom: 3px double var(--ink-2);
+    border-bottom: 2px solid var(--ink-2);
     background: var(--paper-2);
   }
   .lg-st {
@@ -302,7 +302,7 @@
     display: flex;
     align-items: center;
     min-height: 26px;
-    border-top: 3px double var(--moss);
+    border-top: 2px solid var(--moss);
     color: var(--moss);
     font-weight: 600;
   }
@@ -521,7 +521,7 @@
     padding: 4px 0 6px;
     background: var(--sheet);
     border: 1px solid var(--edge);
-    border-top: 3px double var(--ink-2);
+    border-top: 1px solid var(--ink-2);
     border-radius: 0;
     box-shadow: 2px 2px 0 var(--ink-2);
     animation: lg-fade var(--dur-fast) var(--ease-out) both;
@@ -573,7 +573,7 @@
     overflow-y: auto;
     border: 0;
     border-left: 1px solid var(--edge);
-    border-top: 3px double var(--ink-2);
+    border-top: 1px solid var(--ink-2);
     border-radius: 0;
     background: var(--sheet);
     color: var(--ink);

@@ -370,7 +370,7 @@
   }
 
   /* ---------- The ruled page ---------- */
-  /* The double rule sits under the book title and marks a board turning over. It is used nowhere else. */
+  /* The double rule sits under the book title and above the workspaces, and a second one marks a board turning over. It is used nowhere else. */
   .lg-double-rule {
     height: 5px;
     background: linear-gradient(var(--ink-2) 0 1px, transparent 1px 4px, var(--ink-2) 4px 5px);
