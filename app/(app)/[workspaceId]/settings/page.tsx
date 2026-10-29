@@ -42,7 +42,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   ]);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
+    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">{workspace.name}: settings</h1>
         <Link href={`/${workspaceId}`} className="rounded border px-3 py-1">
@@ -191,6 +191,6 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           <p>AI is {ai.enabled ? "on" : "off"} for this workspace.</p>
         )}
       </section>
-    </main>
+    </div>
   );
 }

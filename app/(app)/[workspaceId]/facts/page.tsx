@@ -83,7 +83,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
+    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Fact sheet</h1>
         <Link href={`/${workspaceId}/settings`} className="rounded border px-3 py-1">
@@ -175,6 +175,6 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
           </ActionForm>
         </section>
       )}
-    </main>
+    </div>
   );
 }

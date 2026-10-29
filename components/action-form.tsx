@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useEffect, type ReactNode } from "react";
+import { ErrorLine } from "@/components/ledger/shared";
+import { useNotify } from "@/components/ledger/providers";
 import type { ActionResult } from "@/lib/validation";
 
 type Props = {
@@ -9,12 +11,21 @@ type Props = {
   successMessage?: string;
   // Asks "are you sure?" first; for removing someone or leaving.
   confirmMessage?: string;
+  // The main button of its page: a moss fill.
+  primary?: boolean;
   children?: ReactNode;
 };
 
-// Runs a server action and shows its { ok: false, error } message under the form.
-export function ActionForm({ action, submitLabel, successMessage, confirmMessage, children }: Props) {
+// Runs a server action. A refusal is written under the form, where the person is looking; a
+// success is written as a margin note.
+export function ActionForm({ action, submitLabel, successMessage, confirmMessage, primary = false, children }: Props) {
   const [state, formAction, pending] = useActionState(action, null);
+  const notify = useNotify();
+
+  useEffect(() => {
+    if (state?.ok && successMessage) notify(successMessage);
+  }, [state, successMessage, notify]);
+
   return (
     <form
       action={formAction}
@@ -24,15 +35,14 @@ export function ActionForm({ action, submitLabel, successMessage, confirmMessage
       className="flex flex-wrap items-center gap-2"
     >
       {children}
-      <button type="submit" disabled={pending} className="rounded border px-3 py-1 disabled:opacity-50">
+      <button type="submit" disabled={pending} className={`lg-btn ${primary ? "lg-btn-primary" : ""}`}>
         {pending ? "Working..." : submitLabel}
       </button>
       {state && !state.ok && (
-        <p role="alert" className="w-full text-sm text-red-600">
-          {state.error}
-        </p>
+        <div className="w-full">
+          <ErrorLine>{state.error}</ErrorLine>
+        </div>
       )}
-      {state?.ok && successMessage && <p className="w-full text-sm text-green-700">{successMessage}</p>}
     </form>
   );
 }

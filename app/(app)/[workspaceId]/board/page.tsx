@@ -66,7 +66,7 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
     href({ show: column.open ? filters.show.filter((s) => s !== column.stage) : [...filters.show, column.stage] });
 
   return (
-    <main className="flex flex-col gap-6 p-8">
+    <div className="flex flex-col gap-6 p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Board</h1>
         <div className="flex gap-2">
@@ -215,6 +215,6 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
           </ul>
         )}
       </section>
-    </main>
+    </div>
   );
 }

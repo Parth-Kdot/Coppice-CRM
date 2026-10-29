@@ -1,0 +1,659 @@
+/* The app shell: a bound spine with labelled tabs, and the page beside it. */
+
+@layer components {
+  .lg-shell {
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: var(--spine-w) minmax(0, 1fr);
+    background: var(--paper);
+  }
+
+  /* ---------- The spine ---------- */
+  /* Fixed to the whole viewport height, so the spine never stops mid-page. */
+  .lg-spine {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--spine-w);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px 0 12px;
+    background: var(--paper-2);
+    border-right: 1px solid var(--edge);
+  }
+  .lg-spine-mark {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 14px;
+    color: var(--moss);
+  }
+  .lg-spine-mark a {
+    display: block;
+    padding: 4px;
+    border-radius: 3px;
+  }
+  .lg-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    flex: 1;
+    min-height: 0;
+    list-style: none;
+  }
+  .lg-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 68px;
+    height: 56px;
+    margin-left: 4px;
+    padding: 4px 2px 3px;
+    background: var(--paper);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    color: var(--ink);
+    line-height: 1.1;
+    text-decoration: none;
+    transition:
+      background-color var(--dur-fast) ease,
+      color var(--dur-fast) ease;
+  }
+  .lg-tab:hover {
+    background: var(--sheet);
+  }
+  .lg-tab-label {
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  /* The one selected state: a moss fill. */
+  .lg-tab[aria-current="page"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+  }
+  .lg-tab:focus-visible {
+    outline-offset: 3px;
+  }
+  .lg-spine-user {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* ---------- User button and menu ---------- */
+  .lg-user-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+  .lg-user-btn:hover,
+  .lg-user-btn[aria-expanded="true"] {
+    background: var(--paper);
+    border-color: var(--ink-2);
+  }
+  .lg-menu {
+    position: absolute;
+    z-index: 90;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    padding: 14px;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    background: var(--sheet);
+    border: 1px solid var(--ink-2);
+    border-radius: 3px;
+    animation: lg-rise var(--dur-fast) var(--ease-out) both;
+  }
+  .lg-menu-spine {
+    left: calc(100% + 4px);
+    bottom: 0;
+  }
+  .lg-menu-header {
+    right: 0;
+    top: calc(100% + 6px);
+  }
+  .lg-menu-name {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: var(--fs-3);
+    line-height: 1.2;
+  }
+  .lg-menu-email {
+    overflow-wrap: anywhere;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-menu-sect {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 38px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink);
+    font-size: var(--fs-2);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lg-menu-item:hover {
+    background: var(--paper-2);
+  }
+
+  /* ---------- The page ---------- */
+  .lg-pagecol {
+    grid-column: 2;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .lg-bar {
+    display: none;
+  }
+  .lg-head {
+    padding: 14px 32px 0 36px;
+  }
+  .lg-head-line {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 8px;
+  }
+  .lg-book {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-size: var(--fs-3);
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .lg-book a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .lg-book a:focus-visible {
+    outline-offset: -2px;
+  }
+  .lg-book a:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+  }
+  .lg-book-volume {
+    font-weight: 400;
+    color: var(--ink-2);
+  }
+  .lg-pagename {
+    flex: none;
+    color: var(--ink-2);
+  }
+  .lg-main {
+    flex: 1;
+    min-width: 0;
+    padding: 22px 32px 72px 36px;
+    outline: none;
+  }
+  .lg-main-narrow {
+    max-width: 1100px;
+  }
+
+  /* ---------- The footer: the lane for margin notes, then the status line ---------- */
+  .lg-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+  }
+  .lg-notes-lane {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 0 32px 0 36px;
+    background: var(--paper);
+  }
+  .lg-notes-lane:not(:empty) {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-status {
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    height: 30px;
+    padding: 0 32px 0 36px;
+    border-top: 1px solid var(--rule);
+    background: var(--paper-2);
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .lg-pagehead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px 24px;
+    margin-bottom: 18px;
+  }
+  .lg-pagehead p.lg-sub {
+    margin-top: 4px;
+  }
+  .lg-h1-count {
+    color: var(--ink-2);
+    font-weight: 400;
+  }
+  .lg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ---------- The search bar in the page header ---------- */
+  .lg-searchbar {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: min(380px, 40vw);
+    min-height: 38px;
+    padding: 0 8px 0 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink-2);
+    font-size: var(--fs-2);
+    text-align: left;
+    cursor: text;
+    transition: border-color var(--dur-fast) ease;
+  }
+  .lg-searchbar:hover {
+    border-color: var(--ink-2);
+  }
+  .lg-searchbar svg {
+    flex: none;
+  }
+  .lg-searchbar-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-keycaps {
+    flex: none;
+    display: inline-flex;
+    gap: 4px;
+  }
+  .lg-keycaps kbd,
+  .lg-pal-foot kbd {
+    padding: 0 6px;
+    border: 1px solid var(--edge);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  /* ---------- The command palette: an index card ---------- */
+  .lg-pal {
+    margin: 11vh auto auto;
+    padding: 0;
+    width: min(660px, calc(100vw - 24px));
+    max-height: min(560px, 78vh);
+    overflow: hidden;
+    border: 1px solid var(--ink-2);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+  }
+  .lg-pal[open] {
+    display: flex;
+    flex-direction: column;
+    animation: lg-pal-in var(--dur-fast) var(--ease-out) both;
+  }
+  .lg-pal::backdrop {
+    background: rgb(31 27 20 / 0.34);
+  }
+  @keyframes lg-pal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .lg-pal-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .lg-pal-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--edge);
+    color: var(--ink-2);
+  }
+  .lg-pal-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-size: var(--fs-4);
+    font-weight: 500;
+    outline: none;
+  }
+  .lg-pal-input::placeholder {
+    color: #6f6553;
+  }
+  .lg-pal-close {
+    flex: none;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .lg-pal-close:hover {
+    background: var(--paper-2);
+  }
+  .lg-pal-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .lg-pal-head {
+    padding: 8px 14px 6px;
+    color: var(--ink-2);
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper-2);
+  }
+  .lg-pal-opt {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 52px;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+  }
+  .lg-pal-opt[data-active] {
+    background: var(--paper-2);
+    box-shadow: inset 3px 0 0 var(--moss);
+  }
+  .lg-pal-ico {
+    display: grid;
+    place-items: center;
+    color: var(--ink-2);
+  }
+  .lg-pal-opt[data-active] .lg-pal-ico {
+    color: var(--moss);
+  }
+  .lg-pal-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 6px 10px;
+  }
+  .lg-pal-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .lg-pal-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-pal-meta {
+    max-width: 220px;
+    padding-right: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-1);
+  }
+  .lg-pal-none {
+    padding: 22px 16px;
+    color: var(--ink-2);
+  }
+  .lg-pal-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-pal-foot-end {
+    margin-left: auto;
+  }
+
+  /* ---------- The phone's bottom tab bar and its More sheet ---------- */
+  .lg-tabbar {
+    display: none;
+  }
+  .lg-more-sheet {
+    margin: auto 0 0;
+    padding: 0;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 86dvh;
+    border: 0;
+    border-top: 1px solid var(--ink-2);
+    border-radius: 0;
+    background: var(--sheet);
+    color: var(--ink);
+  }
+  .lg-more-sheet::backdrop {
+    background: rgb(31 27 20 / 0.34);
+  }
+  .lg-more-sheet[open] {
+    animation: lg-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-more-body {
+    padding: 14px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  .lg-more-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--edge);
+  }
+  .lg-more-links {
+    list-style: none;
+  }
+  .lg-more-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .lg-more-link span {
+    flex: 1;
+  }
+  .lg-more-link[aria-current="page"] {
+    color: var(--moss);
+    font-weight: 600;
+  }
+  .lg-more-user {
+    margin-top: 16px;
+  }
+
+  /* ---------- Phone: the spine gives way to a bottom tab bar ---------- */
+  @media (max-width: 760px) {
+    .lg-shell {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-pagecol {
+      grid-column: 1;
+    }
+    .lg-spine {
+      display: none;
+    }
+    .lg-tabbar {
+      display: block;
+      position: fixed;
+      z-index: 40;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--paper-2);
+      border-top: 1px solid var(--edge);
+    }
+    .lg-tabbar ul {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      list-style: none;
+    }
+    .lg-tabbar-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      width: 100%;
+      min-height: 60px;
+      padding: 6px 2px 5px;
+      background: transparent;
+      color: var(--ink);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .lg-tabbar-item .lg-tab-label {
+      font-size: var(--fs-1);
+    }
+    /* The selected tab is the moss fill here too. */
+    .lg-tabbar-item[aria-current="page"] {
+      color: var(--paper);
+      background: var(--moss);
+    }
+    .lg-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: var(--paper-2);
+      border-bottom: 1px solid var(--edge);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .lg-bar-mark {
+      color: var(--moss);
+      flex: none;
+    }
+    .lg-bar-title {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: var(--font-display);
+      font-weight: 500;
+    }
+    .lg-head {
+      padding: 12px 16px 0;
+    }
+    .lg-head .lg-book,
+    .lg-searchbar {
+      display: none;
+    }
+    .lg-main {
+      padding: 16px 16px calc(88px + env(safe-area-inset-bottom));
+    }
+    .lg-status {
+      display: none;
+    }
+    .lg-foot {
+      bottom: calc(60px + env(safe-area-inset-bottom));
+    }
+    .lg-notes-lane {
+      padding: 0 12px;
+    }
+    /* The palette fills the screen. */
+    .lg-pal {
+      margin: 0;
+      width: 100vw;
+      max-width: 100vw;
+      height: 100dvh;
+      max-height: 100dvh;
+      border: 0;
+      border-radius: 0;
+    }
+    .lg-pal-meta {
+      max-width: 40vw;
+    }
+    .lg-pal-foot {
+      display: none;
+    }
+  }
+}
+
+/* A control reached by keyboard scrolls into view above the sticky footer line, not under it. */
+html {
+  scroll-padding-bottom: 56px;
+}
+@media (max-width: 760px) {
+  html {
+    scroll-padding-bottom: 130px;
+  }
+}

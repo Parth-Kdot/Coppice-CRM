@@ -1,21 +1,35 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Instrument_Sans, Newsreader } from "next/font/google";
 import { connection } from "next/server";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Display: Newsreader, a variable serif with an optical size axis, so large headings get the
+// tighter display cut and small ones the sturdier text cut. UI and data: Instrument Sans. Both
+// are self-hosted by next/font at build time.
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
   subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "BoilerPitch",
-  description: "Shared sponsorship pipeline for Purdue student orgs",
+  title: { default: "Coppice | A shared outreach pipeline for teams that turn over every year", template: "%s | Coppice" },
+  description:
+    "A shared outreach pipeline for student orgs and nonprofits. One officer claims each company, and the history stays when the board changes.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#F6F1E6",
+  colorScheme: "light",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -24,10 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // would then block.
   await connection();
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className={`${newsreader.variable} ${instrumentSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

@@ -1,10 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { SignOutButton } from "@/components/auth-buttons";
+import { boardYear } from "@/components/ledger/board-year";
+import { LogoMark } from "@/components/ledger/logo";
+import { Empty } from "@/components/ledger/shared";
 import { canCreateWorkspace } from "@/lib/auth";
 import { requireUser, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { acceptInvitation, createWorkspace } from "./actions";
+import "@/components/ledger/ledger.css";
+import "@/components/ledger/auth.css";
+
+export const metadata: Metadata = { title: "Your workspaces" };
 
 export default async function WorkspacesPage() {
   const user = await requireUser();
@@ -26,63 +34,101 @@ export default async function WorkspacesPage() {
 
   const canCreate = canCreateWorkspace(user.email);
   const nothingHere = memberships.length === 0 && invitations.length === 0;
+  const volume = boardYear(new Date()).long;
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 p-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Your workspaces</h1>
-        <SignOutButton />
+    <div className="lg-wslist">
+      <a className="lg-skip" href="#main">
+        Skip to the page
+      </a>
+      <header className="lg-wshead">
+        <Link href="/" className="lg-wslogo" aria-label="Coppice, home">
+          <LogoMark size={40} />
+          <span className="font-display text-[length:var(--fs-4)] font-medium tracking-[0.01em] text-ink">Coppice</span>
+        </Link>
+        <div className="lg-wsme">
+          <p className="lg-wsme-name">{user.name}</p>
+          <SignOutButton />
+        </div>
       </header>
+      <div className="lg-double-rule" />
 
-      {memberships.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {memberships.map(({ role, workspace }) => (
-            <li key={workspace.id}>
-              <Link href={`/${workspace.id}`} className="underline">
-                {workspace.name}
-              </Link>{" "}
-              <span className="text-sm text-zinc-500">({roleLabel(role as Role)})</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <main id="main" tabIndex={-1} className="lg-wsmain lg-page-enter">
+        <h1 className="lg-h1">Your workspaces</h1>
 
-      {invitations.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">Invitations</h2>
-          {invitations.map((invite) => (
-            <div key={invite.id} className="flex items-center gap-3">
-              <span>
-                {invite.workspace.name} as {roleLabel(invite.role === "owner" ? "owner" : "member")}
-              </span>
-              <ActionForm action={acceptInvitation} submitLabel="Join">
-                <input type="hidden" name="invitationId" value={invite.id} />
+        {memberships.length > 0 && (
+          <>
+            <p className="lg-sub">Open a volume to see its queue.</p>
+            <ul className="lg-shelf" aria-label="Your workspaces">
+              {memberships.map(({ role, workspace }, i) => (
+                <li key={workspace.id} className="lg-volume" data-tone={i % 3}>
+                  <Link href={`/${workspace.id}`} className="lg-vspine" aria-label={`${workspace.name}, ${roleLabel(role as Role)}`}>
+                    <span className="lg-vband" aria-hidden="true" />
+                    <span className="lg-vtitle">{workspace.name}</span>
+                    <span className="lg-vband" aria-hidden="true" />
+                    <span className="lg-vyear" aria-hidden="true">
+                      {volume}
+                    </span>
+                  </Link>
+                  <p className="lg-vcap">
+                    <span className="lg-vname">{workspace.name}</span> ({roleLabel(role as Role)})
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <div className="lg-shelfedge" aria-hidden="true" />
+          </>
+        )}
+
+        {invitations.length > 0 && (
+          <section className="lg-wssect" aria-labelledby="ws-invites">
+            <h2 id="ws-invites" className="lg-h2">
+              Invitations
+            </h2>
+            <ul className="lg-invites">
+              {invitations.map((invite) => (
+                <li key={invite.id}>
+                  <p>
+                    <strong>{invite.workspace.name}</strong> as {roleLabel(invite.role === "owner" ? "owner" : "member")}
+                  </p>
+                  <ActionForm action={acceptInvitation} submitLabel="Join" primary>
+                    <input type="hidden" name="invitationId" value={invite.id} />
+                  </ActionForm>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {nothingHere && !canCreate && (
+          <Empty kind="no-workspace">
+            <p className="font-display text-[length:var(--fs-4)] font-medium leading-snug">
+              No workspace is linked to <strong>{user.email}</strong>.
+            </p>
+            <p className="lg-sub mt-1">Ask your sponsorship chair to invite this email, or sign in with a different Google account.</p>
+            <div className="mt-3">
+              <SignOutButton label="Use a different account" />
+            </div>
+          </Empty>
+        )}
+
+        {canCreate && (
+          <section className="lg-wssect" aria-labelledby="ws-create">
+            <h2 id="ws-create" className="lg-h2">
+              Create a workspace
+            </h2>
+            <p className="lg-sub mt-1">You become its Owner. Invite your officers from Settings afterwards.</p>
+            <div className="lg-createform">
+              <ActionForm action={createWorkspace} submitLabel="Create" primary>
+                <label className="block flex-1">
+                  <span className="lg-label">Workspace name</span>
+                  <input name="name" required placeholder="Your org's name" className="lg-input" autoComplete="off" />
+                </label>
               </ActionForm>
             </div>
-          ))}
-        </section>
-      )}
-
-      {nothingHere && !canCreate && (
-        <section className="flex flex-col gap-3">
-          <p>
-            No workspace is linked to <strong>{user.email}</strong>. Ask your sponsorship chair to invite
-            this email, or sign in with a different Google account.
-          </p>
-          <div>
-            <SignOutButton label="Use a different account" />
-          </div>
-        </section>
-      )}
-
-      {canCreate && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">Create a workspace</h2>
-          <ActionForm action={createWorkspace} submitLabel="Create">
-            <input name="name" required placeholder="Org name" aria-label="Workspace name" className="rounded border px-2 py-1" />
-          </ActionForm>
-        </section>
-      )}
-    </main>
+          </section>
+        )}
+      </main>
+    </div>
   );
 }

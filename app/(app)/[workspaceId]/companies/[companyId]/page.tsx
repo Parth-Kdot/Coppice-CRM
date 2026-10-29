@@ -66,7 +66,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
   );
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
+    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
       <header className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{company.name}</h1>
@@ -256,7 +256,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
           </ActionForm>
         </section>
       )}
-    </main>
+    </div>
   );
 }
 

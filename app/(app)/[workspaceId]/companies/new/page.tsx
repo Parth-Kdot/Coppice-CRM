@@ -10,7 +10,7 @@ export default async function NewCompanyPage({ params }: PageProps<"/[workspaceI
   const industries = await listIndustries({ userId, workspaceId });
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 p-8">
+    <div className="mx-auto flex max-w-2xl flex-col gap-6 p-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Add a company</h1>
         <Link href={`/${workspaceId}`} className="rounded border px-3 py-1">
@@ -18,6 +18,6 @@ export default async function NewCompanyPage({ params }: PageProps<"/[workspaceI
         </Link>
       </header>
       <CompanyForm mode="create" workspaceId={workspaceId} industries={industries} save={createCompany} unarchive={unarchiveCompany} />
-    </main>
+    </div>
   );
 }

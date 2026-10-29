@@ -1,0 +1,273 @@
+/* Sign-in and the workspace list: the two pages that come before a workspace is open. */
+
+@layer components {
+  .lg-google {
+    min-height: 48px;
+    padding: 0 20px;
+    gap: 10px;
+    font-size: var(--fs-3);
+    background: #fff;
+  }
+  .lg-google:hover:not(:disabled) {
+    background: var(--sheet);
+  }
+
+  /* ---------- Sign-in: the stool on the left, the way in on the right ---------- */
+  .lg-auth {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 100dvh;
+  }
+  .lg-auth-art {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 28px;
+    padding: 48px 32px;
+    background: var(--paper-2);
+    border-right: 1px solid var(--edge);
+  }
+  .lg-auth-stool {
+    display: block;
+    width: min(380px, 70%);
+    height: auto;
+    color: var(--moss);
+    overflow: visible;
+  }
+  .lg-auth-line {
+    max-width: 18ch;
+    text-align: center;
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: var(--fs-5);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .lg-auth-main {
+    display: grid;
+    align-content: center;
+    justify-items: start;
+    gap: 14px;
+    padding: 48px clamp(24px, 7vw, 112px);
+    outline: none;
+  }
+  .lg-auth-word {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--moss);
+  }
+  .lg-auth-title {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: var(--fs-6);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+  .lg-auth-sub {
+    max-width: 38ch;
+    font-size: var(--fs-3);
+    color: var(--ink-2);
+  }
+  .lg-auth-back {
+    margin-top: 8px;
+    font-size: var(--fs-2);
+  }
+  @media (max-width: 860px) {
+    .lg-auth {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-auth-art {
+      gap: 12px;
+      padding: 28px 24px 24px;
+      border-right: 0;
+      border-bottom: 1px solid var(--edge);
+    }
+    .lg-auth-stool {
+      width: 150px;
+    }
+    .lg-auth-line {
+      display: none;
+    }
+    .lg-auth-main {
+      padding: 32px 20px 48px;
+    }
+    .lg-auth-title {
+      font-size: var(--fs-5);
+    }
+  }
+
+  /* ---------- The workspace list ---------- */
+  .lg-wslist {
+    min-height: 100dvh;
+    padding: 0 clamp(16px, 4vw, 56px) 56px;
+  }
+  .lg-wshead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0 10px;
+  }
+  .lg-wslogo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--moss);
+    text-decoration: none;
+  }
+  .lg-wsme {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .lg-wsme-name {
+    color: var(--ink-2);
+    font-size: var(--fs-2);
+  }
+  .lg-wsmain {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding-top: 34px;
+    outline: none;
+  }
+  .lg-wsmain > .lg-sub {
+    margin-top: 6px;
+  }
+
+  /* Each workspace is a bound volume on a shelf. */
+  .lg-shelf {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 22px 30px;
+    margin-top: 28px;
+    padding: 0 18px;
+  }
+  .lg-volume {
+    width: 176px;
+  }
+  .lg-vspine {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    width: 96px;
+    height: 300px;
+    margin: 0 auto;
+    padding: 14px 0 12px;
+    border: 1px solid #1d3320;
+    border-radius: 2px;
+    background: var(--moss);
+    color: var(--paper);
+    text-decoration: none;
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .lg-volume[data-tone="1"] .lg-vspine {
+    background: var(--ink);
+    border-color: #000;
+  }
+  .lg-volume[data-tone="2"] .lg-vspine {
+    background: #3a5d3c;
+  }
+  .lg-vspine:hover {
+    transform: translateY(-4px);
+  }
+  .lg-vband {
+    display: block;
+    width: calc(100% - 18px);
+    height: 5px;
+    border-top: 1px solid rgb(246 241 230 / 0.55);
+    border-bottom: 1px solid rgb(246 241 230 / 0.55);
+  }
+  .lg-vtitle {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 190px;
+    padding: 8px 0;
+    overflow: hidden;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: var(--fs-3);
+    line-height: 1.2;
+    text-align: center;
+  }
+  .lg-vyear {
+    margin-top: 6px;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--paper);
+  }
+  .lg-shelfedge {
+    height: 2px;
+    margin-top: -1px;
+    background: var(--ink-2);
+  }
+  .lg-vcap {
+    margin-top: 14px;
+    text-align: center;
+    font-size: var(--fs-2);
+  }
+  .lg-vname {
+    font-weight: 600;
+  }
+  .lg-wssect {
+    max-width: 660px;
+    margin-top: 44px;
+  }
+  .lg-invites {
+    list-style: none;
+    margin-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-invites li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-createform {
+    max-width: 520px;
+    margin-top: 12px;
+  }
+  .lg-createform form {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+  }
+  .lg-createform form > label {
+    flex: 1;
+  }
+  @media (max-width: 640px) {
+    .lg-shelf {
+      justify-content: center;
+      padding: 0;
+    }
+    .lg-vspine {
+      height: 240px;
+    }
+    .lg-volume {
+      width: 150px;
+    }
+    .lg-wsme-name {
+      display: none;
+    }
+    .lg-createform form {
+      flex-wrap: wrap;
+    }
+  }
+}

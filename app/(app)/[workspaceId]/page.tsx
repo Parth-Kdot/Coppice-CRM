@@ -59,7 +59,7 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{workspace.name}</h1>
@@ -129,6 +129,6 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
           </>
         )}
       </section>
-    </main>
+    </div>
   );
 }

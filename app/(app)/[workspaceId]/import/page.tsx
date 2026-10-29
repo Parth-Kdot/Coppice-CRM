@@ -8,7 +8,7 @@ export default async function ImportPage({ params }: PageProps<"/[workspaceId]/i
   await requireMembershipOr404(workspaceId);
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Import companies</h1>
         <Link href={`/${workspaceId}`} className="rounded border px-3 py-1">
@@ -20,6 +20,6 @@ export default async function ImportPage({ params }: PageProps<"/[workspaceId]/i
         Companies are added as Not contacted, with at most one contact each.
       </p>
       <CsvImporter workspaceId={workspaceId} preview={previewImport} run={runImport} />
-    </main>
+    </div>
   );
 }
