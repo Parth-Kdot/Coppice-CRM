@@ -336,8 +336,9 @@ html.lenis body {
   font-size: var(--fs-2);
 }
 @media (max-width: 1100px) {
+  /* The fixed nav is 64px tall, so 72px keeps the top of the drawing clear of it. */
   .ld-hero {
-    padding-top: 40px;
+    padding-top: 72px;
   }
   .ld-hero-grid {
     align-items: start;
