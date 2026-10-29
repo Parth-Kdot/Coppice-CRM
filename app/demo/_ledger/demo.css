@@ -1,0 +1,47 @@
+/* The Demo section of the user menu: quiet, collapsed until opened. */
+@layer components {
+  .lg-demo-sect {
+    font-size: var(--fs-1);
+  }
+  .lg-demo-title {
+    cursor: pointer;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+  }
+  .lg-demo-hint {
+    padding: 0 8px;
+    margin-bottom: 8px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-demo-sect .lg-menu-item {
+    font-size: var(--fs-1);
+    min-height: 32px;
+  }
+  .lg-demo-sect .lg-menu-item[aria-pressed="true"] {
+    background: var(--moss-wash);
+  }
+  .lg-demo-seg {
+    display: flex;
+    gap: 6px;
+    padding: 0 8px 8px;
+  }
+  .lg-demo-seg button {
+    flex: 1;
+    min-height: 32px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-1);
+    cursor: pointer;
+  }
+  .lg-demo-seg button[aria-pressed="true"] {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+  }
+}

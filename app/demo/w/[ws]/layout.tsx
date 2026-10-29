@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { WorkspaceShell } from "../../_ledger/shell";
+import { DemoWorkspaceShell } from "../../_ledger/workspace-shell";
 
-// Every workspace screen sits in the Ledger shell: the spine, the page header, the main column.
+// Every workspace screen sits in the real shell: the spine, the page header, the status line.
 export default async function WorkspaceLayout({ children, params }: { children: ReactNode; params: Promise<{ ws: string }> }) {
   const { ws } = await params;
-  return <WorkspaceShell ws={ws}>{children}</WorkspaceShell>;
+  return <DemoWorkspaceShell ws={ws}>{children}</DemoWorkspaceShell>;
 }

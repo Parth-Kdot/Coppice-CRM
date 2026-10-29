@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import { ImportScreen } from "../../../_ledger/screens/import";
+import { Suspense } from "react";
+import { ImportPage } from "../../../_ledger/pages/import-page";
 
-export const metadata: Metadata = { title: "Import · Coppice" };
+export const metadata: Metadata = { title: "Import" };
 
-export default async function ImportPage({ params }: { params: Promise<{ ws: string }> }) {
+export default async function Page({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
-  return <ImportScreen ws={ws} />;
+  return (
+    <Suspense>
+      <ImportPage ws={ws} />
+    </Suspense>
+  );
 }

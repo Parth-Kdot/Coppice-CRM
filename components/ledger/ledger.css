@@ -1,0 +1,838 @@
+/* ==========================================================================================
+   Ledger, shared styles. Tokens live in app/globals.css. Everything here is plain CSS in a file,
+   so the strict style-src policy allows it. Motion is short (120 to 480 ms) and never blocks input.
+   Rules of the house: square paper surfaces, a 3 px radius on controls only, no soft shadows, one
+   selected state (a moss fill), links always underlined, a focus ring on every control.
+   ========================================================================================== */
+
+/* ---------- Keyframes ---------- */
+
+@keyframes lg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lg-tick-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes lg-ribbon-drop {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes lg-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  30% {
+    transform: translateX(-4px);
+  }
+  65% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes lg-settle-bg {
+  from {
+    background-color: var(--paper-2);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes lg-note-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes lg-note-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lg-sprout-stem {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes lg-sprout-leaf {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes lg-quill-write {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+@keyframes lg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Components ---------- */
+
+@layer components {
+  /* Type. Display is Libre Caslon Text at weight 400. */
+  .lg-h1,
+  .lg-h2,
+  .lg-h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .lg-h1 {
+    font-size: var(--fs-5);
+    line-height: 1.12;
+    letter-spacing: normal;
+  }
+  .lg-h2 {
+    font-size: var(--fs-4);
+    line-height: 1.2;
+    letter-spacing: normal;
+  }
+  .lg-h3 {
+    font-size: var(--fs-3);
+    line-height: 1.25;
+  }
+  @media (min-width: 900px) {
+    .lg-h1 {
+      font-size: var(--fs-6);
+    }
+  }
+  /* The label role: column headers and the few labels that sit above a group. Uppercase with
+     tracking, because Public Sans has no small caps of its own. */
+  .lg-sc {
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  /* A plain bold label for a name above a value: no tracking, no capitals. */
+  .lg-tag {
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  /* The one italic serif role: a quoted note. */
+  .lg-quote {
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+  /* Tabular figures only where numbers line up: counts, dates, overdue words, chips and the status line.
+     Running text keeps its proportional figures and its normal hyphen. */
+  .lg-num,
+  .lg-od,
+  .lg-chipbody,
+  .lg-status,
+  .lg-h1-count,
+  .lg-total-n,
+  .lg-qtime {
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-muted {
+    color: var(--ink-2);
+  }
+  .lg-sub {
+    max-width: 65ch;
+    color: var(--ink-2);
+  }
+
+  /* A number that changes crossfades instead of jumping. */
+  .lg-count {
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+    animation: lg-fade var(--dur-base) var(--ease-out) both;
+  }
+
+  /* ---------- Buttons ---------- */
+  .lg-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    line-height: 1.1;
+    white-space: nowrap;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease,
+      color var(--dur-fast) ease;
+  }
+  .lg-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-btn:disabled,
+  .lg-btn[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .lg-btn-primary {
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+  }
+  .lg-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--moss-2);
+    border-color: var(--moss-2);
+  }
+  .lg-btn-quiet {
+    background: transparent;
+    border-color: transparent;
+    color: var(--moss);
+    padding: 0 8px;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .lg-btn-quiet:hover:not(:disabled) {
+    background: var(--paper-2);
+    border-color: transparent;
+  }
+  .lg-btn-sm {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: var(--fs-1);
+  }
+  .lg-btn-block {
+    width: 100%;
+  }
+  .lg-btn-shake {
+    animation: lg-shake var(--dur-base) ease-in-out;
+  }
+
+  /* A text link: moss, always underlined. */
+  .lg-link {
+    color: var(--moss);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .lg-link:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  /* ---------- Forms ---------- */
+  .lg-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .lg-hint {
+    font-size: var(--fs-1);
+    color: var(--ink-2);
+  }
+  .lg-input,
+  .lg-select,
+  .lg-textarea {
+    display: block;
+    width: 100%;
+    min-height: 40px;
+    padding: 7px 10px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    line-height: 1.35;
+    transition: border-color var(--dur-fast) ease;
+  }
+  .lg-input::placeholder,
+  .lg-textarea::placeholder {
+    color: #6f6553;
+  }
+  .lg-input:hover,
+  .lg-select:hover,
+  .lg-textarea:hover {
+    border-color: var(--ink-2);
+  }
+  .lg-input:focus-visible,
+  .lg-select:focus-visible,
+  .lg-textarea:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 1px;
+    border-color: var(--moss-2);
+  }
+  .lg-input:disabled,
+  .lg-select:disabled,
+  .lg-textarea:disabled {
+    background: var(--paper-2);
+    color: var(--ink-2);
+  }
+  .lg-select {
+    appearance: none;
+    padding-right: 30px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%231F1B14' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.500 1.500 6 6l4.500-4.500'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+  .lg-textarea {
+    resize: vertical;
+    min-height: 84px;
+  }
+  .lg-check {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--moss);
+  }
+
+  /* Messages that sit under the control that caused them. */
+  .lg-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    color: var(--rust);
+    font-size: var(--fs-2);
+    font-weight: 500;
+  }
+  .lg-error svg {
+    flex: none;
+    margin-top: 2px;
+  }
+  .lg-ok {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--moss);
+    font-size: var(--fs-2);
+    font-weight: 500;
+  }
+  .lg-warn-box {
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+    border-radius: 2px;
+    padding: 12px 14px;
+  }
+
+  /* ---------- The ruled page ---------- */
+  /* The double rule sits under the book title and above the workspaces, and a second one marks a board turning over. It is used nowhere else. */
+  .lg-double-rule {
+    height: 5px;
+    background: linear-gradient(var(--ink-2) 0 1px, transparent 1px 4px, var(--ink-2) 4px 5px);
+  }
+  .lg-rule {
+    border: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* The double rule where one board's entries end and the next board's begin. */
+  .lg-turnover {
+    position: relative;
+    height: 22px;
+    margin: 6px 0;
+    background: linear-gradient(var(--ink-2) 0 1px, transparent 1px 4px, var(--ink-2) 4px 5px) center / 100% 5px no-repeat;
+  }
+  .lg-turnover-label {
+    position: absolute;
+    left: 56px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0 8px;
+    background: var(--paper);
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lg-sheet .lg-turnover-label,
+  .lg-leaf-page .lg-turnover-label {
+    background: var(--sheet);
+  }
+
+  /* The board-year margin: "26-27" in the margin of a ledger table. */
+  .lg-margin {
+    display: inline-block;
+    min-width: 44px;
+    padding-right: 8px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    font-size: var(--fs-1);
+    font-weight: 500;
+  }
+
+  /* A slip of paper: cards, panels. A hairline border and nothing floating. */
+  .lg-slip {
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 0;
+  }
+
+  /* ---------- Badges and chips ---------- */
+  .lg-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper-2);
+    color: var(--ink);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    line-height: 1.4;
+    max-width: 100%;
+  }
+  /* Yours: a solid ink chip. */
+  .lg-badge-mine {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+  }
+  /* Held by someone else: a solid, quiet chip. */
+  .lg-badge-theirs {
+    border-color: var(--rule);
+    background: var(--paper-2);
+    color: var(--ink);
+  }
+  .lg-badge-stale {
+    border-color: var(--edge);
+    background: transparent;
+  }
+  .lg-late {
+    color: var(--rust);
+    font-weight: 600;
+  }
+
+  /* ---------- Overdue levels ---------- */
+  .lg-od {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+  .lg-od svg {
+    flex: none;
+  }
+  .lg-od[data-level="upcoming"] {
+    color: var(--ink-2);
+  }
+  .lg-od[data-level="overdue"] {
+    color: var(--rust);
+  }
+  .lg-od[data-level="long"] {
+    color: var(--rust);
+    font-weight: 600;
+  }
+  /* A long overdue row carries a solid 3 px rust rule down its left edge, in the margin column. */
+  .lg-rule-row[data-od="long"] {
+    position: relative;
+  }
+  .lg-rule-row[data-od="long"]::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--rust);
+    pointer-events: none;
+  }
+
+  /* ---------- A ledger menu: a ruled choice card where a native select would be ---------- */
+  .lg-lmenu {
+    position: relative;
+    display: inline-block;
+  }
+  .lg-lmenu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 10px 0 12px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+  .lg-lmenu-btn:hover,
+  .lg-lmenu-btn[aria-expanded="true"] {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-lmenu-value {
+    font-weight: 600;
+  }
+  .lg-lmenu-block {
+    display: block;
+  }
+  .lg-lmenu-block .lg-lmenu-btn {
+    width: 100%;
+  }
+  .lg-lmenu-block .lg-lmenu-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-lmenu-block .lg-lmenu-list {
+    min-width: 100%;
+  }
+  .lg-lmenu-list {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 300px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: 4px 0;
+    list-style: none;
+    background: var(--sheet);
+    border: 1px solid var(--ink-2);
+    border-radius: 3px;
+    animation: lg-rise var(--dur-fast) var(--ease-out) both;
+  }
+  .lg-lmenu-right {
+    left: auto;
+    right: 0;
+  }
+  .lg-lmenu-opt {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-height: 38px;
+    padding: 6px 14px 6px 8px;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+    outline: none;
+  }
+  .lg-lmenu-opt:last-child {
+    border-bottom: 0;
+  }
+  .lg-lmenu-opt[data-active] {
+    background: var(--paper-2);
+  }
+  .lg-lmenu-opt[aria-selected="true"] {
+    font-weight: 600;
+  }
+  .lg-lmenu-opt:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -2px;
+  }
+  .lg-lmenu-tick {
+    display: inline-flex;
+    flex: none;
+    width: 18px;
+    align-self: center;
+    color: var(--moss);
+  }
+  .lg-lmenu-opt > span:not(.lg-lmenu-tick):not(.lg-lmenu-hint) {
+    white-space: nowrap;
+  }
+  .lg-lmenu-hint {
+    margin-left: auto;
+    padding-left: 12px;
+    white-space: nowrap;
+    font-size: var(--fs-1);
+    font-weight: 400;
+  }
+
+  /* ---------- Disclosure: a row grows to fit ---------- */
+  .lg-disclose {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--dur-base) var(--ease-out);
+  }
+  .lg-disclose[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+  .lg-disclose > .lg-disclose-inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .lg-disclose .lg-disclose-fade {
+    opacity: 0;
+    transition: opacity var(--dur-fast) ease;
+  }
+  .lg-disclose[data-open="true"] .lg-disclose-fade {
+    opacity: 1;
+    transition-delay: 60ms;
+  }
+
+  /* ---------- Marks ---------- */
+  .lg-tick {
+    color: var(--moss);
+    flex: none;
+  }
+  .lg-tick path {
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1;
+  }
+  .lg-tick-draw path {
+    animation: lg-tick-draw 300ms var(--ease-out) forwards;
+  }
+
+  .lg-ribbon {
+    position: absolute;
+    top: 0;
+    z-index: 2;
+    display: block;
+    color: var(--gilt);
+    pointer-events: none;
+  }
+  .lg-ribbon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .lg-ribbon-sm {
+    width: 9px;
+    height: 18px;
+  }
+  .lg-ribbon-md {
+    width: 12px;
+    height: 24px;
+  }
+  .lg-ribbon-lg {
+    width: 16px;
+    height: 32px;
+  }
+  .lg-ribbon-drop {
+    animation: lg-ribbon-drop var(--dur-base) var(--ease-out) both;
+  }
+
+  /* Updated rows: an ink settle. */
+  .lg-settle {
+    animation: lg-settle-bg 600ms ease-out both;
+  }
+
+  .lg-page-enter {
+    animation: lg-rise var(--dur-base) var(--ease-out) both;
+  }
+
+  /* ---------- Empty states ---------- */
+  .lg-empty {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 28px 8px;
+    color: var(--ink-2);
+  }
+  .lg-empty-art {
+    flex: none;
+    color: var(--moss);
+  }
+  .lg-empty-title {
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    line-height: 1.3;
+  }
+  .lg-sprout-soil {
+    opacity: 0.7;
+  }
+  .lg-sprout-stem {
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 0;
+  }
+  .lg-sprout-leaf {
+    transform-box: fill-box;
+    transform-origin: 0% 100%;
+  }
+  .lg-sprout-leaf-r {
+    transform-origin: 0% 100%;
+  }
+  .lg-empty[data-grow="true"] .lg-sprout-stem {
+    animation: lg-sprout-stem var(--dur-slow) var(--ease-out) both;
+  }
+  .lg-empty[data-grow="true"] .lg-sprout-leaf-l {
+    animation: lg-sprout-leaf var(--dur-base) var(--ease-out) 420ms both;
+  }
+  .lg-empty[data-grow="true"] .lg-sprout-leaf-r {
+    animation: lg-sprout-leaf var(--dur-base) var(--ease-out) 580ms both;
+  }
+
+  /* ---------- The quill that writes while a draft is on its way ---------- */
+  .lg-quill-wait {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 0;
+  }
+  .lg-quill-wait svg {
+    flex: 1;
+    height: 28px;
+    color: var(--moss);
+  }
+  .lg-quill-wait path {
+    stroke-dasharray: 1 2;
+    animation: lg-quill-write 1500ms linear infinite;
+  }
+
+  /* ---------- Margin notes: the one place feedback is written ---------- */
+  /* In the workspace shell a note is written in the lane at the foot of the content column (the
+     footer, above the status line), so it never lies over the rows. Elsewhere it is fixed at the
+     bottom left. 360 px at most, the text wraps inside its box, and a note holds 3 s and then fades.
+     A refusal that belongs to a row is written in that row's own margin instead (.lg-rownote). */
+  .lg-notes {
+    position: fixed;
+    z-index: 120;
+    left: 24px;
+    bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    width: min(360px, calc(100vw - 48px));
+    pointer-events: none;
+  }
+  .lg-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: min(360px, 100%);
+    padding: 9px 14px 10px 12px;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+    pointer-events: auto;
+    animation:
+      lg-note-in var(--dur-base) var(--ease-out) both,
+      lg-note-out var(--dur-slow) ease 3000ms forwards;
+  }
+  .lg-note svg {
+    flex: none;
+    margin-top: 2px;
+  }
+  .lg-note-ok svg {
+    color: var(--moss);
+  }
+  .lg-note-error {
+    border-color: var(--rust);
+    color: var(--rust);
+  }
+  @media (max-width: 760px) {
+    .lg-notes {
+      left: 12px;
+      bottom: 24px;
+      width: calc(100vw - 24px);
+    }
+  }
+}
+
+/* ---------- Under reduced motion a note stays until it is removed ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lg-note {
+    animation: none;
+  }
+  .lg-quill-wait path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .lg-tick path {
+    stroke-dashoffset: 0 !important;
+  }
+}
+
+/* ---------- Dialog ---------- */
+.lg-dialog {
+  margin: auto;
+  padding: 0;
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--ink-2);
+  border-radius: 3px;
+  background: var(--sheet);
+  color: var(--ink);
+}
+.lg-dialog::backdrop {
+  background: rgb(31 27 20 / 0.38);
+}
+.lg-dialog[open] {
+  animation: lg-rise var(--dur-base) var(--ease-out) both;
+}
+
+/* Visually hidden, still read aloud. */
+.lg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

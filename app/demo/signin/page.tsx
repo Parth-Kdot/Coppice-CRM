@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { SignInScreen } from "../_ledger/screens/signin";
+import { SignInPage } from "../_ledger/pages/signin-page";
 
-export const metadata: Metadata = { title: "Sign in · Coppice" };
+export const metadata: Metadata = { title: "Sign in" };
 
-export default function SignInPage() {
-  return <SignInScreen />;
+export default function Page() {
+  return <SignInPage />;
 }

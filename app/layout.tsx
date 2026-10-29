@@ -1,27 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Sans, Newsreader } from "next/font/google";
+import { Libre_Caslon_Text, Public_Sans } from "next/font/google";
 import { connection } from "next/server";
 import "./globals.css";
 
-// Display: Newsreader, a variable serif with an optical size axis (no soft or wonky axes exist in it).
-// UI and data: Instrument Sans. Both are self-hosted by next/font at build time.
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
+// Display: Libre Caslon Text, a printer's Caslon that suits a book of record. UI and data: Public
+// Sans, a plain grotesque with tabular figures. Both are self-hosted by next/font at build time.
+const caslon = Libre_Caslon_Text({
+  variable: "--font-caslon",
   subsets: ["latin"],
+  weight: ["400", "700"],
   style: ["normal", "italic"],
-  axes: ["opsz"],
   display: "swap",
 });
 
-const instrumentSans = Instrument_Sans({
-  variable: "--font-instrument",
+const publicSans = Public_Sans({
+  variable: "--font-public",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Coppice | A shared outreach pipeline for teams that turn over every year",
+  title: { default: "Coppice | A shared outreach pipeline for teams that turn over every year", template: "%s | Coppice" },
   description:
     "A shared outreach pipeline for student orgs and nonprofits. One officer claims each company, and the history stays when the board changes.",
 };
@@ -37,7 +36,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // would then block.
   await connection();
   return (
-    <html lang="en" className={`${newsreader.variable} ${instrumentSans.variable} h-full antialiased`}>
+    <html lang="en" className={`${caslon.variable} ${publicSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

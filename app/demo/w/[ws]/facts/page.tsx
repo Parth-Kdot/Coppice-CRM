@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import { FactsScreen } from "../../../_ledger/screens/facts";
+import { Suspense } from "react";
+import { FactsPage } from "../../../_ledger/pages/facts-page";
 
-export const metadata: Metadata = { title: "Fact sheet · Coppice" };
+export const metadata: Metadata = { title: "Fact sheet" };
 
-export default async function FactsPage({ params }: { params: Promise<{ ws: string }> }) {
+export default async function Page({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
-  return <FactsScreen ws={ws} />;
+  return (
+    <Suspense>
+      <FactsPage ws={ws} />
+    </Suspense>
+  );
 }

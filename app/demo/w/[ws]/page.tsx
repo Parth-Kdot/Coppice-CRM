@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { QueueScreen } from "../../_ledger/screens/queue";
+import { QueuePage } from "../../_ledger/pages/queue-page";
 
-export const metadata: Metadata = { title: "Queue · Coppice" };
+export const metadata: Metadata = { title: "Queue" };
 
-export default async function QueuePage({ params }: { params: Promise<{ ws: string }> }) {
+export default async function Page({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
   return (
     <Suspense>
-      <QueueScreen ws={ws} />
+      <QueuePage ws={ws} />
     </Suspense>
   );
 }

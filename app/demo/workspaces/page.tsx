@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { WorkspacesScreen } from "../_ledger/screens/workspaces";
+import { WorkspacesPage } from "../_ledger/pages/workspaces-page";
 
-export const metadata: Metadata = { title: "Workspaces · Coppice" };
+export const metadata: Metadata = { title: "Your workspaces" };
 
-export default function WorkspacesPage() {
-  return <WorkspacesScreen />;
+export default function Page() {
+  return <WorkspacesPage />;
 }

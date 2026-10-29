@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { BoardScreen } from "../../../_ledger/screens/board";
+import { BoardPage } from "../../../_ledger/pages/board-page";
 
-export const metadata: Metadata = { title: "Board · Coppice" };
+export const metadata: Metadata = { title: "Board" };
 
-export default async function BoardPage({ params }: { params: Promise<{ ws: string }> }) {
+export default async function Page({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
   return (
     <Suspense>
-      <BoardScreen ws={ws} />
+      <BoardPage ws={ws} />
     </Suspense>
   );
 }

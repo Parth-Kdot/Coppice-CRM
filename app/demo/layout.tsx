@@ -1,13 +1,16 @@
 import type { ReactNode } from "react";
 import { DemoProvider } from "@/demo/store";
-import { LedgerProviders } from "./_ledger/providers";
+import { LedgerProviders } from "@/components/ledger/providers";
+import { DemoToolsProvider } from "./_ledger/form-actions";
 
-// Wraps every prototype screen under /demo in the shared mock state (demo/store.tsx), then in the
-// Ledger services (margin notes, confirmation dialog). The design branches draw everything else.
+// Wraps every screen under /demo in the in-browser store (demo/store.tsx), then in the margin
+// notes and the confirmation dialog the real app uses.
 export default function DemoLayout({ children }: { children: ReactNode }) {
   return (
     <DemoProvider>
-      <LedgerProviders>{children}</LedgerProviders>
+      <DemoToolsProvider>
+        <LedgerProviders>{children}</LedgerProviders>
+      </DemoToolsProvider>
     </DemoProvider>
   );
 }

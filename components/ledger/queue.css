@@ -1,0 +1,247 @@
+/* The queue: a totals line, a ruled table of follow-ups, and the never-contacted list under it. */
+
+@layer components {
+  /* ---------- The totals line: four counts across one rule ---------- */
+  .lg-totals {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 2px 0 20px;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--ink-2);
+  }
+  .lg-total {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 6px 14px;
+    border-right: 1px solid var(--rule);
+    color: var(--ink);
+    text-decoration: none;
+    transition: background-color var(--dur-fast) ease;
+  }
+  .lg-total:last-child {
+    border-right: 0;
+  }
+  a.lg-total:hover {
+    background: var(--paper-2);
+  }
+  .lg-total[aria-current="true"] {
+    background: var(--moss);
+    color: var(--paper);
+  }
+  .lg-total-n {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    margin-left: auto;
+    font-family: var(--font-display);
+    font-size: var(--fs-5);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-total-n[data-rust] {
+    color: var(--rust);
+  }
+  .lg-total[aria-current="true"] .lg-total-n {
+    color: var(--paper);
+  }
+  .lg-total-unit {
+    font-family: var(--font-sans);
+    font-size: var(--fs-1);
+  }
+
+  /* ---------- The table ---------- */
+  .lg-qtable {
+    container: queue / inline-size;
+  }
+  .lg-qhead,
+  .lg-qgrid {
+    display: grid;
+    grid-template-columns: 176px minmax(150px, 1.1fr) minmax(0, 1.5fr) 190px 116px;
+    column-gap: 14px;
+    align-items: center;
+    padding-inline: 14px;
+  }
+  .lg-qhead {
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--ink-2);
+    color: var(--ink-2);
+  }
+  .lg-qlist {
+    list-style: none;
+  }
+  .lg-qrow {
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-qrow:hover {
+    background: rgb(239 231 214 / 0.55);
+  }
+  .lg-qgrid {
+    min-height: var(--pitch);
+    padding-block: 2px;
+  }
+  .lg-qtime {
+    font-size: var(--fs-2);
+    white-space: nowrap;
+  }
+  .lg-qn {
+    min-width: 0;
+  }
+  .lg-qopen {
+    display: block;
+    max-width: 100%;
+    padding: 8px 0;
+    color: var(--ink);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lg-qopen:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+  }
+  .lg-qnote {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+  .lg-qclaim {
+    min-width: 0;
+  }
+  .lg-qact {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .lg-qact .lg-btn {
+    white-space: nowrap;
+  }
+
+  /* A refusal, written in the row's margin: ruled, plain, with the glyph and the words. */
+  .lg-rownote {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 14px 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+    color: var(--rust);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    animation: lg-note-in var(--dur-base) var(--ease-out) both;
+  }
+  .lg-rownote svg {
+    flex: none;
+  }
+
+  /* ---------- Under the table ---------- */
+  .lg-more {
+    margin-top: 14px;
+  }
+  .lg-never {
+    margin-top: 44px;
+  }
+  .lg-never-title {
+    border-top: 1px solid var(--ink-2);
+  }
+  .lg-never-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .lg-never-toggle:hover .lg-h2 {
+    text-decoration: underline;
+    text-decoration-color: var(--edge);
+    text-underline-offset: 5px;
+  }
+  .lg-never-count {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    color: var(--moss);
+  }
+
+  /* ---------- A narrower table: the note goes first ---------- */
+  @container queue (max-width: 899px) {
+    .lg-qhead,
+    .lg-qgrid {
+      grid-template-columns: 164px minmax(0, 1fr) 180px 110px;
+      column-gap: 10px;
+    }
+    .lg-qnote {
+      display: none;
+    }
+  }
+  /* A phone: each row is two lines. Line one is the company, line two the overdue words on the left and
+     the claim chip on the right. The button that fits sits under a held row. */
+  @container queue (max-width: 639px) {
+    .lg-qhead {
+      display: none;
+    }
+    .lg-qgrid {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "n n"
+        "t claim"
+        "act act";
+      row-gap: 0;
+      padding: 6px 4px 4px;
+    }
+    .lg-qn {
+      grid-area: n;
+    }
+    .lg-qopen {
+      padding: 6px 0 2px;
+      font-size: var(--fs-3);
+    }
+    .lg-qtime {
+      grid-area: t;
+    }
+    .lg-qclaim {
+      grid-area: claim;
+      justify-self: end;
+    }
+    .lg-qclaim .lg-chipbody {
+      min-height: 36px;
+    }
+    .lg-qact {
+      grid-area: act;
+      justify-content: flex-start;
+    }
+    .lg-qact:empty {
+      display: none;
+    }
+    .lg-qact .lg-btn {
+      min-height: 44px;
+    }
+    .lg-rownote {
+      margin-inline: 4px;
+    }
+  }
+  @media (max-width: 760px) {
+    .lg-totals {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lg-total {
+      min-height: 52px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .lg-total:nth-child(2n) {
+      border-right: 0;
+    }
+    .lg-total:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+  }
+}

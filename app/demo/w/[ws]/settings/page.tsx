@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import { SettingsScreen } from "../../../_ledger/screens/settings";
+import { Suspense } from "react";
+import { SettingsPage } from "../../../_ledger/pages/settings-page";
 
-export const metadata: Metadata = { title: "Settings · Coppice" };
+export const metadata: Metadata = { title: "Settings" };
 
-export default async function SettingsPage({ params }: { params: Promise<{ ws: string }> }) {
+export default async function Page({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
-  return <SettingsScreen ws={ws} />;
+  return (
+    <Suspense>
+      <SettingsPage ws={ws} />
+    </Suspense>
+  );
 }
