@@ -319,11 +319,11 @@ export const TRUST = {
 };
 
 export const START = {
-  headline: "Set up a workspace in four steps",
+  headline: "Get started in four steps",
   note: "You need a Google account and last year's sheet, if you have one.",
   steps: [
     { title: "Sign in with Google", body: "One click, with no new password to remember." },
-    { title: "Create a workspace, or join your chair's", body: "The chair creates it and becomes its Owner. Everyone else signs in with the invited email address and presses Join." },
+    { title: "Join your chair's workspace", body: "Workspaces are opened by request during the pilot. Once yours exists, officers sign in with the invited email address and press Join." },
     { title: "Invite your officers and set your claim window", body: "Owners invite officers by email address and set the claim window, 1 to 60 days, 14 by default. Coppice does not send the invite, so tell them to sign in." },
     { title: "Import your sheet and start claiming", body: "Upload last year's CSV, review any duplicate groups, then press Claim on the first company you plan to contact." },
   ],

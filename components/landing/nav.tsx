@@ -19,7 +19,7 @@ export function LandingNav({ signedIn }: { signedIn: boolean }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const main = signedIn ? { href: "/workspaces", label: "Open your workspaces" } : { href: "/signin", label: "Start a workspace" };
+  const main = signedIn ? { href: "/workspaces", label: "Open your workspaces" } : { href: "/signin", label: "Sign in with Google" };
   return (
     <header className="ld-nav" data-open={open}>
       <a className="lg-skip" href="#top-of-page">

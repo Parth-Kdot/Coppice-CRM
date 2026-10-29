@@ -59,14 +59,9 @@ export function Final({ signedIn }: { signedIn: boolean }) {
                 Open your workspaces
               </Link>
             ) : (
-              <>
-                <Link href="/signin" className="lg-btn lg-btn-primary ld-btn-lg">
-                  Start a workspace
-                </Link>
-                <Link href="/signin" className="lg-btn ld-btn-lg">
-                  Sign in
-                </Link>
-              </>
+              <Link href="/signin" className="lg-btn lg-btn-primary ld-btn-lg">
+                Sign in with Google
+              </Link>
             )}
           </div>
         </div>
