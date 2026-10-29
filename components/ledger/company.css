@@ -92,9 +92,10 @@
     border-color: var(--ink-2);
   }
   .lg-ichip[aria-pressed="true"] {
-    background: var(--ink);
-    border-color: var(--ink);
+    background: var(--moss);
+    border-color: var(--moss);
     color: var(--paper);
+    font-weight: 600;
   }
 
   /* ---------- The fast log form ---------- */
@@ -945,14 +946,14 @@
   }
   .lg-findings li {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: 8.5rem minmax(0, 1fr);
     column-gap: 10px;
     row-gap: 2px;
     align-items: baseline;
   }
   .lg-fkind {
     display: inline-block;
-    min-width: 92px;
+    justify-self: start;
     padding: 1px 6px;
     border: 1px solid var(--edge);
     border-radius: 2px;
@@ -994,9 +995,7 @@
     background: var(--sheet);
   }
   .lg-preview-text {
-    max-height: 15rem;
     margin-top: 4px;
-    overflow: auto;
     white-space: pre-wrap;
     font-family: var(--font-display);
     font-size: var(--fs-2);
@@ -1079,16 +1078,16 @@
     .lg-o-claim {
       order: 3;
     }
-    .lg-o-log {
+    .lg-o-stage {
       order: 4;
     }
-    .lg-o-draft {
+    .lg-o-log {
       order: 5;
     }
-    .lg-o-outreach {
+    .lg-o-draft {
       order: 6;
     }
-    .lg-o-stage {
+    .lg-o-outreach {
       order: 7;
     }
     .lg-o-contacts {
@@ -1173,7 +1172,7 @@
       padding: 14px 14px 16px;
     }
     .lg-fkind {
-      min-width: 0;
+      justify-self: start;
     }
     .lg-findings li {
       grid-template-columns: minmax(0, 1fr);
