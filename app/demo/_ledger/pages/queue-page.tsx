@@ -1,4 +1,5 @@
 "use client";
+import "@/components/ledger/zod-jitless";
 
 import Link from "next/link";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/ledger/icons";

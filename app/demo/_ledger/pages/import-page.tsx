@@ -1,4 +1,5 @@
 "use client";
+import "@/components/ledger/zod-jitless";
 
 import { CsvImporter } from "@/components/ledger/csv-importer";
 import { PageHead } from "@/components/ledger/shared";

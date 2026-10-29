@@ -1,3 +1,4 @@
+import "@/components/ledger/zod-jitless";
 import type { ReactNode } from "react";
 import { DemoProvider } from "@/demo/store";
 import { LedgerProviders } from "@/components/ledger/providers";

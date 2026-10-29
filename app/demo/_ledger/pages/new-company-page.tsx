@@ -1,4 +1,5 @@
 "use client";
+import "@/components/ledger/zod-jitless";
 
 import Link from "next/link";
 import { CompanyForm } from "@/components/ledger/company-form";
