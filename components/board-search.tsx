@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import "@/components/ledger/zod-jitless";
 import { SearchIcon } from "@/components/ledger/icons";
 import { boardQuery, type BoardFilters } from "@/lib/validation";
 

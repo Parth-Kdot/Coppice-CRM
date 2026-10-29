@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState, useTransition, type ReactNode } from "react";
+import "@/components/ledger/zod-jitless";
 import { ChipGroup } from "@/components/ledger/chips";
 import { WarningIcon } from "@/components/ledger/icons";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";

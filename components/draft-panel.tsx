@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useId, useMemo, useState, type ReactNode } from "react";
+import "@/components/ledger/zod-jitless";
 import { AiDraftIcon, CheckIcon, CopyLinkIcon, ExternalIcon, WarningIcon } from "@/components/ledger/icons";
 import { ChipGroup, type ChipOption } from "@/components/ledger/chips";
 import { LogOutreachForm } from "@/components/ledger/log-form";

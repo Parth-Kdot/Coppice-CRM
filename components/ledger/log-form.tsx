@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import "@/components/ledger/zod-jitless";
 import { ActionForm } from "@/components/action-form";
 import { CHANNEL_LABELS, CHANNELS } from "@/lib/channels";
 import { addDays } from "@/lib/dates";

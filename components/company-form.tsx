@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useId, useState } from "react";
+import "@/components/ledger/zod-jitless";
 import { DuplicateIcon, WarningIcon } from "@/components/ledger/icons";
 import { IndustryField } from "@/components/ledger/industry-field";
 import { Tick } from "@/components/ledger/marks";
