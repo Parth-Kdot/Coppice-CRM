@@ -272,6 +272,9 @@ html.lenis body {
 .ld-hero-copy .ld-micro {
   margin-top: 14px;
 }
+.ld-hero-copy .ld-micro + .ld-micro {
+  margin-top: 4px;
+}
 .ld-stool {
   display: block;
   width: 100%;
