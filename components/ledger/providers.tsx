@@ -109,7 +109,7 @@ export function LedgerProviders({ children }: { children: ReactNode }) {
               <div className="p-5">
                 <div className="flex items-start gap-3">
                   <WarningIcon className="mt-0.5 flex-none text-ink-2" />
-                  <p id="lg-confirm-message" className="font-display text-[length:var(--fs-4)] font-medium leading-snug">
+                  <p id="lg-confirm-message" className="font-display text-[length:var(--fs-4)] font-normal leading-snug">
                     {pending.options.message}
                   </p>
                 </div>

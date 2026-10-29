@@ -45,9 +45,9 @@ export function LogoMark({ size = 40, title, ...rest }: MarkProps) {
 
 type WordmarkProps = { className?: string };
 
-// "Coppice" in Newsreader 600, slightly tracked.
+// "Coppice" in Libre Caslon Text bold, slightly tracked.
 export function Wordmark({ className = "" }: WordmarkProps) {
-  return <span className={`font-display font-semibold tracking-[0.02em] ${className}`}>Coppice</span>;
+  return <span className={`font-display font-bold tracking-[0.01em] ${className}`}>Coppice</span>;
 }
 
 // The mark and the word together, for the landing nav and the sign-in page.

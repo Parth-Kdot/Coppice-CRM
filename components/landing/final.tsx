@@ -77,7 +77,7 @@ export function Final({ signedIn }: { signedIn: boolean }) {
           <div>
             <p className="ld-foot-mark">
               <LogoMark size={36} className="text-moss" />
-              <span className="font-display text-[length:var(--fs-4)] font-medium tracking-[0.01em]">Coppice</span>
+              <span className="font-display text-[length:var(--fs-4)] font-normal tracking-[0.01em]">Coppice</span>
             </p>
           </div>
           <nav aria-label="Footer">

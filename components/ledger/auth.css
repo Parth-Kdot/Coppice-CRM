@@ -38,8 +38,7 @@
     max-width: 18ch;
     text-align: center;
     font-family: var(--font-display);
-    font-optical-sizing: auto;
-    font-weight: 500;
+    font-weight: 400;
     font-size: var(--fs-5);
     line-height: 1.1;
     letter-spacing: -0.01em;
@@ -62,8 +61,7 @@
   }
   .lg-auth-title {
     font-family: var(--font-display);
-    font-optical-sizing: auto;
-    font-weight: 500;
+    font-weight: 400;
     font-size: var(--fs-6);
     line-height: 1.05;
     letter-spacing: -0.015em;
@@ -198,8 +196,7 @@
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     font-family: var(--font-display);
-    font-optical-sizing: auto;
-    font-weight: 500;
+    font-weight: 400;
     font-size: var(--fs-3);
     line-height: 1.2;
     text-align: center;

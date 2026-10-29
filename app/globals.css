@@ -72,8 +72,8 @@
   --color-moss-wash: var(--moss-wash);
   --color-rust-wash: var(--rust-wash);
 
-  --font-display: var(--font-newsreader), "Iowan Old Style", Georgia, "Times New Roman", serif;
-  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-caslon), "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-public), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 html {

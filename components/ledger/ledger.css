@@ -125,25 +125,24 @@
 /* ---------- Components ---------- */
 
 @layer components {
-  /* Type. Display is Newsreader at weight 500; the optical size axis follows the font size. */
+  /* Type. Display is Libre Caslon Text at weight 400. */
   .lg-h1,
   .lg-h2,
   .lg-h3 {
     font-family: var(--font-display);
-    font-weight: 500;
-    font-optical-sizing: auto;
+    font-weight: 400;
     color: var(--ink);
     text-wrap: balance;
   }
   .lg-h1 {
     font-size: var(--fs-5);
     line-height: 1.12;
-    letter-spacing: -0.012em;
+    letter-spacing: normal;
   }
   .lg-h2 {
     font-size: var(--fs-4);
     line-height: 1.2;
-    letter-spacing: -0.006em;
+    letter-spacing: normal;
   }
   .lg-h3 {
     font-size: var(--fs-3);
@@ -155,18 +154,17 @@
     }
   }
   /* The label role: column headers and the few labels that sit above a group. Uppercase with
-     tracking, because Instrument Sans has no small caps of its own. */
+     tracking, because Public Sans has no small caps of its own. */
   .lg-sc {
     font-size: var(--fs-1);
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
   /* The one italic serif role: a quoted note. */
   .lg-quote {
     font-family: var(--font-display);
     font-style: italic;
-    font-optical-sizing: auto;
   }
   .lg-num {
     font-variant-numeric: tabular-nums;
@@ -386,7 +384,7 @@
     color: var(--ink-2);
     font-size: var(--fs-1);
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
   .lg-sheet .lg-turnover-label,
