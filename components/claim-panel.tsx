@@ -43,7 +43,7 @@ export function ClaimPanel(props: Props) {
   const holder = holderName ?? "Someone";
 
   let text: string;
-  if (closed) text = `This company is ${STAGE_LABELS[props.stage]}, so it can't be claimed.`;
+  if (closed) text = `This company is ${STAGE_LABELS[props.stage].toLowerCase()}, so it can't be claimed.`;
   else if (state === "mine") text = `You hold this until ${when(expiresAt as Date)}.`;
   else if (state === "theirs") text = `Held by ${holder} until ${when(expiresAt as Date)}.`;
   else if (state === "expired") text = `${holder}'s claim expired ${when(expiresAt as Date)}.`;

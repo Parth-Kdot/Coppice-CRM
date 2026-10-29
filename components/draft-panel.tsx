@@ -352,7 +352,15 @@ function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Props & { 
   return (
     <div className="lg-claimcheck" aria-live="polite">
       <p className="lg-cc-head" data-tone={tone}>
-        {tone === "clean" ? <Tick size={18} /> : <WarningIcon size={18} />}
+        {tone === "clean" ? (
+          <Tick size={18} />
+        ) : tone === "flag" ? (
+          <WarningIcon size={18} />
+        ) : (
+          <svg width={18} height={18} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true" focusable="false">
+            <circle cx="9" cy="9" r="5.5" />
+          </svg>
+        )}
         <span className="lg-cc-title">Claim check</span>
         <span className="lg-cc-sum">{summary}</span>
       </p>
