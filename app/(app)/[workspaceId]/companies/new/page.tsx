@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CompanyForm } from "@/components/company-form";
 import { PageHead } from "@/components/ledger/shared";
@@ -5,6 +6,12 @@ import { requireMembershipOr404 } from "@/lib/authz";
 import { listIndustries } from "@/lib/companies";
 import { createCompany, unarchiveCompany } from "../actions";
 import "@/components/ledger/company.css";
+import { pageTitle } from "../../page-title";
+
+export async function generateMetadata({ params }: PageProps<"/[workspaceId]/companies/new">): Promise<Metadata> {
+  const { workspaceId } = await params;
+  return pageTitle(workspaceId, "Add company");
+}
 
 // Add one company by hand. Look-alikes, archived ones included, are shown before anything is saved:
 // open the existing one, bring an archived one back, or keep both as separate entries.

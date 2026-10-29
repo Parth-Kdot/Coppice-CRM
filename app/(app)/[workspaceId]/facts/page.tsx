@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { CheckIcon, FactsIcon, WarningIcon } from "@/components/ledger/icons";
@@ -13,6 +14,12 @@ import { getFactSheet, isStale, type FactSheetView } from "@/lib/facts";
 import { FACT_MAX } from "@/lib/validation";
 import { addFact, deleteFact, deleteFactSheet, setFactVerified, updateFact, uploadFactSheet } from "./actions";
 import "@/components/ledger/pages.css";
+import { pageTitle } from "../page-title";
+
+export async function generateMetadata({ params }: PageProps<"/[workspaceId]/facts">): Promise<Metadata> {
+  const { workspaceId } = await params;
+  return pageTitle(workspaceId, "Fact sheet");
+}
 
 // Reading a PDF and asking the AI for its facts can take a minute (with a fallback model, up to two).
 export const maxDuration = 150;
@@ -147,11 +154,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
       <PageHead
         title="Fact sheet"
         sub="The AI drafter may only state facts on this page, and only once an owner has verified them. Upload your sponsorship packet and the AI lists its facts with the sentence and page each came from; check each one against your packet before verifying it."
-      >
-        <Link href={`/${workspaceId}/settings`} className="lg-btn">
-          Back
-        </Link>
-      </PageHead>
+      />
       {sheet.facts.length > 0 && (
         <p className="lg-factsum">
           <span>

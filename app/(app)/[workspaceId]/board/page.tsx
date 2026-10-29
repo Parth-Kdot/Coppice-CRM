@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { BoardSheet } from "@/components/ledger/board-sheet";
@@ -12,6 +13,12 @@ import { daysBetween, day } from "@/lib/dates";
 import { TERMINAL_STAGES } from "@/lib/stages";
 import { boardFiltersSchema, boardQuery, type BoardFilters } from "@/lib/validation";
 import { archiveDuplicate, keepSeparate, unarchiveCompany } from "../companies/actions";
+import { pageTitle } from "../page-title";
+
+export async function generateMetadata({ params }: PageProps<"/[workspaceId]/board">): Promise<Metadata> {
+  const { workspaceId } = await params;
+  return pageTitle(workspaceId, "Board");
+}
 
 // The stage board: one ruled column per stage, fitted to the screen. Search, the industry filter, the
 // sheets for look-alikes and archived companies, and "Show all" are decided on the server from the

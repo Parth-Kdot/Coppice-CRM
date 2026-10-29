@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { WarningIcon } from "@/components/ledger/icons";
@@ -20,6 +21,12 @@ import {
   updateClaimWindow,
 } from "./actions";
 import "@/components/ledger/pages.css";
+import { pageTitle } from "../page-title";
+
+export async function generateMetadata({ params }: PageProps<"/[workspaceId]/settings">): Promise<Metadata> {
+  const { workspaceId } = await params;
+  return pageTitle(workspaceId, "Settings");
+}
 
 // Dates here carry the year ("Sep 3, 2025"), because a member's join date is read against the board year beside it.
 const fullDay = (date: Date) =>

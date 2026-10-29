@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/ledger/icons";
 import { QueueRow, type QueueRowData } from "@/components/ledger/queue-row";
@@ -9,6 +10,12 @@ import { withTenant } from "@/lib/db";
 import { getQueue, type QueueRow as QueueRecord } from "@/lib/queue";
 import { TERMINAL_STAGES } from "@/lib/stages";
 import { queueFiltersSchema, queueQuery, type QueueFilters } from "@/lib/validation";
+import { pageTitle } from "./page-title";
+
+export async function generateMetadata({ params }: PageProps<"/[workspaceId]">): Promise<Metadata> {
+  const { workspaceId } = await params;
+  return pageTitle(workspaceId, "Queue");
+}
 
 // Workspace home: the follow-up queue. Due companies, most overdue first, then a collapsed list of
 // fresh leads. Everything is decided on the server from the URL, like the board. The totals line

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
@@ -17,6 +18,7 @@ import { factNumbers } from "@/lib/claim-rules";
 import { claimState, dbNow, dbToday } from "@/lib/claims";
 import { getCompanyDetail, listIndustries } from "@/lib/companies";
 import { daysBetween, day } from "@/lib/dates";
+import { prisma, withTenant } from "@/lib/db";
 import { recentDrafts } from "@/lib/drafts";
 import { verifiedFacts } from "@/lib/facts";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
@@ -40,6 +42,16 @@ import "@/components/ledger/company.css";
 
 // Drafting an email waits on the AI for up to 100 seconds.
 export const maxDuration = 120;
+
+export async function generateMetadata({ params }: PageProps<"/[workspaceId]/companies/[companyId]">): Promise<Metadata> {
+  const { workspaceId, companyId } = await params;
+  const membership = await requireMembershipOr404(workspaceId);
+  const [workspace, company] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true } }),
+    withTenant(membership, (tx) => tx.company.findFirst({ where: { id: companyId, workspaceId }, select: { name: true } })),
+  ]);
+  return { title: company ? `${company.name}, ${workspace.name}` : workspace.name };
+}
 
 // The company page, as a two-page spread. Left page: the name, the route map, the stage, the contacts,
 // the facts the AI may use and the stage history. Right page: the claim ticket, the fast log form and
@@ -80,7 +92,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
     <article className="lg-company">
       <Link href={`/${workspaceId}`} className="lg-back">
         <ChevronLeftIcon size={18} />
-        Back
+        Queue
       </Link>
 
       {archived && (
