@@ -20,7 +20,9 @@ export function IndustryField({
   maxLength?: number;
 }) {
   const id = useId();
-  const shown = suggestions.slice(0, 8);
+  const q = value.trim().toLowerCase();
+  const cur = suggestions.find((s) => s.toLowerCase() === q);
+  const shown = [...(cur ? [cur] : []), ...suggestions.filter((s) => s !== cur && (!q || s.toLowerCase().includes(q)))].slice(0, 8);
   return (
     <div>
       <label className="lg-label" htmlFor={`${id}-industry`}>

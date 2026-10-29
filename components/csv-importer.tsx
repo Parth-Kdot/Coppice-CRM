@@ -285,8 +285,8 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
             {view.errors.length > 0 && (
               <details open className="lg-problems">
                 <summary>
-                  {view.errors.length} {view.errors.length === 1 ? "row" : "rows"} won&apos;t be imported. Fix them in the sheet and upload it again to
-                  include them.
+                  {view.errors.length} {view.errors.length === 1 ? "row" : "rows"} won&apos;t be imported. {view.errors.length === 1 ? "Fix it" : "Fix them"} in the sheet and upload it again to
+                  include {view.errors.length === 1 ? "it" : "them"}.
                 </summary>
                 <ul>
                   {view.errors.map((e) => (
@@ -362,7 +362,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
         )}
       </Entry>
 
-      <Entry n={4} state="later" title="Import">
+      <Entry n={4} state={view ? "active" : "later"} title="Import">
         {file && view ? (
           <>
             <p>
