@@ -344,8 +344,8 @@ function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Props & { 
   let status: string;
   if (checking) status = "The AI is reading this draft against your verified facts.";
   else if (!check) status = "The AI hasn't checked this yet.";
-  else if (check.error) status = `The AI check didn't run: ${check.error}`;
   else if (!fresh) status = "You've edited this since the AI checked it. Its earlier findings are hidden.";
+  else if (check.error) status = `The AI check didn't run: ${check.error}`;
   else status = "The AI checked this exact text.";
 
   const button = check ? "Check again with AI" : "Check with AI";

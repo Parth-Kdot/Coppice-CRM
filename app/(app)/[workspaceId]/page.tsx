@@ -30,7 +30,8 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
     const due = { workspaceId, archivedAt: null, stage: { notIn: TERMINAL_STAGES }, nextFollowUpAt: { lte: queue.now } };
     const all = await tx.company.count({ where: due });
     const mine = await tx.company.count({ where: { ...due, ...heldBy(userId, queue.now) } });
-    return { all, mine };
+    const oldest = await tx.company.findFirst({ where: due, orderBy: { nextFollowUpAt: "asc" }, select: { nextFollowUpAt: true } });
+    return { all, mine, oldest: oldest?.nextFollowUpAt ?? null };
   });
 
   const href = (changes: Partial<QueueFilters>) => `/${workspaceId}${queueQuery({ ...filters, ...changes })}`;
@@ -51,8 +52,8 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
     };
   };
 
-  // The most overdue row comes first, so the longest wait is read straight off it.
-  const longest = queue.due[0]?.nextFollowUpAt ? Math.max(0, daysBetween(queue.due[0].nextFollowUpAt, queue.now)) : 0;
+  // The longest wait is the oldest follow-up date among all due companies, so the Held by you filter does not change it.
+  const longest = totals.oldest ? Math.max(0, daysBetween(totals.oldest, queue.now)) : 0;
 
   const title = filters.mine ? "Yours, due" : "Follow-ups due";
 
@@ -81,7 +82,7 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
             <Count value={totals.mine} />
           </span>
         </Link>
-        <Link href={href({ never: !filters.never, all: null })} scroll={false} className="lg-total">
+        <Link href={href({ never: true, all: null }) + "#never-title"} aria-current={filters.never ? "true" : undefined} className="lg-total">
           <span className="lg-tag">Never contacted</span>
           <span className="lg-total-n">
             <Count value={queue.neverCount} />
