@@ -318,15 +318,30 @@ html.lenis body {
   }
 }
 
-/* The window sits on the right and runs past the right and bottom edges. */
+/* The window sits on the right, inside the grid, and shows the top of the queue: its height is
+   capped so the table ends above the fold, with a short fade into the paper where rows continue. */
 .ld-hero-window {
   grid-column: 6 / -1;
-  align-self: start;
+  align-self: center;
   min-width: 0;
-  margin: 84px calc(-1 * max(32px, (100vw - 1240px) / 2 + 32px)) 0 0;
+  margin: 0;
+}
+.ld-hero-window .ldm-wrap {
+  position: relative;
+  max-height: min(560px, calc(100svh - 230px));
+  padding: 0 2px 2px 0;
+  overflow: hidden;
+}
+.ld-hero-window .ldm-wrap::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 72px;
+  background: linear-gradient(to bottom, rgb(246 241 230 / 0), var(--paper));
+  pointer-events: none;
 }
 .ld-hero-window .ldm {
-  width: min(880px, 100%);
+  width: 100%;
   /* The one hard offset on the page. */
   box-shadow: 2px 2px 0 var(--edge);
 }
