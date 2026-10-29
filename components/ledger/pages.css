@@ -538,6 +538,9 @@
     list-style: none;
     margin: -6px 0 0;
   }
+  .lg-memberitem:last-child .lg-member {
+    border-bottom: 0;
+  }
   .lg-member {
     display: flex;
     gap: 12px;
@@ -663,6 +666,9 @@
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid var(--rule);
+  }
+  .lg-aiform > .lg-btn {
+    justify-self: start;
   }
   .lg-aistate {
     display: inline-flex;

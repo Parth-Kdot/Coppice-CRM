@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
+import { WarningIcon } from "@/components/ledger/icons";
+import { InviteForm } from "@/components/ledger/invite-form";
+import { boardYear } from "@/components/ledger/board-year";
+import { TurnoverRule, YearMargin } from "@/components/ledger/marks";
+import { PageHead } from "@/components/ledger/shared";
+import { Stepper } from "@/components/ledger/stepper";
 import { isConfigured } from "@/lib/ai/client";
 import { AI_WINDOW_DAYS, aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
@@ -14,6 +20,13 @@ import {
   updateAiSettings,
   updateClaimWindow,
 } from "./actions";
+import "@/components/ledger/pages.css";
+
+// Dates here carry the year ("Sep 3, 2025"), because a member's join date is read against the board year beside it.
+const fullDay = (date: Date) =>
+  date.toLocaleDateString("en-US", { timeZone: "America/Indiana/Indianapolis", month: "short", day: "numeric", year: "numeric" });
+
+const METER_CELLS = 20;
 
 export default async function SettingsPage({ params }: PageProps<"/[workspaceId]/settings">) {
   const { workspaceId } = await params;
@@ -28,169 +41,219 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
     prisma.membership.findMany({
       where: { workspaceId },
       // Emails are only loaded for owners, so they never reach an officer's browser at all.
-      select: { id: true, userId: true, role: true, user: { select: { name: true, email: isOwner } } },
+      select: { id: true, userId: true, role: true, createdAt: true, user: { select: { name: true, email: isOwner } } },
       orderBy: { createdAt: "asc" },
     }),
     isOwner
       ? prisma.invitation.findMany({
           where: { workspaceId, status: "pending", expiresAt: { gt: new Date() } },
-          select: { id: true, email: true, role: true },
+          select: { id: true, email: true, role: true, expiresAt: true },
           orderBy: { createdAt: "desc" },
         })
       : [],
     aiUsage({ userId: me.userId, workspaceId }),
   ]);
 
+  const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
+  const filled = ai.limit > 0 ? Math.min(METER_CELLS, Math.ceil((ai.used / ai.limit) * METER_CELLS)) : ai.used > 0 ? METER_CELLS : 0;
+  const atLimit = ai.used >= ai.limit;
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">{workspace.name}: settings</h1>
-        <Link href={`/${workspaceId}`} className="rounded border px-3 py-1">
+    <div className="lg-page-settings">
+      <PageHead title={`${workspace.name}: settings`}>
+        <Link href={`/${workspaceId}`} className="lg-btn">
           Back
         </Link>
-      </header>
+      </PageHead>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Members</h2>
-        <ul className="flex flex-col gap-3">
-          {members.map((member) => {
-            const role: Role = member.role === "owner" ? "owner" : "member";
-            const otherRole: Role = role === "owner" ? "member" : "owner";
-            const isMe = member.userId === me.userId;
-            return (
-              <li key={member.id} className="flex flex-wrap items-center gap-3">
-                <span>
-                  {member.user.name}
-                  {member.user.email && ` (${member.user.email})`}: {roleLabel(role)}
-                  {isMe && " (you)"}
-                </span>
-                {isOwner && (
-                  <ActionForm action={changeMemberRole} submitLabel={role === "owner" ? "Make Officer" : "Make Owner"}>
-                    <input type="hidden" name="workspaceId" value={workspaceId} />
-                    <input type="hidden" name="memberId" value={member.id} />
-                    <input type="hidden" name="role" value={otherRole} />
-                  </ActionForm>
-                )}
-                {isOwner && !isMe && (
-                  <ActionForm
-                    action={removeMember}
-                    submitLabel="Remove"
-                    confirmMessage={`Remove ${member.user.name} from ${workspace.name}?`}
-                  >
-                    <input type="hidden" name="workspaceId" value={workspaceId} />
-                    <input type="hidden" name="memberId" value={member.id} />
-                  </ActionForm>
-                )}
-                {isMe && (
-                  <ActionForm action={leaveWorkspace} submitLabel="Leave workspace" confirmMessage={`Leave ${workspace.name}?`}>
-                    <input type="hidden" name="workspaceId" value={workspaceId} />
-                  </ActionForm>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        {isOwner && (
-          <p className="text-sm text-zinc-500">
-            To hand the workspace to someone else, make them Owner, then make yourself Officer or leave.
-          </p>
-        )}
-      </section>
-
-      {isOwner && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">Invitations</h2>
-          <p className="text-sm text-zinc-500">
-            No email is sent. Tell them to sign in with this Google email and click Join.
-          </p>
-          <ActionForm action={inviteMember} submitLabel="Invite" successMessage="Invitation created.">
-            <input type="hidden" name="workspaceId" value={workspaceId} />
-            <input name="email" type="email" required placeholder="name@purdue.edu" aria-label="Email" className="rounded border px-2 py-1" />
-            <select name="role" defaultValue="member" aria-label="Role" className="rounded border px-2 py-1">
-              <option value="member">Officer</option>
-              <option value="owner">Owner</option>
-            </select>
-          </ActionForm>
-          <ul className="flex flex-col gap-2 text-sm">
-            {invitations.map((invite) => (
-              <li key={invite.id} className="flex items-center gap-3">
-                <span>
-                  {invite.email}: {roleLabel(invite.role === "owner" ? "owner" : "member")}, pending
-                </span>
-                <ActionForm action={cancelInvitation} submitLabel="Cancel">
-                  <input type="hidden" name="workspaceId" value={workspaceId} />
-                  <input type="hidden" name="invitationId" value={invite.id} />
-                </ActionForm>
-              </li>
-            ))}
-          </ul>
+      <div className="lg-sections">
+        <section className="lg-sec" aria-labelledby="set-members">
+          <div className="lg-sec-label">
+            <h2 id="set-members" className="lg-sec-title">
+              Members
+            </h2>
+            <p className="lg-sec-sub">{members.length === 1 ? "One person" : `${members.length} people`} in this workspace.</p>
+          </div>
+          <div className="lg-sec-body">
+            <ol className="lg-register">
+              {members.map((member, i) => {
+                const role: Role = member.role === "owner" ? "owner" : "member";
+                const otherRole: Role = role === "owner" ? "member" : "owner";
+                const isMe = member.userId === me.userId;
+                const next = members[i + 1];
+                const crosses = next && boardYear(next.createdAt).start !== boardYear(member.createdAt).start;
+                return (
+                  <li key={member.id} className="lg-memberitem">
+                    <div className="lg-member">
+                      <YearMargin iso={member.createdAt} />
+                      <div className="lg-memberbody">
+                        <p className="lg-membername">
+                          <strong>{member.user.name}</strong>
+                          {isMe && <span className="lg-muted"> (you)</span>}
+                          {member.user.email && <span className="lg-muted">, {member.user.email}</span>}
+                        </p>
+                        <p className="lg-membermeta">
+                          {roleLabel(role)}, joined {fullDay(member.createdAt)}
+                        </p>
+                        {(isOwner || isMe) && (
+                          <div className="lg-memberacts">
+                            {isOwner && (
+                              <ActionForm
+                                action={changeMemberRole}
+                                submitLabel={role === "owner" ? "Make Officer" : "Make Owner"}
+                                successMessage={role === "owner" ? `${member.user.name} is now an Officer.` : `${member.user.name} is now an Owner.`}
+                                small
+                              >
+                                {ids}
+                                <input type="hidden" name="memberId" value={member.id} />
+                                <input type="hidden" name="role" value={otherRole} />
+                              </ActionForm>
+                            )}
+                            {isOwner && !isMe && (
+                              <ActionForm
+                                action={removeMember}
+                                submitLabel="Remove"
+                                successMessage={`${member.user.name} removed.`}
+                                confirmMessage={`Remove ${member.user.name} from ${workspace.name}?`}
+                                small
+                              >
+                                {ids}
+                                <input type="hidden" name="memberId" value={member.id} />
+                              </ActionForm>
+                            )}
+                            {isMe && (
+                              <ActionForm action={leaveWorkspace} submitLabel="Leave workspace" confirmMessage={`Leave ${workspace.name}?`} small>
+                                {ids}
+                              </ActionForm>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {crosses && <TurnoverRule endsYear={boardYear(member.createdAt).long} />}
+                  </li>
+                );
+              })}
+            </ol>
+            {isOwner && (
+              <p className="lg-hint mt-3">To hand the workspace to someone else, make them Owner, then make yourself Officer or leave.</p>
+            )}
+          </div>
         </section>
-      )}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Claim window</h2>
-        <p className="text-sm text-zinc-500">
-          How long an officer holds a company after claiming it, before anyone else can take it.
-        </p>
-        {isOwner ? (
-          <ActionForm action={updateClaimWindow} submitLabel="Save" successMessage="Saved.">
-            <input type="hidden" name="workspaceId" value={workspaceId} />
-            <input
-              name="days"
-              type="number"
-              required
-              min={CLAIM_WINDOW_MIN_DAYS}
-              max={CLAIM_WINDOW_MAX_DAYS}
-              defaultValue={workspace.claimWindowDays}
-              aria-label="Claim window in days"
-              className="w-20 rounded border px-2 py-1"
-            />
-            <span>days</span>
-          </ActionForm>
-        ) : (
-          <p>Claims last {workspace.claimWindowDays} days.</p>
+        {isOwner && (
+          <section className="lg-sec" aria-labelledby="set-invites">
+            <div className="lg-sec-label">
+              <h2 id="set-invites" className="lg-sec-title">
+                Invitations
+              </h2>
+              <p className="lg-sec-sub">No email is sent. Tell them to sign in with this Google email and click Join.</p>
+            </div>
+            <div className="lg-sec-body">
+              {invitations.length === 0 ? (
+                <p className="lg-muted">No pending invitations.</p>
+              ) : (
+                <ul className="lg-invitelist">
+                  {invitations.map((invite) => (
+                    <li key={invite.id}>
+                      <span>
+                        <strong>{invite.email}</strong>: {roleLabel(invite.role === "owner" ? "owner" : "member")}, pending until {fullDay(invite.expiresAt)}
+                      </span>
+                      <ActionForm action={cancelInvitation} submitLabel="Cancel" successMessage="Invitation canceled." small>
+                        {ids}
+                        <input type="hidden" name="invitationId" value={invite.id} />
+                      </ActionForm>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <InviteForm workspaceId={workspaceId} action={inviteMember} />
+            </div>
+          </section>
         )}
-      </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">AI</h2>
-        <p className="text-sm text-zinc-500">
-          Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
-          it&apos;s sent to improve Google&apos;s products, so names and email addresses are never sent to it.
-        </p>
-        {!isConfigured() && <p className="text-sm text-amber-700">AI isn&apos;t set up on this server yet: it needs a GEMINI_API_KEY.</p>}
-        <p className="text-sm">
-          {ai.used} AI {ai.used === 1 ? "call" : "calls"} in the last {AI_WINDOW_DAYS} days, out of {ai.limit}.
-        </p>
-        <Link href={`/${workspaceId}/facts`} className="self-start underline">
-          {isOwner ? "Manage the fact sheet" : "See the fact sheet"}
-        </Link>
-        {isOwner ? (
-          <ActionForm action={updateAiSettings} submitLabel="Save" successMessage="Saved.">
-            <input type="hidden" name="workspaceId" value={workspaceId} />
-            <label className="flex items-center gap-2">
-              <input name="enabled" type="checkbox" defaultChecked={ai.enabled} aria-label="AI on for this workspace" />
-              <span>AI on for this workspace</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <span>Limit</span>
-              <input
-                name="limit"
-                type="number"
-                required
-                min={0}
-                max={AI_LIMIT_MAX}
-                defaultValue={ai.limit}
-                aria-label={`AI calls allowed per ${AI_WINDOW_DAYS} days`}
-                className="w-24 rounded border px-2 py-1"
-              />
-              <span>calls per {AI_WINDOW_DAYS} days</span>
-            </label>
-          </ActionForm>
-        ) : (
-          <p>AI is {ai.enabled ? "on" : "off"} for this workspace.</p>
-        )}
-      </section>
+        <section className="lg-sec" aria-labelledby="set-claims">
+          <div className="lg-sec-label">
+            <h2 id="set-claims" className="lg-sec-title">
+              Claim window
+            </h2>
+            <p className="lg-sec-sub">How long an officer holds a company after claiming it, before anyone else can take it.</p>
+          </div>
+          <div className="lg-sec-body">
+            {isOwner ? (
+              <>
+                <ActionForm action={updateClaimWindow} submitLabel="Save" successMessage="Saved." className="lg-setrow">
+                  {ids}
+                  <Stepper name="days" label="Claim window in days" defaultValue={workspace.claimWindowDays} min={CLAIM_WINDOW_MIN_DAYS} max={CLAIM_WINDOW_MAX_DAYS} />
+                  <span>days</span>
+                </ActionForm>
+                <p className="lg-hint mt-2">Claims already taken keep the expiry they were given.</p>
+              </>
+            ) : (
+              <p>Claims last {workspace.claimWindowDays} days.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="lg-sec" aria-labelledby="set-ai">
+          <div className="lg-sec-label">
+            <h2 id="set-ai" className="lg-sec-title">
+              AI
+            </h2>
+            <p className="lg-sec-sub">
+              <span className="lg-aistate" data-on={ai.enabled && isConfigured()}>
+                {!isConfigured() ? "Unavailable on this server" : ai.enabled ? "On for this workspace" : "Off for this workspace"}
+              </span>
+            </p>
+          </div>
+          <div className="lg-sec-body">
+            <p className="max-w-[66ch]">
+              Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
+              it&apos;s sent to improve Google&apos;s products, so names and email addresses are never sent to it.
+            </p>
+            {!isConfigured() && (
+              <p className="lg-error">
+                <WarningIcon size={16} />
+                <span>AI isn&apos;t set up on this server yet: it needs a GEMINI_API_KEY.</span>
+              </p>
+            )}
+            <div className="lg-usage">
+              <p className="lg-usage-line">
+                {ai.used} AI {ai.used === 1 ? "call" : "calls"} in the last {AI_WINDOW_DAYS} days, out of {ai.limit}.
+              </p>
+              <div className="lg-meter" data-full={atLimit || undefined} aria-hidden="true">
+                {Array.from({ length: METER_CELLS }, (_, i) => (
+                  <span key={i} data-on={i < filled || undefined} />
+                ))}
+              </div>
+              {atLimit && ai.limit > 0 && <p className="lg-error">Limit reached. An owner can raise it below.</p>}
+            </div>
+            <p className="mt-3">
+              <Link href={`/${workspaceId}/facts`} className="lg-link">
+                {isOwner ? "Manage the fact sheet" : "See the fact sheet"}
+              </Link>
+            </p>
+            {isOwner ? (
+              <ActionForm action={updateAiSettings} submitLabel="Save" successMessage="Saved." className="lg-aiform">
+                {ids}
+                <label className="lg-switch">
+                  <input name="enabled" type="checkbox" defaultChecked={ai.enabled} className="lg-check" />
+                  <span>AI on for this workspace</span>
+                </label>
+                <div className="lg-setrow">
+                  <span className="lg-label !mb-0">
+                    Limit
+                  </span>
+                  <Stepper name="limit" label={`AI calls allowed per ${AI_WINDOW_DAYS} days`} defaultValue={ai.limit} min={0} max={AI_LIMIT_MAX} step={10} />
+                  <span>calls per {AI_WINDOW_DAYS} days</span>
+                </div>
+              </ActionForm>
+            ) : (
+              <p className="mt-3">AI is {ai.enabled ? "on" : "off"} for this workspace.</p>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
