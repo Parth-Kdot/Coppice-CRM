@@ -47,6 +47,10 @@
     font-size: var(--fs-1);
     font-variant-numeric: tabular-nums;
   }
+  .lg-panel-note {
+    padding: 8px 28px 0;
+    color: var(--ink-2);
+  }
   .lg-panel-body {
     padding: 18px 28px 24px;
   }
@@ -340,6 +344,14 @@
   .lg-facts-list {
     list-style: none;
   }
+  .lg-factgroup + .lg-factgroup {
+    margin-top: 18px;
+  }
+  .lg-factgroup-h {
+    padding: 6px 0;
+    border-bottom: 2px solid var(--ink-2);
+    color: var(--ink-2);
+  }
   .lg-fact {
     display: flex;
     gap: 12px;
@@ -374,11 +386,13 @@
     flex: 1;
   }
   .lg-facttext {
+    overflow-wrap: anywhere;
     font-family: var(--font-display);
     font-size: var(--fs-3);
     line-height: 1.4;
   }
   .lg-factsrc {
+    overflow-wrap: anywhere;
     margin-top: 6px;
     color: var(--ink-2);
   }
@@ -421,6 +435,9 @@
     flex: none;
   }
   .lg-factedit {
+    align-self: center;
+  }
+  .lg-factedit[open] {
     flex: 1 1 100%;
   }
   .lg-factedit > summary {
@@ -437,6 +454,9 @@
     display: grid;
     gap: 8px;
     max-width: 640px;
+  }
+  .lg-editform > .lg-btn {
+    justify-self: start;
   }
   .lg-files {
     list-style: none;
@@ -709,6 +729,9 @@
     .lg-panel-body {
       padding: 14px 16px 20px;
     }
+    .lg-panel-note {
+      padding: 8px 16px 0;
+    }
     .lg-mapgrid,
     .lg-inviteform {
       grid-template-columns: 1fr;
@@ -786,7 +809,7 @@
     }
     .lg-fact > .lg-margin,
     .lg-member > .lg-margin {
-      flex-basis: 44px;
+      display: none;
     }
     .lg-addfact {
       flex-direction: column;
