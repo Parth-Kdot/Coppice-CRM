@@ -161,6 +161,11 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
+  /* A plain bold label for a name above a value: no tracking, no capitals. */
+  .lg-tag {
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
   /* The one italic serif role: a quoted note. */
   .lg-quote {
     font-family: var(--font-display);

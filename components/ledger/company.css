@@ -524,8 +524,6 @@
     color: var(--ink-2);
     font-size: var(--fs-1);
     font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
   .lg-ticket[data-kind="mine"] .lg-ticket-stub {
     color: var(--moss);
@@ -937,8 +935,6 @@
   .lg-cc-label strong {
     font-size: var(--fs-1);
     font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
   .lg-findings {
     list-style: none;

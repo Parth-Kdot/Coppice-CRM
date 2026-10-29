@@ -40,7 +40,7 @@ function Entry({ n, state, title, later, children }: { n: number; state: EntrySt
     <li className="lg-step" data-state={state} aria-current={state === "active" ? "step" : undefined}>
       <div className="lg-step-margin" aria-hidden="true">
         <span className="lg-step-no">{state === "done" ? <Tick size={18} /> : n}</span>
-        <span className="lg-step-state lg-sc">{STATE_WORD[state]}</span>
+        <span className="lg-step-state lg-tag">{STATE_WORD[state]}</span>
       </div>
       <div className="lg-step-body">
         <h2 className="lg-step-h">
@@ -113,15 +113,15 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
         <Entry n={4} state="done" title="Done">
           <dl className="lg-tally" role="status">
             <div>
-              <dt className="lg-sc">Imported</dt>
+              <dt className="lg-tag">Imported</dt>
               <dd data-tone="ok">{result.imported}</dd>
             </div>
             <div>
-              <dt className="lg-sc">Skipped</dt>
+              <dt className="lg-tag">Skipped</dt>
               <dd>{result.skipped}</dd>
             </div>
             <div>
-              <dt className="lg-sc">Errors</dt>
+              <dt className="lg-tag">Errors</dt>
               <dd data-tone={result.errored > 0 ? "bad" : undefined}>{result.errored}</dd>
             </div>
           </dl>
@@ -311,12 +311,12 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                       <h4 id={`${id}-g${gi}`} className="lg-group-q">
                         Same company?
                       </h4>
-                      <span className="lg-sc lg-muted">{reason(group.matchedOn)}</span>
+                      <span className="lg-tag lg-muted">{reason(group.matchedOn)}</span>
                     </div>
                     <div className="lg-group-cols">
                       {group.existing.map((company) => (
                         <div key={company.id} className="lg-dupcard lg-dupcard-have">
-                          <p className="lg-sc lg-muted">Already in the workspace</p>
+                          <p className="lg-tag lg-muted">Already in the workspace</p>
                           <p className="lg-dupname">
                             <Link href={`/${workspaceId}/companies/${company.id}`} className="lg-link">
                               {company.name}
@@ -333,7 +333,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                         const skipped = skips.has(row);
                         return (
                           <div key={row} className="lg-dupcard" data-skipped={skipped || undefined}>
-                            <p className="lg-sc lg-muted">In your file, row {row}</p>
+                            <p className="lg-tag lg-muted">In your file, row {row}</p>
                             <p className="lg-dupname">
                               <span className="lg-nametext">
                                 Row {row}: {entry?.name}

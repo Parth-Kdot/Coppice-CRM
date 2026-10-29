@@ -241,7 +241,7 @@ function DraftCard({ draft, index, ...props }: CardProps) {
         <h3 id={`${id}-title`} className="lg-h3">
           {draft.angle}
         </h3>
-        <p className="lg-letter-no lg-sc">Draft {n}</p>
+        <p className="lg-letter-no lg-tag">Draft {n}</p>
       </header>
       <p className="lg-hint lg-letter-to">{draft.to ? `To: ${draft.to}` : "To: no email on file; add it in the mail app"}</p>
 

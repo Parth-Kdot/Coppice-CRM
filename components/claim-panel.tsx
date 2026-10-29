@@ -58,7 +58,7 @@ export function ClaimPanel(props: Props) {
         <span>{stub}</span>
       </div>
       <div className="lg-ticket-body">
-        <h2 id="ticket-title" className="lg-ticket-title lg-sc">
+        <h2 id="ticket-title" className="lg-ticket-title lg-tag">
           Claim
         </h2>
         <p className="lg-ticket-text" aria-live="polite">

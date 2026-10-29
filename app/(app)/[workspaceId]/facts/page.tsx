@@ -132,7 +132,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
       <div>
         {groups.map((group) => (
           <section key={group.key} className="lg-factgroup" aria-label={group.title}>
-            <h3 className="lg-factgroup-h lg-sc">{group.title}</h3>
+            <h3 className="lg-factgroup-h lg-tag">{group.title}</h3>
             <ul className="lg-facts-list">
               {group.facts.map((fact) => factRow(fact))}
             </ul>

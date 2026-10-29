@@ -112,7 +112,7 @@ export function LedgerMenu<T extends string>({
           }
         }}
       >
-        <span className={hideLabel ? "lg-sr" : "lg-sc lg-muted"}>{label}</span>
+        <span className={hideLabel ? "lg-sr" : "lg-tag lg-muted"}>{label}</span>
         <span className="lg-lmenu-value">{current.label}</span>
         <ChevronDownIcon size={16} />
       </button>

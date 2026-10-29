@@ -330,7 +330,7 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
         <div id={`${id}-list`} ref={list} role="listbox" aria-label="Results" className="lg-pal-list" tabIndex={-1}>
           {groups.map((group, g) => (
             <div key={group.id} role="group" aria-labelledby={`${id}-g-${group.id}`}>
-              <p id={`${id}-g-${group.id}`} className="lg-pal-head lg-sc">
+              <p id={`${id}-g-${group.id}`} className="lg-pal-head lg-tag">
                 {group.title}
               </p>
               {group.items.map((item, n) => {

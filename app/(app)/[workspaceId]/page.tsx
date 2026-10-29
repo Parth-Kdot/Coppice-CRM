@@ -70,25 +70,25 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
 
       <nav className="lg-totals" aria-label="Queue totals">
         <Link href={href({ mine: false, all: null })} className="lg-total" aria-current={!filters.mine ? "true" : undefined}>
-          <span className="lg-sc">All due</span>
+          <span className="lg-tag">All due</span>
           <span className="lg-total-n">
             <Count value={totals.all} />
           </span>
         </Link>
         <Link href={href({ mine: true, all: null })} className="lg-total" aria-current={filters.mine ? "true" : undefined}>
-          <span className="lg-sc">Held by you</span>
+          <span className="lg-tag">Held by you</span>
           <span className="lg-total-n">
             <Count value={totals.mine} />
           </span>
         </Link>
         <Link href={href({ never: !filters.never, all: null })} scroll={false} className="lg-total">
-          <span className="lg-sc">Never contacted</span>
+          <span className="lg-tag">Never contacted</span>
           <span className="lg-total-n">
             <Count value={queue.neverCount} />
           </span>
         </Link>
         <div className="lg-total">
-          <span className="lg-sc">Longest wait</span>
+          <span className="lg-tag">Longest wait</span>
           <span className="lg-total-n" data-rust={longest >= 7 || undefined}>
             <Count value={longest} /> <span className="lg-total-unit">{longest === 1 ? "day" : "days"}</span>
           </span>

@@ -113,7 +113,7 @@ export function MoveMenu({
 
   return createPortal(
     <div ref={card} className="lg-movemenu" role="menu" aria-label={`Move ${companyName} to`} onKeyDown={onKeyDown}>
-      <p className="lg-movemenu-head lg-sc" aria-hidden="true">
+      <p className="lg-movemenu-head lg-tag" aria-hidden="true">
         Move to
       </p>
       {STAGES.map((stage, i) => {

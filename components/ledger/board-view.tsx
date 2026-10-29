@@ -168,7 +168,7 @@ export function BoardView({ workspaceId, columns, filters, industries, total, fi
             <ul className="lg-slips" aria-label={`${label}, ${col.count}`}>
               {drag.over === col.stage && (
                 <li className="lg-dropline" aria-hidden="true">
-                  <span className="lg-sc">Move to {label}</span>
+                  <span className="lg-tag">Move to {label}</span>
                 </li>
               )}
               {col.cards.map((card) => (
