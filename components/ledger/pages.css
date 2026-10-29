@@ -372,12 +372,13 @@
     place-items: center;
     width: 28px;
     height: 28px;
-    border: 1px solid var(--edge);
-    border-radius: 3px;
-    background: var(--sheet);
+    border: 1px dashed var(--edge);
+    border-radius: 50%;
+    background: transparent;
     color: var(--moss);
   }
   .lg-fact[data-verified] .lg-factmark {
+    border-style: solid;
     border-color: var(--moss);
     background: var(--moss-wash);
   }
