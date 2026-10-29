@@ -1,0 +1,67 @@
+/* The claim chip: three states drawn in ink and paper, with words, never colour alone. */
+
+@layer components {
+  .lg-claimchip {
+    display: inline-flex;
+    max-width: 100%;
+    padding: 3px;
+    vertical-align: middle;
+  }
+  .lg-chipbody {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    max-width: 100%;
+    padding: 0 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lg-chipbody:focus-visible {
+    outline-offset: -3px;
+  }
+  /* Free: an outlined button that fills with ink on hover. */
+  .lg-chip-free {
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) ease,
+      color var(--dur-fast) ease;
+  }
+  .lg-chip-free:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .lg-chip-free:disabled {
+    cursor: progress;
+    opacity: 0.6;
+  }
+  /* Yours: a solid ink chip with the ribbon hanging inside its left edge. */
+  .lg-chip-mine {
+    padding-left: 24px;
+    background: var(--ink);
+    color: var(--paper);
+    cursor: default;
+  }
+  .lg-chip-ribbon {
+    left: 8px;
+    top: 0;
+  }
+  /* Held by someone else: solid and quiet, the same height as the others. */
+  .lg-chip-theirs {
+    border-color: var(--edge);
+    background: var(--paper-2);
+    font-weight: 500;
+    cursor: default;
+  }
+  .lg-claimico {
+    display: none;
+  }
+}

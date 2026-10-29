@@ -1,16 +1,18 @@
 import Link from "next/link";
-import { ActionForm } from "@/components/action-form";
-import { SignOutButton } from "@/components/auth-buttons";
+import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/ledger/icons";
+import { QueueRow, type QueueRowData } from "@/components/ledger/queue-row";
+import { Count, Empty, PageHead } from "@/components/ledger/shared";
 import { requireMembershipOr404, roleLabel } from "@/lib/authz";
-import { claimState } from "@/lib/claims";
-import { day, overdueLabel } from "@/lib/dates";
-import { prisma } from "@/lib/db";
-import { getQueue, type QueueRow } from "@/lib/queue";
+import { claimState, heldBy } from "@/lib/claims";
+import { daysBetween, day } from "@/lib/dates";
+import { withTenant } from "@/lib/db";
+import { getQueue, type QueueRow as QueueRecord } from "@/lib/queue";
+import { TERMINAL_STAGES } from "@/lib/stages";
 import { queueFiltersSchema, queueQuery, type QueueFilters } from "@/lib/validation";
-import { claimCompany } from "./companies/actions";
 
-// Workspace home: the follow-up queue. Due companies, most overdue first, then a collapsed list
-// of fresh leads. Everything is decided on the server from the URL, like the board.
+// Workspace home: the follow-up queue. Due companies, most overdue first, then a collapsed list of
+// fresh leads. Everything is decided on the server from the URL, like the board. The totals line
+// above the table counts all due companies and the ones you hold, whatever the filter shows.
 export default async function QueuePage({ params, searchParams }: PageProps<"/[workspaceId]">) {
   const { workspaceId } = await params;
   const membership = await requireMembershipOr404(workspaceId);
@@ -20,115 +22,136 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
   const first = (key: string) => [raw[key]].flat()[0] ?? null;
   const filters = queueFiltersSchema.parse({ mine: first("mine"), never: first("never"), all: first("all") });
 
-  const [workspace, queue] = await Promise.all([
-    prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true } }),
-    getQueue({ userId, workspaceId }, filters),
-  ]);
-  const href = (changes: Partial<QueueFilters>) => `/${workspaceId}${queueQuery({ ...filters, ...changes })}`;
-  const companyHref = (id: string) => `/${workspaceId}/companies/${id}`;
+  const queue = await getQueue({ userId, workspaceId }, filters);
 
-  // One line per company: name, timing, claim, latest note, and the one button that fits.
-  function Row({ row, timing }: { row: QueueRow; timing: string }) {
+  // The two totals the filter would hide: every due company, and the due ones you hold. Same
+  // definition of "due" as the queue itself (open stage, follow-up date reached).
+  const totals = await withTenant({ userId, workspaceId }, async (tx) => {
+    const due = { workspaceId, archivedAt: null, stage: { notIn: TERMINAL_STAGES }, nextFollowUpAt: { lte: queue.now } };
+    const all = await tx.company.count({ where: due });
+    const mine = await tx.company.count({ where: { ...due, ...heldBy(userId, queue.now) } });
+    return { all, mine };
+  });
+
+  const href = (changes: Partial<QueueFilters>) => `/${workspaceId}${queueQuery({ ...filters, ...changes })}`;
+
+  const toRow = (row: QueueRecord): QueueRowData => {
     const state = claimState(row, queue.now, userId);
-    return (
-      <li className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border p-2">
-        <Link href={companyHref(row.id)} className="font-medium underline">
-          {row.name}
-        </Link>
-        <span className="text-sm">{timing}</span>
-        {state === "mine" && <span className="text-sm text-green-700">Yours until {day(row.claimExpiresAt as Date)}</span>}
-        {state === "theirs" && (
-          <span className="text-sm">
-            Held by {row.claimedBy?.name} until {day(row.claimExpiresAt as Date)}
-          </span>
-        )}
-        {state === "mine" && (
-          <Link href={`${companyHref(row.id)}#log-outreach`} className="rounded border px-3 py-1 text-sm">
-            Log outreach
-          </Link>
-        )}
-        {(state === "free" || state === "expired") && (
-          <ActionForm action={claimCompany} submitLabel="Claim">
-            <input type="hidden" name="workspaceId" value={workspaceId} />
-            <input type="hidden" name="companyId" value={row.id} />
-          </ActionForm>
-        )}
-        {row.lastNote && <span className="w-full truncate text-sm text-zinc-500">&ldquo;{row.lastNote}&rdquo;</span>}
-      </li>
-    );
-  }
+    return {
+      id: row.id,
+      name: row.name,
+      days: row.nextFollowUpAt ? daysBetween(row.nextFollowUpAt, queue.now) : null,
+      dueOn: row.nextFollowUpAt ? day(row.nextFollowUpAt) : null,
+      note: row.lastNote,
+      claim: {
+        state,
+        holderName: row.claimedBy?.name ?? null,
+        until: row.claimExpiresAt ? day(row.claimExpiresAt) : null,
+      },
+    };
+  };
+
+  // The most overdue row comes first, so the longest wait is read straight off it.
+  const longest = queue.due[0]?.nextFollowUpAt ? Math.max(0, daysBetween(queue.due[0].nextFollowUpAt, queue.now)) : 0;
+
+  const title = filters.mine ? "Yours, due" : "Follow-ups due";
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{workspace.name}</h1>
-          <p className="text-sm text-zinc-500">You are {roleLabel(membership.role)}</p>
+    <div className="lg-queue">
+      <PageHead title={title} count={queue.dueCount} sub={`You are an ${roleLabel(membership.role).toLowerCase()} here.`}>
+        <Link href={`/${workspaceId}/import`} className="lg-btn">
+          Import
+        </Link>
+        <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary">
+          <PlusIcon size={16} />
+          Add company
+        </Link>
+      </PageHead>
+
+      <nav className="lg-totals" aria-label="Queue totals">
+        <Link href={href({ mine: false, all: null })} className="lg-total" aria-current={!filters.mine ? "true" : undefined}>
+          <span className="lg-sc">All due</span>
+          <span className="lg-total-n">
+            <Count value={totals.all} />
+          </span>
+        </Link>
+        <Link href={href({ mine: true, all: null })} className="lg-total" aria-current={filters.mine ? "true" : undefined}>
+          <span className="lg-sc">Held by you</span>
+          <span className="lg-total-n">
+            <Count value={totals.mine} />
+          </span>
+        </Link>
+        <Link href={href({ never: !filters.never, all: null })} scroll={false} className="lg-total">
+          <span className="lg-sc">Never contacted</span>
+          <span className="lg-total-n">
+            <Count value={queue.neverCount} />
+          </span>
+        </Link>
+        <div className="lg-total">
+          <span className="lg-sc">Longest wait</span>
+          <span className="lg-total-n" data-rust={longest >= 7 || undefined}>
+            <Count value={longest} /> <span className="lg-total-unit">{longest === 1 ? "day" : "days"}</span>
+          </span>
         </div>
-        <nav className="flex flex-wrap gap-2">
-          <Link href={`/${workspaceId}/board`} className="rounded border px-3 py-1">
-            Board
-          </Link>
-          <Link href={`/${workspaceId}/companies/new`} className="rounded border px-3 py-1">
-            Add company
-          </Link>
-          <Link href={`/${workspaceId}/import`} className="rounded border px-3 py-1">
-            Import
-          </Link>
-          <Link href={`/${workspaceId}/settings`} className="rounded border px-3 py-1">
-            Settings
-          </Link>
-          <Link href="/workspaces" className="rounded border px-3 py-1">
-            Switch workspace
-          </Link>
-          <SignOutButton />
-        </nav>
-      </header>
+      </nav>
 
-      <Link href={href({ mine: !filters.mine, all: null })} scroll={false} aria-pressed={filters.mine} className="self-start text-sm">
-        {filters.mine ? "☑" : "☐"} Only mine
-      </Link>
+      <div className="lg-qtable">
+        <div className="lg-qhead lg-sc" aria-hidden="true">
+          <span>When</span>
+          <span>Company</span>
+          <span className="lg-qnote">Last note</span>
+          <span>Claim</span>
+          <span />
+        </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">Due ({queue.dueCount})</h2>
-        {queue.dueCount === 0 && (
-          <p className="text-sm text-zinc-500">
-            {filters.mine ? "Nothing of yours is due." : "Nothing is due. Log outreach with a follow-up date and it comes back here when it's due."}
+        {queue.due.length === 0 ? (
+          <Empty kind={filters.mine ? "queue-mine" : "queue-due"}>
+            <p className="lg-empty-title">{filters.mine ? "Nothing of yours is due." : "Nothing is due."}</p>
+            <p>{filters.mine ? "Claim a company from All due and it shows here." : "Log outreach with a follow-up date and it comes back here when it's due."}</p>
+          </Empty>
+        ) : (
+          <ul className="lg-qlist" aria-label={title}>
+            {queue.due.map((row) => (
+              <QueueRow key={row.id} workspaceId={workspaceId} row={toRow(row)} />
+            ))}
+          </ul>
+        )}
+        {queue.due.length < queue.dueCount && (
+          <p className="lg-more">
+            <Link href={href({ all: "due" })} scroll={false} className="lg-link">
+              Show all {queue.dueCount}
+            </Link>
           </p>
         )}
-        <ul className="flex flex-col gap-2">
-          {queue.due.map((row) => (
-            <Row key={row.id} row={row} timing={overdueLabel(row.nextFollowUpAt as Date, queue.now)} />
-          ))}
-        </ul>
-        {queue.due.length < queue.dueCount && (
-          <Link href={href({ all: "due" })} scroll={false} className="text-sm underline">
-            Show all {queue.dueCount}
-          </Link>
-        )}
-      </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">
-          <Link href={href({ never: !filters.never, all: null })} scroll={false} aria-expanded={filters.never}>
-            {filters.never ? "▾" : "▸"} Never contacted ({queue.neverCount})
-          </Link>
-        </h2>
-        {queue.never && (
-          <>
-            <ul className="flex flex-col gap-2">
-              {queue.never.map((row) => (
-                <Row key={row.id} row={row} timing="No outreach yet" />
-              ))}
-            </ul>
-            {queue.never.length < queue.neverCount && (
-              <Link href={href({ all: "never" })} scroll={false} className="text-sm underline">
-                Show all {queue.neverCount}
-              </Link>
-            )}
-          </>
-        )}
-      </section>
+        <section className="lg-never" aria-labelledby="never-title">
+          <h2 id="never-title" className="lg-never-title">
+            <Link href={href({ never: !filters.never, all: null })} scroll={false} aria-expanded={filters.never} className="lg-never-toggle">
+              {filters.never ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
+              <span className="lg-h2">Never contacted</span>
+              <span className="lg-never-count">
+                <Count value={queue.neverCount} />
+              </span>
+            </Link>
+          </h2>
+          {queue.never && (
+            <>
+              <ul className="lg-qlist" aria-label="Never contacted">
+                {queue.never.map((row) => (
+                  <QueueRow key={row.id} workspaceId={workspaceId} row={toRow(row)} />
+                ))}
+              </ul>
+              {queue.never.length < queue.neverCount && (
+                <p className="lg-more">
+                  <Link href={href({ never: true, all: "never" })} scroll={false} className="lg-link">
+                    Show all {queue.neverCount}
+                  </Link>
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
