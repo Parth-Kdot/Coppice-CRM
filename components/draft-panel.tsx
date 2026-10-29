@@ -254,7 +254,7 @@ function DraftCard({ draft, index, ...props }: CardProps) {
         <label className="lg-label" htmlFor={`${id}-body`}>
           Draft {n} body
         </label>
-        <textarea id={`${id}-body`} className="lg-textarea" rows={11} value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea id={`${id}-body`} className="lg-textarea lg-letter-bodybox" rows={13} value={body} onChange={(e) => setBody(e.target.value)} />
         <p className="lg-hint mt-1">Read it through and fix anything before you send it.</p>
       </div>
 

@@ -833,6 +833,7 @@
   .lg-letters {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
     gap: 24px;
     margin-top: 22px;
   }
@@ -861,8 +862,8 @@
     margin: 8px 0 12px;
     overflow-wrap: anywhere;
   }
-  .lg-letter .lg-textarea {
-    min-height: 220px;
+  .lg-letter .lg-letter-bodybox {
+    min-height: 280px;
     line-height: 1.5;
   }
   .lg-letter-send {
@@ -966,8 +967,13 @@
     text-align: center;
     white-space: nowrap;
   }
+  .lg-findings mark {
+    display: inline-block;
+    padding-bottom: 3px;
+  }
   .lg-fwhy {
     display: block;
+    margin-top: 2px;
     color: var(--ink-2);
     font-size: var(--fs-2);
   }
