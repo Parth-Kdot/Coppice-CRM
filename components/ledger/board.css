@@ -656,6 +656,21 @@
     .lg-btop .lg-toggle svg {
       display: none;
     }
+    .lg-slip-due .lg-od-text,
+    .lg-slip-none {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+    }
+    .lg-slip-name {
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .lg-st-dot {
+      display: none;
+    }
   }
   /* A station strip in a narrow column: smaller dot, the name wraps onto two lines instead of being cut. */
   .lg-bcol {
