@@ -1,4 +1,4 @@
-import { useId, type ReactNode, type SVGProps } from "react";
+import { useId, type ReactNode, type Ref, type SVGProps } from "react";
 
 // The coppice stool: a low, wide cut stump seen slightly from above, with slender shoots rising
 // from its rim. This file draws the large, engraved version (landing hero, name story, final call to
@@ -233,9 +233,10 @@ type StoolProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
 };
 
 // The whole stool: ground line, stump, and a set of shoots.
-export function Stool({ shoots = SHOOTS_THREE, engraved = true, title, children, ...rest }: StoolProps) {
+export function Stool({ shoots = SHOOTS_THREE, engraved = true, title, children, ref, ...rest }: StoolProps & { ref?: Ref<SVGSVGElement> }) {
   return (
     <svg
+      ref={ref}
       viewBox={`${STOOL_VIEWBOX.x} ${STOOL_VIEWBOX.y} ${STOOL_VIEWBOX.w} ${STOOL_VIEWBOX.h}`}
       role={title ? "img" : undefined}
       aria-label={title}

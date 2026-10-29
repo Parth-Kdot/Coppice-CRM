@@ -1,0 +1,1418 @@
+/* ==========================================================================================
+   Coppice landing page. Plain CSS in a file (the strict style-src policy allows files, never inline
+   style attributes). Scroll choreography is GSAP in the section components; the states it starts
+   from are gated on a data attribute that is set only after script runs, so without script or with
+   reduced motion every section simply shows its finished state.
+
+   House rules here: a twelve column grid with a few shared edges, ruled lines only inside ledger
+   objects (the sheet, the mock windows, the race), square paper surfaces, a 3 px radius on controls
+   only, links always underlined, one hard 2 px offset on the hero window and nowhere else.
+   ========================================================================================== */
+
+html {
+  scroll-padding-top: 72px;
+}
+
+/* Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: clip;
+}
+
+.ld {
+  background: var(--paper);
+  color: var(--ink);
+  overflow-x: clip;
+  font-size: var(--fs-3);
+  line-height: 1.55;
+}
+
+.ld-wrap {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.ld-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 24px;
+}
+@media (max-width: 640px) {
+  .ld-wrap {
+    padding: 0 18px;
+  }
+}
+
+/* ---------- Type ---------- */
+/* The one eyebrow style, used twice on the page: a label above How it works and Live example. */
+.ld-eyebrow {
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ld-h1,
+.ld-h2,
+.ld-h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+.ld-h1 {
+  font-size: var(--fs-7);
+  line-height: 0.98;
+  letter-spacing: -0.022em;
+}
+.ld-h2 {
+  font-size: var(--fs-5);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+.ld-h3 {
+  font-size: var(--fs-4);
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+}
+@media (min-width: 900px) {
+  .ld-h2 {
+    font-size: var(--fs-6);
+  }
+}
+.ld-lede {
+  max-width: 34em;
+  font-size: var(--fs-3);
+  line-height: 1.55;
+  color: var(--ink);
+}
+.ld-sub {
+  max-width: 34em;
+  color: var(--ink-2);
+}
+.ld-btn-lg {
+  min-height: 48px;
+  padding: 0 22px;
+  font-size: var(--fs-3);
+}
+.ld-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ld-micro {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-sec {
+  padding: clamp(56px, 7vw, 104px) 0;
+}
+.ld .lg-btn {
+  font-size: var(--fs-2);
+}
+
+/* ---------- Nav: a solid bar ---------- */
+.ld-nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 60;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+.ld-nav-in {
+  position: relative;
+  max-width: 1240px;
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.ld-nav-logo {
+  display: inline-flex;
+  border-radius: 3px;
+  text-decoration: none;
+}
+.ld-nav nav {
+  margin: 0 auto;
+}
+.ld-nav-links {
+  display: flex;
+  gap: 22px;
+  margin: 0;
+  list-style: none;
+}
+.ld-nav-menu-only {
+  display: none;
+}
+.ld-nav-links a,
+.ld-nav-signin {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: var(--fs-2);
+  font-weight: 500;
+  text-decoration: none;
+}
+.ld-nav-links a:hover,
+.ld-nav-signin:hover {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  text-decoration-thickness: 1px;
+}
+.ld-nav-cta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.ld-nav .lg-btn {
+  min-height: 44px;
+}
+.ld-nav-menu-btn {
+  display: none;
+}
+@media (max-width: 1060px) {
+  .ld-nav-links {
+    gap: 16px;
+  }
+  .ld-nav-signin {
+    display: none;
+  }
+}
+/* Below 860 px the section links move into a menu that opens under the bar. */
+@media (max-width: 860px) {
+  .ld-nav nav {
+    margin: 0;
+  }
+  .ld-nav-menu-btn {
+    display: inline-flex;
+    margin-left: auto;
+  }
+  .ld-nav-menu-only {
+    display: list-item;
+  }
+  .ld-nav-links {
+    display: none;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 4px 32px 12px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--edge);
+  }
+  .ld-nav[data-open="true"] .ld-nav-links {
+    display: flex;
+  }
+  .ld-nav-links li + li {
+    border-top: 1px solid var(--rule);
+  }
+  .ld-nav-links a {
+    width: 100%;
+    min-height: 48px;
+    font-size: var(--fs-3);
+  }
+}
+@media (max-width: 520px) {
+  .ld-nav-cta {
+    display: none;
+  }
+  .ld-nav-in {
+    padding: 0 14px;
+    gap: 10px;
+  }
+  .ld-nav-links {
+    padding-inline: 18px;
+  }
+  .ld-nav-logo .font-display {
+    font-size: var(--fs-3);
+  }
+}
+
+/* ---------- Hero: the product, finished, cropped by the edge of the window ---------- */
+.ld-hero {
+  position: relative;
+  height: min(100svh, 940px);
+  min-height: 660px;
+  padding-top: 64px;
+  overflow: hidden;
+}
+.ld-hero-grid {
+  height: 100%;
+  align-items: center;
+}
+.ld-hero-copy {
+  grid-column: 1 / span 5;
+  min-width: 0;
+  padding-bottom: 32px;
+}
+.ld-hero-copy .ld-h1 {
+  margin-top: 4px;
+}
+.ld-hero-copy .ld-lede {
+  margin-top: 20px;
+}
+.ld-hero-copy .ld-cta-row {
+  margin-top: 28px;
+}
+.ld-hero-copy .ld-micro {
+  margin-top: 14px;
+}
+.ld-stool {
+  display: block;
+  width: 100%;
+  overflow: visible;
+  color: var(--moss);
+}
+.ld-hero-stool {
+  width: 150px;
+  max-width: 100%;
+  margin: 0 0 22px -8px;
+}
+.ld-stool .lg-stem,
+.ld-stool .lg-stem-thin,
+.ld-stool .lg-stump-wall,
+.ld-stool .lg-stump-top,
+.ld-scene .lg-stem,
+.ld-scene .lg-stem-thin,
+.ld-scene .lg-stump-wall,
+.ld-scene .lg-stump-top {
+  stroke-dasharray: 1 2;
+}
+/* The stool draws itself once. Until script takes over it waits undrawn, but only where script
+   runs and motion is welcome; everywhere else it is simply there. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .ld-draw .lg-stem,
+  .ld-draw .lg-stem-thin {
+    stroke-dashoffset: 1;
+  }
+  .ld-draw:not(.ld-draw-shoots) .lg-stump-wall,
+  .ld-draw:not(.ld-draw-shoots) .lg-stump-top {
+    stroke-dashoffset: 1;
+  }
+  .ld-draw:not(.ld-draw-shoots) .lg-stump-rings,
+  .ld-draw:not(.ld-draw-shoots) .lg-stump-hatch,
+  .ld-draw:not(.ld-draw-shoots) .lg-stump-bark,
+  .ld-draw:not(.ld-draw-shoots) .lg-stump-roots,
+  .ld-draw:not(.ld-draw-shoots) .lg-ground {
+    opacity: 0;
+  }
+  .ld-draw .lg-leaf {
+    transform: scale(0);
+    transform-box: fill-box;
+    transform-origin: 0% 50%;
+  }
+}
+
+/* The window sits on the right and runs past the right and bottom edges. */
+.ld-hero-window {
+  grid-column: 6 / -1;
+  align-self: start;
+  min-width: 0;
+  margin: 84px calc(-1 * max(32px, (100vw - 1240px) / 2 + 32px)) 0 0;
+}
+.ld-hero-window .ldm {
+  width: min(880px, 100%);
+  /* The one hard offset on the page. */
+  box-shadow: 2px 2px 0 var(--edge);
+}
+.ld-hero-window figcaption {
+  margin-bottom: 10px;
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+@media (max-width: 1100px) {
+  .ld-hero-copy {
+    grid-column: 1 / span 6;
+  }
+  .ld-hero-window {
+    grid-column: 7 / -1;
+  }
+}
+@media (max-width: 900px) {
+  .ld-hero {
+    height: auto;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  .ld-hero-grid {
+    height: auto;
+    display: block;
+    padding-top: 28px;
+  }
+  .ld-hero-copy {
+    padding-bottom: 8px;
+  }
+  .ld-hero-stool {
+    width: 110px;
+  }
+  .ld-hero-window {
+    margin: 28px 0 0;
+  }
+  .ld-hero-window .ldm {
+    width: 100%;
+    max-height: 430px;
+  }
+  .ld-hero-window .ldm-wrap {
+    padding-bottom: 28px;
+  }
+}
+
+/* ---------- The problem: one sheet, five rows ---------- */
+.ld-problem-grid {
+  align-items: start;
+}
+.ld-problem-head {
+  grid-column: 1 / span 4;
+  position: sticky;
+  top: 96px;
+}
+.ld-problem-head .ld-sub {
+  margin-top: 16px;
+}
+.ld-problem-closing {
+  margin-top: 28px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-size: var(--fs-4);
+  line-height: 1.3;
+}
+.ld-sheetfile {
+  grid-column: 6 / -1;
+  min-width: 0;
+  border: 1px solid var(--edge);
+  background: var(--sheet);
+}
+.ld-sheetfile-name {
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-prob {
+  padding: 20px 20px 22px;
+  border-top: 1px solid var(--rule);
+}
+.ld-sheetfile-name + .ld-prob {
+  border-top: 0;
+}
+.ld-sheet-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--edge);
+  background: #fff;
+  font-size: var(--fs-2);
+  line-height: 1.25;
+  color: var(--ink);
+}
+.ld-sheet-num {
+  padding: 9px 6px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ld-sheet-cell {
+  min-width: 0;
+  padding: 9px 8px;
+  border-left: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+.ld-strike {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--rust);
+  transform-origin: left center;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.ld-prob-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin-top: 14px;
+}
+.ld-prob-title .ld-h3 {
+  font-size: var(--fs-4);
+}
+/* The margin note beside the title: plain, upright, in the ink of everything else. */
+.ld-prob-note {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-prob-body {
+  margin-top: 4px;
+  color: var(--ink-2);
+}
+.ld-prob-fix {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--moss);
+  font-weight: 500;
+}
+.ld-prob-fix svg {
+  flex: none;
+  margin-top: 4px;
+}
+[data-js="on"] .ld-prob:not(.is-in) .ld-strike {
+  transform: scaleX(0);
+}
+@media (max-width: 900px) {
+  .ld-problem-head {
+    grid-column: 1 / -1;
+    position: static;
+    margin-bottom: 28px;
+  }
+  .ld-sheetfile {
+    grid-column: 1 / -1;
+  }
+}
+/* On a phone the four cells sit two by two beside the row number. */
+@media (max-width: 560px) {
+  .ld-prob {
+    padding: 18px 14px 20px;
+  }
+  .ld-sheet-row {
+    grid-template-columns: 38px repeat(2, minmax(0, 1fr));
+  }
+  .ld-sheet-num {
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+  }
+  .ld-sheet-cell:nth-child(n + 4) {
+    border-top: 1px solid var(--rule);
+  }
+  .ld-sheet-cell:nth-child(4) {
+    border-left: 1px solid var(--rule);
+  }
+}
+
+/* Light reveal for a few key objects: hidden only once script has marked the section. */
+[data-js="on"] .ld-reveal:not(.is-in) {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.ld-reveal.is-in {
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+
+/* ---------- Live example: Maya and Dev, two facing ledger pages ---------- */
+.ld-example-head {
+  align-items: end;
+}
+.ld-example-title {
+  grid-column: 1 / span 7;
+}
+.ld-example-title .ld-h2 {
+  margin-top: 10px;
+}
+.ld-setting {
+  grid-column: 1 / span 7;
+  margin-top: 16px;
+  color: var(--ink);
+}
+.ld-race-bar {
+  grid-column: 9 / -1;
+  grid-row: 1 / span 2;
+  align-self: end;
+  display: flex;
+  justify-content: flex-end;
+}
+.ld-replay {
+  flex: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) ease;
+}
+.ld-replay[data-shown="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ld-race {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 28px;
+  border: 1px solid var(--edge);
+  background: var(--sheet);
+}
+.ld-rpage {
+  position: relative;
+  padding: 20px 28px 22px;
+}
+.ld-rpage[data-who="Dev"] {
+  border-left: 1px solid var(--edge);
+}
+.ld-rpage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ink-2);
+}
+.ld-officer {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-optical-sizing: auto;
+  font-size: var(--fs-5);
+  line-height: 1.1;
+}
+.ld-rpage-sub {
+  color: var(--ink-2);
+}
+.ld-rrows {
+  list-style: none;
+}
+.ld-rr {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: var(--pitch) 0;
+  column-gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--rule);
+}
+/* Only the first row has room for the refusal note on Dev's page; both pages reserve it so they line up. */
+.ld-rr[data-row="0"] {
+  grid-template-rows: var(--pitch) 30px;
+}
+.ld-rr-name {
+  font-weight: 600;
+}
+.ld-rr-claim {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.ld-rr-btn,
+.ld-rr-chip {
+  position: relative;
+  display: none;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.ld-rr-btn {
+  background: var(--paper);
+  color: var(--ink);
+}
+.ld-rr-mine {
+  padding-left: 26px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.ld-rr-ribbon {
+  left: 9px;
+  top: 0;
+}
+/* Held by someone else: a solid, quiet chip. */
+.ld-rr-theirs {
+  border-color: var(--rule);
+  background: var(--paper-2);
+  font-weight: 500;
+}
+.ld-rr[data-state="free"] .ld-rr-btn,
+.ld-rr[data-state="mine"] .ld-rr-mine,
+.ld-rr[data-state="theirs"] .ld-rr-theirs {
+  display: inline-flex;
+}
+.ld-rr-note {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  align-self: start;
+  color: var(--rust);
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0;
+  transform: translateX(-6px);
+}
+.ld-rr.has-note .ld-rr-note {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-base) ease var(--dur-fast),
+    transform var(--dur-base) var(--ease-out) var(--dur-fast);
+}
+.ld-rpage-foot {
+  margin-top: 16px;
+  color: var(--ink);
+  opacity: 0;
+  transition: opacity var(--dur-base) ease;
+}
+.ld-rpage:has(.ld-rr[data-state="mine"]) .ld-rpage-foot {
+  opacity: 1;
+}
+.ld-shaking {
+  animation: lg-shake 140ms ease-in-out 2;
+}
+.ld-rcursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  opacity: 0;
+  pointer-events: none;
+}
+.ld-rcursor-name {
+  margin: 14px 0 0 -2px;
+  padding: 1px 8px;
+  border-radius: 2px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* What happens next: dates in the margin, then the entry. One ruled column. */
+.ld-after {
+  list-style: none;
+  margin-top: 36px;
+}
+.ld-after li {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 24px;
+  padding: 18px 0;
+  border-top: 1px solid var(--edge);
+}
+.ld-after li:last-child {
+  border-bottom: 1px solid var(--edge);
+}
+.ld-after-when {
+  grid-column: 1 / span 2;
+  color: var(--moss);
+  font-weight: 600;
+}
+.ld-after .ld-h3 {
+  grid-column: 3 / span 4;
+  font-size: var(--fs-4);
+}
+.ld-after p:last-child {
+  grid-column: 7 / -1;
+  color: var(--ink-2);
+}
+@media (max-width: 860px) {
+  .ld-example-title,
+  .ld-setting {
+    grid-column: 1 / -1;
+  }
+  .ld-race-bar {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-content: flex-start;
+    margin-top: 8px;
+  }
+  .ld-race {
+    grid-template-columns: 1fr;
+  }
+  .ld-rpage {
+    padding: 16px 18px 18px;
+  }
+  .ld-rpage[data-who="Dev"] {
+    border-left: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .ld-after li {
+    display: block;
+  }
+  .ld-after .ld-h3 {
+    margin: 2px 0 6px;
+  }
+}
+@media (max-width: 460px) {
+  .ld-rr {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ld-rr .lg-margin {
+    display: none;
+  }
+  .ld-rr-note {
+    grid-column: 1 / -1;
+  }
+  .ld-rr[data-row="0"] {
+    grid-template-rows: var(--pitch) 48px;
+  }
+  .ld-rr-btn,
+  .ld-rr-chip {
+    padding: 0 8px;
+  }
+  .ld-rr-mine {
+    padding-left: 22px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-shaking {
+    animation: none;
+  }
+  .ld-rr.has-note .ld-rr-note {
+    transition: none;
+  }
+}
+
+/* ---------- Facts and drafts: the AI, in two example panels ---------- */
+.ld-ai {
+  background: var(--paper-2);
+  border-top: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+}
+.ld-ai-grid {
+  align-items: start;
+}
+.ld-ai-copy {
+  grid-column: 1 / span 5;
+}
+.ld-ai-copy .ld-sub {
+  margin-top: 16px;
+  color: var(--ink);
+}
+.ld-ai-steps {
+  list-style: none;
+  margin-top: 28px;
+  counter-reset: aistep;
+}
+.ld-ai-steps li {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--edge);
+  counter-increment: aistep;
+}
+.ld-ai-steps li::before {
+  content: counter(aistep);
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-size: var(--fs-4);
+  line-height: 1.2;
+  color: var(--moss);
+}
+.ld-ai-steps .ld-h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--fs-3);
+}
+.ld-ai-steps p {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-ai-note {
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--edge);
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-ai-mock {
+  grid-column: 7 / -1;
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.ld-ai-label {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-panel {
+  padding: 18px 20px 20px;
+  border: 1px solid var(--edge);
+  background: var(--sheet);
+  font-size: var(--fs-2);
+  line-height: 1.5;
+}
+.ld-panel-title {
+  margin-bottom: 8px;
+  color: var(--ink-2);
+}
+.ld-fact-text {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-size: var(--fs-4);
+  line-height: 1.25;
+}
+.ld-fact-src {
+  margin-top: 8px;
+  color: var(--ink-2);
+}
+.ld-fact-quote {
+  margin-top: 2px;
+}
+.ld-fact-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 10px;
+}
+.ld-fact-marks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--moss);
+  font-weight: 500;
+}
+.ld-draft-text {
+  font-size: var(--fs-3);
+  line-height: 1.6;
+}
+/* An unsupported number is underlined in rust, and the finding below says why in words. */
+.ld-flag {
+  text-decoration: underline;
+  text-decoration-color: var(--rust);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.ld-finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  color: var(--rust);
+  font-weight: 500;
+}
+.ld-finding svg {
+  flex: none;
+  margin-top: 3px;
+}
+.ld-draft-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 14px;
+}
+.ld-draft-foot .ld-check-line {
+  flex-basis: 100%;
+  color: var(--ink-2);
+}
+.ld-fakebtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 500;
+}
+@media (max-width: 960px) {
+  .ld-ai-copy,
+  .ld-ai-mock {
+    grid-column: 1 / -1;
+  }
+  .ld-ai-mock {
+    margin-top: 36px;
+  }
+}
+
+/* ---------- Features: one ruled column, the label in the margin ---------- */
+.ld-features-head {
+  margin-bottom: 28px;
+}
+.ld-index {
+  list-style: none;
+  border-bottom: 1px solid var(--edge);
+}
+.ld-entry {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 5fr) minmax(0, 6fr);
+  column-gap: 28px;
+  padding: 22px 0 24px;
+  border-top: 1px solid var(--edge);
+}
+.ld-entry-icon {
+  margin-top: 2px;
+  color: var(--moss);
+}
+.ld-entry-title {
+  font-size: var(--fs-4);
+}
+.ld-entry-short {
+  margin-top: 4px;
+  color: var(--ink);
+}
+.ld-entry-tag {
+  display: block;
+  margin-top: 8px;
+  color: var(--moss);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ld-entry-long {
+  color: var(--ink-2);
+}
+@media (max-width: 900px) {
+  .ld-entry {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .ld-entry-long {
+    grid-column: 2;
+    margin-top: 8px;
+  }
+}
+@media (max-width: 520px) {
+  .ld-entry {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .ld-entry-long {
+    grid-column: 1;
+    margin-top: 0;
+  }
+}
+
+/* ---------- Who it is for, the name ---------- */
+.ld-who-grid {
+  align-items: start;
+}
+.ld-who-head {
+  grid-column: 1 / span 5;
+}
+.ld-aud {
+  grid-column: 7 / -1;
+  list-style: none;
+  border-bottom: 1px solid var(--edge);
+}
+.ld-aud li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 14px 0 16px;
+  border-top: 1px solid var(--edge);
+}
+.ld-aud-no {
+  padding-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-aud p:last-child {
+  color: var(--ink-2);
+}
+.ld-name-grid {
+  align-items: center;
+  margin-top: clamp(64px, 8vw, 120px);
+}
+.ld-name-art {
+  grid-column: 1 / span 4;
+}
+.ld-name-stool {
+  max-width: 300px;
+  margin: 0 auto;
+}
+.ld-name-copy {
+  grid-column: 6 / span 6;
+}
+.ld-name-copy .ld-lede {
+  margin-top: 16px;
+}
+.ld-said {
+  margin-top: 12px;
+  color: var(--ink-2);
+}
+.ld-said b {
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+@media (max-width: 900px) {
+  .ld-who-head,
+  .ld-aud {
+    grid-column: 1 / -1;
+  }
+  .ld-aud {
+    margin-top: 24px;
+  }
+  .ld-name-art,
+  .ld-name-copy {
+    grid-column: 1 / -1;
+  }
+  .ld-name-art {
+    margin-bottom: 20px;
+  }
+  .ld-name-stool {
+    max-width: 220px;
+    margin: 0;
+  }
+}
+
+/* ---------- Trust: first person, one ruled column ---------- */
+.ld-trust-grid {
+  align-items: start;
+}
+.ld-trust-head {
+  grid-column: 1 / span 4;
+}
+.ld-trust-head .ld-sub {
+  margin-top: 16px;
+}
+.ld-trust-list {
+  grid-column: 6 / -1;
+  list-style: none;
+  border-bottom: 1px solid var(--edge);
+}
+.ld-trust-list li {
+  padding: 18px 0 20px;
+  border-top: 1px solid var(--edge);
+}
+.ld-trust-list .ld-h3 {
+  margin-bottom: 6px;
+}
+.ld-trust-list p {
+  color: var(--ink-2);
+}
+.ld-priv-wrap {
+  margin-top: clamp(40px, 5vw, 64px);
+  border-top: 1px solid var(--edge);
+}
+.ld-priv {
+  border-bottom: 1px solid var(--edge);
+}
+.ld-priv-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-2);
+  font-weight: 400;
+}
+.ld-priv-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 4px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-size: var(--fs-4);
+  text-align: left;
+  cursor: pointer;
+}
+.ld-priv-q:hover {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  text-decoration-thickness: 1px;
+}
+.ld-priv-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 24px;
+  padding: 4px 4px 12px;
+}
+.ld-priv-list li {
+  grid-column: span 6;
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--rule);
+}
+.ld-priv-list h4 {
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: var(--fs-3);
+}
+.ld-priv-list p {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-coming {
+  list-style: none;
+  padding: 4px 4px 20px;
+}
+.ld-coming li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+.ld-coming-tag {
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-top: 4px;
+}
+.ld-coming-title {
+  font-weight: 600;
+}
+.ld-coming p:last-child {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+@media (max-width: 900px) {
+  .ld-trust-head,
+  .ld-trust-list {
+    grid-column: 1 / -1;
+  }
+  .ld-trust-list {
+    margin-top: 24px;
+  }
+  .ld-priv-list li {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Get started and FAQ: steps on the left, questions on the right ---------- */
+.ld-start-grid {
+  align-items: start;
+}
+.ld-start-col {
+  grid-column: 1 / span 5;
+}
+.ld-start-col .ld-sub {
+  margin-top: 14px;
+}
+.ld-start-steps {
+  list-style: none;
+  margin-top: 28px;
+}
+.ld-start-steps li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 8px;
+  padding: 16px 0 18px;
+  border-top: 1px solid var(--edge);
+}
+.ld-start-no {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-size: var(--fs-6);
+  line-height: 1;
+  color: var(--moss);
+}
+.ld-start-steps .ld-h3 {
+  margin-bottom: 4px;
+  font-size: var(--fs-3);
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+.ld-start-steps p {
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+.ld-faq {
+  grid-column: 7 / -1;
+}
+.ld-faq > ul {
+  list-style: none;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--edge);
+}
+.ld-faq-item {
+  border-top: 1px solid var(--edge);
+}
+.ld-faq-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 4px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-size: var(--fs-3);
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-faq-q:hover {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  text-decoration-thickness: 1px;
+}
+.ld-faq-plus {
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.ld-faq-plus::before,
+.ld-faq-plus::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.ld-faq-plus::before {
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 2px;
+}
+.ld-faq-plus::after {
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 2px;
+}
+.is-open .ld-faq-plus::after,
+.ld-priv-q[aria-expanded="true"] .ld-faq-plus::after {
+  transform: scaleY(0);
+}
+.ld-faq-a {
+  padding: 4px 4px 22px;
+  max-width: 46em;
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+}
+@media (max-width: 960px) {
+  .ld-start-col,
+  .ld-faq {
+    grid-column: 1 / -1;
+  }
+  .ld-faq {
+    margin-top: 44px;
+  }
+}
+
+/* ---------- Final call and footer ---------- */
+.ld-final {
+  position: relative;
+  padding-top: clamp(56px, 7vw, 96px);
+  background: var(--paper-2);
+  border-top: 1px solid var(--edge);
+}
+.ld-final-grid {
+  align-items: center;
+}
+.ld-final-art {
+  grid-column: 1 / span 4;
+}
+.ld-final-stool {
+  max-width: 300px;
+  margin: 0 auto;
+}
+.ld-final-copy {
+  grid-column: 6 / -1;
+}
+.ld-final-copy .ld-sub {
+  margin: 14px 0 26px;
+}
+.ld-footer {
+  margin-top: clamp(48px, 6vw, 80px);
+  padding: 26px 0 30px;
+  border-top: 1px solid var(--edge);
+  font-size: var(--fs-2);
+  color: var(--ink-2);
+}
+.ld-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 28px;
+  align-items: center;
+}
+.ld-footer-grid > .ld-foot-small {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  max-width: 62em;
+}
+.ld-foot-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+.ld-foot-links {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+}
+.ld-foot-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.ld-foot-links a:hover {
+  text-decoration-thickness: 2px;
+}
+.ld-foot-tag {
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+}
+@media (max-width: 900px) {
+  .ld-final-art,
+  .ld-final-copy {
+    grid-column: 1 / -1;
+  }
+  .ld-final-art {
+    margin-bottom: 20px;
+  }
+  .ld-final-stool {
+    max-width: 220px;
+    margin: 0;
+  }
+  .ld-footer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Without script, the checks that are drawn by a timeline are simply there. */
+@media (scripting: none) {
+  .lg-tick path {
+    stroke-dashoffset: 0 !important;
+  }
+}
+
+/* Touch targets: Replay and the section buttons have at least 44 px to tap. */
+.ld .ld-replay {
+  min-height: 44px;
+  padding: 0 14px;
+}

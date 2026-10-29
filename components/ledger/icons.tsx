@@ -489,6 +489,28 @@ export function EngravedDraft(props: EngravedProps) {
   );
 }
 
+// The fact sheet: a packet page with its lines and a check beside the one that was verified.
+export function EngravedFacts(props: EngravedProps) {
+  return (
+    <Engraved
+      {...props}
+      shape={
+        <>
+          <path d="M12 5h17l9 9v29H12z" />
+          <path d="M29 5v9h9" />
+        </>
+      }
+      shade={<path d="M12 5h8v38h-8z" />}
+      detail={
+        <>
+          <path d="M18 21h16M18 27h16M18 33h9" />
+          <path d="M28.500 35.500l3 3 5-6" strokeWidth={1.6} />
+        </>
+      }
+    />
+  );
+}
+
 // History that survives turnover: a cut stump with its rings.
 export function EngravedHistory(props: EngravedProps) {
   return (
