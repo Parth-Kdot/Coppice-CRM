@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition, type ReactNode } from "react";
+import { ChipGroup } from "@/components/ledger/chips";
+import { WarningIcon } from "@/components/ledger/icons";
+import { LedgerMenu } from "@/components/ledger/ledger-menu";
+import { Tick } from "@/components/ledger/marks";
+import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
 import { IMPORT_FIELDS, type ActionResult, type ImportField, type ImportMapping } from "@/lib/validation";
+import "@/components/ledger/company.css";
+import "@/components/ledger/pages.css";
 
 type Props = {
   workspaceId: string;
@@ -20,6 +27,33 @@ const FIELD_LABELS: Record<ImportField, string> = {
   contactEmail: "Contact email",
 };
 
+const reason = (matchedOn: string[]) => (matchedOn.length === 2 ? "Same name and website" : matchedOn[0] === "website" ? "Same website" : "Same name");
+
+type EntryState = "done" | "active" | "later";
+const STATE_WORD: Record<EntryState, string> = { done: "Done", active: "Now", later: "Later" };
+
+// One entry of the import ledger: the step number in the margin, a heading, and the body. A step
+// that cannot start yet shows a single plain line instead of its controls.
+function Entry({ n, state, title, later, children }: { n: number; state: EntryState; title: string; later?: string; children?: ReactNode }) {
+  return (
+    <li className="lg-step" data-state={state} aria-current={state === "active" ? "step" : undefined}>
+      <div className="lg-step-margin" aria-hidden="true">
+        <span className="lg-step-no">{state === "done" ? <Tick size={18} /> : n}</span>
+        <span className="lg-step-state lg-sc">{STATE_WORD[state]}</span>
+      </div>
+      <div className="lg-step-body">
+        <h2 className="lg-step-h">
+          <span className="sr-only">Step {n}: </span>
+          {title}
+        </h2>
+        {state === "later" && later ? <p className="lg-hint">{later}</p> : children}
+      </div>
+    </li>
+  );
+}
+
+const COLUMNS = ["Row", "Name", "Industry", "Website", "Contact", "Notes"] as const;
+
 // The CSV import screen: pick a file, check the columns, review problems and look-alikes, import.
 // Every step sends the file to the server, which parses and checks it again (lib/csv.ts); this
 // component only shows what the server sends back and remembers the person's choices.
@@ -31,6 +65,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const id = useId();
 
   const send = (chosen: File, fields: Record<string, string>) => {
     const form = new FormData();
@@ -73,94 +108,128 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
 
   if (result) {
     return (
-      <section className="flex flex-col gap-3">
-        <p role="status" className="text-lg">
-          Imported {result.imported} · Skipped {result.skipped} · Errors {result.errored}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/${workspaceId}?never=1`} className="rounded border px-3 py-1">
-            Go to the queue
-          </Link>
-          <Link href={`/${workspaceId}/board`} className="rounded border px-3 py-1">
-            See the board
-          </Link>
-          <button type="button" onClick={() => setResult(null)} className="rounded border px-3 py-1">
-            Import another file
-          </button>
-        </div>
-      </section>
+      <ol className="lg-entries" aria-label="Import steps">
+        <Entry n={4} state="done" title="Done">
+          <dl className="lg-tally" role="status">
+            <div>
+              <dt className="lg-sc">Imported</dt>
+              <dd data-tone="ok">{result.imported}</dd>
+            </div>
+            <div>
+              <dt className="lg-sc">Skipped</dt>
+              <dd>{result.skipped}</dd>
+            </div>
+            <div>
+              <dt className="lg-sc">Errors</dt>
+              <dd data-tone={result.errored > 0 ? "bad" : undefined}>{result.errored}</dd>
+            </div>
+          </dl>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href={`/${workspaceId}?never=1`} className="lg-btn lg-btn-primary">
+              Go to the queue
+            </Link>
+            <Link href={`/${workspaceId}/board`} className="lg-btn">
+              See the board
+            </Link>
+            <button type="button" onClick={() => setResult(null)} className="lg-btn">
+              Import another file
+            </button>
+          </div>
+        </Entry>
+      </ol>
     );
   }
 
   const label = (row: number) => view?.labels.find((l) => l.row === row);
+  // The Problems column only appears when one of the shown rows has a problem; the list under the table names every bad row.
+  const showProblems = view ? view.sample.some((r) => r.errors.length > 0) : false;
   const importing = view ? view.rowCount - view.errors.length - skips.size : 0;
 
   return (
-    <div className="flex flex-col gap-6">
-      <label className="flex flex-col gap-1">
-        <span className="font-semibold">1. Choose a .csv file</span>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => {
-            const chosen = e.target.files?.[0] ?? null;
-            setFile(chosen);
-            setView(null);
-            if (chosen) review(chosen, null);
-          }}
-        />
-      </label>
-
-      {pending && <p className="text-sm text-zinc-500">Working...</p>}
-      {error && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-red-600">
-          <span>{error}</span>
-          {file && view && (
-            <button type="button" onClick={() => review(file, view.mapping)} className="rounded border px-2 py-0.5 text-sm">
-              Review again
-            </button>
-          )}
+    <ol className="lg-entries" aria-label="Import steps">
+      <Entry n={1} state={view ? "done" : "active"} title="Choose a .csv file">
+        <div className="lg-filerow">
+          <input
+            id={`${id}-file`}
+            type="file"
+            accept=".csv,text/csv"
+            className="lg-file"
+            onChange={(e) => {
+              const chosen = e.target.files?.[0] ?? null;
+              setFile(chosen);
+              setView(null);
+              setResult(null);
+              if (chosen) review(chosen, null);
+            }}
+          />
+          <label htmlFor={`${id}-file`} className="lg-btn">
+            {file ? "Choose another file" : "Choose a CSV file"}
+          </label>
+          <span className="lg-filename lg-muted" aria-live="polite">
+            {pending && !view ? "Working..." : (file?.name ?? "No file chosen")}
+          </span>
         </div>
-      )}
+        {!view && error && <ErrorLine>{error}</ErrorLine>}
+      </Entry>
 
-      {file && view && (
-        <>
-          <section className="flex flex-col gap-2">
-            <h2 className="font-semibold">2. Check the columns</h2>
-            <p className="text-sm text-zinc-500">
-              {view.rowCount} rows found. Guessed from your headers; change any that are wrong.
+      <Entry n={2} state={view ? "done" : "later"} title="Check the columns" later="Appears once a file is chosen.">
+        {file && view && (
+          <>
+            <p className="lg-hint mb-3">
+              {view.rowCount} {view.rowCount === 1 ? "row" : "rows"} found. Guessed from your headers; change any that are wrong.
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {IMPORT_FIELDS.map((field) => (
-                <label key={field} className="flex flex-col gap-1 text-sm">
-                  <span>{FIELD_LABELS[field]}</span>
-                  <select
-                    value={view.mapping[field] ?? ""}
-                    disabled={pending}
-                    onChange={(e) => review(file, { ...view.mapping, [field]: e.target.value === "" ? null : Number(e.target.value) })}
-                    className="rounded border px-2 py-1"
-                  >
-                    {field !== "name" && <option value="">Not in this file</option>}
-                    {view.headers.map((header, index) => (
-                      <option key={index} value={index}>
-                        {header}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+            <div className="lg-mapgrid">
+              {IMPORT_FIELDS.map((field) => {
+                const none = field === "name" ? [] : [{ value: "", label: "Not in this file" }];
+                const columns = view.headers.map((header, index) => ({ value: String(index), label: header.trim() || `Column ${index + 1}` }));
+                const current = view.mapping[field];
+                return (
+                  <div key={field}>
+                    <p className="lg-maplabel" aria-hidden="true">
+                      {FIELD_LABELS[field]}
+                    </p>
+                    <LedgerMenu
+                      block
+                      hideLabel
+                      label={FIELD_LABELS[field]}
+                      value={current === null || current === undefined ? "" : String(current)}
+                      options={[...none, ...columns]}
+                      onChange={(value) => {
+                        if (!pending) review(file, { ...view.mapping, [field]: value === "" ? null : Number(value) });
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
-          </section>
+            {pending && (
+              <p className="lg-hint mt-2" role="status">
+                Working...
+              </p>
+            )}
+            {error && (
+              <div className="mt-2">
+                <ErrorLine>{error}</ErrorLine>
+                <button type="button" onClick={() => review(file, view.mapping)} className="lg-btn lg-btn-sm mt-2">
+                  Review again
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </Entry>
 
-          <section className="flex flex-col gap-2">
-            <h2 className="font-semibold">3. Review</h2>
-            <p className="text-sm text-zinc-500">The first {view.sample.length} rows, as they&apos;ll be imported:</p>
-            <div className="overflow-x-auto">
-              <table className="text-left text-sm">
+      <Entry n={3} state={view ? "active" : "later"} title="Review" later="The first rows, the problems and any look-alike companies show here.">
+        {file && view && (
+          <>
+            <p className="lg-hint mb-2">The first {view.sample.length} rows, as they&apos;ll be imported:</p>
+            <div className="lg-tablewrap">
+              <table className="lg-table" role="table">
+                <caption className="sr-only">The first {view.sample.length} rows, as they will be imported</caption>
                 <thead>
-                  <tr>
-                    {["Row", "Name", "Industry", "Website", "Contact", "Notes", "Problems"].map((h) => (
-                      <th key={h} className="border-b px-2 py-1">
+                  <tr role="row">
+                    {[...COLUMNS, ...(showProblems ? ["Problems"] : [])].map((h) => (
+                      <th key={h} scope="col" role="columnheader" className="lg-sc">
                         {h}
                       </th>
                     ))}
@@ -168,14 +237,44 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                 </thead>
                 <tbody>
                   {view.sample.map((r) => (
-                    <tr key={r.row} className={r.errors.length ? "text-red-600" : ""}>
-                      <td className="px-2 py-1">{r.row}</td>
-                      <td className="px-2 py-1">{r.company.name}</td>
-                      <td className="px-2 py-1">{r.company.industry}</td>
-                      <td className="px-2 py-1">{r.company.website}</td>
-                      <td className="px-2 py-1">{r.contact && [r.contact.name, r.contact.email].filter(Boolean).join(", ")}</td>
-                      <td className="max-w-48 truncate px-2 py-1">{r.company.notes}</td>
-                      <td className="px-2 py-1">{r.errors.join(" ")}</td>
+                    <tr key={r.row} role="row" data-bad={r.errors.length > 0 || undefined}>
+                      <td role="cell" data-label="Row">
+                        {r.row}
+                      </td>
+                      <td role="cell" data-label="Name" className="lg-c-name">
+                        {r.company.name || <span className="lg-muted">(empty)</span>}
+                      </td>
+                      <td role="cell" data-label="Industry" className="lg-c-industry">
+                        {r.company.industry}
+                      </td>
+                      <td role="cell" data-label="Website">
+                        {r.company.website}
+                      </td>
+                      <td role="cell" data-label="Contact" className="lg-c-contact">
+                        {r.contact && (
+                          <div>
+                            <span>{r.contact.name}</span>
+                            {r.contact.email && (
+                              <span className="lg-email" title={r.contact.email}>
+                                {r.contact.email}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td role="cell" data-label="Notes" className="lg-cellnote">
+                        {r.company.notes}
+                      </td>
+                      {showProblems && (
+                        <td role="cell" data-label="Problems" className="lg-c-problems">
+                          {r.errors.length > 0 && (
+                            <span className="lg-late">
+                              <WarningIcon size={14} className="mr-1 inline-block align-[-2px]" />
+                              {r.errors.join(" ")}
+                            </span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -183,15 +282,18 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
             </div>
 
             {view.errors.length > 0 && (
-              <details open className="text-sm">
-                <summary className="cursor-pointer">
-                  {view.errors.length} {view.errors.length === 1 ? "row" : "rows"} won&apos;t be imported. Fix them in the sheet and upload it again
-                  to include them.
+              <details open className="lg-problems">
+                <summary>
+                  {view.errors.length} {view.errors.length === 1 ? "row" : "rows"} won&apos;t be imported. Fix them in the sheet and upload it again to
+                  include them.
                 </summary>
-                <ul className="flex flex-col gap-1 pt-2 text-red-600">
+                <ul>
                   {view.errors.map((e) => (
-                    <li key={e.row}>
-                      Row {e.row}: {e.messages.join(" ")}
+                    <li key={e.row} className="lg-late">
+                      <WarningIcon size={14} />
+                      <span>
+                        Row {e.row}: {e.messages.join(" ")}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -199,73 +301,83 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
             )}
 
             {view.groups.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <h3 className="font-semibold">Possible duplicates</h3>
-                <p className="text-sm text-zinc-500">Choose Import or Skip for each row. Importing a look-alike keeps both as separate companies.</p>
-                {view.groups.map((group) => (
-                  <div key={group.rows[0]} className="flex flex-col gap-2 rounded border border-amber-500 p-3 text-sm">
-                    <span className="text-zinc-500">Same {group.matchedOn.join(" and ")}</span>
-                    {group.existing.map((company) => (
-                      <span key={company.id}>
-                        Already in the workspace:{" "}
-                        <Link href={`/${workspaceId}/companies/${company.id}`} className="underline">
-                          {company.name}
-                        </Link>
-                        {company.website && ` (${company.website})`}
-                        {company.archived && <span className="ml-1 rounded bg-zinc-200 px-1 text-zinc-900">archived</span>}
-                      </span>
-                    ))}
-                    {group.rows.map((row) => (
-                      <fieldset key={row} className="flex flex-wrap items-center gap-3">
-                        <legend className="sr-only">Row {row}</legend>
-                        <span>
-                          Row {row}: {label(row)?.name}
-                          {label(row)?.website && ` (${label(row)?.website})`}
-                        </span>
-                        <label className="flex items-center gap-1">
-                          <input
-                            type="radio"
-                            name={`row-${row}`}
-                            aria-label={`Import row ${row}`}
-                            checked={!skips.has(row)}
-                            onChange={() => choose(row, false)}
-                          />
-                          Import
-                        </label>
-                        <label className="flex items-center gap-1">
-                          <input
-                            type="radio"
-                            name={`row-${row}`}
-                            aria-label={`Skip row ${row}`}
-                            checked={skips.has(row)}
-                            onChange={() => choose(row, true)}
-                          />
-                          Skip
-                        </label>
-                      </fieldset>
-                    ))}
+              <div className="lg-groups">
+                <h3 className="lg-h3">Possible duplicates</h3>
+                <p className="lg-hint mb-3">Choose Import or Skip for each row. Importing a look-alike keeps both as separate companies.</p>
+                {view.groups.map((group, gi) => (
+                  <div key={group.rows[0]} className="lg-group" role="group" aria-labelledby={`${id}-g${gi}`}>
+                    <div className="lg-group-head">
+                      <h4 id={`${id}-g${gi}`} className="lg-group-q">
+                        Same company?
+                      </h4>
+                      <span className="lg-sc lg-muted">{reason(group.matchedOn)}</span>
+                    </div>
+                    <div className="lg-group-cols">
+                      {group.existing.map((company) => (
+                        <div key={company.id} className="lg-dupcard lg-dupcard-have">
+                          <p className="lg-sc lg-muted">Already in the workspace</p>
+                          <p className="lg-dupname">
+                            <Link href={`/${workspaceId}/companies/${company.id}`} className="lg-link">
+                              {company.name}
+                            </Link>
+                          </p>
+                          <p className="lg-dupsite">
+                            {company.website || "No website"}
+                            {company.archived && <span className="lg-badge lg-badge-stale ml-2">archived</span>}
+                          </p>
+                        </div>
+                      ))}
+                      {group.rows.map((row) => {
+                        const entry = label(row);
+                        const skipped = skips.has(row);
+                        return (
+                          <div key={row} className="lg-dupcard" data-skipped={skipped || undefined}>
+                            <p className="lg-sc lg-muted">In your file, row {row}</p>
+                            <p className="lg-dupname">
+                              <span className="lg-nametext">
+                                Row {row}: {entry?.name}
+                              </span>
+                            </p>
+                            <p className="lg-dupsite">{entry?.website ? `(${entry.website})` : "No website"}</p>
+                            <ChipGroup
+                              legend={`Row ${row}`}
+                              hideLegend
+                              value={skipped ? "skip" : "import"}
+                              onChange={(value) => choose(row, value === "skip")}
+                              options={[
+                                { value: "import", label: "Import", ariaLabel: `Import row ${row}` },
+                                { value: "skip", label: "Skip", ariaLabel: `Skip row ${row}` },
+                              ]}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-          </section>
+          </>
+        )}
+      </Entry>
 
-          <section className="flex flex-col gap-2">
-            <h2 className="font-semibold">4. Import</h2>
-            <p className="text-sm text-zinc-500">
+      <Entry n={4} state="later" title="Import">
+        {file && view ? (
+          <>
+            <p>
               {importing} {importing === 1 ? "company" : "companies"} will be added as Not contacted. Nothing is imported until you press the button.
             </p>
-            <button
-              type="button"
-              disabled={pending || importing === 0}
-              onClick={() => importNow(file, view)}
-              className="self-start rounded border px-3 py-1 disabled:opacity-50"
-            >
-              Import {importing} {importing === 1 ? "company" : "companies"}
-            </button>
-          </section>
-        </>
-      )}
-    </div>
+            <div className="mt-3">
+              <button type="button" disabled={pending || importing === 0} onClick={() => importNow(file, view)} className="lg-btn lg-btn-primary">
+                {pending ? "Working..." : `Import ${importing} ${importing === 1 ? "company" : "companies"}`}
+              </button>
+            </div>
+            {!pending && error && <ErrorLine>{error}</ErrorLine>}
+          </>
+        ) : (
+          <p className="lg-hint">Nothing is imported until you press the button here.</p>
+        )}
+      </Entry>
+    </ol>
   );
 }
