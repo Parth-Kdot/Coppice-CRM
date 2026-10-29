@@ -13,7 +13,7 @@ export const HERO = {
   headline: "New board, same roots.",
   subhead:
     "Coppice is a shared outreach pipeline for teams that turn over every year. One officer claims each company, a queue brings it back on the date you chose, and the history stays in the workspace after the board graduates.",
-  micro: "Sign in with Google. Free for student teams, with unlimited officers.",
+  micro: "Free for student teams, with unlimited officers.",
   exampleLabel: "Example workspace, made-up companies",
 };
 
