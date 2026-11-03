@@ -29,6 +29,5 @@ npx skills experimental_install
 | improve-codebase-architecture | Reviewing structure and module boundaries | `npx skills add mattpocock/skills -s improve-codebase-architecture` |
 | security-review | Reviewing auth, permissions, row-level security and input handling | `npx skills add getsentry/skills -s security-review` |
 | web-design-guidelines | Reviewing UI and accessibility before demos | `npx skills add vercel-labs/agent-skills -s web-design-guidelines` |
-| pr-audit | Before every pull request: structure, design, project rules and PR hygiene | Committed in this repo at `.claude/skills/pr-audit/SKILL.md` |
 
 When a skill's advice conflicts with this project's choices, the project wins: Prisma stays on 7.10.1, database tests use a real Postgres instead of mocks, and authentication uses Better Auth rather than Supabase Auth.
