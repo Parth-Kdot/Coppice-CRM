@@ -495,8 +495,8 @@ model AiDraft {
 // with every step), the column choices it was read with, and the sheet's board year. The browser
 // sends the free-text rows a chunk at a time; each chunk's checked proposals are staged in
 // ImportChunk, and nothing touches companies until the final import, which deletes the session.
-// Sessions older than 24 hours are ignored and removed the next time anyone in the workspace
-// starts one (lib/smart-import.ts).
+// Sessions older than 24 hours are ignored, and removed the next time the same person starts one
+// (only its creator can see a session; lib/smart-import/).
 model ImportSession {
   id          String   @id @default(cuid())
   workspaceId String

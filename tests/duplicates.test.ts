@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { domainKey, groupLookAlikes, matchReasons, nameKey, orderedPair } from "@/lib/duplicates";
+import { containedName, domainKey, groupLookAlikes, lookalikePairs, matchReasons, nameKey, orderedPair } from "@/lib/duplicates";
 
 describe("nameKey: names that mean the same company match", () => {
   test.for([
@@ -94,4 +94,39 @@ describe("groupLookAlikes", () => {
 test("orderedPair always puts the smaller id first", () => {
   expect(orderedPair("b", "a")).toEqual(["a", "b"]);
   expect(orderedPair("a", "b")).toEqual(["a", "b"]);
+});
+
+describe("lookalikePairs (Smart import's look-alikes)", () => {
+  const item = (key: string, name: string, isRow = true, website: string | null = null) => ({ key, name, isRow, nameKey: nameKey(name), domainKey: domainKey(website) });
+
+  test("flags a name inside another, at least 4 letters and whole words", () => {
+    expect(containedName("Lilly", "Eli Lilly")).toBe(true);
+    expect(containedName("Co", "Acme Co Labs")).toBe(false);
+    expect(containedName("Lill", "Eli Lilly")).toBe(false);
+    expect(containedName("Acme Inc", "Acme")).toBe(false);
+  });
+
+  test("keeps code pairs and AI pairs naming two real items, at least one a row, never exact matches", () => {
+    const items = [item("r2", "Eli Lilly"), item("r3", "CAT"), item("r4", "Acme", true, "acme.com"), item("c1", "Lilly", false), item("c2", "Caterpillar", false), item("c3", "Acme Labs", false, "acme.com")];
+    const pairs = lookalikePairs(
+      items,
+      [
+        { a: "r3", b: "c2", reason: "ticker" },
+        { a: "r99", b: "c1", reason: "made up" },
+        { a: "c1", b: "c2", reason: "both saved" },
+        { a: "r3", b: "r3", reason: "itself" },
+        { a: "r2", b: "c2", reason: " " },
+      ],
+      100,
+    );
+    expect(pairs.map((p) => [p.members.map((m) => m.key).join("+"), p.reason, p.why])).toEqual([
+      ["r2+c1", "contained", '"Eli Lilly" and "Lilly" share a name'],
+      ["r3+c2", "ai", "AI: ticker"],
+    ]);
+  });
+
+  test("stops at the cap", () => {
+    const items = [item("r2", "Lilly"), item("c1", "Eli Lilly", false), item("c2", "Lilly Labs", false)];
+    expect(lookalikePairs(items, [], 1)).toHaveLength(1);
+  });
 });

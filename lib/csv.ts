@@ -223,11 +223,14 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
 
 export type ImportResult = { imported: number; skipped: number; errored: number };
 
-// Smart import (lib/smart-import.ts) passes a hook that, inside the import's transaction, checks
+// Smart import (lib/smart-import/) passes a hook that, inside the import's transaction, checks
 // what the person accepted from the AI's reading and returns it per row: a stage, dates, a line
-// added to the notes, and a contact for a row that has none. Without a hook nothing changes.
+// added to the notes, and a contact for a row that has none. It also returns the look-alike groups
+// it flagged (rows and existing company ids), recorded like the exact ones below when imported.
+// Without a hook nothing changes.
 export type RowExtras = { stage?: Stage; lastContactedAt?: Date; nextFollowUpAt?: Date; noteLine?: string; contact?: ContactFields };
-export type SmartHook = (tx: Tx, rows: CheckedRow[]) => Promise<ActionResult<Map<number, RowExtras>>>;
+export type SmartExtras = { rows: Map<number, RowExtras>; lookalikes: { rows: number[]; existing: string[] }[] };
+export type SmartHook = (tx: Tx, rows: CheckedRow[]) => Promise<ActionResult<SmartExtras>>;
 
 const withNoteLine = (notes: string | null, line: string | undefined) => (line ? (notes ? `${notes}\n\n${line}` : line) : notes);
 
@@ -265,7 +268,7 @@ export async function runImport(
     const idOf = new Map(toImport.map((r) => [r.row, randomUUID()]));
     const extras = smart ? await smart(tx, toImport) : null;
     if (extras && !extras.ok) return extras;
-    const extra = (row: number) => extras?.data.get(row);
+    const extra = (row: number) => extras?.data.rows.get(row);
 
     await tx.company.createMany({
       data: toImport.map((r) => ({
@@ -290,9 +293,10 @@ export async function runImport(
     });
 
     // Imported look-alikes were chosen on purpose: remember each pair as separate.
-    const pairs = groups.flatMap((g) => {
+    const flagged = [...groups.map((g) => ({ rows: g.rows, existing: g.existing.map((c) => c.id) })), ...(extras?.data.lookalikes ?? [])];
+    const pairs = flagged.flatMap((g) => {
       const imported = g.rows.flatMap((row) => (idOf.has(row) ? [idOf.get(row) as string] : []));
-      const members = [...imported, ...g.existing.map((c) => c.id)];
+      const members = [...imported, ...g.existing];
       return imported.flatMap((id, i) => members.slice(i + 1).map((other) => orderedPair(id, other)));
     });
     await tx.companyPairDecision.createMany({

@@ -11,15 +11,17 @@ import { createCompany } from "@/lib/companies";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
 import { addDays, localMidnight } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
+import { containedName } from "@/lib/duplicates";
 import {
   boardYearOf,
   checkRowsRead,
+  cellShape,
   cleanSuggestion,
-  containedName,
   findDoNotContact,
   parseDateText,
   quoteInCell,
   resolveDate,
+  shownColumns,
   smartOptions,
   type RowsReadOutput,
   type SmartStart,
@@ -295,6 +297,33 @@ describe("checkRowsRead (the AI's reading, checked)", () => {
   });
 });
 
+describe("what column suggestions show Gemini", () => {
+  test.for([
+    ["a company column", ["Company", "Industry", "Status"], [0, 1]],
+    ["a sponsor column", ["Sponsor", "Sector"], [0, 1]],
+    // Ambiguous: "Name" may be a person, so nothing is shown as text.
+    ["a column headed just Name", ["Name", "Email"], []],
+    ["a company contact column", ["Company Contact", "Organization"], [1]],
+    ["a sponsor status column", ["Sponsor status", "Company"], [1]],
+  ] as const)("%s", ([, headers, shown]) => {
+    expect([...shownColumns([...headers])].sort()).toEqual(shown);
+  });
+
+  test.for([
+    ["", ""],
+    ["sam@acme.com", "[email]"],
+    ["(765) 555-0142", "[phone]"],
+    ["www.acme.com", "[web address]"],
+    ["$2,500", "[number]"],
+    ["Sam Lee", "[text: 2 words]"],
+    ["emailed Mar 2, may follow up", "[text: 6 words, has a date]"],
+    ["may follow up", "[text: 3 words]"],
+    ["write to pat@x.org", "[text: 3 words, has an email]"],
+  ] as const)("describes %j as %j", ([cell, shape]) => {
+    expect(cellShape(cell)).toBe(shape);
+  });
+});
+
 describe("cleanSuggestion (column suggestions made safe)", () => {
   const headers = ["Sponsor", "Site", "Status", "POC"];
   it("keeps columns inside the file, each once, and always a name", () => {
@@ -463,23 +492,31 @@ async function readAll(): Promise<{ started: SmartStart; proposals: Awaited<Retu
 }
 
 describe("Smart import, end to end", () => {
-  it("suggests columns from the headers and 15 sample rows, with emails and phones masked", async () => {
+  it("suggests columns from the headers and 15 sample rows: no names, emails or phones reach Gemini", async () => {
     await turnOn();
-    const rows = Array.from({ length: 20 }, (_, i) => `Company ${i},c${i}.com,Sam Lee,sam${i}@c${i}.com,"call (765) 555-01${String(i).padStart(2, "0")} or 765.555.0142"`);
-    const text = ["Company,Website,Contact,Email,Status", ...rows].join("\n");
+    const rows = Array.from(
+      { length: 20 },
+      (_, i) => `Company ${i},c${i}.com,Sam Lee,sam${i}@c${i}.com,"emailed 3/2 by Sam, call (765) 555-01${String(i).padStart(2, "0")} or 765.555.0142",Jordan Park`,
+    );
+    const text = ["Company,Website,Contact,Email,Status,Owner", ...rows].join("\n");
     fakeGemini(answer(JSON.stringify(MAPPING_REPLY)));
     const suggestion = ok(await as("officerA", () => suggestColumns(null, formOf({ workspaceId: "a", file: file(text) }))));
     expect(suggestion).toEqual({ mapping: MAPPING, freeText: [4], note: null });
 
     expect(geminiCalls()).toHaveLength(1);
-    const sent = JSON.stringify(calls[0].body);
-    expect(sent).not.toMatch(/@c\d+\.com/);
-    expect(sent).not.toMatch(/555[-.]01/);
-    expect(sent).toContain("[email]");
-    expect(sent).toContain("[phone]");
+    const prompt = (calls[0].body as { contents: { parts: { text: string }[] }[] }).contents[0].parts[0].text;
+    // The contact column, the free-text cell and the owner column hold names: only their shape is sent.
+    for (const secret of ["Sam", "Lee", "Jordan", "Park", "emailed", "sam0@", "c0.com", "555"]) expect(prompt).not.toContain(secret);
+    expect(prompt).toContain("0: Company 0");
+    expect(prompt).toContain("2: [text: 2 words]");
+    expect(prompt).toContain("3: [email]");
+    expect(prompt).toContain("4: [text: 9 words, has a date, has a phone number]");
+    expect(prompt).toContain("1: [web address]");
+    // The headers themselves are sent.
+    expect(prompt).toContain("5: Owner");
     // 15 sample rows, not 20.
-    expect(sent).toContain("Company 14");
-    expect(sent).not.toContain("Company 15");
+    expect(prompt).toContain("Company 14");
+    expect(prompt).not.toContain("Company 15");
   });
 
   it("keeps Coppice's own guesses when the suggestion fails", async () => {
@@ -496,8 +533,18 @@ describe("Smart import, end to end", () => {
     expect(started.doNotContact).toEqual([{ row: 5, name: "Initech", column: 4, header: "Status", quote: "asked us to stop" }]);
     // Code found Lilly in Eli Lilly; the AI's CAT pair was kept, the made-up and saved-only pairs dropped.
     expect(started.lookalikes).toEqual([
-      { rows: [3], existing: [expect.objectContaining({ name: "Lilly" })], reason: '"Eli Lilly" and "Lilly" share a name' },
-      { rows: [6], existing: [expect.objectContaining({ name: "Caterpillar" })], reason: "AI: CAT is Caterpillar's ticker" },
+      {
+        rows: [{ row: 3, name: "Eli Lilly", website: "lilly.com" }],
+        existing: [expect.objectContaining({ name: "Lilly" })],
+        reason: "contained",
+        why: '"Eli Lilly" and "Lilly" share a name',
+      },
+      {
+        rows: [{ row: 6, name: "CAT", website: "cat.com" }],
+        existing: [expect.objectContaining({ name: "Caterpillar" })],
+        reason: "ai",
+        why: "AI: CAT is Caterpillar's ticker",
+      },
     ]);
 
     const read = ok(proposals);
@@ -555,6 +602,43 @@ describe("Smart import, end to end", () => {
     // The staging went with the import.
     expect(await sessions()).toBe(0);
     expect(await withTenant(A, (tx) => tx.importChunk.count())).toBe(0);
+    // The look-alikes the person imported anyway are remembered as separate entries, like exact ones.
+    const pairs = await withTenant(A, (tx) => tx.companyPairDecision.findMany({ select: { companyA: { select: { name: true } }, companyB: { select: { name: true } } } }));
+    expect(pairs.map((d) => [d.companyA.name, d.companyB.name].sort().join(" / ")).sort()).toEqual(["CAT / Caterpillar", "Eli Lilly / Lilly"]);
+  });
+
+  it("uses a session once: two imports at the same time write one set of companies", async () => {
+    const { started } = await readAll();
+    const p = await preview();
+    const decisions = [decide(5, { dncAccepted: true })];
+    const results = await Promise.all([commit(started.sessionId, p, decisions), commit(started.sessionId, p, decisions)]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toHaveLength(1);
+    expect((await companies()).map((c) => c.name)).toEqual(["Acme Corp", "CAT", "Caterpillar", "Eli Lilly", "Globex", "Initech", "Lilly"]);
+    // And once it's used, it's gone.
+    expect(await sessions()).toBe(0);
+    expect((await commit(started.sessionId, p, decisions)).ok).toBe(false);
+  });
+
+  it("an import that loads the session while another is using it waits, then writes nothing", async () => {
+    const { started } = await readAll();
+    const p = await preview();
+    // Another import holds the session row (deleted, not yet committed), as a racing commit would.
+    const other = new Client({ connectionString: testDatabaseUrls().ownerUrl });
+    await other.connect();
+    try {
+      await other.query("BEGIN");
+      await other.query(`DELETE FROM public."ImportSession" WHERE id = $1`, [started.sessionId]);
+      const late = commit(started.sessionId, p, [decide(5, { dncAccepted: true })]);
+      // Give the late import time to read the session (still visible to it) and block on its row.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await other.query("COMMIT");
+      expect(await late).toEqual({ ok: false, error: expect.stringContaining("has expired") });
+      expect((await companies()).map((c) => c.name)).toEqual(["Caterpillar", "Lilly"]);
+      expect(await withTenant(A, (tx) => tx.contact.count())).toBe(0);
+    } finally {
+      await other.end();
+    }
   });
 
   it("needs an explicit accept for a do-not-contact row", async () => {
@@ -679,6 +763,19 @@ describe("long sheets, rate limits and partial failure", () => {
     for (const year of [current + 1, current - 6]) {
       expect(await start("ownerA", { cycleStart: String(year) })).toEqual({ ok: false, error: "Choose the board year the sheet is from." });
     }
+  });
+
+  it("never reads the company name, email or website column, whatever the browser sends", async () => {
+    await turnOn();
+    fakeGemini();
+    for (const column of [MAPPING.name, MAPPING.contactEmail, MAPPING.website]) {
+      expect(await start("ownerA", { freeText: JSON.stringify([4, column]) })).toEqual({
+        ok: false,
+        error: "Smart import can't read the company name, contact email or website column. Choose other columns.",
+      });
+    }
+    expect(calls).toHaveLength(0);
+    expect(await sessions()).toBe(0);
   });
 });
 

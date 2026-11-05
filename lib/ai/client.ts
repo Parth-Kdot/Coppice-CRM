@@ -11,7 +11,9 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // Google's products); no model is retried after a rate limit; and every reply is re-checked with the
 // same Zod schema the model was asked to follow, because the model is never trusted.
 // The one exception to the names rule is Smart import's row pass, which reads free-text cells that
-// can hold names: it goes to Groq instead (owner decision), never to Gemini.
+// can hold names: it goes to Groq instead (owner decision), never to Gemini. Smart import's column
+// suggestions send Gemini the headers, company and industry cells, and only the shape of every
+// other cell (lib/smart-import/columns.ts).
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
@@ -55,7 +57,7 @@ export const ROUTES: Record<AiFeature, Route> = {
     firstTryMs: 15_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
   },
-  // Smart import: which column is which, from headers and a few masked sample rows.
+  // Smart import: which column is which, from the headers and a few sample rows (mostly cell shapes).
   IMPORT_MAPPING: {
     model: "gemini-3.5-flash-lite",
     firstTryMs: 20_000,

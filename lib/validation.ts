@@ -378,7 +378,7 @@ export const smartChunkSchema = z.object({
 });
 
 // What the person kept of the AI's reading for one row, after editing. Only the stages before an
-// outcome: Smart import never sets Committed or Declined. lib/smart-import.ts checks every field
+// outcome: Smart import never sets Committed or Declined. lib/smart-import/commit.ts checks every field
 // against what was actually proposed for that row.
 export const SMART_STAGES = ["CONTACTED", "REPLIED", "IN_CONVERSATION"] as const;
 const smartDecisionSchema = z.object({

@@ -8,7 +8,7 @@ import * as smart from "@/lib/smart-import";
 import { smartChunkSchema, smartImportSchema, smartStartSchema, smartSuggestSchema, type ActionResult } from "@/lib/validation";
 import { readFile } from "./read-file";
 
-// Smart import (lib/smart-import.ts): the same file is sent with every step and parsed again on
+// Smart import (lib/smart-import/): the same file is sent with every step and parsed again on
 // the server, like the normal import. Any member may use it while AI is on for the workspace; the
 // server refuses every step when it's off.
 

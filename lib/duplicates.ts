@@ -93,3 +93,59 @@ export function groupLookAlikes<T extends Keyed>(items: T[]): { members: T[]; ma
 export function orderedPair(x: string, y: string): [string, string] {
   return x < y ? [x, y] : [y, x];
 }
+
+// ----- Look-alikes the exact keys miss (Smart import) -----
+
+// The exact keys above miss "Lilly" and "Eli Lilly", or "CAT" and "Caterpillar". Smart import
+// (lib/smart-import/) flags those too, through the same import duplicate review: code finds a name
+// inside another, and the AI may suggest other pairs with a reason. Still only ever a flag.
+export type LookalikeReason = "contained" | "ai";
+
+// Names where one is a whole-word part of the other: "Lilly" and "Eli Lilly". At least 4 letters,
+// so "AI" or "Co" don't match everything.
+export function containedName(a: string, b: string): boolean {
+  const [short, long] = [nameKey(a), nameKey(b)].sort((x, y) => x.length - y.length);
+  if (short === long || short.replace(/ /g, "").length < 4) return false;
+  return ` ${long} `.includes(` ${short} `);
+}
+
+// `key` names the item to the AI (r12 for row 12, c3 for a saved company), so a suggested pair can
+// be checked against items that really exist.
+export type LookalikeItem = { key: string; name: string; isRow: boolean; nameKey: string; domainKey: string | null };
+export type LookalikePair<T> = { members: [T, T]; reason: LookalikeReason; why: string };
+
+// A word in more names than this ("group") says nothing, so its names aren't compared.
+const COMMON_WORD = 200;
+
+// Pairs that look alike though the exact keys miss them, each with at least one row from the file:
+// first the code's contained names, then the AI's suggestions that name two real, different items.
+// Pairs the exact keys already join (same name key or website) are left to that review. At most
+// `max` pairs.
+export function lookalikePairs<T extends LookalikeItem>(items: T[], suggested: { a: string; b: string; reason: string }[], max: number): LookalikePair<T>[] {
+  const pairs = new Map<string, LookalikePair<T>>();
+  const add = (x: T, y: T, reason: LookalikeReason, why: string) => {
+    if (x === y || (!x.isRow && !y.isRow)) return;
+    if (x.nameKey === y.nameKey || (x.domainKey !== null && x.domainKey === y.domainKey)) return;
+    const id = [x.key, y.key].sort().join("|");
+    if (!pairs.has(id) && pairs.size < max) pairs.set(id, { members: [x, y], reason, why });
+  };
+
+  // Code: one name inside the other, compared only between names sharing a word.
+  const byWord = new Map<string, T[]>();
+  for (const item of items) for (const word of new Set(item.nameKey.split(" "))) byWord.set(word, [...(byWord.get(word) ?? []), item]);
+  for (const group of byWord.values()) {
+    if (group.length > COMMON_WORD) continue;
+    for (let i = 0; i < group.length; i++)
+      for (let j = i + 1; j < group.length; j++)
+        if (containedName(group[i].name, group[j].name)) add(group[i], group[j], "contained", `"${group[i].name}" and "${group[j].name}" share a name`);
+  }
+
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  for (const pair of suggested) {
+    const x = byKey.get(pair.a.trim());
+    const y = byKey.get(pair.b.trim());
+    const reason = pair.reason.trim();
+    if (x && y && reason) add(x, y, "ai", `AI: ${reason}`);
+  }
+  return [...pairs.values()];
+}
