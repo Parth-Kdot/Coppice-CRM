@@ -7,7 +7,7 @@ import { organization } from "better-auth/plugins/organization";
 import { mcp } from "@better-auth/mcp";
 import { prisma } from "@/lib/db";
 import { MCP_SCOPES, mcpResourceUrl } from "@/lib/mcp/config";
-import { registrationProblem } from "@/lib/mcp/registration";
+import { SCOPE_CHECKED_PATHS, registrationProblem, scopeProblem } from "@/lib/mcp/oauth-limits";
 
 // Option B (owner decision 2026-10-21): only emails listed in WORKSPACE_CREATOR_EMAILS
 // can create workspaces. Everyone else joins through an invitation.
@@ -70,7 +70,8 @@ const workspaceHttpPaths = Object.values(workspaces.endpoints)
 // - Open Dynamic Client Registration, because hosted assistants register themselves. Anyone can
 //   register a client, so the consent page shows the client's name and where it sends you back,
 //   and every new client needs a person's Allow (consent is per user per client; a registered
-//   client can't skip it). What a registration may contain is bounded (lib/mcp/registration.ts).
+//   client can't skip it). What a registration, a consent or a token request may contain is
+//   bounded (lib/mcp/oauth-limits.ts).
 // - Client ID Metadata Documents (@better-auth/cimd) are left off: in 1.7.10 its Node fetcher
 //   can crash the process on a malformed reply from a client's server, fixed only in 1.7.15,
 //   which needs a newer Better Auth.
@@ -97,6 +98,8 @@ const assistants = mcp({
 // Client management over HTTP is off: Coppice never lets a person create, edit or list OAuth
 // clients, and these endpoints would let any signed-in account store client rows of any size.
 // Assistants register through open registration (/oauth2/register), which has its own limits.
+// Editing a consent is off too: nothing in the app calls it, and it stores whatever scope list it
+// is sent. A consent is only ever made on the consent page.
 const oauthClientAdminPaths = [
   "/oauth2/create-client",
   "/oauth2/update-client",
@@ -104,6 +107,7 @@ const oauthClientAdminPaths = [
   "/oauth2/get-client",
   "/oauth2/get-clients",
   "/oauth2/client/rotate-secret",
+  "/oauth2/update-consent",
 ];
 
 export const auth = betterAuth({
@@ -117,12 +121,18 @@ export const auth = betterAuth({
   // /token hands out a session JWT signed with the same key as MCP access tokens. Nothing in the
   // app uses it, so it is off: a session JWT must never pass as an assistant's token.
   disabledPaths: [...workspaceHttpPaths, "/token", ...oauthClientAdminPaths],
-  // Limits on what open registration accepts (lib/mcp/registration.ts), on top of the plugin's own.
+  // Limits on what open registration and the scope lists of the OAuth flow accept
+  // (lib/mcp/oauth-limits.ts), on top of the plugin's own.
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/oauth2/register") return;
-      const problem = registrationProblem(ctx.body);
-      if (problem) throw new APIError("BAD_REQUEST", { error: "invalid_client_metadata", error_description: problem });
+      if (ctx.path === "/oauth2/register") {
+        const problem = registrationProblem(ctx.body);
+        if (problem) throw new APIError("BAD_REQUEST", { error: "invalid_client_metadata", error_description: problem });
+      }
+      if (SCOPE_CHECKED_PATHS.has(ctx.path)) {
+        const problem = scopeProblem(ctx.query, ctx.body);
+        if (problem) throw new APIError("BAD_REQUEST", { error: "invalid_scope", error_description: problem });
+      }
     }),
   },
   // Limits requests to /api/auth/* per IP: 3 sign-in attempts per 10 seconds, 100 requests per

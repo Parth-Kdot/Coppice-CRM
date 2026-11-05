@@ -2,7 +2,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { auth } from "@/lib/auth";
 import { OAUTH_CORS_PATHS, preflight, withCors } from "@/lib/mcp/cors";
 import { readCappedText, withBody } from "@/lib/mcp/body";
-import { REGISTRATION_BODY_LIMIT, REGISTRATION_PATH } from "@/lib/mcp/registration";
+import { OAUTH_BODY_LIMIT, OAUTH_PATH_PREFIX, REGISTRATION_PATH } from "@/lib/mcp/oauth-limits";
 
 // Every /api/auth/* request (Google redirect, callback, session, sign-out) goes to Better Auth.
 const handlers = toNextJsHandler(auth);
@@ -13,19 +13,22 @@ export const { GET } = handlers;
 // site, so those two answer with CORS headers (lib/mcp/cors.ts). Every other path is unchanged.
 const needsCors = (request: Request) => OAUTH_CORS_PATHS.has(new URL(request.url).pathname);
 
-// Open client registration needs no account, so its body is capped before Better Auth reads it
-// (lib/mcp/registration.ts).
-async function boundedRegistration(request: Request): Promise<Request | Response> {
-  if (new URL(request.url).pathname !== REGISTRATION_PATH) return request;
-  const body = await readCappedText(request, REGISTRATION_BODY_LIMIT);
+// Every OAuth POST (registration, consent, token and the rest) has its body capped before Better
+// Auth reads it (lib/mcp/oauth-limits.ts): registration needs no account and a refresh needs only a
+// refresh token, and the plugin stores what they send.
+async function boundedOAuthBody(request: Request): Promise<Request | Response> {
+  const path = new URL(request.url).pathname;
+  if (!path.startsWith(OAUTH_PATH_PREFIX)) return request;
+  const body = await readCappedText(request, OAUTH_BODY_LIMIT);
   if (body === null) {
-    return Response.json({ error: "invalid_client_metadata", error_description: "The registration is too large." }, { status: 413 });
+    const error = path === REGISTRATION_PATH ? "invalid_client_metadata" : "invalid_request";
+    return Response.json({ error, error_description: "The request is too large." }, { status: 413 });
   }
   return withBody(request, body);
 }
 
 export async function POST(request: Request) {
-  const bounded = await boundedRegistration(request);
+  const bounded = await boundedOAuthBody(request);
   const response = bounded instanceof Response ? bounded : await handlers.POST(bounded);
   return needsCors(request) ? withCors(response) : response;
 }

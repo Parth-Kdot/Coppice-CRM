@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
+import { MCP_SCOPES } from "@/lib/mcp/config";
 
 // Every server action parses its input with one of these before touching the database.
 
@@ -396,3 +397,14 @@ export const mcpChangeStageSchema = z.object({
     .optional()
     .describe("Required as true for COMMITTED or DECLINED, which end the pitch and release the claim. Ask the person first."),
 });
+
+// A space-separated scope list sent to the OAuth endpoints (authorize, consent, token). The plugin
+// checks that each name is one it allows, but not how often a name appears, and it copies the list
+// into every consent, code and token row. So a name may appear only once, and the list can't be
+// longer than the scopes Coppice defines.
+export const oauthScopeListSchema = z
+  .string()
+  .refine((scope) => {
+    const names = scope.split(" ").filter(Boolean);
+    return names.length <= MCP_SCOPES.length && new Set(names).size === names.length;
+  }, "Each scope can be asked for once.");

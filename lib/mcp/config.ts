@@ -14,7 +14,8 @@ export const SCOPE_LABELS: Record<string, string> = {
   openid: "Know who you are on Coppice",
   profile: "See your name and picture",
   email: "See your email address",
-  offline_access: "Stay connected without asking you again, until an owner turns assistants off or you leave the workspace (otherwise it must ask every hour)",
+  offline_access:
+    "Stay connected without asking you again (otherwise it must ask every hour). There is no way yet to disconnect one assistant: an owner turning assistants off, or your leaving a workspace, only blocks it while that lasts",
   [READ_SCOPE]: "Read companies, contacts, notes, outreach history, the follow-up queue and claims in workspaces that allow assistants",
   [WRITE_SCOPE]: "Claim companies, log outreach and move stages as you, in workspaces that allow assistants",
 };

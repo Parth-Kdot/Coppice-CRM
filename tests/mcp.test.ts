@@ -275,6 +275,136 @@ describe("limits on open registration", () => {
   });
 });
 
+describe("limits on the rest of the OAuth flow", () => {
+  // Every name here is one the client was granted, so the plugin's own check (each name allowed)
+  // passes; only the size and the repeats are wrong. About 100 KB.
+  const hugeScope = Array.from({ length: 8 * 1024 }, () => "coppice:read").join(" ");
+  const tokenRequest = (fields: Record<string, string>) =>
+    new Request(new URL("/api/auth/oauth2/token", appUrl()), {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", ...fromNewIp() },
+      body: new URLSearchParams(fields),
+    });
+  const refreshFields = (clientId: string, refreshToken: string, scope?: string) => ({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+    resource: mcpResourceUrl(),
+    ...(scope ? { scope } : {}),
+  });
+  async function pendingConsent() {
+    const clientId = (await registerClient()).body.client_id as string;
+    const { verifier, challenge } = pkce();
+    const { location, headers } = await authorize(clientId, "ownerA", { scope: ALL, challenge });
+    return { clientId, verifier, location, headers };
+  }
+  const consentRequest = (location: URL, headers: Headers, fields: Record<string, unknown>) =>
+    new Request(new URL("/api/auth/oauth2/consent", appUrl()), {
+      method: "POST",
+      headers: { ...Object.fromEntries(headers), "content-type": "application/json", accept: "application/json", ...fromNewIp() },
+      body: JSON.stringify({ accept: true, oauth_query: location.search.slice(1), ...fields }),
+    });
+
+  it("a normal refresh through the route still works, with CORS", async () => {
+    const { clientId, refreshToken } = await getAccessToken("ownerA");
+    const response = await authPost(tokenRequest(refreshFields(clientId, refreshToken)));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  it("a refresh with a 100 KB scope is refused before a refresh token is stored", async () => {
+    const { clientId, refreshToken } = await getAccessToken("ownerA");
+    const before = await prisma.oauthRefreshToken.count();
+    const response = await authPost(tokenRequest(refreshFields(clientId, refreshToken, hugeScope)));
+    expect(response.status).toBe(413);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await prisma.oauthRefreshToken.count()).toBe(before);
+    // The refresh token wasn't used up: the same one still works.
+    expect((await refresh(clientId, refreshToken)).status).toBe(200);
+  });
+
+  it("a consent with a 100 KB scope is refused before anything is stored", async () => {
+    const { location, headers } = await pendingConsent();
+    const consents = await prisma.oauthConsent.count();
+    const response = await authPost(consentRequest(location, headers, { scope: hugeScope }));
+    expect(response.status).toBe(413);
+    expect(await prisma.oauthConsent.count()).toBe(consents);
+  });
+
+  it("a normal consent through the route still gives a code that works", async () => {
+    const { clientId, verifier, location, headers } = await pendingConsent();
+    const response = await authPost(consentRequest(location, headers, { scope: "openid coppice:read" }));
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { url?: string; redirect_uri?: string };
+    const code = new URL((body.redirect_uri ?? body.url) as string).searchParams.get("code") as string;
+    const token = await exchangeCode(clientId, code, verifier);
+    expect(token.status).toBe(200);
+    expect(token.body.scope).toBe("openid coppice:read");
+  });
+
+  test.each([
+    ["a repeated name", "coppice:read coppice:read"],
+    ["more names than Coppice defines", "openid offline_access coppice:read coppice:write openid offline_access coppice:read"],
+  ])("a refresh asking for %s is refused, and nothing is stored", async (_, scope) => {
+    const { clientId, refreshToken } = await getAccessToken("ownerA");
+    const before = await prisma.oauthRefreshToken.count();
+    const response = await authPost(tokenRequest(refreshFields(clientId, refreshToken, scope)));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_scope");
+    expect(await prisma.oauthRefreshToken.count()).toBe(before);
+  });
+
+  it("a consent naming a scope twice is refused", async () => {
+    const { location, headers } = await pendingConsent();
+    const consents = await prisma.oauthConsent.count();
+    const response = await authPost(consentRequest(location, headers, { scope: "coppice:read coppice:read" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_scope");
+    expect(await prisma.oauthConsent.count()).toBe(consents);
+  });
+
+  test.each(["GET", "POST"])("authorize (%s) naming a scope twice is refused", async (method) => {
+    const clientId = (await registerClient()).body.client_id as string;
+    const query = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      redirect_uri: REDIRECT_URI,
+      scope: "openid coppice:read coppice:read",
+      state: "state-1",
+      code_challenge: pkce().challenge,
+      code_challenge_method: "S256",
+      resource: mcpResourceUrl(),
+    });
+    const headers = await signedInHeaders("ownerA");
+    const target = new URL("/api/auth/oauth2/authorize", appUrl());
+    const request =
+      method === "GET"
+        ? new Request(`${target}?${query}`, { headers: { ...Object.fromEntries(headers), ...fromNewIp() }, redirect: "manual" })
+        : new Request(target, {
+            method: "POST",
+            headers: { ...Object.fromEntries(headers), "content-type": "application/x-www-form-urlencoded", ...fromNewIp() },
+            body: query,
+            redirect: "manual",
+          });
+    const response = await (method === "GET" ? auth.handler(request) : authPost(request));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_scope");
+  });
+
+  it("update-consent is off over HTTP, even for the person who gave the consent", async () => {
+    const { clientId, location, headers } = await pendingConsent();
+    await consent(location, headers, true);
+    const row = await prisma.oauthConsent.findFirstOrThrow({ where: { userId: "ownerA", clientId } });
+    const request = new Request(new URL("/api/auth/oauth2/update-consent", appUrl()), {
+      method: "POST",
+      headers: { ...Object.fromEntries(headers), "content-type": "application/json" },
+      body: JSON.stringify({ id: row.id, update: { scopes: ["coppice:read", "coppice:read"] } }),
+    });
+    expect((await authPost(request)).status).toBe(404);
+    expect((await prisma.oauthConsent.findUniqueOrThrow({ where: { id: row.id } })).scopes).toEqual(row.scopes);
+  });
+});
+
 describe("the token check at /api/mcp", () => {
   const listTools = { jsonrpc: "2.0", id: 1, method: "tools/list" };
 
@@ -367,12 +497,31 @@ describe("tools over the current protocol (the official MCP client)", () => {
     }
   });
 
-  it("a workspace you aren't in is refused, the same as one that doesn't exist", async () => {
+  it("a workspace you aren't in is refused by every workspace tool, the same as one that doesn't exist", async () => {
+    const theirs = await createCompany(B, { name: "Secret Co" });
+    if (theirs.status !== "saved") throw new Error("seed");
     const client = await mcpClient(await tokenFor("ownerA"));
-    for (const workspaceId of ["b", "no-such-workspace"]) {
-      const result = await client.callTool({ name: "list_companies", arguments: { workspaceId } });
-      expect(result.isError).toBe(true);
-      expect(resultText(result)).toBe(NOT_A_MEMBER);
+    const extra = await ACTION_ARGS();
+    const tools = [
+      ["list_companies", {}],
+      ["get_company", { companyId: theirs.companyId }],
+      ["get_follow_up_queue", {}],
+      ["list_my_claims", {}],
+      ...ACTIONS.map((name) => [name, { companyId: theirs.companyId, ...extra[name] }] as const),
+    ] as const;
+    expect(tools).toHaveLength(7);
+    try {
+      for (const workspaceId of ["b", "no-such-workspace"]) {
+        for (const [name, args] of tools) {
+          const result = await client.callTool({ name, arguments: { workspaceId, ...args } });
+          expect(result.isError, `${name} in ${workspaceId}`).toBe(true);
+          expect(resultText(result), `${name} in ${workspaceId}`).toBe(NOT_A_MEMBER);
+        }
+      }
+      const detail = await getCompanyDetail(B, theirs.companyId);
+      expect(detail).toMatchObject({ claimedById: null, stage: "NOT_CONTACTED", outreach: [], stageChanges: [] });
+    } finally {
+      await withTenant(B, (tx) => tx.company.deleteMany());
     }
   });
 

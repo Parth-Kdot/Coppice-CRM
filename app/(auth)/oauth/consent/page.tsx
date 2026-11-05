@@ -30,7 +30,7 @@ function queryString(search: Search): string {
   return params.toString();
 }
 
-// "claude.ai", or "this computer" for an app that runs on the person's own machine.
+// The host, such as "example.com", or "an app on this computer" for one that runs on the person's own machine.
 function returnsTo(redirectUri: string | null): string {
   if (!redirectUri) return "an unknown address";
   try {
