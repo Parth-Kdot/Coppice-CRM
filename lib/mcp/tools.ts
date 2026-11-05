@@ -85,7 +85,7 @@ async function openWorkspace(
   return { member };
 }
 
-type Claim = { claimedById: string | null; claimExpiresAt: Date | null; claimedBy: { name: string } | null };
+type Claim = Parameters<typeof claimState>[0] & { claimedBy: { name: string } | null };
 function claimInfo(claim: Claim, now: Date, userId: string) {
   const state = claimState(claim, now, userId);
   if (state === "free" || state === "expired") return { state: "free" };
@@ -212,7 +212,7 @@ export async function listMyClaims(principal: McpPrincipal, args: z.infer<typeof
     tx.company.findMany({
       where: { workspaceId: member.workspaceId, archivedAt: null, ...heldBy(member.userId, now) },
       select: { id: true, name: true, stage: true, claimExpiresAt: true, nextFollowUpAt: true },
-      orderBy: [{ claimExpiresAt: "asc" }, { id: "asc" }],
+      orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 200,
     }),
   );

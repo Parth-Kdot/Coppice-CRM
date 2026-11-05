@@ -58,6 +58,15 @@ export const aiSettingsSchema = z.object({
     .max(AI_LIMIT_MAX, `Use 0 to ${AI_LIMIT_MAX}.`),
 });
 
+// The switch for outside AI assistants (MCP), owner only: a checkbox, "on" when ticked.
+export const mcpSettingsSchema = z.object({
+  workspaceId: id,
+  enabled: z
+    .string()
+    .nullable()
+    .transform((v) => v === "on"),
+});
+
 // Shape every server action returns (project convention).
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 

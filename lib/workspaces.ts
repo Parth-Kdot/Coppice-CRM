@@ -13,3 +13,10 @@ export async function setAiSettings(userId: string, workspaceId: string, setting
   await checkOwner(userId, workspaceId);
   await prisma.workspace.update({ where: { id: workspaceId }, data: { aiEnabled: settings.enabled, aiMonthlyLimit: settings.limit } });
 }
+
+// The workspace's switch for outside AI assistants (the MCP server, lib/mcp). Off by default;
+// while off, every tool refuses this workspace. Owner only.
+export async function setMcpEnabled(userId: string, workspaceId: string, enabled: boolean): Promise<void> {
+  await checkOwner(userId, workspaceId);
+  await prisma.workspace.update({ where: { id: workspaceId }, data: { mcpEnabled: enabled } });
+}
