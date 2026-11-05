@@ -345,6 +345,8 @@ describe("limits on the rest of the OAuth flow", () => {
   test.each([
     ["a repeated name", "coppice:read coppice:read"],
     ["more names than Coppice defines", "openid offline_access coppice:read coppice:write openid offline_access coppice:read"],
+    ["a double space", "openid  coppice:read"],
+    ["a run of spaces", `openid${" ".repeat(500)}coppice:read`],
   ])("a refresh asking for %s is refused, and nothing is stored", async (_, scope) => {
     const { clientId, refreshToken } = await getAccessToken("ownerA");
     const before = await prisma.oauthRefreshToken.count();
@@ -361,6 +363,32 @@ describe("limits on the rest of the OAuth flow", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toBe("invalid_scope");
     expect(await prisma.oauthConsent.count()).toBe(consents);
+  });
+
+  it("a consent with a double space in its scope list is refused", async () => {
+    const { location, headers } = await pendingConsent();
+    const consents = await prisma.oauthConsent.count();
+    const response = await authPost(consentRequest(location, headers, { scope: "openid  coppice:read" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_scope");
+    expect(await prisma.oauthConsent.count()).toBe(consents);
+  });
+
+  it("consent answers from one address are limited to 10 a minute", async () => {
+    const { location, headers } = await pendingConsent();
+    const sameIp = fromNewIp();
+    const send = () =>
+      authPost(
+        new Request(new URL("/api/auth/oauth2/consent", appUrl()), {
+          method: "POST",
+          headers: { ...Object.fromEntries(headers), "content-type": "application/json", accept: "application/json", ...sameIp },
+          body: JSON.stringify({ accept: false, oauth_query: location.search.slice(1) }),
+        }),
+      );
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await send()).status);
+    expect(statuses.slice(0, 10)).not.toContain(429);
+    expect(statuses[10]).toBe(429);
   });
 
   test.each(["GET", "POST"])("authorize (%s) naming a scope twice is refused", async (method) => {

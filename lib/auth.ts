@@ -139,7 +139,16 @@ export const auth = betterAuth({
   // 10 seconds otherwise. Counts live in the database (the rateLimit table) so every server
   // instance shares them; in memory, each Vercel instance would keep its own count. On in every
   // environment so tests check the same behavior production has.
-  rateLimit: { enabled: true, storage: "database" },
+  // The OAuth plugin sets no limit of its own for consent and continue, and each accepted consent
+  // writes a row, so they get a tighter limit than the general one.
+  rateLimit: {
+    enabled: true,
+    storage: "database",
+    customRules: {
+      "/oauth2/consent": { window: 60, max: 10 },
+      "/oauth2/continue": { window: 60, max: 10 },
+    },
+  },
   // jwt() holds the signing keys (the jwks table, private keys encrypted with BETTER_AUTH_SECRET)
   // that the MCP plugin signs access tokens with. disableSettingJwtHeader: no session JWT on
   // get-session either.

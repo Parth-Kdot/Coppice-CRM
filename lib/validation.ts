@@ -404,6 +404,8 @@ export const mcpChangeStageSchema = z.object({
 // longer than the scopes Coppice defines.
 export const oauthScopeListSchema = z
   .string()
+  // Single spaces only, matching how the OAuth plugin splits the list (it keeps empty entries).
+  .regex(/^[\x21\x23-\x5B\x5D-\x7E]+( [\x21\x23-\x5B\x5D-\x7E]+)*$/, "Scopes are separated by single spaces.")
   .refine((scope) => {
     const names = scope.split(" ").filter(Boolean);
     return names.length <= MCP_SCOPES.length && new Set(names).size === names.length;
