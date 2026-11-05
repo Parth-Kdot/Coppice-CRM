@@ -26,3 +26,27 @@ export function overdueLabel(followUp: Date, now: Date): string {
 // in UTC, so daylight-saving changes can't shift it.
 export const addDays = (ymd: string, days: number) =>
   new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+// The moment a calendar day starts in West Lafayette: localMidnight("2026-11-01") is 04:00 UTC
+// (EDT). The same moment as `('2026-11-01'::date)::timestamp AT TIME ZONE ...` in lib/claims.ts,
+// for code that writes a date without raw SQL (Smart import). The zone's offset is read back
+// through Intl, then read again at the corrected moment in case a daylight-saving change is near.
+export function localMidnight(ymd: string): Date {
+  const format = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  });
+  const offsetAt = (t: number) => {
+    const parts = format.formatToParts(new Date(t));
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second")) - t;
+  };
+  const utc = Date.parse(`${ymd}T00:00:00Z`);
+  return new Date(utc - offsetAt(utc - offsetAt(utc)));
+}

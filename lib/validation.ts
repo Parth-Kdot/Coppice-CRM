@@ -344,3 +344,56 @@ export const factRefSchema = z.object({ workspaceId: id, factId: id });
 export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
 export const verifyFactSchema = factRefSchema.extend({ verified: z.enum(["1", "0"]).transform((v) => v === "1") });
 export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id });
+
+// ----- Smart import (AI feature 3) -----
+
+// At most this many rows with free text are read per Smart import (owner decision); the rest of
+// the sheet imports the normal way.
+export const SMART_MAX_ROWS = 300;
+export const SMART_NOTE_MAX = 600;
+const STALE = "This Smart import is out of date. Start it again.";
+
+export const smartSuggestSchema = z.object({ workspaceId: id });
+
+export const smartStartSchema = z.object({
+  workspaceId: id,
+  mapping: json(importMappingSchema, "Choose a column for each field."),
+  // The columns whose cells hold free text (status, notes, history) for the AI to read.
+  freeText: json(
+    z
+      .array(column)
+      .min(1, "Choose at least one column for Smart import to read.")
+      .max(20, "Choose at most 20 columns for Smart import to read.")
+      .refine((c) => new Set(c).size === c.length, "Choose each column once."),
+    "Choose the columns for Smart import to read.",
+  ),
+  // The board year the sheet is from, by the year it starts in (2025 is 2025-26).
+  cycleStart: z.coerce.number("Choose the year the sheet is from.").int().min(2000).max(2100),
+});
+
+export const smartChunkSchema = z.object({
+  workspaceId: id,
+  sessionId: id,
+  index: z.coerce.number(STALE).int(STALE).min(0, STALE).max(SMART_MAX_ROWS, STALE),
+});
+
+// What the person kept of the AI's reading for one row, after editing. Only the stages before an
+// outcome: Smart import never sets Committed or Declined. lib/smart-import.ts checks every field
+// against what was actually proposed for that row.
+export const SMART_STAGES = ["CONTACTED", "REPLIED", "IN_CONVERSATION"] as const;
+const smartDecisionSchema = z.object({
+  row: z.number(STALE).int(STALE).min(2, STALE).max(100_000, STALE),
+  stage: z.enum(SMART_STAGES, STALE).nullable(),
+  lastContactedOn: z.iso.date("Enter a last-contacted date like 2026-03-02.").nullable(),
+  followUpOn: z.iso.date("Enter a follow-up date like 2026-08-01.").nullable(),
+  contact: z.object({ name: contactFieldsSchema.shape.name, title: contactFieldsSchema.shape.title }).nullable(),
+  note: optionalText(SMART_NOTE_MAX, "A note from the sheet"),
+  // The row says not to contact the company, and the person chose to import it anyway.
+  dncAccepted: z.boolean(STALE),
+});
+export type SmartDecision = z.infer<typeof smartDecisionSchema>;
+
+export const smartImportSchema = runImportSchema.extend({
+  sessionId: id,
+  decisions: json(z.array(smartDecisionSchema).max(IMPORT_MAX_ROWS, STALE), STALE),
+});

@@ -4,19 +4,11 @@ import { revalidatePath } from "next/cache";
 import { failure } from "@/lib/actions";
 import { requireMembership } from "@/lib/authz";
 import * as csv from "@/lib/csv";
-import { IMPORT_MAX_BYTES, previewImportSchema, runImportSchema, type ActionResult } from "@/lib/validation";
+import { previewImportSchema, runImportSchema, type ActionResult } from "@/lib/validation";
+import { readFile } from "./read-file";
 
 // Both steps send the file itself; the server parses and checks it again every time (lib/csv.ts).
 // Any member may import.
-
-// The uploaded file as text, or why it can't be used.
-async function readFile(form: FormData): Promise<ActionResult<string>> {
-  const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a .csv file." };
-  if (!/\.csv$/i.test(file.name)) return { ok: false, error: "Choose a .csv file. In Google Sheets: File, Download, Comma-separated values." };
-  if (file.size > IMPORT_MAX_BYTES) return { ok: false, error: "The file is over 3 MB. Split it into smaller files." };
-  return { ok: true, data: await file.text() };
-}
 
 export async function previewImport(_prev: ActionResult<csv.ImportPreview> | null, form: FormData): Promise<ActionResult<csv.ImportPreview>> {
   const parsed = previewImportSchema.safeParse({ workspaceId: form.get("workspaceId"), mapping: form.get("mapping") });

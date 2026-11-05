@@ -1,14 +1,17 @@
 import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from "@google/genai";
+import Groq from "groq-sdk";
 import type { z } from "zod";
 import type { AiFeature } from "@/generated/prisma/enums";
-import { toGeminiSchema } from "@/lib/ai/schema";
+import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 
-// The only file that talks to the Gemini API (a test enforces this). Everything else calls
+// The only file that talks to the Gemini and Groq APIs (a test enforces this). Everything else calls
 // runAi() in lib/ai/run.ts, which checks the workspace's switch and limits first and logs the call.
 //
 // Free tier, so: prompts must never contain recruiter or member names (they may be used to improve
 // Google's products); no model is retried after a rate limit; and every reply is re-checked with the
 // same Zod schema the model was asked to follow, because the model is never trusted.
+// The one exception to the names rule is Smart import's row pass, which reads free-text cells that
+// can hold names: it goes to Groq instead (owner decision), never to Gemini.
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
@@ -20,7 +23,13 @@ import { toGeminiSchema } from "@/lib/ai/schema";
 // has a `lastResort` after that. The last model in line gets one retry; everything shares the
 // overall deadline. AiRun records whichever model actually answered.
 type Model = { model: string; thinkingLevel?: ThinkingLevel };
-type Route = Model & { firstTryMs: number; fallback: Model; lastResort?: Model };
+type GeminiRoute = Model & { provider?: "gemini"; firstTryMs: number; fallback: Model; lastResort?: Model };
+// Groq (Smart import's row pass, which reads cells that can hold names): one model, one try. Its
+// free tier allows about 30 requests and 8,000 tokens a minute, so a 429 is reported to the person
+// to wait and continue; it is never retried, and there is no fallback model.
+type GroqRoute = { provider: "groq"; model: string; reasoningEffort: "low" | "medium" | "high"; timeoutMs: number };
+export type Route = GeminiRoute | GroqRoute;
+export type Provider = "gemini" | "groq";
 export const ROUTES: Record<AiFeature, Route> = {
   // Long input and more thinking, so a longer first try.
   FACT_EXTRACTION: {
@@ -46,7 +55,24 @@ export const ROUTES: Record<AiFeature, Route> = {
     firstTryMs: 15_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
   },
+  // Smart import: which column is which, from headers and a few masked sample rows.
+  IMPORT_MAPPING: {
+    model: "gemini-3.5-flash-lite",
+    firstTryMs: 20_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
+  // Smart import: which company names in a sheet look like each other or like existing companies.
+  IMPORT_LOOKALIKES: {
+    model: "gemini-3.5-flash-lite",
+    firstTryMs: 20_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
+  // Smart import: free-text cells, which can contain names, so Groq (owner decision). Low reasoning
+  // keeps a chunk of rows well inside the free tier's tokens per minute.
+  IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000 },
 };
+
+export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";
 
 export type AiErrorCode =
   | "not_configured"
@@ -80,7 +106,8 @@ const MAX_OUTPUT_TOKENS = 8192;
 const ATTEMPT_TIMEOUT_MS = 45_000;
 const OVERALL_TIMEOUT_MS = 100_000;
 
-export const isConfigured = () => Boolean(process.env.GEMINI_API_KEY);
+// Without an argument, whether Gemini (the main AI provider) has a key.
+export const isConfigured = (provider: Provider = "gemini") => Boolean(provider === "groq" ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY);
 
 const usageOf = (response: GenerateContentResponse): Usage => ({
   promptTokens: response.usageMetadata?.promptTokenCount ?? null,
@@ -104,6 +131,7 @@ function errorCode(error: unknown): AiErrorCode {
 
 export async function generate<S extends z.ZodType>(request: GenerateRequest<S>): Promise<GenerateResult<z.output<S>>> {
   const route = ROUTES[request.feature];
+  if (route.provider === "groq") return callGroq(route, request);
   // Without a key the SDK would quietly try Google Cloud credentials and fail seconds later.
   if (!isConfigured()) return { ok: false, error: "not_configured", model: route.model, usage: null };
 
@@ -169,6 +197,67 @@ async function callModel<S extends z.ZodType>(
   let json: unknown;
   try {
     json = JSON.parse(response.text ?? "");
+  } catch {
+    return { ok: false, error: "invalid_output", model, usage };
+  }
+  const parsed = request.schema.safeParse(json);
+  if (!parsed.success) return { ok: false, error: "invalid_output", model, usage };
+  return { ok: true, data: parsed.data, model, usage };
+}
+
+// ----- Groq -----
+
+// What went wrong with a thrown Groq SDK error. The SDK's errors carry a numeric status; a reply
+// that broke the JSON schema comes back as a 400 with code json_validate_failed.
+function groqErrorCode(error: unknown): AiErrorCode {
+  if (error instanceof Groq.APIConnectionTimeoutError || (error instanceof Error && error.name === "AbortError")) return "timeout";
+  if (error instanceof Groq.APIUserAbortError) return "timeout";
+  if (error instanceof Groq.APIError && typeof error.status === "number") {
+    if (error.status === 429) return "rate_limited";
+    if (error.status === 401 || error.status === 403) return "bad_key";
+    if (error.status === 400 && /json_validate_failed/i.test(JSON.stringify(error.error ?? "") + error.message)) return "invalid_output";
+    if (error.status >= 400 && error.status < 500) return "rejected";
+  }
+  return "unavailable";
+}
+
+// One try on one model (the SDK's own retries are off, so a 429 is never retried), structured
+// output against the request's schema, and the reply checked again with Zod.
+async function callGroq<S extends z.ZodType>(route: GroqRoute, request: GenerateRequest<S>): Promise<GenerateResult<z.output<S>>> {
+  const model = route.model;
+  if (!isConfigured("groq")) return { ok: false, error: "not_configured", model, usage: null };
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, maxRetries: 0, timeout: route.timeoutMs });
+
+  let completion: Groq.Chat.ChatCompletion;
+  try {
+    completion = await groq.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: request.system },
+        { role: "user", content: request.prompt },
+      ],
+      response_format: { type: "json_schema", json_schema: { name: "result", schema: toGroqSchema(request.schema), strict: true } },
+      reasoning_effort: route.reasoningEffort,
+      include_reasoning: false,
+      max_completion_tokens: MAX_OUTPUT_TOKENS,
+    });
+  } catch (error) {
+    return { ok: false, error: groqErrorCode(error), model, usage: null };
+  }
+
+  const details = completion.usage as { completion_tokens_details?: { reasoning_tokens?: number } } | undefined;
+  const usage: Usage = {
+    promptTokens: completion.usage?.prompt_tokens ?? null,
+    outputTokens: completion.usage?.completion_tokens ?? null,
+    thinkingTokens: details?.completion_tokens_details?.reasoning_tokens ?? null,
+  };
+  const choice = completion.choices?.[0];
+  if (choice?.finish_reason === "length") return { ok: false, error: "truncated", model, usage };
+  if (choice?.finish_reason !== "stop") return { ok: false, error: "blocked", model, usage };
+
+  let json: unknown;
+  try {
+    json = JSON.parse(choice.message.content ?? "");
   } catch {
     return { ok: false, error: "invalid_output", model, usage };
   }
