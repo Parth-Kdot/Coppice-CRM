@@ -19,6 +19,7 @@ export async function draftEmail(_prev: ActionResult<DraftView[]> | null, form: 
     kind: form.get("kind"),
     contactId: form.get("contactId"),
     note: form.get("note"),
+    templateId: form.get("templateId"),
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { workspaceId, companyId, ...request } = parsed.data;

@@ -13,6 +13,7 @@ import type { DraftCheck } from "@/lib/claim-check";
 import { checkRules, type Finding, type FindingKind, type RuleContext } from "@/lib/claim-rules";
 import { composeLinks } from "@/lib/compose-links";
 import type { DraftView } from "@/lib/drafts";
+import type { TemplateOption } from "@/lib/templates";
 import { DRAFT_NOTE_MAX, type ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 
@@ -33,6 +34,8 @@ type Props = {
   today: string;
   // What the Claim Checker's rules accept: numbers from verified facts and the company's website.
   rules: RuleContext;
+  // Templates a draft can be based on (not archived). Their text goes to the AI, masked like a note.
+  templates?: TemplateOption[];
   actions: {
     draft: (prev: ActionResult<DraftView[]> | null, form: FormData) => Promise<ActionResult<DraftView[]>>;
     check: (prev: ActionResult<DraftCheck> | null, form: FormData) => Promise<ActionResult<DraftCheck>>;
@@ -156,6 +159,21 @@ export function DraftPanel(props: Props) {
               ))}
             </select>
           </div>
+          {(props.templates?.length ?? 0) > 0 && (
+            <div>
+              <label className="lg-label" htmlFor={`${id}-tpl`}>
+                Base it on
+              </label>
+              <select id={`${id}-tpl`} name="templateId" defaultValue="" className="lg-select">
+                <option value="">No template, just the facts</option>
+                {props.templates?.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Template: {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div className="lg-draftnote">
           <label className="lg-label" htmlFor={`${id}-note`}>

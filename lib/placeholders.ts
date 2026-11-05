@@ -15,3 +15,17 @@ export function unfill(text: string, names: Partial<Record<keyof Names, string |
     .sort((a, b) => b[1].length - a[1].length);
   return pairs.reduce((out, [key, value]) => out.split(value).join(`{{${key}}}`), text);
 }
+
+// Templates (Milestone 5) may use only the three placeholders above, so whatever fills them in later
+// (an officer by hand, or the drafter) knows every one. Returns what is wrong, or null if nothing is.
+export function placeholderProblem(text: string): string | null {
+  const unknown = [...new Set([...text.matchAll(/\{\{([^{}]*)\}\}/g)].map((m) => m[1].trim()))].filter(
+    (key) => !(PLACEHOLDERS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    const list = unknown.map((key) => `{{${key}}}`).join(", ");
+    return `Templates can only use {{firstName}}, {{senderName}} and {{orgName}}. Fix ${list}.`;
+  }
+  if (/\{\{|\}\}/.test(text.replace(/\{\{[^{}]*\}\}/g, ""))) return "A placeholder isn't closed. Write it like {{firstName}}.";
+  return null;
+}

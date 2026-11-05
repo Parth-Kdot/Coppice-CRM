@@ -1,0 +1,179 @@
+/* ==========================================================================================
+   Ledger, the template stats page. Built on the panels and ruled tables of pages.css: a verdict
+   panel, the templates table with its split rows, two small comparison tables, the data gaps as a
+   tally and the reading rules. Plain CSS in a file, so the strict style-src policy allows it.
+   ========================================================================================== */
+
+@layer components {
+  .lg-page-stats {
+    max-width: 1100px;
+  }
+
+  /* The verdict: one line per name, the badge in the margin. */
+  .lg-verdict-line {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: var(--fs-3);
+  }
+  .lg-verdict-line + .lg-verdict-line {
+    margin-top: 8px;
+  }
+  .lg-verdict-line > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-verdict .lg-panel-body > p + p {
+    margin-top: 8px;
+  }
+  .lg-best {
+    flex: none;
+    border-color: var(--moss);
+    background: var(--moss);
+    color: var(--paper);
+  }
+  .lg-worst {
+    flex: none;
+    border-color: var(--rust);
+    background: var(--rust-wash);
+    color: var(--rust);
+  }
+  .lg-ml {
+    margin-left: 8px;
+  }
+
+  /* The All / By industry / By touch switch. The one selected state is a moss fill. */
+  .lg-splits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lg-split[aria-current="page"] {
+    border-color: var(--moss);
+    background: var(--moss);
+    color: var(--paper);
+  }
+
+  /* The tables. A split row sits under its template, indented, on fresher paper. */
+  .lg-stattable td.lg-c-name {
+    min-width: 170px;
+    max-width: 280px;
+  }
+  .lg-stattable td.lg-c-range {
+    min-width: 170px;
+  }
+  .lg-stattable tr.lg-subrow td {
+    background: var(--paper);
+    color: var(--ink);
+    font-size: var(--fs-1);
+  }
+  .lg-subname {
+    display: inline-block;
+    padding-left: 14px;
+    border-left: 2px solid var(--rule);
+  }
+  .lg-stattable tbody.lg-notemplate tr.lg-mainrow td {
+    border-top: 2px solid var(--rule);
+  }
+  .lg-cellsub {
+    display: block;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 400;
+  }
+  .lg-standing {
+    display: grid;
+    justify-items: start;
+    gap: 2px;
+  }
+  .lg-range {
+    display: grid;
+    gap: 4px;
+  }
+
+  /* The likely range: a rule from 0 to 100%, a band from low to high, a tick at the rate. */
+  .lg-rangebar {
+    display: block;
+    width: 140px;
+    max-width: 100%;
+    height: 12px;
+  }
+  .lg-rangebar-rule {
+    stroke: var(--rule);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .lg-rangebar-mid {
+    stroke: var(--rule);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .lg-rangebar-band {
+    fill: var(--paper-2);
+    stroke: var(--edge);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .lg-rangebar[data-rated] .lg-rangebar-band {
+    fill: var(--moss-wash);
+    stroke: var(--moss);
+  }
+  .lg-rangebar-tick {
+    stroke: var(--ink);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .lg-statgrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 20px;
+  }
+  .lg-gaps {
+    max-width: 720px;
+  }
+  .lg-gaps dt {
+    font-size: var(--fs-1);
+  }
+  .lg-rules {
+    display: grid;
+    gap: 6px;
+    max-width: 72ch;
+    padding-left: 18px;
+    list-style: disc;
+  }
+
+  @media (max-width: 1080px) {
+    .lg-statgrid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 760px) {
+    .lg-stattable td.lg-c-name,
+    .lg-stattable td.lg-c-range {
+      max-width: none;
+      min-width: 0;
+    }
+    /* On a phone each row is a small card; a split row is a lighter card tucked under its template. */
+    .lg-stattable tr.lg-subrow {
+      margin-top: -6px;
+      margin-left: 14px;
+      background: var(--paper);
+    }
+    .lg-stattable tr.lg-subrow td {
+      background: transparent;
+    }
+    .lg-subname {
+      padding-left: 0;
+      border-left: 0;
+      font-weight: 600;
+    }
+    .lg-stattable tbody.lg-notemplate tr.lg-mainrow td {
+      border-top: 0;
+    }
+    .lg-verdict-line {
+      flex-direction: column;
+      gap: 4px;
+    }
+  }
+}
