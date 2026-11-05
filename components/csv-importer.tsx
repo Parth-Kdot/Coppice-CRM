@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useId, useState, useTransition, type ReactNode } from "react";
 import "@/components/ledger/zod-jitless";
-import { ChipGroup } from "@/components/ledger/chips";
 import { WarningIcon } from "@/components/ledger/icons";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import { Tick } from "@/components/ledger/marks";
 import { ErrorLine } from "@/components/ledger/shared";
-import { readingMatches, SmartColumns, SmartLookalikes, SmartReview, useSmartImport, type SmartActions } from "@/components/csv-importer-smart";
+import { DuplicateGroups, type ShownGroup } from "@/components/csv-importer-duplicates";
+import { SmartColumns } from "@/components/csv-importer-smart/columns";
+import { SmartReview } from "@/components/csv-importer-smart/review";
+import { readingMatches, useSmartImport, type SmartActions } from "@/components/csv-importer-smart/use-smart-import";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
 import { IMPORT_FIELDS, type ActionResult, type ImportField, type ImportMapping } from "@/lib/validation";
 import "@/components/ledger/company.css";
@@ -159,6 +161,21 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
   }
 
   const label = (row: number) => view?.labels.find((l) => l.row === row);
+  // The exact look-alikes from the preview, then Smart import's, in one review.
+  const groups: ShownGroup[] = [
+    ...(view?.groups ?? []).map((g) => ({
+      key: `g${g.rows[0]}`,
+      reason: reason(g.matchedOn),
+      existing: g.existing,
+      rows: g.rows.map((row) => ({ row, name: label(row)?.name ?? "", website: label(row)?.website ?? null })),
+    })),
+    ...(smartReady ? smartState.session!.lookalikes : []).map((g) => ({
+      key: `l${g.rows.map((r) => r.row).join("-")}-${g.existing.map((c) => c.id).join("-")}`,
+      reason: g.why,
+      existing: g.existing,
+      rows: g.rows,
+    })),
+  ];
   // The Problems column only appears when one of the shown rows has a problem; the list under the table names every bad row.
   const showProblems = view ? view.sample.some((r) => r.errors.length > 0) : false;
   const importing = view ? view.rowCount - view.errors.length - skips.size : 0;
@@ -320,65 +337,8 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
               </details>
             )}
 
-            {view.groups.length > 0 && (
-              <div className="lg-groups">
-                <h3 className="lg-h3">Possible duplicates</h3>
-                <p className="lg-hint mb-3">Choose Import or Skip for each row. Importing a look-alike keeps both as separate companies.</p>
-                {view.groups.map((group, gi) => (
-                  <div key={group.rows[0]} className="lg-group" role="group" aria-labelledby={`${id}-g${gi}`}>
-                    <div className="lg-group-head">
-                      <h4 id={`${id}-g${gi}`} className="lg-group-q">
-                        Same company?
-                      </h4>
-                      <span className="lg-tag lg-muted">{reason(group.matchedOn)}</span>
-                    </div>
-                    <div className="lg-group-cols">
-                      {group.existing.map((company) => (
-                        <div key={company.id} className="lg-dupcard lg-dupcard-have">
-                          <p className="lg-tag lg-muted">Already in the workspace</p>
-                          <p className="lg-dupname">
-                            <Link href={`/${workspaceId}/companies/${company.id}`} className="lg-link">
-                              {company.name}
-                            </Link>
-                          </p>
-                          <p className="lg-dupsite">
-                            {company.website || "No website"}
-                            {company.archived && <span className="lg-badge lg-badge-stale ml-2">archived</span>}
-                          </p>
-                        </div>
-                      ))}
-                      {group.rows.map((row) => {
-                        const entry = label(row);
-                        const skipped = skips.has(row);
-                        return (
-                          <div key={row} className="lg-dupcard" data-skipped={skipped || undefined}>
-                            <p className="lg-tag lg-muted">In your file, row {row}</p>
-                            <p className="lg-dupname">
-                              <span className="lg-nametext">
-                                Row {row}: {entry?.name}
-                              </span>
-                            </p>
-                            <p className="lg-dupsite">{entry?.website ? `(${entry.website})` : "No website"}</p>
-                            <ChipGroup
-                              legend={`Row ${row}`}
-                              hideLegend
-                              value={skipped ? "skip" : "import"}
-                              onChange={(value) => choose(row, value === "skip")}
-                              options={[
-                                { value: "import", label: "Import", ariaLabel: `Import row ${row}` },
-                                { value: "skip", label: "Skip", ariaLabel: `Skip row ${row}` },
-                              ]}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <DuplicateGroups idPrefix={id} workspaceId={workspaceId} groups={groups} skips={skips} choose={choose} />
 
-            {smart && <SmartLookalikes smart={smartState} view={view} workspaceId={workspaceId} skips={skips} choose={choose} />}
             {smart && <SmartReview smart={smartState} view={view} />}
           </>
         )}

@@ -29,7 +29,7 @@ export default async function ImportPage({ params }: PageProps<"/[workspaceId]/i
     <div className="lg-page-import">
       <PageHead
         title="Import companies"
-        sub="Upload a .csv file with a header row: up to 2,000 rows and 3 MB. In Google Sheets: File, Download, Comma-separated values. Companies are added as Not contacted, with at most one contact each."
+        sub={`Upload a .csv file with a header row: up to 2,000 rows and 3 MB. In Google Sheets: File, Download, Comma-separated values. Companies are added as Not contacted${smart ? " unless you keep a stage Smart import proposes" : ""}, with at most one contact each.`}
       />
       <CsvImporter workspaceId={workspaceId} preview={previewImport} run={runImport} smart={smart} />
     </div>
