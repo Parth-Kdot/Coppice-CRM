@@ -1,3 +1,6 @@
+import { promptSafe } from "@/lib/ai/text";
+import { isSameSite } from "@/lib/research/urls";
+
 // Deterministic checks on fetched page text, run by code before anything reaches the AI.
 
 // Phrases a page uses when it tries to give instructions to an AI that reads it. A page with any
@@ -32,14 +35,16 @@ export function injectionFlags(text: string): string[] {
 }
 
 // Team inboxes on a page: an address whose every word is a role word (careers@,
-// university.relations@, campus-recruiting@), never a personal one (jane.doe@) and never at a
-// personal mail provider. Found by code in the page text before masking; the AI never sees them.
+// university.relations@, campus-recruiting@), never a personal one (jane.doe@), never at a
+// personal mail provider, and only at the page's own site or the company's (`sites`), so an
+// event agency's info@ on the page isn't offered as the company's door. Found by code in the page
+// text before masking; the AI never sees them.
 const ROLE_WORDS = new Set([
   "careers", "career", "jobs", "job", "recruiting", "recruitment", "recruiters", "recruiter", "campus", "university", "universities",
   "college", "colleges", "relations", "students", "student", "early", "talent", "internships", "internship", "interns", "intern",
   "programs", "program", "sponsorship", "sponsorships", "sponsor", "sponsors", "giving", "donations", "donate", "foundation",
   "community", "communities", "events", "event", "partnerships", "partnership", "partners", "partner", "outreach", "info", "contact",
-  "contactus", "hello", "inquiries", "enquiries", "diversity", "inclusion", "dei", "erg", "ergs", "grants", "grant", "philanthropy",
+  "contactus", "hello", "inquiries", "enquiries", "diversity", "inclusion", "dei", "erg", "ergs", "grants", "philanthropy",
   "csr", "impact", "engagement", "education", "edu", "stem", "team", "office", "hr", "us", "relationsteam", "universityrelations",
   "campusrecruiting", "earlycareers", "studentprograms", "corporate", "social", "responsibility", "citizenship", "volunteer",
   "volunteering", "local", "site", "requests", "request", "support", "general", "media", "press", "news",
@@ -47,15 +52,51 @@ const ROLE_WORDS = new Set([
 const PERSONAL_PROVIDERS = /(^|\.)(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|gmx|mail|zoho|yandex|fastmail|hey|tutanota|qq|163)\.[a-z.]+$/i;
 const EMAIL = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+/g;
 
-export function teamInboxes(text: string): string[] {
+export function teamInboxes(text: string, sites: string[]): string[] {
   const found = new Set<string>();
   for (const [address] of text.matchAll(EMAIL)) {
     const email = address.toLowerCase().replace(/\.+$/, "");
     const [local, domain] = email.split("@");
-    if (!domain || PERSONAL_PROVIDERS.test(domain)) continue;
+    if (!domain || PERSONAL_PROVIDERS.test(domain) || !isSameSite(domain, sites)) continue;
     const words = local.split(/[._+-]+/).filter(Boolean);
     if (words.length > 0 && words.every((w) => ROLE_WORDS.has(w))) found.add(email);
     if (found.size >= 10) break;
   }
   return [...found];
 }
+
+// Phone numbers in any country's format, for page text: up to eight groups of digits joined by a
+// space, a hyphen, a dot before a digit, or brackets ("+44 20 7946 0958", "(765) 555-0142",
+// "+91 98765 43210", "7655550142"). A match is masked only when it holds 7 to 15 digits (E.164's
+// most), isn't a date ("2026-03-15", "15.03.2027") or a run of years ("2025-2026"), and, written
+// as one bare number, is long enough to dial (10 digits). Every repeat is bounded and a match can't
+// fail once it starts, so it runs in linear time. lib/ai/text.ts masks US-style numbers in
+// everything sent; this catches the rest.
+const PHONE_LIKE = /\+?\(?\d{1,5}\)?(?:(?: ?- ?|\.(?=\d)| )?\(?\d{1,5}\)?){0,7}/g;
+const DATE = /^(\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{4})$/;
+
+function looksLikePhone(match: string): boolean {
+  const groups = match.match(/\d+/g) ?? [];
+  const digits = groups.join("").length;
+  if (digits < 7 || digits > 15) return false;
+  if (groups.every((g) => /^(19|20)\d\d$/.test(g)) || DATE.test(match)) return false;
+  return groups.length > 1 || match.startsWith("+") || digits >= 10;
+}
+
+export function maskPhones(text: string): string {
+  return text.replace(PHONE_LIKE, (match) => (looksLikePhone(match) ? "[phone]" : match));
+}
+
+// The most text read from one page; what the AI is shown is exactly what is stored.
+export const PAGE_TEXT_MAX = 30_000;
+
+// The part of a page that is read: cut at a space a little past PAGE_TEXT_MAX, before any regex
+// runs, so a 2 MB page costs no more than a 30 KB one. Cutting at a space means no email or phone
+// number is split; masking then runs over the whole part, and only its result is cut to size.
+export function pageHead(raw: string): string {
+  return raw.length <= PAGE_TEXT_MAX ? raw : raw.slice(0, PAGE_TEXT_MAX + 256).replace(/\S*$/, "");
+}
+
+// Page text as the AI sees it: emails and phone numbers (any country's format) masked, and angle
+// brackets swapped so the page can't close or fake the <page> tags around it.
+export const maskPage = (head: string) => maskPhones(promptSafe(head)).slice(0, PAGE_TEXT_MAX);
