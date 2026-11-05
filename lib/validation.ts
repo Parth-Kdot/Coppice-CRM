@@ -276,7 +276,7 @@ export const IMPORT_MAX_BYTES = 3 * 1024 * 1024;
 // No real sponsor sheet has more columns than this; the cap keeps a mapping small.
 export const IMPORT_MAX_COLUMNS = 200;
 
-// BoilerPitch fields a CSV column can fill, in the order the mapper shows them.
+// Coppice fields a CSV column can fill, in the order the mapper shows them.
 export const IMPORT_FIELDS = ["name", "industry", "website", "notes", "contactName", "contactEmail"] as const;
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
