@@ -1,0 +1,830 @@
+/* ==========================================================================================
+   Ledger, the import page, the fact sheet and settings. Import is a short ledger of numbered
+   entries; the fact sheet is a list of entries with the page and quote each one came from;
+   settings is a margin of labels beside ruled rows. Plain CSS in a file, so the strict style-src
+   policy allows it. Rules of the house: square paper, a 3 px radius on controls only, no soft
+   shadows, rules are 1 px (a heavier 2 px rule only under a table header), one selected state.
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- Page widths ---------- */
+  .lg-page-import {
+    max-width: 1220px;
+  }
+  .lg-page-facts,
+  .lg-page-settings {
+    max-width: 920px;
+  }
+  .lg-pagenote {
+    max-width: 66ch;
+    margin-top: 6px;
+    color: var(--ink-2);
+  }
+
+  /* A ruled panel of paper: the object most of these pages are made of. */
+  .lg-panel {
+    margin-top: 20px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 16px;
+    padding: 14px 28px 10px;
+    border-bottom: 1px solid var(--ink-2);
+  }
+  .lg-panel-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-panel-count {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-panel-note {
+    padding: 8px 28px 0;
+    color: var(--ink-2);
+  }
+  .lg-panel-body {
+    padding: 18px 28px 24px;
+  }
+
+  /* The native file input is visually hidden; its label is the button, the chosen name sits beside it. */
+  .lg-file {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .lg-file:focus-visible + .lg-btn {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-file:disabled + .lg-btn {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .lg-filename {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-filerow {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+  }
+
+  /* ---------- Import: numbered entries ---------- */
+  .lg-entries {
+    list-style: none;
+    margin: 20px 0 0;
+    padding: 0 28px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-step {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-step:last-child {
+    border-bottom: 0;
+  }
+  .lg-step-margin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-top: 20px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-step-no {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--ink-2);
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-step[data-state="active"] .lg-step-no {
+    border-color: var(--moss);
+    background: var(--moss);
+    color: var(--paper);
+  }
+  .lg-step[data-state="done"] .lg-step-no {
+    border-color: var(--moss);
+    color: var(--moss);
+  }
+  .lg-step-state {
+    color: var(--ink-2);
+  }
+  .lg-step-body {
+    min-width: 0;
+    padding: 16px 0 24px 24px;
+  }
+  .lg-step-h {
+    margin-bottom: 10px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-step[data-state="later"] .lg-step-h {
+    color: var(--ink-2);
+  }
+  .lg-mapgrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 18px;
+  }
+  .lg-maplabel {
+    margin-bottom: 4px;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* The review table: ruled, with the heavier rule only under the header. */
+  .lg-tablewrap {
+    overflow-x: auto;
+    border: 1px solid var(--rule);
+  }
+  .lg-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-table th {
+    padding: 7px 10px;
+    border-bottom: 2px solid var(--ink-2);
+    background: var(--paper-2);
+    text-align: left;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .lg-table td {
+    max-width: 220px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    overflow-wrap: break-word;
+  }
+  .lg-table tr:last-child td {
+    border-bottom: 0;
+  }
+  .lg-table td.lg-c-industry {
+    min-width: 120px;
+  }
+  .lg-table td.lg-c-contact {
+    min-width: 200px;
+  }
+  .lg-table tr[data-bad] td {
+    background: var(--rust-wash);
+  }
+  .lg-table td.lg-cellnote {
+    min-width: 240px;
+    color: var(--ink-2);
+  }
+  .lg-table td.lg-c-name {
+    min-width: 150px;
+  }
+  .lg-table td.lg-c-problems {
+    min-width: 170px;
+  }
+  .lg-email {
+    display: block;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-problems {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-problems summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .lg-problems ul {
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .lg-problems li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .lg-problems li svg {
+    flex: none;
+    margin-top: 3px;
+  }
+
+  /* Look-alike groups: what is already in the workspace next to each row in the file. */
+  .lg-groups {
+    margin-top: 28px;
+  }
+  .lg-group {
+    margin-top: 14px;
+    padding: 12px 14px 14px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    margin-bottom: 10px;
+  }
+  .lg-group-q {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-3);
+  }
+  .lg-group-cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+  }
+  .lg-dupcard {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px 14px 12px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+  }
+  .lg-dupcard-have {
+    background: var(--paper);
+    border-color: var(--ink-2);
+  }
+  .lg-dupname {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .lg-dupsite {
+    margin-bottom: 8px;
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+  }
+  .lg-dupcard[data-skipped] .lg-nametext {
+    color: var(--ink-2);
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+  }
+  .lg-dupcard .lg-chipset {
+    margin-top: auto;
+  }
+
+  /* The result: three tallies in a ruled row. */
+  .lg-tally {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 520px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-tally > div {
+    padding: 12px 18px 14px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-tally > div:last-child {
+    border-right: 0;
+  }
+  .lg-tally dt {
+    color: var(--ink-2);
+  }
+  .lg-tally dd {
+    font-family: var(--font-display);
+    font-size: var(--fs-6);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-tally dd[data-tone="ok"] {
+    color: var(--moss);
+  }
+  .lg-tally dd[data-tone="bad"] {
+    color: var(--rust);
+  }
+
+  /* ---------- Fact sheet ---------- */
+  .lg-factsum {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    margin-top: 14px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-factsum strong {
+    font-weight: 600;
+  }
+  .lg-facts-list {
+    list-style: none;
+  }
+  .lg-factgroup + .lg-factgroup {
+    margin-top: 18px;
+  }
+  .lg-factgroup-h {
+    padding: 6px 0;
+    border-bottom: 2px solid var(--ink-2);
+    color: var(--ink-2);
+  }
+  .lg-fact {
+    display: flex;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-fact:last-child {
+    border-bottom: 0;
+  }
+  .lg-fact > .lg-margin {
+    flex: 0 0 54px;
+    padding-top: 4px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-factmark {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px dashed var(--edge);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--moss);
+  }
+  .lg-fact[data-verified] .lg-factmark {
+    border-style: solid;
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-factbody {
+    min-width: 0;
+    flex: 1;
+  }
+  .lg-facttext {
+    overflow-wrap: anywhere;
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    line-height: 1.4;
+  }
+  .lg-factsrc {
+    overflow-wrap: anywhere;
+    margin-top: 6px;
+    color: var(--ink-2);
+  }
+  .lg-factsrc .lg-quote {
+    color: var(--ink);
+  }
+  .lg-factpage {
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-quotecheck {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 4px;
+    font-weight: 500;
+  }
+  .lg-quotecheck svg {
+    flex: none;
+    margin-top: 3px;
+  }
+  .lg-factmeta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 4px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-factacts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .lg-factacts > form {
+    flex: none;
+  }
+  .lg-factedit {
+    align-self: center;
+  }
+  .lg-factedit[open] {
+    flex: 1 1 100%;
+  }
+  .lg-factedit > summary {
+    cursor: pointer;
+    color: var(--moss);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .lg-factedit[open] > summary {
+    margin-bottom: 8px;
+  }
+  .lg-editform {
+    display: grid;
+    gap: 8px;
+    max-width: 640px;
+  }
+  .lg-editform > .lg-btn {
+    justify-self: start;
+  }
+  .lg-files {
+    list-style: none;
+    display: grid;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-files li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+  }
+  .lg-files li svg {
+    flex: none;
+    color: var(--ink-2);
+  }
+  .lg-files li > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-addfact {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    max-width: 700px;
+  }
+  .lg-addfact > .lg-addfact-field {
+    flex: 1;
+  }
+  .lg-uploadnote {
+    max-width: 66ch;
+    margin-top: 10px;
+    color: var(--ink-2);
+  }
+  .lg-uploadwait {
+    margin-top: 10px;
+  }
+
+  /* ---------- Settings: a margin of labels beside ruled rows ---------- */
+  .lg-sections {
+    margin-top: 20px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-sec {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    border-bottom: 1px solid var(--edge);
+  }
+  .lg-sec:last-child {
+    border-bottom: 0;
+  }
+  .lg-sec-label {
+    padding: 22px 20px 22px 28px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-sec-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-sec-sub {
+    margin-top: 6px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-sec-body {
+    min-width: 0;
+    padding: 18px 28px 22px 24px;
+  }
+  .lg-sec-body > p + p {
+    margin-top: 8px;
+  }
+  .lg-register {
+    list-style: none;
+    margin: -6px 0 0;
+  }
+  .lg-memberitem:last-child .lg-member {
+    border-bottom: 0;
+  }
+  .lg-member {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-member > .lg-margin {
+    flex: 0 0 54px;
+    padding-top: 2px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-memberbody {
+    min-width: 0;
+    flex: 1;
+  }
+  .lg-membername {
+    overflow-wrap: anywhere;
+  }
+  .lg-membermeta {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-memberacts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .lg-invitelist {
+    list-style: none;
+    display: grid;
+    margin-bottom: 4px;
+  }
+  .lg-invitelist li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-inviteform {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) auto auto;
+    align-items: end;
+    gap: 12px;
+    max-width: 700px;
+    margin-top: 16px;
+  }
+  .lg-inviteform .lg-chipset {
+    min-width: 0;
+  }
+  .lg-inviteform .lg-error {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+  .lg-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+  .lg-setrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+  }
+  .lg-stepper {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+  }
+  .lg-stepper-btn {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    min-height: 40px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) ease;
+  }
+  .lg-stepper-btn:hover:not(:disabled) {
+    background: var(--paper-2);
+  }
+  .lg-stepper-btn:disabled {
+    color: var(--ink-2);
+    opacity: 0.45;
+    cursor: default;
+  }
+  .lg-stepper-btn:focus-visible,
+  .lg-stepper-num:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -2px;
+  }
+  .lg-stepper-num {
+    width: 68px;
+    border: 0;
+    border-right: 1px solid var(--rule);
+    border-left: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    text-align: center;
+  }
+  .lg-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .lg-aiform {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-aiform > .lg-btn {
+    justify-self: start;
+  }
+  .lg-aistate {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    background: var(--sheet);
+    font-weight: 500;
+  }
+  .lg-aistate[data-on="true"] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+
+  /* The usage meter: twenty ruled cells, filled in proportion to the calls used. */
+  .lg-usage {
+    margin-top: 14px;
+  }
+  .lg-usage-line {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-meter {
+    display: grid;
+    grid-template-columns: repeat(20, minmax(0, 1fr));
+    gap: 2px;
+    max-width: 420px;
+    margin-top: 8px;
+  }
+  .lg-meter span {
+    height: 10px;
+    border: 1px solid var(--edge);
+    background: var(--paper);
+  }
+  .lg-meter span[data-on] {
+    border-color: var(--moss);
+    background: var(--moss);
+  }
+  .lg-meter[data-full] span[data-on] {
+    border-color: var(--rust);
+    background: var(--rust);
+  }
+
+  /* ---------- Phones ---------- */
+  @media (max-width: 860px) {
+    .lg-sec {
+      grid-template-columns: 1fr;
+    }
+    .lg-sec-label {
+      padding: 18px 18px 0;
+      border-right: 0;
+    }
+    .lg-sec-body {
+      padding: 10px 18px 20px;
+    }
+  }
+  @media (max-width: 760px) {
+    .lg-panel-head {
+      padding: 12px 16px 8px;
+    }
+    .lg-panel-body {
+      padding: 14px 16px 20px;
+    }
+    .lg-panel-note {
+      padding: 8px 16px 0;
+    }
+    .lg-mapgrid,
+    .lg-inviteform {
+      grid-template-columns: 1fr;
+    }
+    .lg-entries {
+      padding: 0 12px;
+    }
+    .lg-step {
+      grid-template-columns: 44px minmax(0, 1fr);
+    }
+    .lg-step-body {
+      padding-left: 14px;
+    }
+    .lg-step-state {
+      font-size: 0.6875rem;
+      letter-spacing: 0.04em;
+    }
+
+    /* The review table becomes a stack of small cards, one per row of the file. */
+    .lg-tablewrap {
+      border: 0;
+    }
+    .lg-table,
+    .lg-table tbody,
+    .lg-table tr,
+    .lg-table td {
+      display: block;
+    }
+    .lg-table thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+    .lg-table tr {
+      margin-bottom: 10px;
+      padding: 6px 12px;
+      border: 1px solid var(--rule);
+      background: var(--sheet);
+    }
+    .lg-table td,
+    .lg-table td.lg-c-industry,
+    .lg-table td.lg-c-contact {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr);
+      gap: 8px;
+      max-width: none;
+      min-width: 0;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .lg-table tr td:last-child {
+      border-bottom: 0;
+    }
+    .lg-table td:empty {
+      display: none;
+    }
+    .lg-table td::before {
+      content: attr(data-label);
+      color: var(--ink-2);
+      font-size: var(--fs-1);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .lg-email {
+      max-width: none;
+    }
+    .lg-tally {
+      max-width: none;
+    }
+    .lg-tally > div {
+      padding: 10px 12px 12px;
+    }
+    .lg-fact > .lg-margin,
+    .lg-member > .lg-margin {
+      display: none;
+    }
+    .lg-addfact {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .lg-factacts .lg-btn,
+    .lg-memberacts .lg-btn {
+      min-height: 44px;
+    }
+  }
+}

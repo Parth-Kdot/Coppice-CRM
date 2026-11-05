@@ -1,0 +1,321 @@
+/* ==========================================================================================
+   The small queue on the landing page (landing/mini-queue.tsx). A copy of the real queue's layout:
+   spine, ruled table with a board-year margin, overdue levels, three claim states, status line.
+   It is drawn once, finished, so nothing in here moves. Plain CSS in a file.
+   ========================================================================================== */
+
+.ldm-wrap {
+  container: ldmw / inline-size;
+  min-width: 0;
+}
+
+.ldm {
+  --ldm-cols: 60px 128px minmax(0, 1fr) 112px 152px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-1);
+  line-height: 1.35;
+  user-select: none;
+}
+
+/* ----- Spine ----- */
+.ldm-spine {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0;
+  border-right: 1px solid var(--edge);
+  background: var(--paper-2);
+}
+.ldm-spine-logo {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 8px;
+  color: var(--moss);
+}
+.ldm-tab {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 3px;
+  color: var(--ink-2);
+}
+.ldm-tab[data-active="true"] {
+  background: var(--moss);
+  color: var(--paper);
+}
+
+/* ----- Page ----- */
+.ldm-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.ldm-head,
+.ldm-totals,
+.ldm-colhead,
+.ldm-status {
+  padding-inline: 16px;
+}
+.ldm-rule {
+  margin-inline: 16px;
+}
+.ldm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-block: 12px 8px;
+}
+.ldm-title {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: var(--fs-2);
+  font-weight: 400;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldm-vol {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.ldm-search {
+  display: inline-flex;
+  flex: 0 1 300px;
+  min-width: 0;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--sheet);
+  color: var(--ink-2);
+}
+.ldm-search svg {
+  flex: none;
+}
+.ldm-search-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----- Totals line ----- */
+.ldm-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+}
+.ldm-totals span {
+  padding: 0 14px;
+  border-left: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.ldm-totals span:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.ldm-totals b {
+  margin-left: 5px;
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- Column header and rows ----- */
+.ldm-colhead,
+.ldm-row {
+  display: grid;
+  grid-template-columns: var(--ldm-cols);
+  column-gap: 8px;
+  align-items: center;
+}
+.ldm-colhead {
+  height: 30px;
+  border-bottom: 1px solid var(--edge);
+  color: var(--ink-2);
+}
+.ldm-rows {
+  list-style: none;
+}
+.ldm-row {
+  position: relative;
+  height: 46px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+/* A long overdue row carries a solid 3 px rust rule in its margin. */
+.ldm-row[data-od="long"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--rust);
+}
+.ldm-margin {
+  color: var(--ink-2);
+}
+.ldm-od .lg-od {
+  font-size: var(--fs-1);
+}
+.ldm-name {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+.ldm-name-main {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldm-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: var(--fs-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldm-stage {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ldm-stage svg {
+  flex: none;
+}
+
+/* ----- The claim chip: three states, none of them told by color alone ----- */
+.ldm-claim {
+  display: inline-flex;
+  max-width: 100%;
+  justify-self: start;
+  overflow: clip;
+}
+.ldm-chip {
+  position: relative;
+  display: inline-flex;
+  min-height: 28px;
+  max-width: 100%;
+  align-items: center;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  color: var(--ink);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldm-chip-mine {
+  padding-left: 22px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.ldm-chip-ribbon {
+  left: 8px;
+  top: 0;
+}
+/* Held by someone else: a solid, quiet chip. */
+.ldm-chip-theirs {
+  border-color: var(--rule);
+  background: var(--paper-2);
+  font-weight: 500;
+}
+
+/* ----- The status line ----- */
+.ldm-status {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ----- Mid-width windows (the hero): no room for the last note, so the company name gets it ----- */
+@container ldmw (min-width: 641px) and (max-width: 900px) {
+  .ldm-note {
+    display: none;
+  }
+}
+
+/* ----- Narrow windows: each company takes two lines, name over follow-up, with its claim at the right ----- */
+@container ldmw (max-width: 640px) {
+  .ldm {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .ldm-margin,
+  .ldm-colhead,
+  .ldm-stage,
+  .ldm-note,
+  .ldm-totals-never,
+  .ldm-status-extra,
+  .ldm-search {
+    display: none;
+  }
+  .ldm-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name claim"
+      "od claim";
+    row-gap: 0;
+    height: auto;
+    min-height: 56px;
+    padding-block: 8px;
+  }
+  .ldm-name {
+    grid-area: name;
+  }
+  .ldm-od {
+    grid-area: od;
+  }
+  .ldm-claim {
+    grid-area: claim;
+    justify-self: end;
+  }
+  .ldm-head,
+  .ldm-totals,
+  .ldm-row,
+  .ldm-status {
+    padding-inline: 12px;
+  }
+  .ldm-rule {
+    margin-inline: 12px;
+  }
+  .ldm-spine {
+    padding-inline: 0;
+  }
+}

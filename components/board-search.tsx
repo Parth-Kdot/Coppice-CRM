@@ -2,6 +2,8 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import "@/components/ledger/zod-jitless";
+import { SearchIcon } from "@/components/ledger/icons";
 import { boardQuery, type BoardFilters } from "@/lib/validation";
 
 type Props = { filters: BoardFilters; industries: string[] };
@@ -23,35 +25,41 @@ export function BoardSearch({ filters, industries }: Props) {
     startTransition(() => router.replace(`${pathname}${boardQuery({ ...filters, all: null, ...changes })}`, { scroll: false }));
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <input
-        type="search"
-        value={text}
-        maxLength={100}
-        placeholder="Search companies"
-        aria-label="Search companies"
-        onChange={(e) => {
-          const value = e.target.value;
-          setText(value);
-          clearTimeout(timer.current);
-          timer.current = setTimeout(() => go({ q: value.trim() }), 300);
-        }}
-        className="rounded border px-2 py-1"
-      />
-      <select
-        value={filters.industry}
-        onChange={(e) => go({ industry: e.target.value })}
-        aria-label="Industry"
-        className="rounded border px-2 py-1"
-      >
-        <option value="">All industries</option>
-        {industries.map((industry) => (
-          <option key={industry} value={industry}>
-            {industry}
-          </option>
-        ))}
-      </select>
-      {pending && <span className="text-sm text-zinc-500">Loading...</span>}
-    </div>
+    <>
+      <form className="lg-bsearch" role="search" onSubmit={(e) => e.preventDefault()}>
+        <SearchIcon size={18} />
+        <label className="lg-sr" htmlFor="company-search">
+          Search companies
+        </label>
+        <input
+          id="company-search"
+          type="search"
+          value={text}
+          maxLength={100}
+          placeholder="Search companies"
+          onChange={(e) => {
+            const value = e.target.value;
+            setText(value);
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => go({ q: value.trim() }), 300);
+          }}
+          className="lg-input"
+        />
+      </form>
+      <label className="lg-bindustry">
+        <span className="lg-sr">Industry</span>
+        <select value={filters.industry} onChange={(e) => go({ industry: e.target.value })} className="lg-select">
+          <option value="">All industries</option>
+          {industries.map((industry) => (
+            <option key={industry} value={industry}>
+              {industry}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div role="status" aria-live="polite" className="lg-btop-status">
+        {pending && <p className="lg-muted">Loading...</p>}
+      </div>
+    </>
   );
 }
