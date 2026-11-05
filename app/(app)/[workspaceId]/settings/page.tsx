@@ -212,7 +212,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           <div className="lg-sec-body">
             <p className="max-w-[66ch]">
               Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
-              it&apos;s sent to improve Google&apos;s products, so names and email addresses are never sent to it.
+              it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
+              phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out.
             </p>
             {!isConfigured() && (
               <p className="lg-error">
