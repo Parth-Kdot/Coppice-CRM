@@ -1,10 +1,11 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
-import { fetchResearchPage, isBlockedAddress, LIMITS, nodeTransport, USER_AGENT } from "@/lib/research/fetch";
+import { isBlockedAddress } from "@/lib/research/addresses";
+import { fetchResearchPage, LIMITS, nodeTransport, USER_AGENT } from "@/lib/research/fetch";
 import { decodeEntities, htmlToText } from "@/lib/research/html";
 import { robotsAllows } from "@/lib/research/robots";
-import { injectionFlags, teamInboxes } from "@/lib/research/scan";
+import { injectionFlags, maskPage, maskPhones, PAGE_TEXT_MAX, pageHead, teamInboxes } from "@/lib/research/scan";
 import { checkUrl, isApprovedHost, parseSourceUrl } from "@/lib/research/urls";
 import { addResearchSourceSchema } from "@/lib/validation";
 import { FAST, fakeNet, html, PUBLIC_IP, redirect, robots } from "./helpers/research";
@@ -34,6 +35,7 @@ describe("which addresses count as private", () => {
     ["100.64.0.1", "carrier-grade NAT"],
     ["100.100.100.200", "Alibaba metadata, in CGNAT"],
     ["192.0.0.192", "Oracle metadata, IETF assignments"],
+    ["168.63.129.16", "Azure platform address"],
     ["192.0.2.10", "documentation"],
     ["198.18.0.1", "benchmarking"],
     ["224.0.0.1", "multicast"],
@@ -362,6 +364,12 @@ describe("text from HTML", () => {
     expect(performance.now() - started).toBeLessThan(2_000);
   });
 
+  it("treats <script/> and <style/> as opening tags, as browsers do, but <svg/> as closed", () => {
+    expect(htmlToText("<p>Before</p><script/>evil()</script><p>After</p>")).toBe("Before\nAfter");
+    expect(htmlToText("<style/>p{color:red}</style><p>Text</p>")).toBe("Text");
+    expect(htmlToText("<svg/><p>Kept</p>")).toBe("Kept");
+  });
+
   it("decodes named and numeric references, and refuses invalid ones", () => {
     expect(decodeEntities("&ldquo;Hi&rdquo; &#8212; &#x2014; &unknown; &#0; &#xD800;")).toBe("“Hi” — — &unknown; � �");
   });
@@ -386,7 +394,57 @@ describe("page scans", () => {
 
   it("keeps team inboxes and leaves out personal addresses", () => {
     const text = "Write to university.relations@acme.com or careers@acme.com. Jane: jane.doe@acme.com, j.smith@acme.com, campus@gmail.com, recruiting-team@acme.co.uk";
-    expect(teamInboxes(text)).toEqual(["university.relations@acme.com", "careers@acme.com", "recruiting-team@acme.co.uk"]);
+    expect(teamInboxes(text, ["acme.com", "acme.co.uk"])).toEqual(["university.relations@acme.com", "careers@acme.com", "recruiting-team@acme.co.uk"]);
+  });
+
+  it("keeps only inboxes at the page's own site or the company's, and treats grant@ as a name", () => {
+    const text = "Events: info@eventagency.com, partners@some-reseller.com, careers@jobs.acme.com, grants@acme.com, grant@acme.com, info@acme.com.evil.net";
+    // The page's site and its parent domain count; a sibling site only through the company's domain.
+    expect(teamInboxes(text, ["careers.acme.com"])).toEqual(["grants@acme.com"]);
+    expect(teamInboxes(text, ["careers.acme.com", "acme.com"])).toEqual(["careers@jobs.acme.com", "grants@acme.com"]);
+  });
+});
+
+describe("masking page text", () => {
+  test.for([
+    ["+44 20 7946 0958", "UK"],
+    ["+49 30 1234567", "Germany"],
+    ["+91 98765 43210", "India"],
+    ["7655550142", "ten bare digits"],
+    ["+1 (765) 555-0142", "US with country code"],
+    ["(02) 9876 5432", "Australia"],
+    ["1-800-555-0199", "toll-free"],
+    ["+33 1 23 45 67 89", "France"],
+    ["020 7946 0958", "UK without the country code"],
+  ])("masks %s (%s)", ([phone]) => {
+    expect(maskPhones(`Call ${phone} today.`)).toBe("Call [phone] today.");
+  });
+
+  test.for([
+    "Requests are due by 2026-03-15.",
+    "Due 15.03.2027 at noon.",
+    "For the 2025-2026 school year.",
+    "Founded in 1998, with 12,000 employees and $2,500 grants.",
+    "Room 101, building 4.",
+    "Order 1234567 shipped.",
+  ])("leaves %j alone", (text) => {
+    expect(maskPhones(text)).toBe(text);
+  });
+
+  it("reads a 2 MB page of one long word in well under a second", () => {
+    for (const raw of ["a".repeat(2 * 1024 * 1024), "a@".repeat(1024 * 1024), "1".repeat(2 * 1024 * 1024), "1 ".repeat(1024 * 1024)]) {
+      const started = performance.now();
+      const text = maskPage(pageHead(raw));
+      expect(performance.now() - started).toBeLessThan(1_000);
+      expect(text.length).toBeLessThanOrEqual(PAGE_TEXT_MAX);
+    }
+  });
+
+  it("cuts long pages at a space, so an address at the edge is still masked", () => {
+    const raw = `${"word ".repeat(PAGE_TEXT_MAX / 5 - 2)}jane.doe@acme.com and more text after the edge`;
+    const text = maskPage(pageHead(raw));
+    expect(text).not.toContain("@");
+    expect(text.length).toBeLessThanOrEqual(PAGE_TEXT_MAX);
   });
 });
 
