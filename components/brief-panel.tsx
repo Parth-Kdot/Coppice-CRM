@@ -148,23 +148,31 @@ export function BriefPanel(props: Props) {
   );
 }
 
-function BriefCard({ brief, ...props }: Props & { brief: BriefView }) {
-  const flagged = brief.pages.filter((p) => p.injection.length > 0);
-  const read = brief.pages.filter((p) => !p.skipped);
-  const ids = (itemId: string) => (
-    <>
+type CardProps = Props & { brief: BriefView };
+
+// "Add to notes" for one item or inbox, or a mark once it is in the notes.
+function AddToNotes({ itemId, accepted, brief, ...props }: CardProps & { itemId: string; accepted: boolean }) {
+  if (accepted) {
+    return (
+      <p className="lg-brief-added">
+        <Tick size={18} />
+        In the notes
+      </p>
+    );
+  }
+  return (
+    <ActionForm action={props.actions.accept} submitLabel="Add to notes" successMessage="Added to the notes." small>
       <input type="hidden" name="workspaceId" value={props.workspaceId} />
       <input type="hidden" name="companyId" value={props.companyId} />
       <input type="hidden" name="briefId" value={brief.id} />
       <input type="hidden" name="itemId" value={itemId} />
-    </>
+    </ActionForm>
   );
-  const added = (
-    <p className="lg-brief-added">
-      <Tick size={18} />
-      In the notes
-    </p>
-  );
+}
+
+function BriefCard(props: CardProps) {
+  const { brief } = props;
+  const flagged = brief.pages.filter((p) => p.injection.length > 0);
 
   return (
     <article className="lg-brief-card" aria-label="Research brief">
@@ -204,89 +212,93 @@ function BriefCard({ brief, ...props }: Props & { brief: BriefView }) {
       ) : (
         <ol className="lg-brief-items">
           {brief.items.map((item) => (
-            <li key={item.id} className="lg-brief-item">
-              <p className="lg-brief-door lg-tag">{DOOR_LABELS[item.door]}</p>
-              <p className="lg-brief-title">
-                <strong>{item.title}</strong>
-              </p>
-              <p>{item.detail}</p>
-              {item.deadline && (
-                <p className="lg-brief-deadline">
-                  <span className="lg-tag">Deadline</span> {item.deadline}
-                </p>
-              )}
-              <blockquote className="lg-brief-quote">
-                <p className="lg-quote">&ldquo;{item.quote}&rdquo;</p>
-                <footer>
-                  <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
-                    {shortUrl(item.url)}
-                    <ExternalIcon size={14} className="ml-1 inline-block align-[-2px]" />
-                  </a>
-                </footer>
-              </blockquote>
-              {item.accepted ? (
-                added
-              ) : (
-                <ActionForm action={props.actions.accept} submitLabel="Add to notes" successMessage="Added to the notes." small>
-                  {ids(item.id)}
-                </ActionForm>
-              )}
-            </li>
+            <BriefItemRow key={item.id} {...props} item={item} />
           ))}
         </ol>
       )}
 
-      {brief.inboxes.length > 0 && (
-        <div className="lg-brief-inboxes">
-          <p className="lg-tag">Team inboxes on these pages</p>
-          <ul>
-            {brief.inboxes.map((inbox) => (
-              <li key={inbox.id}>
-                <span>
-                  <strong className="lg-brief-email">{inbox.email}</strong>{" "}
-                  <span className="lg-hint">
-                    on{" "}
-                    <a href={inbox.url} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
-                      {shortUrl(inbox.url)}
-                    </a>
-                  </span>
-                </span>
-                {inbox.accepted ? (
-                  added
-                ) : (
-                  <ActionForm action={props.actions.accept} submitLabel="Add to notes" successMessage="Added to the notes." small>
-                    {ids(inbox.id)}
-                  </ActionForm>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <details className="lg-more lg-brief-pages">
-        <summary>
-          Pages read: {read.length} of {brief.pages.length}
-        </summary>
-        <ul>
-          {brief.pages.map((p) => (
-            <li key={p.position}>
-              {/* Only pages that were fetched are links. */}
-              {p.finalUrl ? (
-                <a href={p.finalUrl} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
-                  {shortUrl(p.finalUrl)}
-                </a>
-              ) : (
-                <span className="lg-brief-email">{shortUrl(p.url)}</span>
-              )}
-              <span className={p.skipped ? "lg-late" : "lg-hint"}>
-                {p.skipped ? `Skipped: ${p.skipped}` : p.fetchedAt ? `Read ${when(p.fetchedAt)}` : "Read"}
-                {p.injection.length > 0 && ". Tried to give the AI instructions."}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </details>
+      {brief.inboxes.length > 0 && <InboxList {...props} />}
+      <PagesRead pages={brief.pages} />
     </article>
+  );
+}
+
+function BriefItemRow({ item, ...props }: CardProps & { item: BriefView["items"][number] }) {
+  return (
+    <li className="lg-brief-item">
+      <p className="lg-brief-door lg-tag">{DOOR_LABELS[item.door]}</p>
+      <p className="lg-brief-title">
+        <strong>{item.title}</strong>
+      </p>
+      <p>{item.detail}</p>
+      {item.deadline && (
+        <p className="lg-brief-deadline">
+          <span className="lg-tag">Deadline</span> {item.deadline}
+        </p>
+      )}
+      <blockquote className="lg-brief-quote">
+        <p className="lg-quote">&ldquo;{item.quote}&rdquo;</p>
+        <footer>
+          <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
+            {shortUrl(item.url)}
+            <ExternalIcon size={14} className="ml-1 inline-block align-[-2px]" />
+          </a>
+        </footer>
+      </blockquote>
+      <AddToNotes {...props} itemId={item.id} accepted={item.accepted} />
+    </li>
+  );
+}
+
+function InboxList(props: CardProps) {
+  return (
+    <div className="lg-brief-inboxes">
+      <p className="lg-tag">Team inboxes on these pages</p>
+      <ul>
+        {props.brief.inboxes.map((inbox) => (
+          <li key={inbox.id}>
+            <span>
+              <strong className="lg-brief-email">{inbox.email}</strong>{" "}
+              <span className="lg-hint">
+                on{" "}
+                <a href={inbox.url} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
+                  {shortUrl(inbox.url)}
+                </a>
+              </span>
+            </span>
+            <AddToNotes {...props} itemId={inbox.id} accepted={inbox.accepted} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PagesRead({ pages }: { pages: BriefView["pages"] }) {
+  const read = pages.filter((p) => !p.skipped);
+  return (
+    <details className="lg-more lg-brief-pages">
+      <summary>
+        Pages read: {read.length} of {pages.length}
+      </summary>
+      <ul>
+        {pages.map((p) => (
+          <li key={p.position}>
+            {/* Only pages that were fetched are links. */}
+            {p.finalUrl ? (
+              <a href={p.finalUrl} target="_blank" rel="noopener noreferrer nofollow" className="lg-link">
+                {shortUrl(p.finalUrl)}
+              </a>
+            ) : (
+              <span className="lg-brief-email">{shortUrl(p.url)}</span>
+            )}
+            <span className={p.skipped ? "lg-late" : "lg-hint"}>
+              {p.skipped ? `Skipped: ${p.skipped}` : p.fetchedAt ? `Read ${when(p.fetchedAt)}` : "Read"}
+              {p.injection.length > 0 && ". Tried to give the AI instructions."}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
