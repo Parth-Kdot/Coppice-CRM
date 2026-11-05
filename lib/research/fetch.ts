@@ -1,7 +1,7 @@
 import { promises as dns, type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
-import { BlockList, isIP } from "node:net";
+import { isBlockedAddress } from "@/lib/research/addresses";
 import { robotsAllows } from "@/lib/research/robots";
 import { checkUrl, isApprovedHost, type SkipReason } from "@/lib/research/urls";
 
@@ -59,59 +59,6 @@ export type FetchDeps = {
   lookup: (hostname: string) => Promise<Resolved[]>;
   transport: (request: TransportRequest) => Promise<TransportResponse>;
 };
-
-// ----- Which addresses are public -----
-
-// Everything in IPv4 that isn't a public unicast address (IANA special-purpose registry).
-const V4_BLOCKED: [string, number][] = [
-  ["0.0.0.0", 8], // "this network"
-  ["10.0.0.0", 8], // private
-  ["100.64.0.0", 10], // carrier-grade NAT (includes Alibaba's metadata address 100.100.100.200)
-  ["127.0.0.0", 8], // loopback
-  ["169.254.0.0", 16], // link-local (includes the metadata address 169.254.169.254)
-  ["172.16.0.0", 12], // private
-  ["192.0.0.0", 24], // IETF protocol assignments (includes Oracle's metadata address 192.0.0.192)
-  ["192.0.2.0", 24], // documentation
-  ["192.31.196.0", 24], // AS112
-  ["192.52.193.0", 24], // AMT
-  ["192.88.99.0", 24], // 6to4 relay
-  ["192.168.0.0", 16], // private
-  ["192.175.48.0", 24], // AS112
-  ["198.18.0.0", 15], // benchmarking
-  ["198.51.100.0", 24], // documentation
-  ["203.0.113.0", 24], // documentation
-  ["224.0.0.0", 4], // multicast
-  ["240.0.0.0", 4], // reserved, and 255.255.255.255 broadcast
-];
-// IPv6: only global unicast (2000::/3) can be public, which already rules out loopback (::1), the
-// unspecified address, IPv4-mapped (::ffff:0:0/96) and IPv4-compatible addresses, NAT64
-// (64:ff9b::/96), unique-local (fc00::/7, including AWS's metadata address fd00:ec2::254),
-// link-local (fe80::/10) and multicast (ff00::/8). Inside 2000::/3 these are special too:
-const V6_BLOCKED: [string, number][] = [
-  ["2001::", 23], // IETF protocol assignments, including Teredo (2001::/32), which tunnels IPv4
-  ["2001:db8::", 32], // documentation
-  ["2002::", 16], // 6to4, which embeds an IPv4 address
-  ["3fff::", 20], // documentation
-];
-
-const v4Blocked = new BlockList();
-for (const [net, prefix] of V4_BLOCKED) v4Blocked.addSubnet(net, prefix, "ipv4");
-const v6Blocked = new BlockList();
-for (const [net, prefix] of V6_BLOCKED) v6Blocked.addSubnet(net, prefix, "ipv6");
-const v6GlobalUnicast = new BlockList();
-v6GlobalUnicast.addSubnet("2000::", 3, "ipv6");
-
-// True unless the address is a public unicast address. Anything that isn't an IP at all is blocked.
-export function isBlockedAddress(address: string): boolean {
-  try {
-    const family = isIP(address);
-    if (family === 4) return v4Blocked.check(address, "ipv4");
-    if (family === 6) return !v6GlobalUnicast.check(address, "ipv6") || v6Blocked.check(address, "ipv6");
-  } catch {
-    // An address BlockList can't read is not one we connect to.
-  }
-  return true;
-}
 
 // ----- The real DNS and connection -----
 
@@ -244,6 +191,28 @@ function decode(bytes: Buffer, contentType: string): string {
   }
 }
 
+// The checks before each request, the first and every redirect hop: the host is approved, every
+// address it resolves to is public, and robots.txt (via beforeRequest) allows it. Returns the
+// checked addresses to connect to.
+async function checkHop(url: URL, options: FetchOptions): Promise<{ ok: true; addresses: Resolved[] } | { ok: false; reason: SkipReason }> {
+  const { deps, signal } = options;
+  if (!isApprovedHost(url.hostname, options.approvedHosts)) return { ok: false, reason: "not_approved" };
+  let addresses: Resolved[];
+  try {
+    addresses = await raceAbort(deps.lookup(url.hostname), signal);
+  } catch {
+    return { ok: false, reason: signal.aborted ? "timeout" : "dns" };
+  }
+  if (addresses.length === 0) return { ok: false, reason: "dns" };
+  // All of them, not just the first: a name that answers with one public and one private
+  // address could be connected to either.
+  if (addresses.some((a) => isBlockedAddress(a.address))) return { ok: false, reason: "private_address" };
+  // robots.txt last, so a refusal above names the real reason.
+  const skip = options.beforeRequest ? await options.beforeRequest(url) : null;
+  if (skip) return { ok: false, reason: skip };
+  return { ok: true, addresses };
+}
+
 // One URL, following at most limits.maxRedirects redirects, every hop checked from scratch.
 export async function safeFetch(start: string, options: FetchOptions): Promise<FetchResult> {
   const { deps, limits, signal } = options;
@@ -252,21 +221,9 @@ export async function safeFetch(start: string, options: FetchOptions): Promise<F
   let url = first.url;
 
   for (let hop = 0; ; hop++) {
-    if (!isApprovedHost(url.hostname, options.approvedHosts)) return { ok: false, reason: "not_approved" };
-
-    let addresses: Resolved[];
-    try {
-      addresses = await raceAbort(deps.lookup(url.hostname), signal);
-    } catch {
-      return { ok: false, reason: signal.aborted ? "timeout" : "dns" };
-    }
-    if (addresses.length === 0) return { ok: false, reason: "dns" };
-    // All of them, not just the first: a name that answers with one public and one private
-    // address could be connected to either.
-    if (addresses.some((a) => isBlockedAddress(a.address))) return { ok: false, reason: "private_address" };
-    // robots.txt last, so a refusal above names the real reason.
-    const skip = options.beforeRequest ? await options.beforeRequest(url) : null;
-    if (skip) return { ok: false, reason: skip };
+    const checked = await checkHop(url, options);
+    if (!checked.ok) return checked;
+    const { addresses } = checked;
 
     const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(limits.requestMs)]);
     let response: TransportResponse;
@@ -306,31 +263,31 @@ export async function safeFetch(start: string, options: FetchOptions): Promise<F
       url = next.url;
       continue;
     }
-    if (response.status < 200 || response.status > 299) {
+    const refused = refuseBody(response, options);
+    if (refused) {
       response.close();
-      return { ok: false, reason: "http_status", status: response.status };
+      return refused;
     }
-
     const contentType = header(response.headers, "content-type") ?? "";
-    const mime = contentType.split(";")[0].trim().toLowerCase();
-    if (options.contentTypes && !options.contentTypes.includes(mime)) {
-      response.close();
-      return { ok: false, reason: "content_type" };
-    }
-    const encoding = (header(response.headers, "content-encoding") ?? "identity").trim().toLowerCase();
-    if (encoding !== "identity" && encoding !== "") {
-      response.close();
-      return { ok: false, reason: "content_type" };
-    }
-    const declared = Number(header(response.headers, "content-length"));
-    if (Number.isFinite(declared) && declared > options.maxBytes) {
-      response.close();
-      return { ok: false, reason: "too_large" };
-    }
     const read = await readLimited(response, options.maxBytes, requestSignal);
     if (!read.ok) return read;
-    return { ok: true, finalUrl: url.href, contentType: mime, body: decode(read.bytes, contentType) };
+    return { ok: true, finalUrl: url.href, contentType: mimeOf(contentType), body: decode(read.bytes, contentType) };
   }
+}
+
+const mimeOf = (contentType: string) => contentType.split(";")[0].trim().toLowerCase();
+
+// Why a final (non-redirect) reply's body won't be read, or null to read it: not a 2xx, a content
+// type that isn't allowed, a compressed body, or a declared length over the limit.
+function refuseBody(response: TransportResponse, options: FetchOptions): Extract<FetchResult, { ok: false }> | null {
+  if (response.status < 200 || response.status > 299) return { ok: false, reason: "http_status", status: response.status };
+  const mime = mimeOf(header(response.headers, "content-type") ?? "");
+  if (options.contentTypes && !options.contentTypes.includes(mime)) return { ok: false, reason: "content_type" };
+  const encoding = (header(response.headers, "content-encoding") ?? "identity").trim().toLowerCase();
+  if (encoding !== "identity" && encoding !== "") return { ok: false, reason: "content_type" };
+  const declared = Number(header(response.headers, "content-length"));
+  if (Number.isFinite(declared) && declared > options.maxBytes) return { ok: false, reason: "too_large" };
+  return null;
 }
 
 // ----- A research page, with robots.txt -----

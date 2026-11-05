@@ -5,6 +5,8 @@
 
 // Elements whose contents are never text a person reads on the page.
 const SKIP = new Set(["script", "style", "noscript", "template", "svg", "math", "iframe", "object", "embed", "canvas", "select", "textarea"]);
+// Of those, the ones a trailing "/" closes ("<svg/>").
+const FOREIGN = new Set(["svg", "math"]);
 // Elements that start a new line.
 const BLOCK = new Set([
   "address", "article", "aside", "blockquote", "br", "dd", "details", "div", "dl", "dt", "figcaption", "figure", "footer",
@@ -73,7 +75,9 @@ export function htmlToText(html: string): string {
     const tagEnd = html.indexOf(">", lt);
     if (tagEnd < 0) break;
     i = tagEnd + 1;
-    if (!closing && SKIP.has(name) && html[tagEnd - 1] !== "/") {
+    // A trailing "/" closes only foreign elements (svg, math); HTML ignores it on script, style and
+    // the rest, so "<script/>" still opens a script whose body runs to "</script>".
+    if (!closing && SKIP.has(name) && !(FOREIGN.has(name) && html[tagEnd - 1] === "/")) {
       // Jump past the matching close tag (no nesting to track: these hold no real markup).
       const close = lower.indexOf(`</${name}`, i);
       if (close < 0) break;
