@@ -656,6 +656,10 @@
     .lg-btop .lg-toggle svg {
       display: none;
     }
+    /* Names and dates wrap here, so the two rows grow with them instead of overlapping. */
+    .lg-slipcard {
+      grid-template-rows: auto auto;
+    }
     .lg-slip-due .lg-od-text,
     .lg-slip-none {
       white-space: normal;
