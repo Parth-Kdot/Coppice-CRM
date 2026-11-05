@@ -2,12 +2,15 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from 
 import { acceptBriefItem as acceptAction, requestBrief as requestAction } from "@/app/(app)/[workspaceId]/companies/research-actions";
 import { addResearchSource, archiveResearchSource, renameResearchSource } from "@/app/(app)/[workspaceId]/settings/research-actions";
 import { DAILY_BRIEFS_PER_PERSON } from "@/lib/ai/run";
+import { numbersIn } from "@/lib/ai/text";
 import type { Membership } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
 import { addContact, archiveCompany, createCompany } from "@/lib/companies";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { acceptBriefItem } from "@/lib/research/accept";
-import { latestBrief, requestBrief, type BriefView } from "@/lib/research/brief";
+import { BRIEF_RUNNING_MS, latestBrief, requestBrief, type BriefView } from "@/lib/research/brief";
+import { htmlToText } from "@/lib/research/html";
+import { maskPage } from "@/lib/research/scan";
 import { addSource, archiveSource, listSources, renameSource } from "@/lib/research/sources";
 import { form, redirectTo } from "./helpers/form";
 import { answer, apiError, calls, fakeGemini } from "./helpers/gemini";
@@ -217,6 +220,48 @@ describe("requestBrief", () => {
     expect(brief.items.map((i) => i.title)).toEqual(["Community Giving Portal"]);
   });
 
+  // A hostile approved page names its own site in a form a browser reads but a reader can't tell
+  // apart: [what it is, how the page writes it in HTML, how the AI would write it in a line].
+  test.for([
+    ["a soft hyphen", "acme-giving&#173;.xyz", "acme-giving\u00AD.xyz"],
+    ["a zero-width space", "acme-giving&#8203;.xyz", "acme-giving\u200B.xyz"],
+    ["a word joiner", "acme-giving&#x2060;.xyz", "acme-giving\u2060.xyz"],
+    ["an ideographic full stop", "acme-giving\u3002xyz", "acme-giving\u3002xyz"],
+    ["a halfwidth ideographic full stop", "acme-giving\uFF61xyz", "acme-giving\uFF61xyz"],
+    ["a punycode ending", "acme-giving.xn--p1ai", "acme-giving.xn--p1ai"],
+    ["a hex address", "0x5d.0xb8.0xd7.0x0e", "0x5d.0xb8.0xd7.0x0e"],
+    ["an octal address", "0135.0270.0327.016", "0135.0270.0327.016"],
+    ["a short address", "93.184.55054", "93.184.55054"],
+  ])("drops %s from the title, detail, deadline and quote, and keeps the clean item", async ([, written, line]) => {
+    const TRICK = "https://acme.org/trick";
+    const trickId = await source(TRICK, "Trick");
+    const page = `<p>The Acme Foundation accepts sponsorship requests through the Community Giving Portal.</p>
+<p>Apply at ${written}/apply before March 1.</p>
+<p>Award sizes are ${numbersIn(line).join(" and ") || "listed"} points.</p>`;
+    // The quotes the AI is shown, exactly as stored (invisible characters gone, phones masked).
+    const [clean, hostile, numbers] = maskPage(htmlToText(page)).split("\n");
+    fakeGemini(
+      passages({ page: 1, door: "GIVING", quote: clean }, { page: 1, door: "GIVING", quote: hostile }, { page: 1, door: "GIVING", quote: numbers }),
+      items(
+        item({ door: "GIVING", title: "Community Giving Portal", detail: "Send requests through the portal.", passage: 1, quote: clean }),
+        item({ door: "GIVING", title: `Portal at ${line}`, detail: "Send requests through the portal.", passage: 3, quote: numbers }),
+        item({ door: "GIVING", title: "Giving form", detail: `Apply at ${line}/apply.`, passage: 3, quote: numbers }),
+        item({ door: "GIVING", title: "Spring deadline", detail: "Apply before the deadline.", deadline: `${line}/apply before March 1`, passage: 2, quote: hostile }),
+        item({ door: "GIVING", title: "Spring form", detail: "Apply before March 1.", passage: 2, quote: hostile }),
+        // The model copies the page's raw form, invisible character and all.
+        item({ door: "GIVING", title: "Spring forms", detail: "Apply before March 1.", passage: 2, quote: `Apply at ${line}/apply before March 1.` }),
+      ),
+    );
+    const brief = ok(await ask(OWNER, [trickId], web({ [TRICK]: html(page) })));
+    // An octal or short address is already masked as a phone number in the page text, so a quote
+    // of that line names no site at all and may stay.
+    const masked = hostile.includes("[phone]");
+    expect(brief.items.map((i) => i.title)).toEqual(masked ? ["Community Giving Portal", "Spring form"] : ["Community Giving Portal"]);
+    expect(JSON.stringify(brief.items)).not.toMatch(/acme-giving|0x5d|0135|93\.184/);
+    for (const kept of brief.items) ok(await acceptBriefItem(OWNER, companyId, brief.id, kept.id));
+    expect(await notesOf()).not.toMatch(/acme-giving|0x5d|0135|93\.184/);
+  });
+
   it("drops an item whose quote names a site that wasn't fetched, even with a clean line", async () => {
     const ERG = "https://acme.org/erg";
     const ergId = await source(ERG, "Acme ERG");
@@ -286,10 +331,11 @@ describe("requestBrief", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("returns the AI's failure without saving a brief", async () => {
+  it("returns the AI's failure, keeps the brief as FAILED so it still counts, and never shows it", async () => {
     fakeGemini(apiError(400, "bad request"), apiError(400, "bad request"));
     expect(await ask(OWNER, [careersId])).toEqual({ ok: false, error: "The AI service refused this request. Tell the app admin." });
-    expect(await briefCount()).toBe(0);
+    expect(await withTenant(OWNER, (tx) => tx.companyBrief.findMany({ select: { status: true, createdById: true } }))).toEqual([{ status: "FAILED", createdById: "ownerA" }]);
+    expect(await latestBrief(OWNER, companyId)).toBeNull();
   });
 
   it("is refused while AI is off, before any page is fetched", async () => {
@@ -333,6 +379,102 @@ describe("requestBrief", () => {
     // Refused before anything is fetched.
     expect(net.requests.length).toBe(before);
     expect(ok(await ask(OWNER, [careersId], net)).status).toBe("NO_PAGES");
+  });
+
+  // Each page answers after a short wait, so parallel requests are all in flight together.
+  const slowWeb = (extra: Record<string, FakeReply> = {}) => {
+    const net = web(extra);
+    const transport = net.deps.transport;
+    net.deps.transport = async (request) => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return transport(request);
+    };
+    return net;
+  };
+  const pageFetches = (net: ReturnType<typeof web>) => net.requests.filter((r) => r.url.pathname !== "/robots.txt").length;
+  const BUSY = [
+    "Your last brief is still being prepared. Wait for it to finish, then ask again.",
+    "Too many briefs were asked for at the same moment. Try again.",
+  ];
+
+  it("lets exactly one of 15 parallel requests by one person through, and fetches only its pages", async () => {
+    const net = slowWeb({ [CAREERS]: { status: 404 } });
+    const results = await Promise.all(Array.from({ length: 15 }, () => ask(OFFICER, [careersId], net)));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    for (const r of results.filter((r) => !r.ok)) expect(BUSY).toContain((r as { error: string }).error);
+    expect(await briefCount()).toBe(1);
+    expect(pageFetches(net)).toBe(1);
+    // Someone else isn't held up by it.
+    expect(ok(await ask(OWNER, [careersId], net)).status).toBe("NO_PAGES");
+  });
+
+  it(`lets exactly ${DAILY_BRIEFS_PER_PERSON} through however many parallel bursts one person sends in a day`, async () => {
+    const net = slowWeb({ [CAREERS]: { status: 404 } });
+    let accepted = 0;
+    for (let burst = 0; burst < DAILY_BRIEFS_PER_PERSON + 3; burst++) {
+      const results = await Promise.all(Array.from({ length: 15 }, () => ask(OFFICER, [careersId], net)));
+      accepted += results.filter((r) => r.ok).length;
+    }
+    expect(accepted).toBe(DAILY_BRIEFS_PER_PERSON);
+    expect(await briefCount()).toBe(DAILY_BRIEFS_PER_PERSON);
+    expect(pageFetches(net)).toBe(DAILY_BRIEFS_PER_PERSON);
+    expect(await ask(OFFICER, [careersId], net)).toEqual({ ok: false, error: `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.` });
+  }, 60_000);
+
+  it("keeps parallel requests within the workspace's AI limit, counting the calls running briefs will make", async () => {
+    await prisma.workspace.update({ where: { id: "a" }, data: { aiMonthlyLimit: 3 } });
+    fakeGemini(...GOOD_RUN(), ...GOOD_RUN());
+    const net = slowWeb();
+    const results = await Promise.all([ask(OWNER, [careersId, givingId], net), ask(OFFICER, [careersId, givingId], net)]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    expect(await runs()).toHaveLength(2);
+  });
+
+  it("is refused while the same person's brief is running, until it is older than a function can run", async () => {
+    const at = (await dbNow()).getTime();
+    const running = (ms: number) =>
+      withTenant(OFFICER, (tx) =>
+        tx.companyBrief.create({ data: { workspaceId: "a", companyId, createdById: "officerA", status: "RUNNING", brief: { items: [] }, createdAt: new Date(at - ms) } }),
+      );
+    const fresh = await running(60_000);
+    const net = web({ [CAREERS]: { status: 404 } });
+    expect(await ask(OFFICER, [careersId], net)).toEqual({ ok: false, error: BUSY[0] });
+    expect(net.requests).toEqual([]);
+    await withTenant(OFFICER, (tx) => tx.companyBrief.update({ where: { id: fresh.id }, data: { createdAt: new Date(at - BRIEF_RUNNING_MS - 1_000) } }));
+    expect(ok(await ask(OFFICER, [careersId], net)).status).toBe("NO_PAGES");
+  });
+
+  it("counts running and failed briefs toward the daily limit, and never shows them", async () => {
+    fakeGemini(...GOOD_RUN());
+    const ready = ok(await ask(OFFICER, [careersId, givingId]));
+    const at = (await dbNow()).getTime();
+    await withTenant(OFFICER, (tx) =>
+      tx.companyBrief.createMany({
+        data: Array.from({ length: DAILY_BRIEFS_PER_PERSON - 1 }, (_, i) => ({
+          workspaceId: "a",
+          companyId,
+          createdById: "officerA",
+          status: i % 2 ? ("FAILED" as const) : ("RUNNING" as const),
+          brief: { items: [{ id: "i1", door: "OTHER", title: "Hidden", detail: "Never shown.", deadline: null, page: 1, quote: "x" }] },
+          // Newer than the ready brief, but stuck or failed.
+          createdAt: new Date(at - BRIEF_RUNNING_MS - 1_000 + i),
+        })),
+      }),
+    );
+    expect((await latestBrief(OWNER, companyId))?.id).toBe(ready.id);
+    const hidden = await withTenant(OWNER, (tx) => tx.companyBrief.findFirstOrThrow({ where: { status: "FAILED" } }));
+    expect(await acceptBriefItem(OWNER, companyId, hidden.id, "i1")).toEqual({ ok: false, error: "Brief not found." });
+    expect(await ask(OFFICER, [careersId])).toEqual({ ok: false, error: `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.` });
+  });
+
+  it("marks the brief FAILED when something throws after the slot was taken", async () => {
+    const robotsCache = new Map<string, Promise<string | null | "unreachable">>();
+    robotsCache.get = () => {
+      throw new Error("cache broke");
+    };
+    await expect(requestBrief(OFFICER, companyId, [careersId], { deps: web().deps, limits: FAST, robots: robotsCache })).rejects.toThrow("cache broke");
+    expect(await withTenant(OWNER, (tx) => tx.companyBrief.findMany({ select: { status: true } }))).toEqual([{ status: "FAILED" }]);
   });
 
   it("refuses an archived company, an archived source, and another workspace's source", async () => {

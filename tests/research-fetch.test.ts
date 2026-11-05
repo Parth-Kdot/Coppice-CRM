@@ -2,6 +2,7 @@ import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
 import { isBlockedAddress } from "@/lib/research/addresses";
+import { cleanLine, cleanQuote, sitesIn } from "@/lib/research/checks";
 import { fetchResearchPage, LIMITS, nodeTransport, USER_AGENT } from "@/lib/research/fetch";
 import { decodeEntities, htmlToText } from "@/lib/research/html";
 import { robotsAllows } from "@/lib/research/robots";
@@ -416,6 +417,18 @@ describe("masking page text", () => {
     ["1-800-555-0199", "toll-free"],
     ["+33 1 23 45 67 89", "France"],
     ["020 7946 0958", "UK without the country code"],
+    ["089/1234567", "Munich, with a slash"],
+    ["0711/2223344", "Stuttgart, with a slash"],
+    ["06221/12345", "Heidelberg, with a slash"],
+    ["030/123 456 78", "Berlin, slash and spaces"],
+    ["089 / 1234567", "a slash between spaces"],
+    ["765\u2013555\u20130142", "en dashes"],
+    ["1\u2013800\u2013555\u20130199", "toll-free with en dashes"],
+    ["765 \u2013 555 \u2013 0142", "spaced en dashes"],
+    ["765\u2014555\u20140142", "em dashes"],
+    ["765\u2010555\u20100142", "Unicode hyphens"],
+    ["765\u2212555\u22120142", "minus signs"],
+    ["+49 (0)89 1234567", "Germany with the trunk zero"],
   ])("masks %s (%s)", ([phone]) => {
     expect(maskPhones(`Call ${phone} today.`)).toBe("Call [phone] today.");
   });
@@ -427,6 +440,14 @@ describe("masking page text", () => {
     "Founded in 1998, with 12,000 employees and $2,500 grants.",
     "Room 101, building 4.",
     "Order 1234567 shipped.",
+    "Due 15/03/2027 or 12/25/2026.",
+    "Due 2026/03/15.",
+    "From 15.03.2027 \u2013 20.03.2027.",
+    "For the 2025\u20132026 school year.",
+    "Open 10/2026\u201305/2027.",
+    "Held 2026\u201303\u201315.",
+    "Seasons 2025 2026 2027.",
+    "Open 24/7, split 50/50.",
   ])("leaves %j alone", (text) => {
     expect(maskPhones(text)).toBe(text);
   });
@@ -440,11 +461,99 @@ describe("masking page text", () => {
     }
   });
 
+  it("cuts quickly when a long word ends just before the edge", () => {
+    // A regex cut (/\S*$/) re-scans the word from every start position when it doesn't reach the end.
+    for (const raw of [`${"a".repeat(30_255)} ${"b".repeat(2 * 1024 * 1024)}`, `${"a".repeat(30_000)} ${"b".repeat(200)} ${"c".repeat(2 * 1024 * 1024)}`]) {
+      const started = performance.now();
+      const head = pageHead(raw);
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(head.endsWith(" ")).toBe(true);
+      expect(maskPage(head).length).toBeLessThanOrEqual(PAGE_TEXT_MAX);
+    }
+  });
+
   it("cuts long pages at a space, so an address at the edge is still masked", () => {
     const raw = `${"word ".repeat(PAGE_TEXT_MAX / 5 - 2)}jane.doe@acme.com and more text after the edge`;
     const text = maskPage(pageHead(raw));
     expect(text).not.toContain("@");
     expect(text.length).toBeLessThanOrEqual(PAGE_TEXT_MAX);
+  });
+});
+
+describe("sites named in a brief line or quote", () => {
+  const FETCHED = ["acme.org"];
+  // Each names acme-giving.xyz, evil.com or 93.184.215.14 to a browser, which reads them all.
+  test.for([
+    ["a soft hyphen before the dot", "Apply at acme-giving\u00AD.xyz/apply before March 1."],
+    ["a zero-width space", "Apply at acme-giving\u200B.xyz/apply before March 1."],
+    ["a word joiner", "Apply at acme-giving\u2060.xyz/apply before March 1."],
+    ["a soft hyphen in the ending", "Apply at evil.c\u00ADom today."],
+    ["an ideographic full stop", "Apply at acme-giving\u3002xyz/apply before March 1."],
+    ["a halfwidth ideographic full stop", "Apply at acme-giving\uFF61xyz/apply before March 1."],
+    ["a punycode ending", "Apply at acme-giving.xn--p1ai/apply before March 1."],
+    ["a hex address", "Apply at 0x5d.0xb8.0xd7.0x0e/apply before March 1."],
+    ["one hex number", "Apply at 0x5db8d70e today."],
+    ["an octal address", "Apply at 0135.0270.0327.016 today."],
+    ["a short address", "Apply at 93.184.55054 today."],
+    ["a two-part address with a path", "Apply at 93.12113678/apply today."],
+    ["an IPv6 address", "Apply at [2606:4700::1111]/apply today."],
+    ["punctuation inside the name", "Apply at evil!.com today."],
+    ["a symbol a browser keeps", "Apply at evil\u00A1.com today."],
+    ["a combining mark", "Apply at acme\u0332.org today."],
+  ])("drops a line or quote with %s", ([, line]) => {
+    expect(cleanLine(line, FETCHED)).toBe(false);
+    expect(cleanQuote(line, FETCHED)).toBe(false);
+  });
+
+  it("reads each of them as the host a browser would", () => {
+    expect(sitesIn("acme-giving\u3002xyz/apply")).toEqual(expect.arrayContaining(["acme-giving.xyz"]));
+    expect(sitesIn("acme-giving.xn--p1ai")).toEqual(expect.arrayContaining(["acme-giving.xn--p1ai"]));
+    for (const ip of ["0x5d.0xb8.0xd7.0x0e", "0135.0270.0327.016", "93.184.55054", "93.184.215.14"]) expect(sitesIn(`at ${ip} today`)).toEqual(["93.184.215.14"]);
+    // Invisible characters make the whole line a refusal.
+    expect(sitesIn("acme-giving\u00AD.xyz")).toBeNull();
+  });
+
+  it("finds no site a browser would read from any character next to a dot", () => {
+    // Every code point of the basic plane, and the invisible ones beyond it (shorthand format
+    // controls, tags, variation selectors), before the dot, inside the ending and as the dot:
+    // whenever a browser reads "evil<c>.com" as a name it could look up, the check refuses the line.
+    const resolvable = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(?:[a-z]{2,}|xn--[a-z0-9-]+)$/;
+    const missed: string[] = [];
+    const ranges = [[0x20, 0xffff], [0x1bca0, 0x1bca3], [0xe0000, 0xe0fff]];
+    for (const [from, to] of ranges) {
+      for (let cp = from; cp <= to; cp++) {
+        if (cp >= 0xd800 && cp <= 0xdfff) continue;
+        const c = String.fromCodePoint(cp);
+        for (const text of [`evil${c}.com`, `evil.c${c}om`, `evil${c}com`]) {
+          let host: string;
+          try {
+            host = new URL(`https://${text}`).hostname;
+          } catch {
+            continue;
+          }
+          if (resolvable.test(host) && cleanLine(`Apply at ${text}/apply today.`, FETCHED)) missed.push(`U+${cp.toString(16)}`);
+        }
+      }
+    }
+    expect(missed).toEqual([]);
+  }, 60_000);
+
+  test.for([
+    "Due 15.03.2027.",
+    "Students with a GPA of 3.5 or higher.",
+    "Room 101, building 4.",
+    "Open 24/7 since 2027.",
+    "Open to U.S. students, e.g. at Purdue.",
+    "Founded in 1998, with 12,000 employees and $2,500 grants.",
+    "Send requests through the portal on acme.org.",
+    "Starts at 9.30 a.m.",
+  ])("keeps %j", (line) => {
+    expect(cleanLine(line, FETCHED)).toBe(true);
+  });
+
+  it("refuses a line with a tab or line break in it", () => {
+    expect(cleanLine("Apply at evil\n.com today.", FETCHED)).toBe(false);
+    expect(cleanLine("Apply at evil\t.com today.", FETCHED)).toBe(false);
   });
 });
 

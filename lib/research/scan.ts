@@ -66,20 +66,25 @@ export function teamInboxes(text: string, sites: string[]): string[] {
 }
 
 // Phone numbers in any country's format, for page text: up to eight groups of digits joined by a
-// space, a hyphen, a dot before a digit, or brackets ("+44 20 7946 0958", "(765) 555-0142",
-// "+91 98765 43210", "7655550142"). A match is masked only when it holds 7 to 15 digits (E.164's
-// most), isn't a date ("2026-03-15", "15.03.2027") or a run of years ("2025-2026"), and, written
-// as one bare number, is long enough to dial (10 digits). Every repeat is bounded and a match can't
-// fail once it starts, so it runs in linear time. lib/ai/text.ts masks US-style numbers in
-// everything sent; this catches the rest.
-const PHONE_LIKE = /\+?\(?\d{1,5}\)?(?:(?: ?- ?|\.(?=\d)| )?\(?\d{1,5}\)?){0,7}/g;
-const DATE = /^(\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{4})$/;
+// space, a hyphen or any other dash ("765–555–0142"), a slash ("089/1234567", the usual German,
+// Austrian and Swiss style), a dot before a digit, or brackets ("+44 20 7946 0958",
+// "(765) 555-0142", "+91 98765 43210", "7655550142"). A match is masked only when it holds 7 to 15
+// digits (E.164's most), isn't a date or a run of dates and years ("2026-03-15", "15.03.2027",
+// "12/25/2026", "2025–2026", "10/2026–05/2027"), and, written as one bare number, is long enough to
+// dial (10 digits). Every repeat is bounded and a match can't fail once it starts, so it runs in
+// linear time. lib/ai/text.ts masks US-style numbers in everything sent; this catches the rest.
+const SEPARATOR = "(?: ?[-\u2010-\u2015\u2212/] ?|\\.(?=\\d)| )?";
+const PHONE_LIKE = new RegExp(`\\+?\\(?\\d{1,5}\\)?(?:${SEPARATOR}\\(?\\d{1,5}\\)?){0,7}`, "g");
+const DASH = "[-./\u2010-\u2015\u2212]";
+// A date, a month and year ("10/2026"), or a year.
+const DATE_PART = `(?:\\d{4}${DASH}\\d{1,2}${DASH}\\d{1,2}|\\d{1,2}${DASH}\\d{1,2}${DASH}\\d{4}|\\d{1,2}[./](?:19|20)\\d\\d|(?:19|20)\\d\\d)`;
+const DATES = new RegExp(`^${DATE_PART}(?:(?: ?[-/\u2010-\u2015\u2212] ?| )${DATE_PART})*$`);
 
 function looksLikePhone(match: string): boolean {
   const groups = match.match(/\d+/g) ?? [];
   const digits = groups.join("").length;
   if (digits < 7 || digits > 15) return false;
-  if (groups.every((g) => /^(19|20)\d\d$/.test(g)) || DATE.test(match)) return false;
+  if (DATES.test(match)) return false;
   return groups.length > 1 || match.startsWith("+") || digits >= 10;
 }
 
@@ -93,10 +98,17 @@ export const PAGE_TEXT_MAX = 30_000;
 // The part of a page that is read: cut at a space a little past PAGE_TEXT_MAX, before any regex
 // runs, so a 2 MB page costs no more than a 30 KB one. Cutting at a space means no email or phone
 // number is split; masking then runs over the whole part, and only its result is cut to size.
+// The cut walks back to the last space by hand: no regex, so a long word before the edge can't
+// make it slow.
 export function pageHead(raw: string): string {
-  return raw.length <= PAGE_TEXT_MAX ? raw : raw.slice(0, PAGE_TEXT_MAX + 256).replace(/\S*$/, "");
+  if (raw.length <= PAGE_TEXT_MAX) return raw;
+  const part = raw.slice(0, PAGE_TEXT_MAX + 256);
+  if (part.length === raw.length) return part;
+  let end = part.length;
+  while (end > 0 && !/\s/.test(part[end - 1])) end--;
+  return part.slice(0, end);
 }
 
-// Page text as the AI sees it: emails and phone numbers (any country's format) masked, and angle
+// Page text as the AI sees it: emails and phone numbers (in the formats above) masked, and angle
 // brackets swapped so the page can't close or fake the <page> tags around it.
 export const maskPage = (head: string) => maskPhones(promptSafe(head)).slice(0, PAGE_TEXT_MAX);

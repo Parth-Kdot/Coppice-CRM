@@ -516,6 +516,11 @@ enum BriefStatus {
   READY
   // No page could be read (robots.txt, blocked, too big ...), so no AI call was made.
   NO_PAGES
+  // Being prepared: the row is written before any page is fetched, so it holds this person's slot
+  // in the daily limit (lib/research/brief.ts). Never shown.
+  RUNNING
+  // An AI call failed or the brief stopped with an error. Never shown, but it still counts.
+  FAILED
 }
 
 // A suggested "who to contact" brief for a company, built from approved pages only. Every item
@@ -544,6 +549,8 @@ model CompanyBrief {
   @@index([companyId, workspaceId, createdAt])
   @@index([workspaceId])
   @@index([createdById])
+  // This person's briefs in the last 24 hours, counted before each new one.
+  @@index([workspaceId, createdById, createdAt])
 }
 
 // One approved URL a brief tried to read: what was fetched (and when), or why it was skipped. The

@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { BriefStatus } from "@/generated/prisma/enums";
-import { aiGate, aiUsage, DAILY_BRIEFS_PER_PERSON, runAi } from "@/lib/ai/run";
+import { AI_WINDOW_DAYS, aiGate, aiUsage, DAILY_BRIEFS_PER_PERSON, runAi } from "@/lib/ai/run";
 import { promptSafe } from "@/lib/ai/text";
 import { dbNow } from "@/lib/claims";
-import { withTenant, type Tenant } from "@/lib/db";
+import { isSerializationFailure, withTenant, type Tenant } from "@/lib/db";
 import { domainKey } from "@/lib/duplicates";
 import { checkItems, checkPassages, type BriefItem } from "@/lib/research/checks";
 import { DOORS } from "@/lib/research/doors";
@@ -18,7 +18,9 @@ import type { ActionResult } from "@/lib/validation";
 // university relations, a giving or sponsorship portal and its deadline, an employee resource
 // group, a local site), built only from pages an owner approved. In order:
 // 1. The usual AI gate (switch, workspace limit, this person's daily limit, which counts every
-//    brief saved as well as every reading call), before anything else.
+//    brief asked for as well as every reading call), before anything else. Then the brief is
+//    written as RUNNING, in a transaction that counts again, so requests sent in parallel can't
+//    all pass the limit, and a person has one brief running at a time (reserveBrief).
 // 2. The server fetches the chosen sources itself, in parallel, through the safe fetcher
 //    (lib/research/fetch.ts): robots.txt honored, private networks refused, 15 s per page.
 // 3. Code extracts each page's text, keeps the first 30,000 characters, masks emails and phone
@@ -32,8 +34,9 @@ import type { ActionResult } from "@/lib/validation";
 //    numbers and deadline appear in that quote, it holds no contact details, and every site it
 //    names, in any form, is a page that was fetched (lib/research/checks.ts). The only link shown
 //    for an item is the page it cites.
-// 6. The brief and each page's stored text are saved. Nothing touches the company until a person
-//    adds a specific item to its notes (lib/research/accept.ts, through lib/companies.ts).
+// 6. The brief (now READY, NO_PAGES, or FAILED if an AI call failed) and each page's stored text
+//    are saved. Only READY and NO_PAGES briefs are ever shown. Nothing touches the company until a
+//    person adds a specific item to its notes (lib/research/accept.ts, through lib/companies.ts).
 // Both AI calls run outside any database transaction, each within the deadline in lib/ai/client.ts,
 // so with the fetches a brief stays well inside Vercel's 300 seconds.
 
@@ -132,23 +135,63 @@ async function readPage(position: number, url: string, approvedHosts: string[], 
 
 type FetchOptions = { deps?: FetchDeps; limits?: Limits; robots?: Map<string, Promise<string | null | "unreachable">> };
 
+// How long a brief can be running. Vercel stops a function after at most 300 seconds (the company
+// page asks for 240), so a RUNNING row older than this was cut off and no longer holds anyone up.
+export const BRIEF_RUNNING_MS = 300_000;
+const RESERVE_ATTEMPTS = 5;
+
+const DAILY_LIMIT_ERROR = `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.`;
+const RUNNING_ERROR = "Your last brief is still being prepared. Wait for it to finish, then ask again.";
+const WORKSPACE_LIMIT_ERROR = "A brief takes two AI calls, and this workspace has fewer left for the last 30 days. An owner can raise the limit in Settings.";
+const BUSY_ERROR = "Too many briefs were asked for at the same moment. Try again.";
+
+// Takes this person's slot before anything is fetched: in one serializable transaction, count
+// their briefs in the last 24 hours (every status, also ones that read no page or failed: each
+// fetched other people's pages), refuse while one of theirs is still running, check the
+// workspace has two AI calls left besides the ones briefs running now will make, and write the
+// new brief as RUNNING. Parallel requests can't all pass the count: Postgres fails all but one of
+// them, and those run again and see the new row.
+async function reserveBrief(tenant: Tenant, companyId: string, aiLimit: number): Promise<ActionResult<string>> {
+  const now = (await dbNow()).getTime();
+  const since = new Date(now - DAY_MS);
+  const runningSince = new Date(now - BRIEF_RUNNING_MS);
+  const aiSince = new Date(now - AI_WINDOW_DAYS * DAY_MS);
+  for (let attempt = 0; attempt < RESERVE_ATTEMPTS; attempt++) {
+    try {
+      return await withTenant(
+        tenant,
+        async (tx): Promise<ActionResult<string>> => {
+          const mine = { workspaceId: tenant.workspaceId, createdById: tenant.userId };
+          if ((await tx.companyBrief.count({ where: { ...mine, createdAt: { gte: since } } })) >= DAILY_BRIEFS_PER_PERSON) {
+            return { ok: false, error: DAILY_LIMIT_ERROR };
+          }
+          if ((await tx.companyBrief.count({ where: { ...mine, status: "RUNNING", createdAt: { gte: runningSince } } })) > 0) {
+            return { ok: false, error: RUNNING_ERROR };
+          }
+          const used = await tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, createdAt: { gte: aiSince } } });
+          const running = await tx.companyBrief.count({ where: { workspaceId: tenant.workspaceId, status: "RUNNING", createdAt: { gte: runningSince } } });
+          if (aiLimit - used - 2 * running < 2) return { ok: false, error: WORKSPACE_LIMIT_ERROR };
+          const brief = await tx.companyBrief.create({
+            data: { workspaceId: tenant.workspaceId, companyId, createdById: tenant.userId, status: "RUNNING", brief: { items: [] } },
+            select: { id: true },
+          });
+          return { ok: true, data: brief.id };
+        },
+        { isolationLevel: "Serializable" },
+      );
+    } catch (e) {
+      if (!isSerializationFailure(e)) throw e;
+    }
+  }
+  return { ok: false, error: BUSY_ERROR };
+}
+
 export async function requestBrief(tenant: Tenant, companyId: string, sourceIds: string[], fetchOptions: FetchOptions = {}): Promise<ActionResult<BriefView>> {
   // Refused before any page is fetched: AI off, no key, workspace limit or this person's daily limit.
   const gate = await aiGate(tenant, "RESEARCH_READ");
   if (!gate.ok) return gate;
-  // Every brief counts, also one where no page could be read and so no AI call was made: each
-  // still fetches pages from other people's sites.
-  const since = new Date((await dbNow()).getTime() - DAY_MS);
-  const mine = await withTenant(tenant, (tx) =>
-    tx.companyBrief.count({ where: { workspaceId: tenant.workspaceId, createdById: tenant.userId, createdAt: { gte: since } } }),
-  );
-  if (mine >= DAILY_BRIEFS_PER_PERSON) {
-    return { ok: false, error: `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.` };
-  }
   const usage = await aiUsage(tenant);
-  if (usage.limit - usage.used < 2) {
-    return { ok: false, error: "A brief takes two AI calls, and this workspace has fewer left for the last 30 days. An owner can raise the limit in Settings." };
-  }
+  if (usage.limit - usage.used < 2) return { ok: false, error: WORKSPACE_LIMIT_ERROR };
 
   const { company, sources } = await withTenant(tenant, async (tx) => ({
     company: await tx.company.findFirst({ where: { id: companyId, workspaceId: tenant.workspaceId }, select: { name: true, website: true, archivedAt: true } }),
@@ -161,11 +204,38 @@ export async function requestBrief(tenant: Tenant, companyId: string, sourceIds:
   // Redirects may stay on the host of any approved source; nothing else is ever fetched.
   const approvedHosts = sources.map((s) => new URL(s.url).hostname);
 
+  const reserved = await reserveBrief(tenant, companyId, usage.limit);
+  if (!reserved.ok) return reserved;
+  const briefId = reserved.data;
+  try {
+    const outcome = await buildBrief(tenant, company, chosen.map((s) => (s as { url: string }).url), approvedHosts, fetchOptions);
+    await finishBrief(tenant, briefId, outcome);
+    if (!outcome.ok) return { ok: false, error: outcome.error };
+  } catch (e) {
+    await finishBrief(tenant, briefId, { ok: false, error: "", records: [] });
+    throw e;
+  }
+  const view = await loadBrief(tenant, { id: briefId, companyId });
+  return view ? { ok: true, data: view } : { ok: false, error: "Brief not found." };
+}
+
+// What a brief came to: its status and checked items, or the AI's error; and the pages either way.
+type Outcome =
+  | { ok: true; status: "READY" | "NO_PAGES"; items: BriefItem[]; records: PageRecord[]; model: string | null }
+  | { ok: false; error: string; records: PageRecord[] };
+
+async function buildBrief(
+  tenant: Tenant,
+  company: { name: string; website: string | null },
+  urls: string[],
+  approvedHosts: string[],
+  fetchOptions: FetchOptions,
+): Promise<Outcome> {
   const options = { deps: defaultDeps, limits: LIMITS, robots: new Map(), ...fetchOptions };
   const companySite = domainKey(company.website);
-  const records = await Promise.all(chosen.map((s, i) => readPage(i + 1, (s as { url: string }).url, approvedHosts, companySite, options)));
+  const records = await Promise.all(urls.map((url, i) => readPage(i + 1, url, approvedHosts, companySite, options)));
   const read = records.filter((r) => r.text);
-  if (read.length === 0) return saveBrief(tenant, companyId, "NO_PAGES", [], records, null);
+  if (read.length === 0) return { ok: true, status: "NO_PAGES", items: [], records, model: null };
 
   const pages = new Map(read.map((r) => [r.position, r]));
   const document = read
@@ -177,9 +247,9 @@ export async function requestBrief(tenant: Tenant, companyId: string, sourceIds:
     prompt: `<company>\nName: ${promptSafe(company.name)}\nWebsite: ${promptSafe(company.website ?? "unknown")}\n</company>\n\n${document}\n\nList the passages about the company's official channels.`,
     schema: Passages,
   });
-  if (!reading.ok) return reading;
+  if (!reading.ok) return { ok: false, error: reading.error, records };
   const passages = checkPassages(reading.data.passages, pages);
-  if (passages.length === 0) return saveBrief(tenant, companyId, "READY", [], records, reading.model);
+  if (passages.length === 0) return { ok: true, status: "READY", items: [], records, model: reading.model };
 
   const listed = passages.map((p, i) => `<passage number="${i + 1}" door="${p.door}">${promptSafe(p.quote)}</passage>`).join("\n");
   const writing = await runAi(tenant, {
@@ -188,21 +258,19 @@ export async function requestBrief(tenant: Tenant, companyId: string, sourceIds:
     prompt: `<company>Name: ${promptSafe(company.name)}</company>\n\n${listed}\n\nWrite the brief items.`,
     schema: BriefOut,
   });
-  if (!writing.ok) return writing;
-  return saveBrief(tenant, companyId, "READY", checkItems(writing.data.items, passages, pages), records, writing.model);
+  if (!writing.ok) return { ok: false, error: writing.error, records };
+  return { ok: true, status: "READY", items: checkItems(writing.data.items, passages, pages), records, model: writing.model };
 }
 
-async function saveBrief(tenant: Tenant, companyId: string, status: BriefStatus, items: BriefItem[], records: PageRecord[], model: string | null): Promise<ActionResult<BriefView>> {
-  const id = await withTenant(tenant, async (tx) => {
-    const brief = await tx.companyBrief.create({
-      data: { workspaceId: tenant.workspaceId, companyId, createdById: tenant.userId, status, brief: { items }, model },
-      select: { id: true },
+// Marks the RUNNING row READY, NO_PAGES or FAILED, with the pages it read.
+async function finishBrief(tenant: Tenant, briefId: string, outcome: Outcome): Promise<void> {
+  await withTenant(tenant, async (tx) => {
+    await tx.companyBrief.update({
+      where: { id: briefId, workspaceId: tenant.workspaceId },
+      data: outcome.ok ? { status: outcome.status, brief: { items: outcome.items }, model: outcome.model } : { status: "FAILED" },
     });
-    await tx.companyBriefPage.createMany({ data: records.map((r) => ({ workspaceId: tenant.workspaceId, briefId: brief.id, ...r })) });
-    return brief.id;
+    await tx.companyBriefPage.createMany({ data: outcome.records.map((r) => ({ workspaceId: tenant.workspaceId, briefId, ...r })) });
   });
-  const view = await loadBrief(tenant, { id, companyId });
-  return view ? { ok: true, data: view } : { ok: false, error: "Brief not found." };
 }
 
 // ----- Showing a brief -----
@@ -225,12 +293,14 @@ export type BriefView = {
   pages: BriefPageView[];
 };
 
+const SHOWN: BriefStatus[] = ["READY", "NO_PAGES"];
 const inboxId = (position: number, index: number) => `m${position}-${index + 1}`;
 
 export async function loadBrief(tenant: Tenant, where: { id?: string; companyId: string }): Promise<BriefView | null> {
   return withTenant(tenant, async (tx) => {
     const brief = await tx.companyBrief.findFirst({
-      where: { ...where, workspaceId: tenant.workspaceId },
+      // Only finished briefs: one still RUNNING or one that FAILED is never shown or accepted from.
+      where: { ...where, workspaceId: tenant.workspaceId, status: { in: SHOWN } },
       select: { id: true, status: true, createdAt: true, brief: true, accepted: true, createdBy: { select: { name: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });

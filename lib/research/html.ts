@@ -91,9 +91,12 @@ export function htmlToText(html: string): string {
   return tidy(decodeEntities(out.join("")));
 }
 
-// Spaces collapsed, each line trimmed, no blank lines.
+// Spaces collapsed, each line trimmed, no blank lines, and no invisible characters (soft hyphens,
+// zero-width spaces, word joiners ...): a reader never sees them, and in "acme-giving&#173;.xyz" a
+// browser drops them, so the text keeps only what a reader and a browser both see.
 export function tidy(text: string): string {
   return text
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
     .replace(/\r\n?/g, "\n")
     .replace(/[^\S\n]+/g, " ")
     .split("\n")

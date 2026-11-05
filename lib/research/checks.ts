@@ -20,13 +20,27 @@ export type BriefItem = { id: string; door: Door; title: string; detail: string;
 
 // Anything that names a site: a web address with any scheme ("https://", "ftp://"), and any
 // host-shaped token, whatever its ending ("acme-giving.xyz/apply", "acme.de", "give.acme.foundation",
-// "bit.do/acme"), or a numeric address. A host-shaped token is labels joined by dots, ending in a
-// label of letters only, so "2.5" and "U.S." are not hosts.
+// "bit.do/acme", "acme-giving.xn--p1ai"), or a numeric address in any form a browser accepts. A
+// host-shaped token is labels joined by dots, ending in a label of letters only (or a punycode
+// "xn--" label), so "2.5" and "U.S." are not hosts. Labels take combining marks too, so "acme" with
+// a mark under one letter is read as the different site it is.
 const SCHEME_URL = /[\p{L}][\p{L}\p{N}+.-]*:\/\/[^\s"'<>]*/giu;
-const HOSTLIKE = /(?<![\p{L}\p{N}-])(?:[\p{L}\p{N}-]+\.)+\p{L}{2,}(?![\p{L}\p{N}-])/giu;
-const IPV4 = /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])/g;
+const HOSTLIKE = /(?<![\p{L}\p{M}\p{N}_-])(?:[\p{L}\p{M}\p{N}_-]+\.)+(?:\p{L}[\p{L}\p{M}]+|xn--[\p{L}\p{N}-]+)(?![\p{L}\p{M}\p{N}_-])/giu;
+// Numbers joined by dots, or one hex number: "93.184.215.14", and the forms a browser also reads
+// as that address: hex ("0x5d.0xb8.0xd7.0x0e", "0x5db8d70e"), octal ("0135.0270.0327.016") and
+// short ("93.184.55054", "93.12113678"). Which of them count as a site is decided below.
+const NUMERIC = /(?<![\p{L}\p{M}\p{N}_.-])(?:0x[0-9a-f]*|\d+)(?:\.(?:0x[0-9a-f]*|\d+)){0,3}(?!\.?[\p{L}\p{M}\p{N}_-])/giu;
+const IPV6 = /\[[0-9a-f.]*:[0-9a-f:.]*\]/gi;
 // Addresses written so a filter won't see them: "evil[.]com", "evil(dot)com", "hxxp://".
 const DEFANGED = /[[({]\s*(?:\.|dot)\s*[\])}]|\bhxxps?\b|\s(?:dot|punkt)\s+\p{L}{2,}\b/iu;
+// Characters a browser drops from a web address but a reader never sees: soft hyphen (which a page
+// can write as "&#173;"), zero-width space, word joiner, variation selectors ...
+const INVISIBLE = /\p{Default_Ignorable_Code_Point}/u;
+// The dots a browser reads as a dot between labels ("acme-giving。xyz"), besides ".": NFKC
+// turns the fullwidth one into ".", but the halfwidth one only into the ideographic one.
+const IDNA_DOTS = /[\u3002\uff0e\uff61]/g;
+// Numbers that are dates or decimals, not addresses: "15.03.2027", "2027.03.15", "03.2027", "2.5", "0.75".
+const NUMBER_SHAPE = /^(?:\d{1,2}\.\d{1,2}\.\d{2,4}|\d{4}\.\d{1,2}\.\d{1,2}|\d{1,2}\.\d{4}|(?:0|[1-9]\d*)\.\d+)$/;
 
 function hostOf(link: string): string | null {
   try {
@@ -37,26 +51,69 @@ function hostOf(link: string): string | null {
   }
 }
 
+// A numeric token is a site when a browser would read it as an IP address and it isn't plainly a
+// date or a decimal number. Hex is always a site, and so is a date or decimal followed by a path
+// or a port ("2.5/apply"), since that is written to be typed into a browser. A plain whole number
+// ("2027", "24/7") never is.
+function numericSite(token: string, next: string): string | null {
+  const hex = /0x/i.test(token);
+  if (!hex && !token.includes(".")) return null;
+  const host = hostOf(token);
+  if (!host || !/^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
+  const linkish = /^(?:\/|:\d)/.test(next);
+  return hex || linkish || !NUMBER_SHAPE.test(token) ? host : null;
+}
+
+// Every word with a dot in it, read the way a browser reads an address: the text is split where an
+// address ends (spaces, "/", "?", "#", "@", ":" ...), punctuation around a word is trimmed, and
+// what is left is parsed as a host. It is a site if the browser gets a name ending in letters or
+// a punycode label ("evil!.com", "evil¡.com" and "evil.c¡om" all are). This catches what the
+// patterns above would split apart.
+const ADDRESS_END = /[\s/?#@:<>[\]\\^|%]+/u;
+const EDGES = /^[^\p{L}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu;
+
+function wordSite(word: string): string | null {
+  const token = word.replace(EDGES, "");
+  if (!token.includes(".")) return null;
+  const host = hostOf(token);
+  if (!host || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
+  const labels = host.split(".");
+  if (labels.some((l) => !l)) return null;
+  return /^(?:[a-z]{2,}|xn--[a-z0-9-]+)$/.test(labels[labels.length - 1]) ? host : null;
+}
+
 // Every site the text names, as hostnames; null when it names one that can't be read as a web
-// host at all (another scheme, a defanged address), which callers treat as a refusal.
+// host at all (another scheme, a defanged address), or holds a character a browser would drop
+// from an address, which callers treat as a refusal.
 export function sitesIn(text: string): string[] | null {
   // Fullwidth and other compatibility forms ("ｅｖｉｌ．ｃｏｍ") become plain letters first.
-  const line = text.normalize("NFKC");
-  if (DEFANGED.test(line)) return null;
+  const line = text.normalize("NFKC").replace(IDNA_DOTS, ".");
+  if (INVISIBLE.test(line) || DEFANGED.test(line)) return null;
   const hosts: string[] = [];
-  for (const pattern of [SCHEME_URL, HOSTLIKE, IPV4]) {
+  for (const pattern of [SCHEME_URL, HOSTLIKE, IPV6]) {
     for (const [link] of line.matchAll(pattern)) {
       const host = hostOf(link);
       if (!host) return null;
       hosts.push(host);
     }
   }
+  for (const match of line.matchAll(NUMERIC)) {
+    const end = (match.index ?? 0) + match[0].length;
+    const host = numericSite(match[0], line.slice(end, end + 2));
+    if (host) hosts.push(host);
+  }
+  for (const word of line.split(ADDRESS_END)) {
+    const host = wordSite(word);
+    if (host) hosts.push(host);
+  }
   return hosts;
 }
 
 // A line of the brief (title, detail, deadline) may name a site only if it is one of the pages
-// fetched, exactly, and may hold no contact details in any format.
+// fetched, exactly, and may hold no contact details in any format. It is one line of plain text:
+// no tabs or line breaks, which a browser also drops from an address pasted into it.
 export function cleanLine(text: string, fetchedHosts: string[]): boolean {
+  if (/\p{Cc}/u.test(text)) return false;
   if (maskPhones(maskContactDetails(text)) !== text || /\[(email|phone)\]|@/i.test(text)) return false;
   const sites = sitesIn(text);
   return sites !== null && sites.every((host) => isApprovedHost(host, fetchedHosts));

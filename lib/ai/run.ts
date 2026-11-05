@@ -70,7 +70,8 @@ export async function aiGate(tenant: Tenant, feature: AiFeature): Promise<Action
     }
   }
   // A brief starts with its RESEARCH_READ call, so those count briefs. requestBrief
-  // (lib/research/brief.ts) also counts the briefs saved, which include ones that made no call.
+  // (lib/research/brief.ts) also counts every brief row, written as RUNNING before any page is
+  // fetched, which includes ones that made no call or failed.
   if (feature === "RESEARCH_READ") {
     const since = new Date((await dbNow()).getTime() - DAY_MS);
     const mine = await withTenant(tenant, (tx) =>
