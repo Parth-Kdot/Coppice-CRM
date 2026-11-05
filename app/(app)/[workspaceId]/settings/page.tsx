@@ -275,9 +275,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           </div>
           <div className="lg-sec-body">
             <p className="max-w-[66ch]">
-              Members can connect their own AI assistant, such as Claude, ChatGPT, Cursor or Claude Code, to Coppice. It can read this
-              workspace and, if the member allows it, claim companies, log outreach and move stages as them, under the same rules as
-              the app. What it does is marked &quot;via assistant&quot; in a company&apos;s history.
+              Members can connect their own AI assistant, such as ChatGPT, Cursor or any assistant that supports remote MCP servers, to
+              Coppice. It can read this workspace and, if the member allows it, claim companies, log outreach and move stages as them,
+              under the same rules as the app. What it does is marked &quot;via assistant&quot; in a company&apos;s history.
             </p>
             <p className="lg-mcp-privacy max-w-[66ch]">
               <WarningIcon size={16} />
@@ -296,8 +296,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               <li>Coppice shows what the assistant asks for. Allow it, or deny it.</li>
             </ol>
             <p className="lg-hint mt-3 max-w-[66ch]">
-              Access lasts an hour at a time and renews while you use it; remove the connector in your assistant to disconnect. Each
-              member connects for themselves and only reaches workspaces they belong to.
+              Access lasts an hour at a time and renews while the assistant uses it. Removing the connector in your assistant may not
+              end that access; an owner turning assistants off here, or removing you from the workspace, ends it at once. Each member
+              connects for themselves and only reaches workspaces they belong to.
             </p>
             {isOwner ? (
               <ActionForm action={updateMcpSettings} submitLabel="Save" successMessage="Saved." className="lg-aiform">
