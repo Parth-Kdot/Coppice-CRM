@@ -17,18 +17,21 @@ type Props = {
   small?: boolean;
   // Layout of the form's row; the default wraps the button and any message under the fields.
   className?: string;
+  // Runs after the action succeeds, for clearing state React's own form reset doesn't reach.
+  onSuccess?: () => void;
   children?: ReactNode;
 };
 
 // Runs a server action. A refusal is written under the form, where the person is looking; a
 // success is written as a margin note.
-export function ActionForm({ action, submitLabel, successMessage, confirmMessage, primary = false, small = false, className = "flex flex-wrap items-center gap-2", children }: Props) {
+export function ActionForm({ action, submitLabel, successMessage, confirmMessage, primary = false, small = false, className = "flex flex-wrap items-center gap-2", onSuccess, children }: Props) {
   const notify = useNotify();
   // The margin note is written when the action returns, not from an effect, so it still appears
   // when the form that sent it is gone by then (a fact that moved to the other list, a deleted row).
   const [state, formAction, pending] = useActionState(async (prev: ActionResult | null, data: FormData) => {
     const result = await action(prev, data);
     if (result.ok && successMessage) notify(successMessage);
+    if (result.ok) onSuccess?.();
     return result;
   }, null);
   const confirm = useConfirm();

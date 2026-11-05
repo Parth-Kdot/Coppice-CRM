@@ -51,6 +51,10 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
   const [followMode, setFollowMode] = useState<FollowMode>("7");
   const [followPicked, setFollowPicked] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // Bumped after each successful log, so the template picker starts again at "No template". It is
+  // controlled state that React's form reset doesn't clear, and a template left selected would
+  // quietly credit the next outreach (a call, a LinkedIn message) to it.
+  const [logged, setLogged] = useState(0);
 
   const defaultFollow = addDays(today, 7);
   const followUpOn = followMode === "pick" ? (followPicked ?? defaultFollow) : addDays(today, FOLLOW_DAYS[followMode]);
@@ -97,6 +101,7 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       submitLabel={label}
       primary
       successMessage="Logged."
+      onSuccess={() => setLogged((n) => n + 1)}
       className={`lg-logform ${compact ? "lg-logform-compact" : ""}`}
     >
       <input type="hidden" name="workspaceId" value={workspaceId} />
@@ -104,7 +109,7 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       <input type="hidden" name="followUpOn" value={followUpOn} />
       {aiDraftId && <input type="hidden" name="aiDraftId" value={aiDraftId} />}
       {aiDraftId ? <input type="hidden" name="channel" value="EMAIL" /> : <ChipGroup legend="Channel" name="channel" value={channel} options={channelOptions} onChange={setChannel} />}
-      {!aiDraftId && templates.length > 0 && <TemplatePicker id={`${id}-tpl`} templates={templates} />}
+      {!aiDraftId && templates.length > 0 && <TemplatePicker key={logged} id={`${id}-tpl`} templates={templates} />}
 
       <div className="lg-logrow">
         <ChipGroup
