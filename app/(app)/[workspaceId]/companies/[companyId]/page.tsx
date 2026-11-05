@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
+import { BriefPanel } from "@/components/brief-panel";
 import { ClaimPanel } from "@/components/claim-panel";
 import { CompanyForm } from "@/components/company-form";
 import { DraftPanel } from "@/components/draft-panel";
@@ -20,6 +21,9 @@ import { getCompanyDetail, listIndustries } from "@/lib/companies";
 import { daysBetween, day } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { recentDrafts } from "@/lib/drafts";
+import { domainKey } from "@/lib/duplicates";
+import { latestBrief } from "@/lib/research/brief";
+import { listSources } from "@/lib/research/sources";
 import { verifiedFacts } from "@/lib/facts";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { websiteHref } from "@/lib/validation";
@@ -38,10 +42,12 @@ import {
   updateContact,
 } from "../actions";
 import { checkDraft, draftEmail } from "../draft-actions";
+import { acceptBriefItem, requestBrief } from "../research-actions";
 import "@/components/ledger/company.css";
 
-// Drafting an email waits on the AI for up to 100 seconds.
-export const maxDuration = 120;
+// Drafting an email waits on the AI for up to 100 seconds. A research brief fetches pages (15 s)
+// and then makes two AI calls of up to 100 seconds each, so the page allows 240 (Vercel's cap is 300).
+export const maxDuration = 240;
 
 export async function generateMetadata({ params }: PageProps<"/[workspaceId]/companies/[companyId]">): Promise<Metadata> {
   const { workspaceId, companyId } = await params;
@@ -73,6 +79,10 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
     recentDrafts(tenant, companyId),
   ]);
   if (!company) notFound();
+  // The Research Agent is hidden entirely while AI is off (the server refuses too).
+  const researchOn = !company.archivedAt && isConfigured() && ai.enabled;
+  const [sources, brief] = researchOn ? await Promise.all([listSources(tenant), latestBrief(tenant, companyId)]) : [[], null];
+  const companyDomain = domainKey(company.website);
   const claim = claimState(company, now, userId);
   // Drafting claims the company, so it's offered only when that could work.
   const canDraft = !TERMINAL_STAGES.includes(company.stage) && claim !== "theirs";
@@ -215,6 +225,27 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
                 actions={{ draft: draftEmail, check: checkDraft, logOutreach }}
               />
             )}
+          </div>
+        )}
+
+        {researchOn && (
+          <div className="lg-leaf-wide lg-o-brief">
+            <BriefPanel
+              workspaceId={workspaceId}
+              companyId={company.id}
+              sources={sources.map((source) => {
+                // Pages on the company's own domain start ticked. This only picks among approved
+                // pages; the website itself is never approved by being on the company.
+                const host = new URL(source.url).hostname;
+                const site = domainKey(host);
+                const suggested = companyDomain !== null && site !== null && (site === companyDomain || site.endsWith(`.${companyDomain}`));
+                return { id: source.id, label: source.label, host, suggested };
+              })}
+              isOwner={role === "owner"}
+              usage={{ used: ai.used, limit: ai.limit }}
+              initialBrief={brief}
+              actions={{ request: requestBrief, accept: acceptBriefItem }}
+            />
           </div>
         )}
 
