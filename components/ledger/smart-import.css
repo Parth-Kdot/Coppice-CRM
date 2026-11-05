@@ -90,9 +90,6 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 8px;
   }
-  .lg-smart-note {
-    min-height: 64px;
-  }
   .lg-smart-dropped {
     padding-top: 8px;
     border-top: 1px solid var(--rule);

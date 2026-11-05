@@ -26,7 +26,7 @@ The name comes from coppicing, the old forestry practice of cutting a tree back 
 
 ## Stack
 
-Next.js 16 (App Router) and React 19 with TypeScript, Tailwind CSS 4, Prisma 7 with the pg driver adapter, Postgres on Supabase, Better Auth with Google sign-in and the organization plugin, Gemini for the AI features, Papa Parse for CSV and unpdf for PDF text. Hosted on Vercel. Tests run on Vitest against a real Postgres.
+Next.js 16 (App Router) and React 19 with TypeScript, Tailwind CSS 4, Prisma 7 with the pg driver adapter, Postgres on Supabase, Better Auth with Google sign-in and the organization plugin, Gemini for the AI features (and Groq for Smart import's free-text cells), Papa Parse for CSV and unpdf for PDF text. Hosted on Vercel. Tests run on Vitest against a real Postgres.
 
 ## Security
 
@@ -46,7 +46,7 @@ npm run dev
 
 The app runs at http://localhost:3000.
 
-`.env.example` explains every variable. In short: `DATABASE_URL` and `DIRECT_URL` point at the local Postgres, `BETTER_AUTH_SECRET` comes from `openssl rand -base64 32`, the Google client ID and secret come from a Google Cloud OAuth client, and `WORKSPACE_CREATOR_EMAILS` lists who may create workspaces. `GEMINI_API_KEY` is optional; without it the AI features say so and stay off.
+`.env.example` explains every variable. In short: `DATABASE_URL` and `DIRECT_URL` point at the local Postgres, `BETTER_AUTH_SECRET` comes from `openssl rand -base64 32`, the Google client ID and secret come from a Google Cloud OAuth client, and `WORKSPACE_CREATOR_EMAILS` lists who may create workspaces. `GEMINI_API_KEY` is optional; without it the AI features say so and stay off. `GROQ_API_KEY` is optional too; without it Smart import says so and the normal CSV import works as usual.
 
 ## Checks
 
