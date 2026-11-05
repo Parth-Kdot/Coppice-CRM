@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { jwt } from "better-auth/plugins/jwt";
@@ -6,6 +7,7 @@ import { organization } from "better-auth/plugins/organization";
 import { mcp } from "@better-auth/mcp";
 import { prisma } from "@/lib/db";
 import { MCP_SCOPES, mcpResourceUrl } from "@/lib/mcp/config";
+import { registrationProblem } from "@/lib/mcp/registration";
 
 // Option B (owner decision 2026-10-21): only emails listed in WORKSPACE_CREATOR_EMAILS
 // can create workspaces. Everyone else joins through an invitation.
@@ -65,10 +67,10 @@ const workspaceHttpPaths = Object.values(workspaces.endpoints)
 // The MCP server (app/api/mcp): outside AI assistants sign in here with OAuth and get a short-lived
 // token for Coppice. The plugins do all of the OAuth work (registration, consent, PKCE, signing);
 // nothing here is hand-written token logic. Choices that matter:
-// - Open Dynamic Client Registration, because assistants such as Claude and ChatGPT register
-//   themselves. Anyone can register a client, so the consent page shows the client's name and
-//   where it sends you back, and every new client needs a person's Allow (consent is per user
-//   per client; a registered client can't skip it).
+// - Open Dynamic Client Registration, because hosted assistants register themselves. Anyone can
+//   register a client, so the consent page shows the client's name and where it sends you back,
+//   and every new client needs a person's Allow (consent is per user per client; a registered
+//   client can't skip it). What a registration may contain is bounded (lib/mcp/registration.ts).
 // - Client ID Metadata Documents (@better-auth/cimd) are left off: in 1.7.10 its Node fetcher
 //   can crash the process on a malformed reply from a client's server, fixed only in 1.7.15,
 //   which needs a newer Better Auth.
@@ -87,10 +89,22 @@ const assistants = mcp({
   refreshTokenReuseInterval: 0,
   allowDynamicClientRegistration: true,
   allowUnauthenticatedClientRegistration: true,
-  // Native assistants (Claude Code, Cursor) register http://127.0.0.1 callbacks without saying
+  // Desktop and command-line assistants register http://127.0.0.1 callbacks without saying
   // they are native apps; "infer" accepts those without loosening the rules for web clients.
   clientRegistrationDefaultApplicationType: "infer",
 });
+
+// Client management over HTTP is off: Coppice never lets a person create, edit or list OAuth
+// clients, and these endpoints would let any signed-in account store client rows of any size.
+// Assistants register through open registration (/oauth2/register), which has its own limits.
+const oauthClientAdminPaths = [
+  "/oauth2/create-client",
+  "/oauth2/update-client",
+  "/oauth2/delete-client",
+  "/oauth2/get-client",
+  "/oauth2/get-clients",
+  "/oauth2/client/rotate-secret",
+];
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -102,7 +116,15 @@ export const auth = betterAuth({
   },
   // /token hands out a session JWT signed with the same key as MCP access tokens. Nothing in the
   // app uses it, so it is off: a session JWT must never pass as an assistant's token.
-  disabledPaths: [...workspaceHttpPaths, "/token"],
+  disabledPaths: [...workspaceHttpPaths, "/token", ...oauthClientAdminPaths],
+  // Limits on what open registration accepts (lib/mcp/registration.ts), on top of the plugin's own.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/oauth2/register") return;
+      const problem = registrationProblem(ctx.body);
+      if (problem) throw new APIError("BAD_REQUEST", { error: "invalid_client_metadata", error_description: problem });
+    }),
+  },
   // Limits requests to /api/auth/* per IP: 3 sign-in attempts per 10 seconds, 100 requests per
   // 10 seconds otherwise. Counts live in the database (the rateLimit table) so every server
   // instance shares them; in memory, each Vercel instance would keep its own count. On in every
