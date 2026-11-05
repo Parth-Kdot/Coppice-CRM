@@ -87,7 +87,7 @@ export function htmlToText(html: string): string {
   return tidy(decodeEntities(out.join("")));
 }
 
-// Spaces collapsed, each line trimmed, at most one blank line in a row.
+// Spaces collapsed, each line trimmed, no blank lines.
 export function tidy(text: string): string {
   return text
     .replace(/\r\n?/g, "\n")
@@ -95,6 +95,6 @@ export function tidy(text: string): string {
     .split("\n")
     .map((line) => line.trim())
     .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\n{2,}/g, "\n")
     .trim();
 }

@@ -138,7 +138,8 @@ export function nodeTransport({ url, address, headers, signal, connectTimeoutMs 
     const options = {
       protocol: url.protocol,
       hostname: url.hostname,
-      port: secure ? 443 : 80,
+      // safeFetch only ever passes default ports (checkUrl refuses others); tests use a local one.
+      port: url.port ? Number(url.port) : secure ? 443 : 80,
       path: `${url.pathname}${url.search}`,
       method: "GET",
       headers,
@@ -252,8 +253,6 @@ export async function safeFetch(start: string, options: FetchOptions): Promise<F
 
   for (let hop = 0; ; hop++) {
     if (!isApprovedHost(url.hostname, options.approvedHosts)) return { ok: false, reason: "not_approved" };
-    const skip = options.beforeRequest ? await options.beforeRequest(url) : null;
-    if (skip) return { ok: false, reason: skip };
 
     let addresses: Resolved[];
     try {
@@ -265,6 +264,9 @@ export async function safeFetch(start: string, options: FetchOptions): Promise<F
     // All of them, not just the first: a name that answers with one public and one private
     // address could be connected to either.
     if (addresses.some((a) => isBlockedAddress(a.address))) return { ok: false, reason: "private_address" };
+    // robots.txt last, so a refusal above names the real reason.
+    const skip = options.beforeRequest ? await options.beforeRequest(url) : null;
+    if (skip) return { ok: false, reason: skip };
 
     const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(limits.requestMs)]);
     let response: TransportResponse;
