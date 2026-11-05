@@ -30,11 +30,18 @@ const needsWrite = requireScopes(READ_SCOPE, WRITE_SCOPE);
 
 export function buildMcpServer(principal: McpPrincipal): McpServer {
   const server = new McpServer({ name: "coppice", title: "Coppice", version: "1.0.0" }, { instructions: INSTRUCTIONS });
+  registerReads(server, principal);
+  registerActions(server, principal);
+  return server;
+}
 
+// Every tool body runs inside tools.guarded, so an unexpected error never reaches the assistant
+// word for word.
+function registerReads(server: McpServer, principal: McpPrincipal) {
   server.registerTool(
     "list_workspaces",
     { title: "List workspaces", description: "Workspaces you belong to that allow assistants, with your role in each.", annotations: READ },
-    () => tools.listWorkspaces(principal),
+    () => tools.guarded(() => tools.listWorkspaces(principal)),
   );
   server.registerTool(
     "list_companies",
@@ -44,7 +51,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       inputSchema: mcpListCompaniesSchema,
       annotations: READ,
     },
-    (args) => tools.listCompanies(principal, args),
+    (args) => tools.guarded(() => tools.listCompanies(principal, args)),
   );
   server.registerTool(
     "get_company",
@@ -54,7 +61,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       inputSchema: mcpCompanySchema,
       annotations: READ,
     },
-    (args) => tools.getCompany(principal, args),
+    (args) => tools.guarded(() => tools.getCompany(principal, args)),
   );
   server.registerTool(
     "get_follow_up_queue",
@@ -64,13 +71,16 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       inputSchema: mcpQueueSchema,
       annotations: READ,
     },
-    (args) => tools.getFollowUpQueue(principal, args),
+    (args) => tools.guarded(() => tools.getFollowUpQueue(principal, args)),
   );
   server.registerTool(
     "list_my_claims",
     { title: "My claims", description: "Companies you hold right now, and until when.", inputSchema: mcpWorkspaceSchema, annotations: READ },
-    (args) => tools.listMyClaims(principal, args),
+    (args) => tools.guarded(() => tools.listMyClaims(principal, args)),
   );
+}
+
+function registerActions(server: McpServer, principal: McpPrincipal) {
   server.registerTool(
     "claim_company",
     {
@@ -80,7 +90,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       annotations: { ...ACTION, idempotentHint: true },
       scopeChallenge: needsWrite,
     },
-    (args) => tools.claimCompanyTool(principal, args),
+    (args) => tools.guarded(() => tools.claimCompanyTool(principal, args)),
   );
   server.registerTool(
     "log_outreach",
@@ -91,7 +101,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       annotations: ACTION,
       scopeChallenge: needsWrite,
     },
-    (args) => tools.logOutreachTool(principal, args),
+    (args) => tools.guarded(() => tools.logOutreachTool(principal, args)),
   );
   server.registerTool(
     "change_stage",
@@ -99,10 +109,11 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       title: "Change stage",
       description: "Move a company to another stage. COMMITTED and DECLINED need confirm: true after the person agrees.",
       inputSchema: mcpChangeStageSchema,
-      annotations: ACTION,
+      // Marked destructive so the assistant's app asks the person first: Committed and Declined end
+      // the pitch and release the claim, and confirm: true is filled in by the assistant itself.
+      annotations: { ...ACTION, destructiveHint: true },
       scopeChallenge: needsWrite,
     },
-    (args) => tools.changeStageTool(principal, args),
+    (args) => tools.guarded(() => tools.changeStageTool(principal, args)),
   );
-  return server;
 }

@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { AuthzError, checkMembership, type Membership } from "@/lib/authz";
+import { literal } from "@/lib/board";
 import { changeStage, claimCompany, claimState, dbNow, heldBy, logOutreach } from "@/lib/claims";
 import { getCompanyDetail } from "@/lib/companies";
 import { prisma, withTenant } from "@/lib/db";
@@ -50,7 +51,26 @@ function fail(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-const fromResult = <T>(result: ActionResult<T>, onSuccess: (data: T) => ToolResult) => (result.ok ? onSuccess(result.data) : fail(result.error));
+// A refusal from lib/claims.ts can name people ("Sam holds this company until ..."), and a member
+// chooses their own display name, so the message is wrapped as untrusted like any other text.
+function refusedBy(error: string): ToolResult {
+  return { content: [{ type: "text", text: JSON.stringify({ notice: UNTRUSTED_NOTICE, error: untrusted(error) }, null, 2) }], isError: true };
+}
+
+const fromResult = <T>(result: ActionResult<T>, onSuccess: (data: T) => ToolResult) => (result.ok ? onSuccess(result.data) : refusedBy(result.error));
+
+// When a tool throws (a database error, a timeout), the MCP SDK would send the error's message to
+// the assistant word for word, and Prisma messages quote the query. The details stay in the server
+// log; the assistant gets a plain message.
+export const INTERNAL_ERROR = "Something went wrong on Coppice's side. Try again in a moment.";
+export async function guarded(run: () => Promise<ToolResult>): Promise<ToolResult> {
+  try {
+    return await run();
+  } catch (error) {
+    console.error("MCP tool failed", error);
+    return fail(INTERNAL_ERROR);
+  }
+}
 
 export const NOT_A_MEMBER = "Workspace not found, or you are not a member of it. Use list_workspaces to see the ones you can reach.";
 export const MCP_OFF = "Assistants are turned off for this workspace. An owner can turn them on in Coppice, under Settings.";
@@ -111,9 +131,6 @@ export async function listWorkspaces(principal: McpPrincipal): Promise<ToolResul
     ...(rows.length > open.length ? { note: offNote(rows.length - open.length) } : {}),
   });
 }
-
-// Postgres treats % and _ in a LIKE pattern as wildcards; a search for "100%" means the text.
-const literal = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 export async function listCompanies(principal: McpPrincipal, args: z.infer<typeof mcpListCompaniesSchema>): Promise<ToolResult> {
   const gate = await openWorkspace(principal, args.workspaceId, "read");
