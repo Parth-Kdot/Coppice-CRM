@@ -8,6 +8,7 @@ import { WarningIcon } from "@/components/ledger/icons";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import { Tick } from "@/components/ledger/marks";
 import { ErrorLine } from "@/components/ledger/shared";
+import { readingMatches, SmartColumns, SmartLookalikes, SmartReview, useSmartImport, type SmartActions } from "@/components/csv-importer-smart";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
 import { IMPORT_FIELDS, type ActionResult, type ImportField, type ImportMapping } from "@/lib/validation";
 import "@/components/ledger/company.css";
@@ -17,6 +18,8 @@ type Props = {
   workspaceId: string;
   preview: (prev: ActionResult<ImportPreview> | null, form: FormData) => Promise<ActionResult<ImportPreview>>;
   run: (prev: ActionResult<ImportResult> | null, form: FormData) => Promise<ActionResult<ImportResult>>;
+  // Smart import (AI feature 3), offered only while AI is on for the workspace.
+  smart?: SmartActions;
 };
 
 const FIELD_LABELS: Record<ImportField, string> = {
@@ -58,7 +61,7 @@ const COLUMNS = ["Row", "Name", "Industry", "Website", "Contact", "Notes"] as co
 // The CSV import screen: pick a file, check the columns, review problems and look-alikes, import.
 // Every step sends the file to the server, which parses and checks it again (lib/csv.ts); this
 // component only shows what the server sends back and remembers the person's choices.
-export function CsvImporter({ workspaceId, preview, run }: Props) {
+export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [view, setView] = useState<ImportPreview | null>(null);
   // Rows the person chose to skip, starting from the suggested ones.
@@ -86,25 +89,39 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
       setSkips(new Set(res.data.defaultSkips));
     });
 
-  const importNow = (chosen: File, shown: ImportPreview) =>
-    startTransition(async () => {
-      setError(null);
-      const res = await run(
-        null,
-        send(chosen, { mapping: JSON.stringify(shown.mapping), skip: JSON.stringify([...skips]), seen: JSON.stringify(shown.seen) }),
-      );
-      if (!res.ok) return setError(res.error);
-      setResult(res.data);
-      setView(null);
-      setFile(null);
-    });
-
   const choose = (row: number, skip: boolean) =>
     setSkips((current) => {
       const next = new Set(current);
       if (skip) next.add(row);
       else next.delete(row);
       return next;
+    });
+
+  const smartState = useSmartImport({
+    actions: smart,
+    send: (fields) => (file ? send(file, fields) : null),
+    applyMapping: (mapping) => {
+      if (file) review(file, mapping);
+    },
+    skips,
+    choose,
+  });
+  // Smart import is used for the import only if its reading matches the columns shown now.
+  const smartReady = Boolean(smart && view && readingMatches(smartState, view.mapping));
+
+  const importNow = (chosen: File, shown: ImportPreview) =>
+    startTransition(async () => {
+      setError(null);
+      const fields = { mapping: JSON.stringify(shown.mapping), skip: JSON.stringify([...skips]), seen: JSON.stringify(shown.seen) };
+      const res =
+        smart && smartReady
+          ? await smart.run(null, send(chosen, { ...fields, sessionId: smartState.session!.sessionId, decisions: JSON.stringify(smartState.decisions()) }))
+          : await run(null, send(chosen, fields));
+      if (!res.ok) return setError(res.error);
+      setResult(res.data);
+      setView(null);
+      setFile(null);
+      smartState.reset();
     });
 
   if (result) {
@@ -160,6 +177,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
               setFile(chosen);
               setView(null);
               setResult(null);
+              smartState.reset();
               if (chosen) review(chosen, null);
             }}
           />
@@ -216,6 +234,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                 </button>
               </div>
             )}
+            {smart && <SmartColumns smart={smartState} actions={smart} view={view} pending={pending} />}
           </>
         )}
       </Entry>
@@ -358,6 +377,9 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                 ))}
               </div>
             )}
+
+            {smart && <SmartLookalikes smart={smartState} view={view} workspaceId={workspaceId} skips={skips} choose={choose} />}
+            {smart && <SmartReview smart={smartState} view={view} />}
           </>
         )}
       </Entry>
@@ -365,11 +387,18 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
       <Entry n={4} state={view ? "active" : "later"} title="Import">
         {file && view ? (
           <>
-            <p>
-              {importing} {importing === 1 ? "company" : "companies"} will be added as Not contacted. Nothing is imported until you press the button.
-            </p>
+            {smartReady ? (
+              <p>
+                {importing} {importing === 1 ? "company" : "companies"} will be added. The readings you kept set their stage, dates, contact and notes; the rest
+                start as Not contacted. Nothing is imported until you press the button.
+              </p>
+            ) : (
+              <p>
+                {importing} {importing === 1 ? "company" : "companies"} will be added as Not contacted. Nothing is imported until you press the button.
+              </p>
+            )}
             <div className="mt-3">
-              <button type="button" disabled={pending || importing === 0} onClick={() => importNow(file, view)} className="lg-btn lg-btn-primary">
+              <button type="button" disabled={pending || smartState.busy || importing === 0} onClick={() => importNow(file, view)} className="lg-btn lg-btn-primary">
                 {pending ? "Working..." : `Import ${importing} ${importing === 1 ? "company" : "companies"}`}
               </button>
             </div>

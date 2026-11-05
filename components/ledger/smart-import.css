@@ -1,0 +1,128 @@
+/* ==========================================================================================
+   Ledger, Smart import: the switch and its choices under the column mapper, and the review of
+   what was read, one ruled card per row with each reading, its quote and Keep or Drop. Built from
+   the import page's own pieces (lg-group, lg-dupcard, lg-usage); only what they lack is here.
+   ========================================================================================== */
+
+@layer components {
+  .lg-smart {
+    margin-top: 22px;
+    padding: 14px 16px 16px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-smart .lg-h3 {
+    margin-bottom: 4px;
+  }
+  .lg-smart-say {
+    max-width: 72ch;
+  }
+  .lg-smart-body {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-smart-body > .lg-hint {
+    max-width: 72ch;
+    margin-bottom: 10px;
+  }
+  .lg-smart-cols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    margin-top: 6px;
+  }
+  .lg-smart-cols legend {
+    margin-bottom: 4px;
+  }
+  .lg-smart-col {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+  .lg-smart-col[data-off] {
+    color: var(--ink-2);
+    cursor: default;
+  }
+  .lg-smart-year {
+    max-width: 320px;
+    margin-top: 12px;
+  }
+
+  /* One row of the sheet and what was read from it. */
+  .lg-smart-row .lg-group-q {
+    overflow-wrap: anywhere;
+  }
+  .lg-smart-item {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr) auto;
+    gap: 6px 14px;
+    align-items: start;
+    padding: 10px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-smart-item > .lg-tag {
+    padding-top: 9px;
+  }
+  .lg-smart-item[data-dropped] .lg-smart-ctl {
+    opacity: 0.55;
+  }
+  .lg-smart-ctl {
+    min-width: 0;
+  }
+  .lg-smart-src {
+    margin-top: 4px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    overflow-wrap: anywhere;
+  }
+  .lg-smart-src .lg-quote {
+    color: var(--ink);
+  }
+  .lg-smart-date {
+    max-width: 200px;
+  }
+  .lg-smart-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .lg-smart-note {
+    min-height: 64px;
+  }
+  .lg-smart-dropped {
+    padding-top: 8px;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-smart-dropped summary {
+    cursor: pointer;
+  }
+  .lg-smart-dropped ul {
+    margin-top: 4px;
+    padding-left: 18px;
+    list-style: disc;
+  }
+
+  @media (max-width: 760px) {
+    .lg-smart {
+      padding: 12px;
+    }
+    .lg-smart-item {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-smart-item > .lg-tag {
+      padding-top: 0;
+    }
+    .lg-smart-pair {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-smart-date {
+      max-width: none;
+    }
+  }
+}

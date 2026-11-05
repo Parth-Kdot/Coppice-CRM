@@ -493,7 +493,7 @@ describe("Smart import, end to end", () => {
   it("reads the free-text rows with Groq, checks them, and flags look-alikes with a reason", async () => {
     const { started, proposals } = await readAll();
     expect(started).toMatchObject({ rowsToRead: 4, chunkCount: 1, overCap: 0, cycleStart: current, pastYear: false, lookalikeNote: null });
-    expect(started.doNotContact).toEqual([{ row: 5, column: 4, header: "Status", quote: "asked us to stop" }]);
+    expect(started.doNotContact).toEqual([{ row: 5, name: "Initech", column: 4, header: "Status", quote: "asked us to stop" }]);
     // Code found Lilly in Eli Lilly; the AI's CAT pair was kept, the made-up and saved-only pairs dropped.
     expect(started.lookalikes).toEqual([
       { rows: [3], existing: [expect.objectContaining({ name: "Lilly" })], reason: '"Eli Lilly" and "Lilly" share a name' },

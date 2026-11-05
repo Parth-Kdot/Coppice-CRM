@@ -539,6 +539,7 @@ type SessionRows = { read: number[]; dnc: ({ row: number } & Quote)[] };
 export type SmartStart = {
   sessionId: string;
   chunkCount: number;
+  chunkRows: number;
   rowsToRead: number;
   // Rows with free text past the 300-row cap: they import the normal way.
   overCap: number;
@@ -546,7 +547,7 @@ export type SmartStart = {
   pastYear: boolean;
   lookalikes: Lookalike[];
   lookalikeNote: string | null;
-  doNotContact: ({ row: number } & Quote)[];
+  doNotContact: ({ row: number; name: string } & Quote)[];
 };
 
 function readRows(table: Table, valid: CheckedRow[], freeText: number[]) {
@@ -586,6 +587,7 @@ export async function startSmartRead(
     return [];
   });
   const { lookalikes, note } = await findLookalikes(tenant, valid);
+  const nameOf = new Map(valid.map((r) => [r.row, r.company.name]));
 
   const since = new Date((await dbNow()).getTime() - SESSION_MS);
   const session = await withTenant(tenant, async (tx) => {
@@ -611,13 +613,14 @@ export async function startSmartRead(
     data: {
       sessionId: session.id,
       chunkCount: session.chunkCount,
+      chunkRows: CHUNK_ROWS,
       rowsToRead: read.length,
       overCap: rows.length - read.length,
       cycleStart,
       pastYear: cycleStart < current,
       lookalikes,
       lookalikeNote: note,
-      doNotContact: dnc,
+      doNotContact: dnc.map((d) => ({ ...d, name: nameOf.get(d.row) ?? "" })),
     },
   };
 }
@@ -639,7 +642,8 @@ async function loadSession(tx: Tx, tenant: Tenant, sessionId: string, text: stri
   };
 }
 
-export type SmartChunk = { index: number; proposals: RowProposal[] };
+// The company name of each row is sent along, so the review can say which row is which.
+export type SmartChunk = { index: number; proposals: RowProposal[]; names: { row: number; name: string }[] };
 // A rate limit is worth saying apart from other failures: the person waits, then continues.
 export type SmartChunkResult = { ok: true; data: SmartChunk } | { ok: false; error: string; rateLimited: boolean };
 
@@ -658,7 +662,6 @@ export async function readSmartChunk(tenant: Tenant, text: string, sessionId: st
   if (!loaded.ok) return fail(loaded.error);
   const { session, staged } = loaded.data;
   if (index >= session.chunkCount) return fail(REVIEW_AGAIN);
-  if (staged) return { ok: true, data: { index, proposals: staged.proposals as unknown as RowProposal[] } };
 
   const table = parseCsv(text);
   if (!table.ok) return fail(table.error);
@@ -666,6 +669,8 @@ export async function readSmartChunk(tenant: Tenant, text: string, sessionId: st
   if (!checked.ok) return fail(checked.error);
   const wanted = new Set(session.rows.read.slice(index * CHUNK_ROWS, (index + 1) * CHUNK_ROWS));
   const valid = checked.data.filter((r) => r.errors.length === 0 && wanted.has(r.row));
+  const names = valid.map((r) => ({ row: r.row, name: r.company.name }));
+  if (staged) return { ok: true, data: { index, proposals: staged.proposals as unknown as RowProposal[], names } };
   const shown = readRows(table.data, valid, session.freeText);
   const hasContact = new Set(valid.filter((r) => r.contact).map((r) => r.row));
 
@@ -700,7 +705,7 @@ export async function readSmartChunk(tenant: Tenant, text: string, sessionId: st
     return true;
   });
   if (!saved) return fail(EXPIRED);
-  return { ok: true, data: { index, proposals } };
+  return { ok: true, data: { index, proposals, names } };
 }
 
 // ---------------------------------------------------------------------------------------------

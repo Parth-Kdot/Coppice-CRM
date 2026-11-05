@@ -215,6 +215,11 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
               phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out.
             </p>
+            <p className="max-w-[66ch]">
+              Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers, up to 15 sample rows and its company names, and sends its
+              free-text cells to Groq instead. Both can include names; email addresses and phone numbers are masked. Groq says it doesn&apos;t keep what it&apos;s sent by
+              default, apart from logs it may hold for up to 30 days to look into errors or abuse.
+            </p>
             {!isConfigured() && (
               <p className="lg-error">
                 <WarningIcon size={16} />
