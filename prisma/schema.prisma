@@ -37,6 +37,12 @@ model User {
   factsCreated     FactSheetItem[]       @relation("FactCreatedBy")
   factsVerified    FactSheetItem[]       @relation("FactVerifiedBy")
   aiDrafts         AiDraft[]
+  // From the MCP plugin (lib/auth.ts), via the generator; and the MCP rate limit.
+  oauthclients       OauthClient[]
+  oauthrefreshtokens OauthRefreshToken[]
+  oauthaccesstokens  OauthAccessToken[]
+  oauthconsents      OauthConsent[]
+  mcpRateLimits      McpRateLimit[]
 
   @@unique([email])
   @@map("user")
@@ -53,6 +59,8 @@ model Session {
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   activeWorkspaceId String?
+  oauthrefreshtokens OauthRefreshToken[]
+  oauthaccesstokens  OauthAccessToken[]
 
   @@unique([token])
   @@index([userId])
@@ -103,6 +111,8 @@ model Workspace {
   // the last 30 days across the workspace (lib/ai/run.ts).
   aiEnabled       Boolean               @default(false)
   aiMonthlyLimit  Int                   @default(300)
+  // MCP (outside AI assistants, app/api/mcp). Off until an owner turns it on in Settings.
+  mcpEnabled      Boolean               @default(false)
   memberships     Membership[]
   invitations     Invitation[]
   // App relations (not from the generator).
@@ -165,6 +175,208 @@ model RateLimit {
   @@map("rateLimit")
 }
 
+// ----- MCP: OAuth for outside AI assistants (lib/auth.ts jwt() and mcp()), from the generator.
+// jwks holds the token signing keys; private keys are encrypted with BETTER_AUTH_SECRET.
+// No workspace data in any of these.
+
+model Jwks {
+  id         String    @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime
+  expiresAt  DateTime?
+  alg        String?
+  crv        String?
+
+  @@map("jwks")
+}
+
+model OauthClient {
+  id                               String                @id
+  clientId                         String
+  clientSecret                     String?
+  clientDiscoveryId                String?
+  disabled                         Boolean?              @default(false)
+  skipConsent                      Boolean?
+  enableEndSession                 Boolean?
+  subjectType                      String?
+  scopes                           String[]
+  clientCredentialsScopes          String[]              @default([])
+  userId                           String?
+  user                             User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                        DateTime?
+  updatedAt                        DateTime?
+  name                             String?
+  uri                              String?
+  icon                             String?
+  contacts                         String[]
+  tos                              String?
+  policy                           String?
+  softwareId                       String?
+  softwareVersion                  String?
+  softwareStatement                String?
+  redirectUris                     String[]
+  postLogoutRedirectUris           String[]
+  backchannelLogoutUri             String?
+  backchannelLogoutSessionRequired Boolean?
+  tokenEndpointAuthMethod          String?
+  applicationType                  String?
+  jwks                             String?
+  jwksUri                          String?
+  grantTypes                       String[]
+  responseTypes                    String[]
+  requirePKCE                      Boolean?
+  dpopBoundAccessTokens            Boolean?              @default(false)
+  referenceId                      String?
+  metadata                         Json?
+  oauthclientresources             OauthClientResource[]
+  oauthrefreshtokens               OauthRefreshToken[]
+  oauthaccesstokens                OauthAccessToken[]
+  oauthconsents                    OauthConsent[]
+
+  @@unique([clientId])
+  @@index([userId])
+  @@map("oauthClient")
+}
+
+model OauthResource {
+  id                            String                @id
+  identifier                    String
+  name                          String
+  accessTokenTtl                Int?
+  refreshTokenTtl               Int?
+  signingAlgorithm              String?
+  signingKeyId                  String?
+  allowedScopes                 String[]
+  customClaims                  Json?
+  dpopBoundAccessTokensRequired Boolean?              @default(false)
+  disabled                      Boolean?              @default(false)
+  createdAt                     DateTime?
+  updatedAt                     DateTime?
+  policyVersion                 Int?                  @default(1)
+  metadata                      Json?
+  oauthclientresources          OauthClientResource[]
+
+  @@unique([identifier])
+  @@map("oauthResource")
+}
+
+model OauthClientResource {
+  id            String        @id
+  clientId      String
+  oauthclient   OauthClient   @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  resourceId    String
+  oauthresource OauthResource @relation(fields: [resourceId], references: [identifier], onDelete: Cascade)
+  metadata      Json?
+  createdAt     DateTime?
+
+  @@unique([clientId, resourceId], map: "oauthClientResource_clientId_resourceId_uidx")
+  @@index([clientId])
+  @@index([resourceId])
+  @@map("oauthClientResource")
+}
+
+model OauthRefreshToken {
+  id                      String             @id
+  token                   String
+  clientId                String
+  oauthclient             OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  sessionId               String?
+  session                 Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  userId                  String
+  user                    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId             String?
+  authorizationCodeId     String?
+  resources               String[]
+  requestedUserInfoClaims String[]
+  expiresAt               DateTime
+  createdAt               DateTime
+  revoked                 DateTime?
+  rotatedAt               DateTime?
+  rotationReplayResponse  String?
+  rotationReplayExpiresAt DateTime?
+  authTime                DateTime?
+  confirmation            Json?
+  scopes                  String[]
+  oauthaccesstokens       OauthAccessToken[]
+
+  @@unique([token])
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([authorizationCodeId])
+  @@map("oauthRefreshToken")
+}
+
+model OauthAccessToken {
+  id                      String             @id
+  token                   String
+  clientId                String
+  oauthclient             OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  sessionId               String?
+  session                 Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  userId                  String?
+  user                    User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId             String?
+  authorizationCodeId     String?
+  resources               String[]
+  requestedUserInfoClaims String[]
+  refreshId               String?
+  oauthrefreshtoken       OauthRefreshToken? @relation(fields: [refreshId], references: [id], onDelete: Cascade)
+  expiresAt               DateTime
+  createdAt               DateTime
+  revoked                 DateTime?
+  confirmation            Json?
+  scopes                  String[]
+
+  @@unique([token])
+  @@index([clientId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([authorizationCodeId])
+  @@index([refreshId])
+  @@map("oauthAccessToken")
+}
+
+model OauthConsent {
+  id                      String      @id
+  clientId                String
+  oauthclient             OauthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId                  String?
+  user                    User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referenceId             String?
+  resources               String[]
+  requestedUserInfoClaims String[]
+  scopes                  String[]
+  createdAt               DateTime
+  updatedAt               DateTime
+
+  @@index([clientId])
+  @@index([userId])
+  @@map("oauthConsent")
+}
+
+model OauthClientAssertion {
+  id        String   @id
+  expiresAt DateTime
+
+  @@map("oauthClientAssertion")
+}
+
+// Per-person limit on MCP tool calls (lib/mcp/rate-limit.ts): one row per person, kind of call and
+// minute. Shared by every server instance. Keyed by user, no workspace data, so no row-level
+// security (like rateLimit above). Old minutes are deleted as new ones are counted.
+model McpRateLimit {
+  userId      String
+  kind        String
+  windowStart DateTime @db.Timestamptz(3)
+  count       Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind, windowStart])
+}
+
 // ---------------------------------------------------------------------------------------------
 // App tables. Every one carries workspaceId and is protected by row-level security (see the
 // tenant_rls migration): the database only shows rows of the workspace set by withTenant in
@@ -189,6 +401,13 @@ enum Channel {
   OTHER
 }
 
+// Where a claim, an outreach entry or a stage move was made: in the app, or by the person's AI
+// assistant through the MCP server. The company page marks assistant-made history.
+enum Via {
+  APP
+  ASSISTANT
+}
+
 model Company {
   id              String    @id @default(cuid())
   workspaceId     String
@@ -206,6 +425,8 @@ model Company {
   // Written only by lib/claims.ts (Milestone 3).
   claimedById     String?
   claimExpiresAt  DateTime? @db.Timestamptz(3)
+  // How the current claim was made; null when nobody holds it or it predates this column.
+  claimedVia      Via?
   archivedAt      DateTime? @db.Timestamptz(3)
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
@@ -240,6 +461,7 @@ model StageChange {
   changedById String
   fromStage   Stage
   toStage     Stage
+  via         Via      @default(APP)
   changedAt   DateTime @default(now()) @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -318,6 +540,7 @@ model Outreach {
   sentAt      DateTime @default(now()) @db.Timestamptz(3)
   note        String?
   gotReply    Boolean  @default(false)
+  via         Via      @default(APP)
   // The AI draft this email came from, if any (AI feature 1), so stats can compare AI-drafted and
   // hand-written emails. Always a draft of the same workspace (composite key).
   aiDraftId   String?

@@ -1,8 +1,11 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import { jwt } from "better-auth/plugins/jwt";
 import { organization } from "better-auth/plugins/organization";
+import { mcp } from "@better-auth/mcp";
 import { prisma } from "@/lib/db";
+import { MCP_SCOPES, mcpResourceUrl } from "@/lib/mcp/config";
 
 // Option B (owner decision 2026-10-21): only emails listed in WORKSPACE_CREATOR_EMAILS
 // can create workspaces. Everyone else joins through an invitation.
@@ -59,6 +62,36 @@ const workspaceHttpPaths = Object.values(workspaces.endpoints)
   .map((endpoint) => endpoint.path)
   .filter((path): path is string => typeof path === "string");
 
+// The MCP server (app/api/mcp): outside AI assistants sign in here with OAuth and get a short-lived
+// token for Coppice. The plugins do all of the OAuth work (registration, consent, PKCE, signing);
+// nothing here is hand-written token logic. Choices that matter:
+// - Open Dynamic Client Registration, because assistants such as Claude and ChatGPT register
+//   themselves. Anyone can register a client, so the consent page shows the client's name and
+//   where it sends you back, and every new client needs a person's Allow (consent is per user
+//   per client; a registered client can't skip it).
+// - Client ID Metadata Documents (@better-auth/cimd) are left off: in 1.7.10 its Node fetcher
+//   can crash the process on a malformed reply from a client's server, fixed only in 1.7.15,
+//   which needs a newer Better Auth.
+// - Only the authorization-code flow (with PKCE) and refresh. No client_credentials: every
+//   token belongs to a person, and the tools act as that person.
+// - Tokens are bound to the MCP URL (mcpResourceUrl) and last an hour; refresh tokens rotate
+//   and a reused one is refused (no grace window).
+const assistants = mcp({
+  loginPage: "/oauth/signin",
+  consentPage: "/oauth/consent",
+  resource: mcpResourceUrl(),
+  scopes: [...MCP_SCOPES],
+  resources: [{ identifier: mcpResourceUrl(), name: "Coppice", accessTokenTtl: 60 * 60, allowedScopes: [...MCP_SCOPES] }],
+  grantTypes: ["authorization_code", "refresh_token"],
+  accessTokenExpiresIn: 60 * 60,
+  refreshTokenReuseInterval: 0,
+  allowDynamicClientRegistration: true,
+  allowUnauthenticatedClientRegistration: true,
+  // Native assistants (Claude Code, Cursor) register http://127.0.0.1 callbacks without saying
+  // they are native apps; "infer" accepts those without loosening the rules for web clients.
+  clientRegistrationDefaultApplicationType: "infer",
+});
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   socialProviders: {
@@ -67,12 +100,17 @@ export const auth = betterAuth({
       clientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
     },
   },
-  disabledPaths: workspaceHttpPaths,
+  // /token hands out a session JWT signed with the same key as MCP access tokens. Nothing in the
+  // app uses it, so it is off: a session JWT must never pass as an assistant's token.
+  disabledPaths: [...workspaceHttpPaths, "/token"],
   // Limits requests to /api/auth/* per IP: 3 sign-in attempts per 10 seconds, 100 requests per
   // 10 seconds otherwise. Counts live in the database (the rateLimit table) so every server
   // instance shares them; in memory, each Vercel instance would keep its own count. On in every
   // environment so tests check the same behavior production has.
   rateLimit: { enabled: true, storage: "database" },
+  // jwt() holds the signing keys (the jwks table, private keys encrypted with BETTER_AUTH_SECRET)
+  // that the MCP plugin signs access tokens with. disableSettingJwtHeader: no session JWT on
+  // get-session either.
   // nextCookies must stay last: it lets server actions set the session cookie.
-  plugins: [workspaces, nextCookies()],
+  plugins: [workspaces, jwt({ disableSettingJwtHeader: true }), assistants, nextCookies()],
 });
