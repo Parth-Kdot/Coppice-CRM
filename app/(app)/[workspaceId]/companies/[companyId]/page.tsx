@@ -259,6 +259,9 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
                 ) : (
                   <Block title="Details">
                     <CompanyForm
+                      // Adding a brief item to the notes changes them on the server; a new key
+                      // reloads the form so it shows (and later saves against) the new notes.
+                      key={`details-${brief?.id ?? ""}-${[...(brief?.items ?? []), ...(brief?.inboxes ?? [])].filter((i) => i.accepted).length}`}
                       mode="edit"
                       workspaceId={workspaceId}
                       companyId={company.id}

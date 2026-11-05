@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useState } from "react";
+import { startTransition, useActionState, useId, useState } from "react";
 import "@/components/ledger/zod-jitless";
 import { ActionForm } from "@/components/action-form";
 import { QuillWait } from "@/components/draft-panel";
@@ -86,7 +86,16 @@ export function BriefPanel(props: Props) {
           </p>
         </div>
       ) : (
-        <form action={requestAction} className="lg-briefform">
+        <form
+          // Sent by hand rather than through `action`, so React doesn't reset the form afterwards and
+          // the ticked pages stay as the person left them.
+          onSubmit={(e) => {
+            e.preventDefault();
+            const data = new FormData(e.currentTarget);
+            startTransition(() => requestAction(data));
+          }}
+          className="lg-briefform"
+        >
           <input type="hidden" name="workspaceId" value={props.workspaceId} />
           <input type="hidden" name="companyId" value={props.companyId} />
           <fieldset className="lg-chipset">
@@ -270,7 +279,10 @@ function BriefCard({ brief, ...props }: Props & { brief: BriefView }) {
               ) : (
                 <span className="lg-brief-email">{shortUrl(p.url)}</span>
               )}
-              <span className={p.skipped ? "lg-late" : "lg-hint"}>{p.skipped ? `Skipped: ${p.skipped}` : p.fetchedAt ? `Read ${when(p.fetchedAt)}` : "Read"}</span>
+              <span className={p.skipped ? "lg-late" : "lg-hint"}>
+                {p.skipped ? `Skipped: ${p.skipped}` : p.fetchedAt ? `Read ${when(p.fetchedAt)}` : "Read"}
+                {p.injection.length > 0 && ". Tried to give the AI instructions."}
+              </span>
             </li>
           ))}
         </ul>
