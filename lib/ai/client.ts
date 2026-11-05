@@ -12,8 +12,10 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // same Zod schema the model was asked to follow, because the model is never trusted.
 // The one exception to the names rule is Smart import's row pass, which reads free-text cells that
 // can hold names: it goes to Groq instead (owner decision), never to Gemini. Smart import's column
-// suggestions send Gemini the headers, company and industry cells, and only the shape of every
-// other cell (lib/smart-import/columns.ts).
+// suggestions send Gemini each header as text only when it is plain spreadsheet words ("Last
+// contacted"), otherwise its shape ("[header: 2 words]"); the company names and industries from the
+// columns headed plainly as such ("Company", "Industry"), unless a cell reads as a note; and only
+// the shape of every other cell (lib/smart-import/columns.ts).
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.

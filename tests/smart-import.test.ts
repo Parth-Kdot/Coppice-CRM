@@ -8,7 +8,7 @@ import { toGroqSchema } from "@/lib/ai/schema";
 import { AI_ERROR_MESSAGES, GROQ_NOT_CONFIGURED, runAi } from "@/lib/ai/run";
 import { dbNow, dbToday } from "@/lib/claims";
 import { createCompany } from "@/lib/companies";
-import type { ImportPreview, ImportResult } from "@/lib/csv";
+import { parseCsv, type ImportPreview, type ImportResult } from "@/lib/csv";
 import { addDays, localMidnight } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { containedName } from "@/lib/duplicates";
@@ -21,6 +21,7 @@ import {
   parseDateText,
   quoteInCell,
   resolveDate,
+  sampleSheet,
   shownColumns,
   smartOptions,
   type RowsReadOutput,
@@ -305,8 +306,63 @@ describe("what column suggestions show Gemini", () => {
     ["a column headed just Name", ["Name", "Email"], []],
     ["a company contact column", ["Company Contact", "Organization"], [1]],
     ["a sponsor status column", ["Sponsor status", "Company"], [1]],
+    // Person columns whose headers mention the company or industry: only exact company and
+    // industry headers are shown, never the first header a looser pattern happens to match.
+    ["an industry liaison column", ["Industry Liaison", "Company", "Status"], [1]],
+    ["an org advisor column", ["Org Advisor", "Company"], [1]],
+    ["a company chair column", ["Company Chair", "Sector"], [1]],
+    ["an industry mentor column", ["Employer", "Industry Mentor"], [0]],
+    ["a sponsor liaison column", ["Sponsor Liaison", "Name", "Notes"], []],
+    ["coordinator, manager and president columns", ["Sponsor Coordinator", "Company Manager", "Org President"], []],
+    ["plain labels in any case and spacing", ["  ORGANIZATION name ", "Sector"], [0, 1]],
   ] as const)("%s", ([, headers, shown]) => {
     expect([...shownColumns([...headers])].sort()).toEqual(shown);
+  });
+
+  const parsed = (text: string) => {
+    const table = parseCsv(text);
+    if (!table.ok) throw new Error(table.error);
+    return table.data;
+  };
+
+  it("sends a header row that is really a data row as shapes, not names or notes", () => {
+    const { headers, rows } = parsed(['Acme Corp,Sam Lee,"emailed 3/2 by Jordan Park, sam@acme.com"', "Globex,Pat Kim,declined"].join("\n"));
+    const prompt = sampleSheet(headers, rows);
+    for (const secret of ["Acme", "Sam", "Lee", "Jordan", "Park", "emailed", "Pat", "Kim", "Globex", "declined"]) expect(prompt).not.toContain(secret);
+    expect(prompt).toContain("0: [header: 2 words]");
+    expect(prompt).toContain("1: [header: 2 words]");
+    expect(prompt).toContain("2: [header: 6 words]");
+  });
+
+  test.for([
+    ["Sam's calls (Jordan)", "[header: 3 words]"],
+    ["Emailed by Dana", "[header: 3 words]"],
+    ["Jordan", "[header: 1 word]"],
+    ["Company", "Company"],
+    ["Last contacted", "Last contacted"],
+    ["Follow-up date", "Follow-up date"],
+    ["E-mail", "E-mail"],
+    ["Contact 2 (email)", "Contact 2 (email)"],
+    ["Sponsorship tier / amount", "Sponsorship tier / amount"],
+    ["Owner", "Owner"],
+    ["", ""],
+  ] as const)("sends the header %j as %j", ([header, sent]) => {
+    expect(sampleSheet([header], [])).toBe(`<headers>\n0: ${sent}\n</headers>`);
+  });
+
+  test.for([
+    ["Acme Corp", "Acme Corp"],
+    ["Eli Lilly and Company", "Eli Lilly and Company"],
+    ["Acme (ask Dana Wu)", "[text: 4 words]"],
+    ["Sam Lee, sam@acme.com", "[text: 3 words, has an email]"],
+    ["Sam Lee <sam@acme.com>", "[text: 3 words, has an email]"],
+    ["Acme, Dana Wu 765-555-0142", "[text: 4 words, has a phone number]"],
+    ["Acme - Dana's contact", "[text: 4 words]"],
+    ["Referred by Dana Wu", "[text: 4 words]"],
+    ["Acme, emailed 3/2", "[text: 3 words, has a date]"],
+    ["Big Regional Bank of the Midwest Inc", "[text: 7 words]"],
+  ] as const)("sends the Company cell %j as %j", ([cell, sent]) => {
+    expect(sampleSheet(["Company"], [{ cells: [cell] }])).toBe(`<headers>\n0: Company\n</headers>\n<row>\n0: ${sent}\n</row>`);
   });
 
   test.for([
@@ -517,6 +573,16 @@ describe("Smart import, end to end", () => {
     // 15 sample rows, not 20.
     expect(prompt).toContain("Company 14");
     expect(prompt).not.toContain("Company 15");
+  });
+
+  it("sends a file without a header row as shapes: its first data row never reaches Gemini as text", async () => {
+    await turnOn();
+    const text = ['Acme Corp,Sam Lee,"emailed 3/2 by Jordan Park, sam@acme.com"', "Globex,Pat Kim,declined"].join("\n");
+    fakeGemini(answer(JSON.stringify({ name: 0, industry: null, website: null, notes: 2, contactName: 1, contactEmail: null, freeText: [2] })));
+    ok(await as("officerA", () => suggestColumns(null, formOf({ workspaceId: "a", file: file(text) }))));
+    const prompt = (geminiCalls()[0].body as { contents: { parts: { text: string }[] }[] }).contents[0].parts[0].text;
+    for (const secret of ["Acme", "Sam", "Lee", "Jordan", "Park", "emailed", "Pat", "Kim"]) expect(prompt).not.toContain(secret);
+    expect(prompt).toContain("<headers>\n0: [header: 2 words]\n1: [header: 2 words]\n2: [header: 6 words]\n</headers>");
   });
 
   it("keeps Coppice's own guesses when the suggestion fails", async () => {

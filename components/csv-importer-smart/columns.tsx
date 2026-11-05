@@ -89,8 +89,9 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
       {smart.on && options.groq && (
         <div className="lg-smart-body">
           <p className="lg-hint">
-            What is sent: to suggest the columns, Google&apos;s Gemini gets the headers, the company names and industries, and for up to 15 sample rows only the
-            shape of the other cells (like &ldquo;6 words, has a date&rdquo;), not their words. Gemini also gets the company names to spot look-alikes. The free-text
+            What is sent: to suggest the columns, Google&apos;s Gemini gets the headers only when they are plain spreadsheet words (otherwise their shape,
+            like &ldquo;2 words&rdquo;), the company names and industries from columns plainly labeled as such (like &ldquo;Company&rdquo; or
+            &ldquo;Industry&rdquo;), and for up to 15 sample rows only the shape of the other cells (like &ldquo;6 words, has a date&rdquo;), not their words. Gemini also gets the company names to spot look-alikes. The free-text
             cells, which can include names, go to Groq, with email addresses and phone numbers masked.
           </p>
           {smart.note && <p className="lg-hint">{smart.note}</p>}

@@ -8,8 +8,10 @@ import { PAST_YEARS } from "./shared";
 // Smart import, the Sheet Archaeologist (AI feature 3). An optional extra on top of the CSV
 // importer (lib/csv.ts), which still checks every row, finds duplicates and imports in one
 // transaction. Smart import adds, for a person to accept, edit or drop before anything is written:
-// 1. column suggestions from the headers and up to 15 sample rows (Gemini, IMPORT_MAPPING). Only
-//    company and industry cells are sent as text; every other cell as its shape (columns.ts);
+// 1. column suggestions from the headers and up to 15 sample rows (Gemini, IMPORT_MAPPING). A
+//    header is sent as text only when it is plain spreadsheet words, otherwise as its shape; only
+//    the cells of a column headed plainly as the company or the industry are sent as text, and only
+//    when they read as a name; every other cell as its shape (columns.ts);
 // 2. company names that look alike though the exact checks miss them, "Lilly" and "Eli Lilly"
 //    (code) or "CAT" and "Caterpillar" (Gemini, IMPORT_LOOKALIKES, names only), flagged with a
 //    reason in the import's duplicate review, never merged (lookalikes.ts, lib/duplicates.ts);
@@ -24,7 +26,7 @@ import { PAST_YEARS } from "./shared";
 // session once and deletes it (commit.ts). A session is ignored after 24 hours and removed the next
 // time the same person starts another.
 
-export { cellShape, cleanSuggestion, shownColumns, suggestColumns, type ColumnSuggestion } from "./columns";
+export { cellShape, cleanSuggestion, sampleSheet, shownColumns, suggestColumns, type ColumnSuggestion } from "./columns";
 export { checkRowsRead, findDoNotContact, quoteInCell, type Quote, type RowProposal, type RowsReadOutput } from "./check";
 export { runSmartImport } from "./commit";
 export { boardYearOf, parseDateText, resolveDate, yearLabel } from "./dates";
