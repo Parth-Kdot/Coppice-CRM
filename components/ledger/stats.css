@@ -48,7 +48,28 @@
     flex-wrap: wrap;
     gap: 6px;
   }
-  .lg-split[aria-current="page"] {
+  .lg-split {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    text-decoration: none;
+    transition: background-color var(--dur-fast) ease;
+  }
+  .lg-split:hover {
+    background: var(--paper-2);
+  }
+  .lg-split:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-split[aria-current="page"],
+  .lg-split[aria-current="page"]:hover {
     border-color: var(--moss);
     background: var(--moss);
     color: var(--paper);
@@ -80,6 +101,14 @@
     color: var(--ink-2);
     font-size: var(--fs-1);
     font-weight: 400;
+  }
+  /* One box per cell, so a phone's two-column card keeps a cell's lines together. */
+  .lg-cell {
+    display: block;
+    min-width: 0;
+  }
+  .lg-cell > .lg-badge {
+    display: inline-flex;
   }
   .lg-standing {
     display: grid;
@@ -124,10 +153,9 @@
     vector-effect: non-scaling-stroke;
   }
 
+  /* The two comparisons, each a full-width panel: their tables need the room. */
   .lg-statgrid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 20px;
   }
   .lg-gaps {
     max-width: 720px;
@@ -143,11 +171,6 @@
     list-style: disc;
   }
 
-  @media (max-width: 1080px) {
-    .lg-statgrid {
-      grid-template-columns: 1fr;
-    }
-  }
   @media (max-width: 760px) {
     .lg-stattable td.lg-c-name,
     .lg-stattable td.lg-c-range {

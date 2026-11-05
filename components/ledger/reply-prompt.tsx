@@ -72,7 +72,9 @@ export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDo
               <input type="radio" name="outreachId" value={c.id} checked={picked === c.id} onChange={() => setPicked(c.id)} className="lg-check" />
               <span className="lg-replyopt-text">
                 <span className="lg-replyopt-when">
-                  <time dateTime={c.sentAt.toISOString()}>{when(c.sentAt)}</time>, {CHANNEL_LABELS[c.channel]}
+                  <span>
+                    <time dateTime={c.sentAt.toISOString()}>{when(c.sentAt)}</time>, {CHANNEL_LABELS[c.channel]}
+                  </span>
                   {c.gotReply && (
                     <span className="lg-badge lg-replied">
                       <CheckIcon size={13} />

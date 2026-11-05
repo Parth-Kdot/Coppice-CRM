@@ -3,45 +3,12 @@ import { ActionForm } from "@/components/action-form";
 import { archiveTemplate, createTemplate, unarchiveTemplate, updateTemplate } from "@/app/(app)/[workspaceId]/settings/template-actions";
 import type { Membership } from "@/lib/authz";
 import { listTemplates, type TemplateRow } from "@/lib/templates";
-import { TEMPLATE_LIMITS } from "@/lib/validation";
+import { TemplateInputs } from "./template-inputs";
 import "./templates.css";
 
 // The Templates section of Settings, in the same margin-and-rows layout as the rest of the page.
 // Owners add, edit, archive and unarchive; officers read the list. There is no delete: a template
 // that was used keeps its history in the stats, so archiving is how one is retired.
-
-const PLACEHOLDER_HINT = "Use {{firstName}}, {{senderName}} and {{orgName}} for the names. No other {{...}} is allowed.";
-
-function TemplateInputs({ idPrefix, name = "", body = "" }: { idPrefix: string; name?: string; body?: string }) {
-  return (
-    <>
-      <div>
-        <label className="lg-label" htmlFor={`${idPrefix}-name`}>
-          Name
-        </label>
-        <input id={`${idPrefix}-name`} name="name" required maxLength={TEMPLATE_LIMITS.name} defaultValue={name} className="lg-input" />
-      </div>
-      <div>
-        <label className="lg-label" htmlFor={`${idPrefix}-body`}>
-          Text
-        </label>
-        <textarea
-          id={`${idPrefix}-body`}
-          name="body"
-          required
-          maxLength={TEMPLATE_LIMITS.body}
-          rows={6}
-          defaultValue={body}
-          aria-describedby={`${idPrefix}-hint`}
-          className="lg-textarea"
-        />
-        <p id={`${idPrefix}-hint`} className="lg-hint mt-1">
-          {PLACEHOLDER_HINT}
-        </p>
-      </div>
-    </>
-  );
-}
 
 const usedLine = (uses: number) => (uses === 0 ? "Not used yet" : uses === 1 ? "Used once" : `Used ${uses} times`);
 
@@ -69,7 +36,7 @@ export async function TemplatesSection({ me, workspaceId }: { me: Membership; wo
                 <ActionForm action={updateTemplate} submitLabel="Save template" successMessage="Template saved." className="lg-editform" small>
                   {ids}
                   <input type="hidden" name="templateId" value={t.id} />
-                  <TemplateInputs idPrefix={`tpl-${t.id}`} name={t.name} body={t.body} />
+                  <TemplateInputs key={`${t.name}\n${t.body}`} idPrefix={`tpl-${t.id}`} name={t.name} body={t.body} />
                   {t.uses > 0 && <p className="lg-hint">Outreach already logged keeps counting for this template. For a real rewrite, archive it and add a new one.</p>}
                 </ActionForm>
               </details>
@@ -125,7 +92,8 @@ export async function TemplatesSection({ me, workspaceId }: { me: Membership; wo
             <h3 className="lg-tag">Add a template</h3>
             <ActionForm action={createTemplate} submitLabel="Add template" successMessage="Template added." className="lg-editform">
               {ids}
-              <TemplateInputs idPrefix="tpl-new" />
+              {/* Keyed by the count, so the boxes empty once a template is added. */}
+              <TemplateInputs key={all.length} idPrefix="tpl-new" />
             </ActionForm>
           </div>
         ) : (

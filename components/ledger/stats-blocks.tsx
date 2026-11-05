@@ -50,8 +50,10 @@ function StatCells({ stat, standing = null, rated = true }: { stat: Rated; stand
   return (
     <>
       <td data-label="Counted" className="lg-num">
-        {stat.counted}
-        {stat.maturing > 0 && <span className="lg-cellsub">+{stat.maturing} maturing</span>}
+        <span className="lg-cell">
+          {stat.counted}
+          {stat.maturing > 0 && <span className="lg-cellsub">+{stat.maturing} maturing</span>}
+        </span>
       </td>
       <td data-label="Replies" className="lg-num">
         {stat.replies}
@@ -69,7 +71,9 @@ function StatCells({ stat, standing = null, rated = true }: { stat: Rated; stand
           <span className="lg-muted">None yet</span>
         )}
       </td>
-      <td data-label="Standing">{rated ? standingOf(stat, standing) : <span className="lg-muted">Never ranked</span>}</td>
+      <td data-label="Standing">
+        <span className="lg-cell">{rated ? standingOf(stat, standing) : <span className="lg-muted">Never ranked</span>}</span>
+      </td>
     </>
   );
 }
@@ -103,8 +107,10 @@ function PartRows({ parts }: { parts: Part[] }) {
 export function TemplatesTable({ lines, noTemplate, best, worst }: { lines: TemplateLine[]; noTemplate: TemplateLine; best: string | null; worst: string | null }) {
   const nameCell = (line: TemplateLine) => (
     <td data-label="Template" className="lg-c-name">
-      <strong>{line.name}</strong>
-      {line.archived && <span className="lg-badge lg-badge-stale lg-ml">Archived</span>}
+      <span className="lg-cell">
+        <strong>{line.name}</strong>
+        {line.archived && <span className="lg-badge lg-badge-stale lg-ml">Archived</span>}
+      </span>
     </td>
   );
   return (
@@ -126,8 +132,10 @@ export function TemplatesTable({ lines, noTemplate, best, worst }: { lines: Temp
           <tbody className="lg-notemplate">
             <tr className="lg-mainrow">
               <td data-label="Template" className="lg-c-name">
-                <strong>No template</strong>
-                <span className="lg-cellsub">Logged without one</span>
+                <span className="lg-cell">
+                  <strong>No template</strong>
+                  <span className="lg-cellsub">Logged without one</span>
+                </span>
               </td>
               <StatCells stat={noTemplate.stat} rated={false} />
             </tr>
@@ -170,7 +178,7 @@ export function SplitSwitch({ base, current }: { base: string; current: "none" |
   return (
     <nav className="lg-splits" aria-label="Split each template">
       {options.map((o) => (
-        <Link key={o.value} href={o.href} scroll={false} className="lg-toggle lg-split" aria-current={o.value === current ? "page" : undefined}>
+        <Link key={o.value} href={o.href} scroll={false} className="lg-split" aria-current={o.value === current ? "page" : undefined}>
           {o.label}
         </Link>
       ))}
