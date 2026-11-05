@@ -10,7 +10,7 @@ async function main() {
   const { prisma } = await import("@/lib/db");
   try {
     const result = await seedDemo({ ownerEmail: process.env.SEED_OWNER_EMAIL });
-    console.log(`Demo workspace ready: http://localhost:3000/${result.workspaceId}`);
+    console.log(`Demo workspace ready. Open it on your dev server at /${result.workspaceId}`);
     console.log(result.counts);
     console.log(result.ownerNote);
   } finally {

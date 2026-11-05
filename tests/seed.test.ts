@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { globSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, test } from "vitest";
 import { PLACEHOLDERS } from "@/lib/placeholders";
 import { dbNow } from "@/lib/claims";
@@ -193,5 +194,17 @@ describe("demo seed", () => {
       expect(result.ownerNote).toMatch(/no local user/);
       expect(await prisma.user.count({ where: { email: "nobody@example.com" } })).toBe(0);
     });
+  });
+});
+
+// tests/security.test.ts keeps claim writes inside lib/claims.ts but only scans app code. The seed
+// writes expired claims itself, which claimCompany cannot make, so that one exception is pinned
+// here: no other file under prisma/ may touch the claim columns.
+describe("claim writes in seed tooling", () => {
+  it("only prisma/seed-demo.ts sets claimedById or claimExpiresAt", () => {
+    const files = globSync("prisma/**/*.ts");
+    expect(files.length).toBeGreaterThan(3);
+    const writers = files.filter((file) => /claimedById|claimExpiresAt/.test(readFileSync(file, "utf8")));
+    expect(writers).toEqual(["prisma/seed-demo.ts"]);
   });
 });
