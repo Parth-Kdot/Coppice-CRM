@@ -425,7 +425,8 @@ model Company {
   // Written only by lib/claims.ts (Milestone 3).
   claimedById     String?
   claimExpiresAt  DateTime? @db.Timestamptz(3)
-  // How the current claim was made; null when nobody holds it or it predates this column.
+  // How the latest claim was made (app or assistant). Only meaningful while claimedById is set;
+  // null for claims made before this column existed.
   claimedVia      Via?
   archivedAt      DateTime? @db.Timestamptz(3)
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)

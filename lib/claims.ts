@@ -1,4 +1,4 @@
-import type { Channel, Stage } from "@/generated/prisma/client";
+import type { Channel, Stage, Via } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
 import { when } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
@@ -93,13 +93,15 @@ export async function dbToday(): Promise<string> {
 // Claims a company for the workspace's claim window. Succeeds if nobody holds it, the claim has
 // expired, or you already hold it (which renews it). The whole decision is the WHERE clause of
 // one UPDATE: Postgres locks the row, so of two simultaneous claims the second re-checks the
-// WHERE after the first commits and changes nothing.
-export function claimCompany(actor: Tenant, companyId: string): Promise<ActionResult<{ claimExpiresAt: Date }>> {
+// WHERE after the first commits and changes nothing. `via` records whether the person claimed in
+// the app or through their AI assistant (the MCP server).
+export function claimCompany(actor: Tenant, companyId: string, via: Via = "APP"): Promise<ActionResult<{ claimExpiresAt: Date }>> {
   return withTenant(actor, async (tx) => {
     const won = await tx.$queryRaw<{ claimExpiresAt: Date }[]>`
       UPDATE "Company"
       SET "claimedById" = ${actor.userId},
           "claimExpiresAt" = now() + make_interval(days => (SELECT "claimWindowDays" FROM public.workspace WHERE id = ${actor.workspaceId})),
+          "claimedVia" = ${via}::"Via",
           "updatedAt" = now()
       WHERE id = ${companyId} AND "workspaceId" = ${actor.workspaceId}
         AND "archivedAt" IS NULL
@@ -156,8 +158,8 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
 }
 
 // aiDraftId: the AI draft this outreach sent, if any ("I sent it"), so stats can compare drafted
-// and hand-written emails.
-export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string; aiDraftId?: string | null };
+// and hand-written emails. via: logged in the app (the default) or by the person's AI assistant.
+export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string; aiDraftId?: string | null; via?: Via };
 
 // Records that you contacted the company. One transaction:
 // 1. A conditional UPDATE that only matches if YOU hold a LIVE claim. It sets last contacted
@@ -214,12 +216,13 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
         channel: input.channel,
         note: input.note,
         aiDraftId: input.aiDraftId ?? null,
+        via: input.via ?? "APP",
       },
       select: { id: true },
     });
     if (fromStage !== toStage) {
       await tx.stageChange.create({
-        data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage },
+        data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage, via: input.via ?? "APP" },
       });
     }
     return { ok: true, data: { outreachId: outreach.id } };
@@ -232,7 +235,8 @@ export type StageChangeResult = { changed: boolean; fromStage: Stage; toStage: S
 // so two people moving the same company at the same moment are handled one after the other and
 // the history's "from" stage is always right. A company someone else holds can only be moved by
 // them or an owner. Moving to Committed or Declined also clears the claim: the pitch is over.
-export function changeStage(actor: Membership, companyId: string, toStage: Stage): Promise<ActionResult<StageChangeResult>> {
+// `via` records whether the move was made in the app or by the person's AI assistant.
+export function changeStage(actor: Membership, companyId: string, toStage: Stage, via: Via = "APP"): Promise<ActionResult<StageChangeResult>> {
   return withTenant(actor, async (tx) => {
     const row = await readClaim(tx, actor.workspaceId, companyId, { lock: true });
     if (!row || row.archived) return NOT_FOUND;
@@ -248,7 +252,7 @@ export function changeStage(actor: Membership, companyId: string, toStage: Stage
       data: { stage: toStage, ...(closesTheDeal ? { claimedById: null, claimExpiresAt: null } : {}) },
     });
     await tx.stageChange.create({
-      data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage },
+      data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage, via },
     });
     return { ok: true, data: { changed: true, fromStage, toStage } };
   });

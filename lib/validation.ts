@@ -344,3 +344,46 @@ export const factRefSchema = z.object({ workspaceId: id, factId: id });
 export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
 export const verifyFactSchema = factRefSchema.extend({ verified: z.enum(["1", "0"]).transform((v) => v === "1") });
 export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id });
+
+// ----- MCP tools (outside AI assistants, lib/mcp) -----
+
+// The arguments an assistant sends to each tool. The MCP SDK checks them against these before a
+// tool runs, and also publishes them (as JSON Schema) so the assistant knows what to send. That's
+// why they hold no transforms: the published schema has to describe the input as sent.
+const mcpWorkspace = id.describe("The workspace's id, from list_workspaces.");
+const mcpCompany = id.describe("The company's id, from list_companies or get_follow_up_queue.");
+
+export const mcpWorkspaceSchema = z.object({ workspaceId: mcpWorkspace });
+
+export const MCP_LIST_LIMIT = 50;
+export const mcpListCompaniesSchema = z.object({
+  workspaceId: mcpWorkspace,
+  query: z.string().trim().max(100).optional().describe("Text to find in the company's name, website or industry. Leave out to list companies by name."),
+  stage: z.enum(Stage).optional().describe("Only companies at this stage."),
+});
+
+export const mcpCompanySchema = z.object({ workspaceId: mcpWorkspace, companyId: mcpCompany });
+
+export const mcpQueueSchema = z.object({
+  workspaceId: mcpWorkspace,
+  onlyMine: z.boolean().optional().describe("Only companies you hold."),
+  includeNeverContacted: z.boolean().optional().describe("Also list fresh leads nobody has contacted yet."),
+});
+
+export const mcpLogOutreachSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  channel: z.enum(Channel).describe("How you reached out."),
+  note: z.string().trim().max(NOTE_MAX).optional().describe("A short note on what was said."),
+  followUpOn: z.iso.date().describe("When to follow up, as YYYY-MM-DD: from today to a year out."),
+});
+
+export const mcpChangeStageSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  stage: z.enum(Stage).describe("The stage to move the company to."),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe("Required as true for COMMITTED or DECLINED, which end the pitch and release the claim. Ask the person first."),
+});
