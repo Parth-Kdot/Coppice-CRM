@@ -69,7 +69,8 @@ export async function aiGate(tenant: Tenant, feature: AiFeature): Promise<Action
       return { ok: false, error: `You've made ${DAILY_DRAFTS_PER_PERSON} drafts in the last 24 hours. Try again tomorrow.` };
     }
   }
-  // A brief starts with its RESEARCH_READ call, so those count briefs.
+  // A brief starts with its RESEARCH_READ call, so those count briefs. requestBrief
+  // (lib/research/brief.ts) also counts the briefs saved, which include ones that made no call.
   if (feature === "RESEARCH_READ") {
     const since = new Date((await dbNow()).getTime() - DAY_MS);
     const mine = await withTenant(tenant, (tx) =>

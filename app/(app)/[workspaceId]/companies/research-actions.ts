@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { failure } from "@/lib/actions";
 import { requireMembership } from "@/lib/authz";
+import * as accept from "@/lib/research/accept";
 import * as research from "@/lib/research/brief";
 import type { BriefView } from "@/lib/research/brief";
 import { acceptBriefItemSchema, requestBriefSchema, type ActionResult } from "@/lib/validation";
@@ -43,7 +44,7 @@ export async function acceptBriefItem(_prev: ActionResult | null, form: FormData
 
   try {
     const member = await requireMembership(workspaceId);
-    const result = await research.acceptBriefItem(member, companyId, briefId, itemId);
+    const result = await accept.acceptBriefItem(member, companyId, briefId, itemId);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);

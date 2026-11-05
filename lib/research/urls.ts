@@ -164,3 +164,15 @@ export function isApprovedHost(host: string, approvedHosts: Iterable<string>): b
   for (const approved of approvedHosts) if (siteOf(approved) === site) return true;
   return false;
 }
+
+// Looser than isApprovedHost, for text that only names a site and is never fetched (a quote, a
+// team inbox): the same host, or one is a subdomain of the other ("acme.com" and
+// "careers.acme.com"). Never decides what the server fetches.
+export function isSameSite(host: string, sites: Iterable<string>): boolean {
+  const h = siteOf(host);
+  for (const site of sites) {
+    const s = siteOf(site);
+    if (s && (h === s || h.endsWith(`.${s}`) || s.endsWith(`.${h}`))) return true;
+  }
+  return false;
+}
