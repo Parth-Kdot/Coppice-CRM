@@ -48,6 +48,16 @@ The app runs at http://localhost:3000.
 
 `.env.example` explains every variable. In short: `DATABASE_URL` and `DIRECT_URL` point at the local Postgres, `BETTER_AUTH_SECRET` comes from `openssl rand -base64 32`, the Google client ID and secret come from a Google Cloud OAuth client, and `WORKSPACE_CREATOR_EMAILS` lists who may create workspaces. `GEMINI_API_KEY` is optional; without it the AI features say so and stay off.
 
+## Demo data
+
+`npm run db:seed` (or `npx prisma db seed`) fills your local database with a demo workspace, "Riverbend Robotics Club (demo)", so the board, queue and claims have something to show. Everything in it is made up: the companies, people and websites (all `*.example.com`) do not exist.
+
+It creates 40 companies across all six stages, with contacts on most; 3 templates (one archived); an owner and four officers (`@example.com`, they cannot sign in with Google); about 80 logged touches with notes, replies and stage history; overdue and upcoming follow-ups; 7 live claims and 3 expired ones. Dates are counted back from the database clock, so follow-ups are overdue whenever you run it. Open it at `/demo-riverbend`.
+
+- Running it again is safe. It rebuilds only the demo workspace (`demo-riverbend`): its companies, contacts, outreach, stage history and templates are cleared and recreated with the same ids, so the result is the same each time. Other workspaces are never touched.
+- It refuses to run unless both `DATABASE_URL` and `DIRECT_URL` point at `localhost`, `127.0.0.1` or `::1`, so it cannot be run against Supabase by accident.
+- To open the demo workspace with your own account, sign in once locally, then run `SEED_OWNER_EMAIL=you@gmail.com npm run db:seed`. That adds you as an owner of the demo workspace.
+
 ## Checks
 
 ```bash
