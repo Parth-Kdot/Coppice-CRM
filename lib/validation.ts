@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
+import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
 
 // Every server action parses its input with one of these before touching the database.
 
@@ -344,3 +345,37 @@ export const factRefSchema = z.object({ workspaceId: id, factId: id });
 export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
 export const verifyFactSchema = factRefSchema.extend({ verified: z.enum(["1", "0"]).transform((v) => v === "1") });
 export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id });
+
+// ----- Research Agent (AI feature 2) -----
+
+// An approved source: an http(s) page with no user:password, no IP address, no non-standard port,
+// and not LinkedIn or a people-search site (lib/research/urls.ts). Stored as the parsed URL.
+export const SOURCE_LABEL_MAX = 80;
+const sourceUrl = z.string().transform((value, ctx) => {
+  const checked = parseSourceUrl(value);
+  if (!checked.ok) {
+    ctx.addIssue({ code: "custom", message: SKIP_MESSAGES[checked.reason] });
+    return z.NEVER;
+  }
+  return checked.url.href;
+});
+export const addResearchSourceSchema = z.object({
+  workspaceId: id,
+  url: sourceUrl,
+  label: optionalText(SOURCE_LABEL_MAX, "Label"),
+});
+export const researchSourceRefSchema = z.object({ workspaceId: id, sourceId: id });
+export const renameResearchSourceSchema = researchSourceRefSchema.extend({
+  label: z.string().trim().min(1, "Write a label.").max(SOURCE_LABEL_MAX, `A label can be at most ${SOURCE_LABEL_MAX} characters.`),
+});
+
+// "Research who to contact": which approved sources to read for this company (checkboxes).
+export const BRIEF_SOURCES_MAX = 6;
+export const requestBriefSchema = companyRefSchema.extend({
+  sourceIds: z
+    .array(id)
+    .transform((ids) => [...new Set(ids)])
+    .pipe(z.array(id).min(1, "Pick at least one source.").max(BRIEF_SOURCES_MAX, `Pick at most ${BRIEF_SOURCES_MAX} sources.`)),
+});
+// "Add to notes" on one item of a brief.
+export const acceptBriefItemSchema = companyRefSchema.extend({ briefId: id, itemId: z.string().min(1).max(40) });
