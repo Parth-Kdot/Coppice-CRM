@@ -221,7 +221,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
               phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
-              addresses and phone numbers masked (7 to 15 digits written with spaces, dashes, dots, slashes or brackets; dates are left alone), plus the
+              addresses and phone numbers masked (7 or more digits written in groups with spaces, dashes, dots, slashes or brackets, and 10 or more in one
+              run, in any script&apos;s digits, fullwidth ones included; a date, or a run of dates and years, standing on its own is left alone), plus the
               company&apos;s name and website; never your notes or contacts.
             </p>
             {!isConfigured() && (

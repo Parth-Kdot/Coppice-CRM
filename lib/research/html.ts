@@ -91,11 +91,16 @@ export function htmlToText(html: string): string {
   return tidy(decodeEntities(out.join("")));
 }
 
-// Spaces collapsed, each line trimmed, no blank lines, and no invisible characters (soft hyphens,
+// Compatibility forms made plain first (NFKC: fullwidth "０３－１２３４" becomes "03-1234", so it is
+// masked like any number), then spaces collapsed, each line trimmed, no blank lines, no control
+// characters (NUL, which the database can't store, and the rest of C0 and C1 but line breaks and
+// tabs, which become a line break or a space), and no invisible characters (soft hyphens,
 // zero-width spaces, word joiners ...): a reader never sees them, and in "acme-giving&#173;.xyz" a
 // browser drops them, so the text keeps only what a reader and a browser both see.
 export function tidy(text: string): string {
   return text
+    .normalize("NFKC")
+    .replace(/[\u0000-\u0008\u000e-\u001f\u007f-\u009f]/g, "")
     .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
     .replace(/\r\n?/g, "\n")
     .replace(/[^\S\n]+/g, " ")

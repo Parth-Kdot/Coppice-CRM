@@ -232,6 +232,10 @@ describe("requestBrief", () => {
     ["a hex address", "0x5d.0xb8.0xd7.0x0e", "0x5d.0xb8.0xd7.0x0e"],
     ["an octal address", "0135.0270.0327.016", "0135.0270.0327.016"],
     ["a short address", "93.184.55054", "93.184.55054"],
+    ["a percent-encoded dot", "acme-giving%2Exyz", "acme-giving%2Exyz"],
+    ["percent-encoded dots after the approved site", "acme.org%2Eevil%2Ecom", "acme.org%2Eevil%2Ecom"],
+    ["a percent-encoded ideographic full stop", "acme-giving%E3%80%82xyz", "acme-giving%E3%80%82xyz"],
+    ["a percent-encoded letter in the ending", "acme-giving.%78yz", "acme-giving.%78yz"],
   ])("drops %s from the title, detail, deadline and quote, and keeps the clean item", async ([, written, line]) => {
     const TRICK = "https://acme.org/trick";
     const trickId = await source(TRICK, "Trick");
@@ -257,9 +261,33 @@ describe("requestBrief", () => {
     // of that line names no site at all and may stay.
     const masked = hostile.includes("[phone]");
     expect(brief.items.map((i) => i.title)).toEqual(masked ? ["Community Giving Portal", "Spring form"] : ["Community Giving Portal"]);
-    expect(JSON.stringify(brief.items)).not.toMatch(/acme-giving|0x5d|0135|93\.184/);
+    expect(JSON.stringify(brief.items)).not.toMatch(/acme-giving|0x5d|0135|93\.184|%[0-9a-f]{2}/i);
     for (const kept of brief.items) ok(await acceptBriefItem(OWNER, companyId, brief.id, kept.id));
-    expect(await notesOf()).not.toMatch(/acme-giving|0x5d|0135|93\.184/);
+    expect(await notesOf()).not.toMatch(/acme-giving|0x5d|0135|93\.184|%[0-9a-f]{2}/i);
+  });
+
+  // A plain decimal number is an address to a browser when a path or port follows it:
+  // 16909060/apply goes to 1.2.3.4, and 872480515/apply to 52.0.255.3.
+  test.for(["16909060", "872480515"])("drops the decimal address %s/apply from every line and quote", async (number) => {
+    const TRICK = "https://acme.org/trick";
+    const trickId = await source(TRICK, "Trick");
+    const page = `<p>The Acme Foundation accepts sponsorship requests through the Community Giving Portal.</p>
+<p>Apply at ${number}/apply before March 1.</p>`;
+    const [clean, hostile] = maskPage(htmlToText(page)).split("\n");
+    expect(hostile).toBe(`Apply at ${number}/apply before March 1.`);
+    fakeGemini(
+      passages({ page: 1, door: "GIVING", quote: clean }, { page: 1, door: "GIVING", quote: hostile }),
+      items(
+        item({ door: "GIVING", title: "Community Giving Portal", detail: "Send requests through the portal.", passage: 1, quote: clean }),
+        item({ door: "GIVING", title: "Giving form", detail: `Apply at ${number}/apply.`, passage: 2, quote: hostile }),
+        item({ door: "GIVING", title: "Spring deadline", detail: "Apply before the deadline.", deadline: `${number}/apply before March 1`, passage: 2, quote: hostile }),
+        item({ door: "GIVING", title: "Spring form", detail: "Apply before March 1.", passage: 2, quote: hostile }),
+      ),
+    );
+    const brief = ok(await ask(OWNER, [trickId], web({ [TRICK]: html(page) })));
+    expect(brief.items.map((i) => i.title)).toEqual(["Community Giving Portal"]);
+    for (const kept of brief.items) ok(await acceptBriefItem(OWNER, companyId, brief.id, kept.id));
+    expect(await notesOf()).not.toContain(number);
   });
 
   it("drops an item whose quote names a site that wasn't fetched, even with a clean line", async () => {
@@ -283,6 +311,29 @@ describe("requestBrief", () => {
     const reading = promptOf(0);
     expect(reading).toContain("The Acme London site welcomes student groups. Call [phone] or [phone], or [phone].");
     for (const phone of ["7946", "7655550142", "1234567"]) expect(reading).not.toContain(phone);
+  });
+
+  it("reads a page with a NUL byte or other control characters, storing the text without them", async () => {
+    const NUL = "https://acme.org/nul";
+    const nulId = await source(NUL, "NUL");
+    const quote = "The Acme Foundation accepts sponsorship requests.";
+    fakeGemini(passages({ page: 1, door: "GIVING", quote }), items(item({ door: "GIVING", title: "Acme Foundation", detail: "Takes sponsorship requests.", passage: 1, quote })));
+    const page = "<p>The Acme Foundation\u0000 accepts sponsorship requests.\u0007</p><p>Bell\u0001 and escape\u001b.</p>";
+    const brief = ok(await ask(OWNER, [nulId], web({ [NUL]: html(page) })));
+    expect(brief.items.map((i) => i.title)).toEqual(["Acme Foundation"]);
+    const [stored] = await withTenant(OWNER, (tx) => tx.companyBriefPage.findMany({ select: { text: true } }));
+    expect(stored.text).toBe("The Acme Foundation accepts sponsorship requests.\nBell and escape.");
+  });
+
+  it("masks fullwidth phone numbers and numbers side by side before the page reaches the AI", async () => {
+    const LOCAL = "https://acme.org/tokyo";
+    const localId = await source(LOCAL, "Acme Tokyo");
+    fakeGemini(passages());
+    const page = "<p>Acme Tokyo: \uff10\uff13\uff0d\uff11\uff12\uff13\uff14\uff0d\uff15\uff16\uff17\uff18. Munich: Tel. 089 1234567 / Fax 089 1234568, or 089 1234567 / 089 1234568.</p>";
+    ok(await ask(OWNER, [localId], web({ [LOCAL]: html(page) })));
+    const reading = promptOf(0);
+    expect(reading).toContain("Acme Tokyo: [phone]. Munich: Tel. [phone] / Fax [phone], or [phone] / [phone].");
+    for (const digits of ["1234567", "1234568", "\uff11\uff12", "5678"]) expect(reading).not.toContain(digits);
   });
 
   it("offers team inboxes only at the page's own site or the company's", async () => {
@@ -398,8 +449,21 @@ describe("requestBrief", () => {
   ];
 
   it("lets exactly one of 15 parallel requests by one person through, and fetches only its pages", async () => {
+    // Page fetches wait until the other 14 requests have answered, so all 15 really overlap; a
+    // request that starts after an earlier brief has finished may rightly be let through.
     const net = slowWeb({ [CAREERS]: { status: 404 } });
-    const results = await Promise.all(Array.from({ length: 15 }, () => ask(OFFICER, [careersId], net)));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const transport = net.deps.transport;
+    net.deps.transport = async (request) => {
+      await gate;
+      return transport(request);
+    };
+    let answered = 0;
+    const pending = Array.from({ length: 15 }, () => ask(OFFICER, [careersId], net).then((r) => (answered++, r)));
+    for (let waited = 0; answered < 14 && waited < 10_000; waited += 10) await new Promise((r) => setTimeout(r, 10));
+    release();
+    const results = await Promise.all(pending);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     for (const r of results.filter((r) => !r.ok)) expect(BUSY).toContain((r as { error: string }).error);
     expect(await briefCount()).toBe(1);

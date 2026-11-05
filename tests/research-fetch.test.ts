@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
 import { isBlockedAddress } from "@/lib/research/addresses";
 import { cleanLine, cleanQuote, sitesIn } from "@/lib/research/checks";
 import { fetchResearchPage, LIMITS, nodeTransport, USER_AGENT } from "@/lib/research/fetch";
-import { decodeEntities, htmlToText } from "@/lib/research/html";
+import { decodeEntities, htmlToText, tidy } from "@/lib/research/html";
 import { robotsAllows } from "@/lib/research/robots";
 import { injectionFlags, maskPage, maskPhones, PAGE_TEXT_MAX, pageHead, teamInboxes } from "@/lib/research/scan";
 import { checkUrl, isApprovedHost, parseSourceUrl } from "@/lib/research/urls";
@@ -371,6 +371,17 @@ describe("text from HTML", () => {
     expect(htmlToText("<svg/><p>Kept</p>")).toBe("Kept");
   });
 
+  it("drops NUL and other control characters, which the database can't store", () => {
+    expect(htmlToText("<p>Acme\u0000 Foundation\u0007\u001b\u007f\u0085 grants</p>")).toBe("Acme Foundation grants");
+    expect(tidy("Acme\u0000\u0001 Foundation\r\nGrants\tfor\u000bclubs")).toBe("Acme Foundation\nGrants for clubs");
+    expect(htmlToText("<p>a&#1;b</p>")).toBe("ab");
+  });
+
+  it("turns fullwidth and other compatibility forms into plain ones first", () => {
+    expect(tidy("\uff10\uff13\uff0d\uff11\uff12\uff13\uff14 \uff21\uff43\uff4d\uff45")).toBe("03-1234 Acme");
+    expect(tidy("765\ufe58555\ufe580142")).toBe("765\u2014555\u20140142");
+  });
+
   it("decodes named and numeric references, and refuses invalid ones", () => {
     expect(decodeEntities("&ldquo;Hi&rdquo; &#8212; &#x2014; &unknown; &#0; &#xD800;")).toBe("“Hi” — — &unknown; � �");
   });
@@ -429,8 +440,64 @@ describe("masking page text", () => {
     ["765\u2010555\u20100142", "Unicode hyphens"],
     ["765\u2212555\u22120142", "minus signs"],
     ["+49 (0)89 1234567", "Germany with the trunk zero"],
+    ["\u0660\u0665\u0660 \u0661\u0662\u0663 \u0664\u0665\u0666\u0667", "Arabic-Indic digits"],
+    ["\u06f0\u06f2\u06f1-\u06f8\u06f8\u06f7\u06f6\u06f5\u06f4\u06f3\u06f2", "Persian digits"],
+    ["\u0966\u0969\u0966 \u0967\u0968\u0969\u0966 \u096a\u096b\u096c\u096d", "Devanagari digits"],
   ])("masks %s (%s)", ([phone]) => {
     expect(maskPhones(`Call ${phone} today.`)).toBe("Call [phone] today.");
+  });
+
+  // Fullwidth numbers, the common Japanese style (an IME also turns "-" into "\uff0d"), become
+  // plain ones in the page text, which is then masked.
+  test.for([
+    ["\uff10\uff13\uff0d\uff11\uff12\uff13\uff14\uff0d\uff15\uff16\uff17\uff18", "fullwidth digits and hyphens"],
+    ["03\uff0d1234\uff0d5678", "fullwidth hyphens"],
+    ["765\uff0d555\uff0d0142", "fullwidth hyphens, US style"],
+    ["765\ufe58555\ufe580142", "small em dashes"],
+    ["\uff0b\uff18\uff11 \uff13 \uff11\uff12\uff13\uff14 \uff15\uff16\uff17\uff18", "fullwidth plus and spaces"],
+  ])("masks %s in page text (%s)", ([phone]) => {
+    expect(maskPage(htmlToText(`<p>Call ${phone} today.</p>`))).toBe("Call [phone] today.");
+  });
+
+  // Two numbers side by side, as in "Tel. ... / Fax ...", are each masked; one match of more
+  // than 15 digits is never let through.
+  test.for([
+    "089 1234567 / 089 1234568",
+    "030 1234567 / 030 1234568",
+    "0711 2223344 / 0711 2223345",
+    "020 7946 0958 / 020 7946 0959",
+    "01.23.45.67.89 / 01.23.45.67.90",
+    "089 1234567 \u2013 089 1234568",
+  ])("masks both numbers of %j", (pair) => {
+    expect(maskPhones(`Call ${pair} today.`)).toBe(`Call ${pair.replace(/\d[\d .]*\d/g, "[phone]")} today.`);
+  });
+
+  // Numbers that have a spaced slash or dash inside them, joined the same way: no digit of either
+  // number may be left.
+  test.for([
+    "089 / 1234567 / 089 / 1234568",
+    "0711 / 2223344 \u2013 0711 / 2223345",
+    "030 / 12345678 / 030 / 12345679",
+    "0 89 / 12 34 56 / 0 89 / 12 34 57",
+    "089 / 123 456 - 78 / 089 / 123 456 - 79",
+    "765 - 555 - 0142 / 765 - 555 - 0143",
+    "089 / 1234567 / 1234568",
+  ])("masks every digit of %j", (pair) => {
+    expect(maskPhones(`Call ${pair} today.`)).not.toMatch(/\d/);
+  });
+
+  test.for(["Open 08.00 - 12.00 / 13.00 - 17.00 on weekdays.", "Hours 9:30 - 17:00, 2025\u20132026."])("keeps the times in %j", (line) => {
+    expect(maskPhones(line)).toBe(line);
+  });
+
+  test.for([
+    ["Am 15.03.2027 089 1234567 anrufen.", "Am 15.03.2027 [phone] anrufen."],
+    ["Call 089 1234567 15.03.2027 or later.", "Call [phone] 15.03.2027 or later."],
+    ["Ref 12345678901234567890 today.", "Ref [phone] today."],
+    ["Call 0891234567/0891234568 today.", "Call [phone] today."],
+    ["Codes 01 23 45 67 89 01 23 45 today.", "Codes [phone] today."],
+  ])("masks the number in %j and keeps only a date beside it", ([text, masked]) => {
+    expect(maskPhones(text)).toBe(masked);
   });
 
   test.for([
@@ -500,6 +567,19 @@ describe("sites named in a brief line or quote", () => {
     ["punctuation inside the name", "Apply at evil!.com today."],
     ["a symbol a browser keeps", "Apply at evil\u00A1.com today."],
     ["a combining mark", "Apply at acme\u0332.org today."],
+    ["a percent-encoded dot", "Apply at acme-giving%2Exyz/apply before March 1."],
+    ["a percent-encoded letter in the ending", "Apply at acme-giving.%78yz/apply before March 1."],
+    ["a percent-encoded ideographic full stop", "Apply at acme-giving%E3%80%82xyz/apply before March 1."],
+    ["percent-encoded dots after the approved site", "Apply at acme.org%2Eevil%2Ecom/apply before March 1."],
+    ["a lowercase percent escape", "Apply at evil%2ecom today."],
+    ["a plain decimal address with a path", "Apply at 16909060/apply today."],
+    ["a plain decimal address in cloud space", "Apply at 872480515/apply today."],
+    ["a plain decimal address with a port", "Apply at 872480515:8080 today."],
+    ["a plain decimal address with a trailing dot", "Apply at 872480515./apply today."],
+    ["a plain octal address with a path", "Apply at 0100401404/apply today."],
+    ["the highest plain decimal address", "Apply at 4294967295/apply today."],
+    ["a plain decimal address with an empty port and a path", "Apply at 16909060:/apply today."],
+    ["a plain decimal address with a colon and a backslash", "Apply at 872480515:\\x today."],
   ])("drops a line or quote with %s", ([, line]) => {
     expect(cleanLine(line, FETCHED)).toBe(false);
     expect(cleanQuote(line, FETCHED)).toBe(false);
@@ -509,8 +589,31 @@ describe("sites named in a brief line or quote", () => {
     expect(sitesIn("acme-giving\u3002xyz/apply")).toEqual(expect.arrayContaining(["acme-giving.xyz"]));
     expect(sitesIn("acme-giving.xn--p1ai")).toEqual(expect.arrayContaining(["acme-giving.xn--p1ai"]));
     for (const ip of ["0x5d.0xb8.0xd7.0x0e", "0135.0270.0327.016", "93.184.55054", "93.184.215.14"]) expect(sitesIn(`at ${ip} today`)).toEqual(["93.184.215.14"]);
-    // Invisible characters make the whole line a refusal.
+    for (const [number, ip] of [["16909060", "1.2.3.4"], ["872480515", "52.0.255.3"], ["0100401404", "1.2.3.4"]]) expect(sitesIn(`at ${number}/apply`)).toEqual([ip]);
+    // Invisible characters, and percent escapes (which a browser decodes in a host), make the
+    // whole line a refusal.
     expect(sitesIn("acme-giving\u00AD.xyz")).toBeNull();
+    expect(sitesIn("acme.org%2Eevil%2Ecom")).toBeNull();
+  });
+
+  it("finds no site a browser would read from any percent escape next to a dot", () => {
+    const resolvable = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(?:[a-z]{2,}|xn--[a-z0-9-]+)$/;
+    const missed: string[] = [];
+    for (let byte = 0; byte <= 0xff; byte++) {
+      const xx = byte.toString(16).padStart(2, "0");
+      for (const escape of [xx, xx.toUpperCase()]) {
+        for (const text of [`evil%${escape}com`, `evil%${escape}.com`, `evil.c%${escape}om`]) {
+          const line = `Apply at ${text}/apply today.`;
+          if (cleanLine(line, FETCHED) || cleanQuote(line, FETCHED)) missed.push(text);
+        }
+      }
+    }
+    // Multi-byte escapes too: the ideographic full stop, fullwidth and halfwidth dots.
+    for (const text of ["evil%E3%80%82com", "evil%EF%BC%8Ecom", "evil%EF%BD%A1com"]) {
+      expect(new URL(`https://${text}`).hostname).toMatch(resolvable);
+      if (cleanLine(`Apply at ${text}/apply today.`, FETCHED) || cleanQuote(`Apply at ${text}/apply today.`, FETCHED)) missed.push(text);
+    }
+    expect(missed).toEqual([]);
   });
 
   it("finds no site a browser would read from any character next to a dot", () => {
@@ -547,6 +650,9 @@ describe("sites named in a brief line or quote", () => {
     "Founded in 1998, with 12,000 employees and $2,500 grants.",
     "Send requests through the portal on acme.org.",
     "Starts at 9.30 a.m.",
+    "Grow 25% by 2027/2028.",
+    "Open 24/7, split 50/50.",
+    "Over 100% of the goal.",
   ])("keeps %j", (line) => {
     expect(cleanLine(line, FETCHED)).toBe(true);
   });
@@ -554,6 +660,25 @@ describe("sites named in a brief line or quote", () => {
   it("refuses a line with a tab or line break in it", () => {
     expect(cleanLine("Apply at evil\n.com today.", FETCHED)).toBe(false);
     expect(cleanLine("Apply at evil\t.com today.", FETCHED)).toBe(false);
+  });
+
+  it("refuses a quote with a tab or line break in it, which a browser drops from a pasted address", () => {
+    for (const quote of ["Apply at evil\n.com/apply today.", "Apply at evil\t.com/apply today.", "Apply at evil.c\r\nom/apply today."]) {
+      expect(cleanQuote(quote, FETCHED)).toBe(false);
+    }
+  });
+
+  it("refuses a line with a phone number in any width or digits, or two numbers side by side", () => {
+    for (const line of [
+      "Call \uff10\uff13\uff0d\uff11\uff12\uff13\uff14\uff0d\uff15\uff16\uff17\uff18 today.",
+      "Call 03\uff0d1234\uff0d5678 today.",
+      "Call 765\ufe58555\ufe580142 today.",
+      "Call \u0660\u0665\u0660 \u0661\u0662\u0663 \u0664\u0665\u0666\u0667 today.",
+      "Call 089 1234567 / 089 1234568 to apply.",
+      "Write to careers\uff20acme.org today.",
+    ]) {
+      expect(cleanLine(line, FETCHED)).toBe(false);
+    }
   });
 });
 
