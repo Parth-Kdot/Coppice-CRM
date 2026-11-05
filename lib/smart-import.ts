@@ -489,7 +489,11 @@ export function checkRowsRead(
       if (hasContact.has(row)) proposal.dropped.push("Contact: this row already has one");
       else if (!name.success || !title.success || !quoteInCell(name.data, contactQuote.quote) || /\[(email|phone)\]/.test(name.data)) {
         proposal.dropped.push("Contact: the name isn't in its quote");
-      } else proposal.contact = { name: name.data, title: title.data, ...contactQuote };
+      } else {
+        // A job title is kept only if the quote shows it too.
+        const shownTitle = title.data && quoteInCell(title.data, contactQuote.quote) ? title.data : null;
+        proposal.contact = { name: name.data, title: shownTitle, ...contactQuote };
+      }
     }
 
     if (statusValue === "do_not_contact" && status && !proposal.doNotContact) proposal.doNotContact = status;
