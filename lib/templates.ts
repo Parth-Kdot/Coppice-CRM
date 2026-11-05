@@ -48,6 +48,10 @@ export function listTemplates(tenant: Tenant): Promise<TemplateRow[]> {
 }
 
 // Two templates with the same name would be impossible to tell apart in a picker or in the stats.
+// This is a read then a write with no unique index behind it, so two owners saving the same name at
+// the same instant could both get through. That race is accepted: a workspace has one or two
+// owners, and a duplicate is harmless and can be renamed or archived. A unique index on
+// ("workspaceId", lower(name)) in a migration would close it if it ever matters.
 const sameName = (name: string) => ({ equals: name, mode: "insensitive" as const });
 const nameTaken = (name: string, archived: boolean) =>
   archived

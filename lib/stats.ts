@@ -8,6 +8,9 @@ import { scorecard, type OutreachRow, type Scorecard, type Split } from "@/lib/s
 // The touch split needs each company's outreach in time order, which an aggregate can't give
 // without raw SQL (kept to lib/claims.ts and lib/db.ts), so the outreach is read as rows: three
 // queries whatever the size of the workspace, never one per template or company.
+// The outreach read has no cap: every row is held in memory for one page view. That is fine into
+// the tens of thousands of rows a student org will ever log; past roughly 50,000 this should move
+// to a SQL function or view, added in a migration, that does the counting in Postgres.
 //
 // Archived templates are included (marked archived): their outreach is history the chair still
 // needs. Archived companies' outreach counts too; only the "replied but nothing marked" gap leaves
