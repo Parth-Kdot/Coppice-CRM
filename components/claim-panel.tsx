@@ -1,7 +1,7 @@
 import { ActionForm } from "@/components/action-form";
 import { ClaimIcon } from "@/components/ledger/icons";
 import { Ribbon } from "@/components/ledger/marks";
-import type { Stage } from "@/generated/prisma/enums";
+import type { Stage, Via } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/authz";
 import type { ClaimState } from "@/lib/claims";
 import { when } from "@/lib/dates";
@@ -21,6 +21,8 @@ type Props = {
   state: ClaimState;
   holderName: string | null;
   expiresAt: Date | null;
+  // How the live claim was made; ASSISTANT gets a "via assistant" stamp.
+  claimedVia?: Via | null;
   actions: { claim: Action; release: Action; forceRelease: Action };
 };
 
@@ -63,6 +65,7 @@ export function ClaimPanel(props: Props) {
         </h2>
         <p className="lg-ticket-text" aria-live="polite">
           {text}
+          {(state === "mine" || state === "theirs") && props.claimedVia === "ASSISTANT" && <span className="lg-via">via assistant</span>}
         </p>
         {!closed && (
           <div className="lg-ticket-actions">

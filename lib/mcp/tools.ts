@@ -94,6 +94,8 @@ function claimInfo(claim: Claim, now: Date, userId: string) {
 
 // ----- Reads -----
 
+const offNote = (n: number) => (n === 1 ? "1 more of your workspaces has assistants turned off." : `${n} more of your workspaces have assistants turned off.`);
+
 // Only workspaces the person belongs to and whose owner turned MCP on.
 export async function listWorkspaces(principal: McpPrincipal): Promise<ToolResult> {
   const tooMany = await limited(principal, "read");
@@ -106,7 +108,7 @@ export async function listWorkspaces(principal: McpPrincipal): Promise<ToolResul
   const open = rows.filter((r) => r.workspace.mcpEnabled);
   return ok({
     workspaces: open.map((r) => ({ id: r.workspace.id, name: untrusted(r.workspace.name), yourRole: r.role === "owner" ? "Owner" : "Officer" })),
-    ...(rows.length > open.length ? { note: `${rows.length - open.length} more of your workspaces have assistants turned off.` } : {}),
+    ...(rows.length > open.length ? { note: offNote(rows.length - open.length) } : {}),
   });
 }
 
