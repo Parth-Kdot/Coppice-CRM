@@ -6,12 +6,14 @@ import { moveStage } from "@/app/(app)/[workspaceId]/companies/actions";
 import { BoardSearch } from "@/components/board-search";
 import type { Stage } from "@/generated/prisma/enums";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import type { ReplyChoice } from "@/lib/companies";
 import type { BoardFilters } from "@/lib/validation";
 import { useBoardDrag } from "./board-drag";
 import { Slip, type BoardCardData } from "./board-slip";
 import { CloseIcon, DuplicateIcon, PlusIcon, StageGlyph } from "./icons";
 import { MoveMenu } from "./move-menu";
 import { useConfirm, useNotify } from "./providers";
+import { ReplyPrompt } from "./reply-prompt";
 import { Count, Empty } from "./shared";
 import "./board.css";
 
@@ -20,7 +22,8 @@ import "./board.css";
 // strip: every station shows its glyph, its name and its count, and pressing one shows only that
 // stage (press it again to clear). Slips move three ways: drag one onto another stage, press its
 // stage glyph button for a one-click Move to menu, or press m while it has focus. All three call the
-// real stage action; a refusal (someone else holds the company) is written in the slip's margin.
+// real stage action; a refusal (someone else holds the company) is written in the slip's margin. A
+// move into a reply stage then asks which outreach got the reply (ReplyPrompt).
 
 export type BoardColumnData = { stage: Stage; count: number; cards: BoardCardData[]; hasMore: boolean; showAllHref: string };
 
@@ -52,6 +55,7 @@ export function BoardView({ workspaceId, columns, filters, industries, total, fi
   const [, startTransition] = useTransition();
   const [only, setOnly] = useState<Stage | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [replyAsk, setReplyAsk] = useState<{ id: string; name: string; choices: ReplyChoice[] } | null>(null);
   const [moveErrors, setMoveErrors] = useState<Record<string, string>>({});
   const [flashing, setFlashing] = useState<ReadonlySet<string>>(new Set());
   const scroller = useRef<HTMLDivElement>(null);
@@ -111,6 +115,7 @@ export function BoardView({ workspaceId, columns, filters, industries, total, fi
       if (result.ok) {
         flash(id);
         notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`);
+        if (result.data?.replyChoices) setReplyAsk({ id, name: card.name, choices: result.data.replyChoices });
       } else {
         if (landing.current?.id === id) landing.current = null;
         setMoveErrors((current) => ({ ...current, [id]: result.error }));
@@ -286,6 +291,10 @@ export function BoardView({ workspaceId, columns, filters, industries, total, fi
             void requestMove(menu.id, stage, from, true);
           }}
         />
+      )}
+
+      {replyAsk && (
+        <ReplyPrompt workspaceId={workspaceId} companyId={replyAsk.id} companyName={replyAsk.name} choices={replyAsk.choices} onDone={() => setReplyAsk(null)} />
       )}
     </div>
   );

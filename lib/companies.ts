@@ -3,7 +3,7 @@ import { releaseForArchive } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
 import { domainKey, matchReasons, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import type { ActionResult } from "@/lib/validation";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Channel, Prisma } from "@/generated/prisma/client";
 
 // Company and contact logic. Every function runs inside withTenant, so row-level security limits
 // it to the caller's workspace; each query also names workspaceId itself (project rule 1).
@@ -206,7 +206,16 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
     });
     const outreach = await tx.outreach.findMany({
       where: scope,
-      select: { id: true, channel: true, note: true, sentAt: true, aiDraftId: true, sender: { select: { name: true } } },
+      select: {
+        id: true,
+        channel: true,
+        note: true,
+        sentAt: true,
+        aiDraftId: true,
+        gotReply: true,
+        sender: { select: { name: true } },
+        template: { select: { name: true } },
+      },
       orderBy: { sentAt: "desc" },
       take: 100,
     });
@@ -221,6 +230,36 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
 }
 
 export type CompanyDetail = NonNullable<Awaited<ReturnType<typeof getCompanyDetail>>>;
+
+// The latest outreach on a company, for "Which outreach got the reply?" after a stage move.
+export const REPLY_CHOICES = 10;
+export type ReplyChoice = {
+  id: string;
+  sentAt: Date;
+  channel: Channel;
+  senderName: string;
+  templateName: string | null;
+  aiDrafted: boolean;
+  note: string | null;
+  gotReply: boolean;
+};
+
+export function replyChoices(tenant: Tenant, companyId: string): Promise<ReplyChoice[]> {
+  return withTenant(tenant, async (tx) => {
+    const rows = await tx.outreach.findMany({
+      where: { companyId, workspaceId: tenant.workspaceId },
+      select: { id: true, sentAt: true, channel: true, note: true, gotReply: true, aiDraftId: true, sender: { select: { name: true } }, template: { select: { name: true } } },
+      orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+      take: REPLY_CHOICES,
+    });
+    return rows.map(({ sender, template, aiDraftId, ...row }) => ({
+      ...row,
+      senderName: sender.name,
+      templateName: template?.name ?? null,
+      aiDrafted: aiDraftId !== null,
+    }));
+  });
+}
 
 // Industries already used in this workspace, for the industry box's suggestions, so "Tech",
 // "tech" and "Technology" don't drift apart. Capped at 200.

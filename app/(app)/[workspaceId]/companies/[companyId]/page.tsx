@@ -21,7 +21,8 @@ import { daysBetween, day } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { recentDrafts } from "@/lib/drafts";
 import { verifiedFacts } from "@/lib/facts";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { REPLY_STAGES, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { activeTemplates } from "@/lib/templates";
 import { websiteHref } from "@/lib/validation";
 import {
   addContact,
@@ -30,6 +31,7 @@ import {
   claimCompany,
   forceRelease,
   logOutreach,
+  markReply,
   moveStage,
   releaseClaim,
   removeContact,
@@ -63,7 +65,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
   const tenant = { userId, workspaceId };
   // Not found and "in another workspace" look the same, so ids can't be probed. The time and date
   // come from the database, the same clock the claim SQL uses.
-  const [company, industries, now, today, ai, facts, drafts] = await Promise.all([
+  const [company, industries, now, today, ai, facts, drafts, templates] = await Promise.all([
     getCompanyDetail(tenant, companyId),
     listIndustries(tenant),
     dbNow(),
@@ -71,6 +73,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
     aiUsage(tenant),
     verifiedFacts(tenant),
     recentDrafts(tenant, companyId),
+    activeTemplates(tenant),
   ]);
   if (!company) notFound();
   const claim = claimState(company, now, userId);
@@ -176,12 +179,12 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
             <div className="lg-o-log">
               {/* The queue's "Log outreach" links jump here. */}
               <Block id="log-outreach" title="Log outreach" note="After you reach out from your own inbox or in person. Saving renews your claim.">
-                <LogOutreachForm workspaceId={workspaceId} companyId={company.id} action={logOutreach} today={today} />
+                <LogOutreachForm workspaceId={workspaceId} companyId={company.id} action={logOutreach} today={today} templates={templates} />
               </Block>
             </div>
           )}
           <div className="lg-o-outreach">
-            <OutreachBlock outreach={company.outreach} />
+            <OutreachBlock outreach={company.outreach} ids={ids} markReply={!archived && REPLY_STAGES.includes(company.stage) ? markReply : undefined} />
           </div>
         </div>
 
@@ -212,6 +215,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
                 initialDrafts={drafts}
                 today={today}
                 rules={{ factNumbers: factNumbers(facts), website: company.website }}
+                templates={templates}
                 actions={{ draft: draftEmail, check: checkDraft, logOutreach }}
               />
             )}

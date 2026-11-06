@@ -7,7 +7,8 @@ import { requireMembership, requireOwner } from "@/lib/authz";
 import * as claims from "@/lib/claims";
 import { changeStage } from "@/lib/claims";
 import * as companies from "@/lib/companies";
-import type { SaveResult } from "@/lib/companies";
+import type { ReplyChoice, SaveResult } from "@/lib/companies";
+import { opensReply } from "@/lib/stages";
 import {
   addContactSchema,
   archiveDuplicateSchema,
@@ -16,6 +17,7 @@ import {
   createCompanySchema,
   duplicatePairSchema,
   logOutreachSchema,
+  markReplySchema,
   moveStageSchema,
   sameCompanySchema,
   unarchiveSchema,
@@ -206,7 +208,11 @@ export async function archiveDuplicate(_prev: ActionResult | null, form: FormDat
   return { ok: true, data: undefined };
 }
 
-export async function moveStage(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+// A move into a reply stage (Replied, In conversation, Committed) from any other stage also
+// returns the company's latest outreach, so the page can ask "Which outreach got the reply?".
+export type MoveResult = { replyChoices: ReplyChoice[] } | undefined;
+
+export async function moveStage(_prev: ActionResult<MoveResult> | null, form: FormData): Promise<ActionResult<MoveResult>> {
   const parsed = moveStageSchema.safeParse({
     workspaceId: form.get("workspaceId"),
     companyId: form.get("companyId"),
@@ -215,14 +221,39 @@ export async function moveStage(_prev: ActionResult | null, form: FormData): Pro
   if (!parsed.success) return { ok: false, error: "Pick a stage." };
   const { workspaceId, companyId, stage } = parsed.data;
 
+  let replyChoices: ReplyChoice[] = [];
   try {
     const member = await requireMembership(workspaceId);
     const result = await changeStage(member, companyId, stage);
+    if (!result.ok) return result;
+    const { changed, fromStage, toStage } = result.data;
+    if (changed && opensReply(fromStage, toStage)) replyChoices = await companies.replyChoices(member, companyId);
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
+  return { ok: true, data: replyChoices.length > 0 ? { replyChoices } : undefined };
+}
+
+// "Which outreach got the reply?": marks the outreach picked (lib/claims.ts markReply).
+export async function markReply(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = markReplySchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    companyId: form.get("companyId"),
+    outreachId: form.get("outreachId"),
+  });
+  if (!parsed.success) return { ok: false, error: "Pick the outreach that got the reply." };
+  const { workspaceId, companyId, outreachId } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await claims.markReply(member, companyId, outreachId);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
   }
   refresh(workspaceId, companyId);
+  revalidatePath(`/${workspaceId}/stats`);
   return { ok: true, data: undefined };
 }
 
@@ -285,6 +316,7 @@ export async function logOutreach(_prev: ActionResult | null, form: FormData): P
     note: form.get("note"),
     followUpOn: form.get("followUpOn"),
     aiDraftId: form.get("aiDraftId"),
+    templateId: form.get("templateId"),
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { workspaceId, companyId, ...input } = parsed.data;

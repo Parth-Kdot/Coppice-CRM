@@ -10,6 +10,7 @@ import { Empty } from "./shared";
 import { TurnoverRule, YearMargin } from "./marks";
 import { boardYear } from "./board-year";
 import "./company.css";
+import "./templates.css";
 
 // The server-rendered blocks of the company page: contacts, the facts the AI may use, the outreach
 // log, the stage history, the read-only details of an archived company, and the archive box. Each
@@ -145,9 +146,20 @@ export function FactsBlock({ workspaceId, facts }: { workspaceId: string; facts:
 
 // ----- The log, as ledger entries -----
 
-type OutreachData = { id: string; channel: Channel; note: string | null; sentAt: Date; aiDraftId: string | null; sender: { name: string } };
+type OutreachData = {
+  id: string;
+  channel: Channel;
+  note: string | null;
+  sentAt: Date;
+  aiDraftId: string | null;
+  gotReply: boolean;
+  sender: { name: string };
+  template: { name: string } | null;
+};
 
-export function OutreachBlock({ outreach }: { outreach: OutreachData[] }) {
+// markReply is passed only while the company is in a reply stage: each entry not yet marked then
+// offers "This got the reply", for a reply the stage-move question skipped.
+export function OutreachBlock({ outreach, markReply, ids }: { outreach: OutreachData[]; markReply?: Action; ids?: ReactNode }) {
   return (
     <Block title="Outreach">
       {outreach.length === 0 ? (
@@ -170,8 +182,20 @@ export function OutreachBlock({ outreach }: { outreach: OutreachData[] }) {
                     <p className="lg-entryby">
                       {o.sender.name}, {CHANNEL_LABELS[o.channel]}
                       {o.aiDraftId ? ", from an AI draft" : ""}
+                      {o.template ? `, template: ${o.template.name}` : ""}
                     </p>
                     {o.note && <p className="lg-entrynote">{o.note}</p>}
+                    {o.gotReply && (
+                      <p className="lg-entryreply">
+                        <span className="lg-badge lg-replied">Got the reply</span>
+                      </p>
+                    )}
+                    {markReply && !o.gotReply && (
+                      <ActionForm action={markReply} submitLabel="This got the reply" successMessage="Marked as the reply." small className="lg-entryreply">
+                        {ids}
+                        <input type="hidden" name="outreachId" value={o.id} />
+                      </ActionForm>
+                    )}
                   </div>
                 </li>
                 {crosses && (

@@ -5,18 +5,23 @@ import "@/components/ledger/zod-jitless";
 import { ActionForm } from "@/components/action-form";
 import { CHANNEL_LABELS, CHANNELS } from "@/lib/channels";
 import { addDays } from "@/lib/dates";
+import type { TemplateOption } from "@/lib/templates";
 import { NOTE_MAX, type ActionResult } from "@/lib/validation";
 import type { Channel } from "@/generated/prisma/enums";
 import { ChipGroup, type ChipOption } from "./chips";
+import { CopyLinkIcon } from "./icons";
 import { CalendarPopover } from "./date-popover";
 import { formatYmd } from "./ymd";
 import "./company.css";
+import "./templates.css";
 
 // The fast log form. Logging is a channel chip, when to follow up (3, 7 or 14 days, or a picked day,
 // with 7 preselected) and a note. Every choice is a real radio input drawn as a chip, and "Pick"
 // opens a small ruled calendar that works from the keyboard. The form posts the same fields the
 // server action has always read: channel, followUpOn, note and, under an AI draft, aiDraftId. Saving
-// renews your claim and moves a Not contacted company to Contacted; the server does both.
+// renews your claim and moves a Not contacted company to Contacted; the server does both. When the
+// workspace has templates, a picker records which one the email was based on (templateId) and shows
+// its text to copy. Under an AI draft there is no picker: that email is credited to the draft.
 
 type FollowMode = "3" | "7" | "14" | "pick";
 const FOLLOW_DAYS = { "3": 3, "7": 7, "14": 14 } as const;
@@ -35,15 +40,21 @@ type Props = {
   initialNote?: string;
   compact?: boolean;
   label?: string;
+  // The workspace's templates that are not archived (lib/templates.ts activeTemplates).
+  templates?: TemplateOption[];
 };
 
-export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraftId, initialNote = "", compact = false, label = "Log outreach" }: Props) {
+export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraftId, initialNote = "", compact = false, label = "Log outreach", templates = [] }: Props) {
   const id = useId();
   const followPick = useRef<HTMLInputElement | null>(null);
   const [channel, setChannel] = useState<Channel>("EMAIL");
   const [followMode, setFollowMode] = useState<FollowMode>("7");
   const [followPicked, setFollowPicked] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // Bumped after each successful log, so the template picker starts again at "No template". It is
+  // controlled state that React's form reset doesn't clear, and a template left selected would
+  // quietly credit the next outreach (a call, a LinkedIn message) to it.
+  const [logged, setLogged] = useState(0);
 
   const defaultFollow = addDays(today, 7);
   const followUpOn = followMode === "pick" ? (followPicked ?? defaultFollow) : addDays(today, FOLLOW_DAYS[followMode]);
@@ -90,6 +101,7 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       submitLabel={label}
       primary
       successMessage="Logged."
+      onSuccess={() => setLogged((n) => n + 1)}
       className={`lg-logform ${compact ? "lg-logform-compact" : ""}`}
     >
       <input type="hidden" name="workspaceId" value={workspaceId} />
@@ -97,6 +109,7 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       <input type="hidden" name="followUpOn" value={followUpOn} />
       {aiDraftId && <input type="hidden" name="aiDraftId" value={aiDraftId} />}
       {aiDraftId ? <input type="hidden" name="channel" value="EMAIL" /> : <ChipGroup legend="Channel" name="channel" value={channel} options={channelOptions} onChange={setChannel} />}
+      {!aiDraftId && templates.length > 0 && <TemplatePicker key={logged} id={`${id}-tpl`} templates={templates} />}
 
       <div className="lg-logrow">
         <ChipGroup
@@ -154,5 +167,63 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
         />
       </div>
     </ActionForm>
+  );
+}
+
+// "Based on a template": a select of the workspace's templates and, once one is picked, its text with
+// a Copy button, for pasting into your own mail. The placeholders are left for you to fill in there.
+function TemplatePicker({ id, templates }: { id: string; templates: TemplateOption[] }) {
+  const [templateId, setTemplateId] = useState("");
+  const [copied, setCopied] = useState("");
+  const chosen = templates.find((t) => t.id === templateId);
+
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied("Copied the template.");
+    } catch {
+      setCopied("Could not copy. Select the text and copy it yourself.");
+    }
+  };
+
+  return (
+    <div className="lg-tplpick">
+      <label className="lg-label" htmlFor={id}>
+        Template
+      </label>
+      <select
+        id={id}
+        name="templateId"
+        className="lg-select"
+        value={templateId}
+        onChange={(event) => {
+          setTemplateId(event.target.value);
+          setCopied("");
+        }}
+      >
+        <option value="">No template</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      {chosen && (
+        <div className="lg-tplshow">
+          <p className="lg-tpltext" aria-label={`Text of ${chosen.name}`}>
+            {chosen.body}
+          </p>
+          <div className="lg-tplshow-acts">
+            <button type="button" className="lg-btn lg-btn-sm" onClick={() => copy(chosen.body)}>
+              <CopyLinkIcon size={16} />
+              Copy text
+            </button>
+            <p className="lg-hint" role="status">
+              {copied || "Fill in {{firstName}}, {{senderName}} and {{orgName}} in your mail before sending."}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -68,7 +68,8 @@ function usable(text: string): boolean {
   return !/[^\s@]+@[^\s@]+\.\w+|\[email\]|\[phone\]/.test(text);
 }
 
-export type DraftRequest = { kind: DraftKind; contactId: string | null; note: string | null };
+// templateId: an optional template (lib/templates.ts) to base both drafts on.
+export type DraftRequest = { kind: DraftKind; contactId: string | null; note: string | null; templateId?: string | null };
 
 export async function draftEmail(tenant: Tenant, companyId: string, request: DraftRequest): Promise<ActionResult<DraftView[]>> {
   // Refused before anything is written: no claim is taken for a call that can't happen.
@@ -83,6 +84,15 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
       )
     : null;
   if (request.contactId && !contact) return { ok: false, error: "Contact not found." };
+  const template = request.templateId
+    ? await withTenant(tenant, (tx) =>
+        tx.template.findFirst({
+          where: { id: request.templateId as string, workspaceId: tenant.workspaceId, archivedAt: null },
+          select: { body: true },
+        }),
+      )
+    : null;
+  if (request.templateId && !template) return { ok: false, error: "That template wasn't found, or it's archived." };
 
   const claim = await claimCompany(tenant, companyId);
   if (!claim.ok) return claim;
@@ -113,8 +123,14 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
     const earlier = context.earlier.map((o) => `${day(o.sentAt)}, ${CHANNEL_LABELS[o.channel]}${o.aiDraft ? `: "${promptSafe(o.aiDraft.subject)}"` : ""}`);
     lines.push(`<earlier_outreach>\n${earlier.length ? earlier.join("\n") : "(none logged)"}\n</earlier_outreach>`);
   }
+  // A template is the workspace's own wording, so it is data like everything else in the tags:
+  // masked the same way, and it can't loosen the rules (every draft still needs all three placeholders).
+  if (template) lines.push(`<template>\n${promptSafe(template.body)}\n</template>`);
   if (request.note) lines.push(`<officer_note>${promptSafe(request.note)}</officer_note>`);
-  lines.push(`Write two ${request.kind === "FIRST_TOUCH" ? "first-touch" : "follow-up"} emails.`);
+  lines.push(
+    `Write two ${request.kind === "FIRST_TOUCH" ? "first-touch" : "follow-up"} emails.` +
+      (template ? " Base both on the template: keep its structure, tone and ask, and drop anything in it the facts don't support." : ""),
+  );
 
   const result = await runAi(tenant, { feature: "DRAFT", system: SYSTEM, prompt: lines.join("\n\n"), schema: Variants });
   if (!result.ok) return result;

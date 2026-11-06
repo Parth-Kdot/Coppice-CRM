@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
+import { placeholderProblem } from "@/lib/placeholders";
 
 // Every server action parses its input with one of these before touching the database.
 
@@ -141,6 +142,8 @@ export const logOutreachSchema = companyRefSchema.extend({
   followUpOn: z.iso.date("Pick a follow-up date."),
   // Set by "I sent it" under an AI draft; missing for a hand-logged outreach.
   aiDraftId: id.nullish(),
+  // The template the email was based on, if one was picked ("" is "No template").
+  templateId: z.string().max(64).nullish().transform((v) => v || null),
 });
 
 export const DRAFT_NOTE_MAX = 300;
@@ -153,6 +156,8 @@ export const draftEmailSchema = companyRefSchema.extend({
     .nullish()
     .transform((v) => v || null),
   note: optionalText(DRAFT_NOTE_MAX, "Note"),
+  // An optional template to base both drafts on.
+  templateId: z.string().max(64).nullish().transform((v) => v || null),
 });
 
 // "Check again" on an edited draft: the text as it is in the boxes now. Browsers send form text with
@@ -344,3 +349,33 @@ export const factRefSchema = z.object({ workspaceId: id, factId: id });
 export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
 export const verifyFactSchema = factRefSchema.extend({ verified: z.enum(["1", "0"]).transform((v) => v === "1") });
 export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id });
+
+// ----- Templates and stats (Milestone 5) -----
+
+export const TEMPLATE_LIMITS = { name: 80, body: 5000 } as const;
+
+// A template's name and body. Line breaks are normalized like a checked draft's, and the body may
+// only use the three placeholders (lib/placeholders.ts).
+export const templateFieldsSchema = z.object({
+  name: z.string().trim().min(1, "Name the template.").max(TEMPLATE_LIMITS.name, `A name can be at most ${TEMPLATE_LIMITS.name} characters.`),
+  body: z
+    .string()
+    .transform(lf)
+    .pipe(z.string().trim().min(1, "Write the template.").max(TEMPLATE_LIMITS.body, `A template can be at most ${TEMPLATE_LIMITS.body} characters.`))
+    .superRefine((body, ctx) => {
+      const problem = placeholderProblem(body);
+      if (problem) ctx.addIssue({ code: "custom", message: problem });
+    }),
+});
+
+export const createTemplateSchema = templateFieldsSchema.extend({ workspaceId: id });
+export const templateRefSchema = z.object({ workspaceId: id, templateId: id });
+export const updateTemplateSchema = templateFieldsSchema.extend({ workspaceId: id, templateId: id });
+
+// "Which outreach got the reply?" after a stage move.
+export const markReplySchema = companyRefSchema.extend({ outreachId: id });
+
+// The stats page's URL: ?by=industry or ?by=touch splits each template's row. Anything else is dropped.
+export const statsFiltersSchema = z.object({
+  by: z.enum(["industry", "touch"]).nullable().catch(null),
+});

@@ -1,0 +1,162 @@
+/* ==========================================================================================
+   Ledger, templates: the list in Settings, the picker in the log form, the reply marks on outreach
+   entries, and the "Which outreach got the reply?" dialog. Plain CSS in a file, so the strict
+   style-src policy allows it.
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- Settings: the template list ---------- */
+  .lg-tpls {
+    list-style: none;
+    margin: -6px 0 0;
+  }
+  .lg-tpl {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-tpl:last-child {
+    border-bottom: 0;
+  }
+  .lg-tpl[data-archived] .lg-tplname {
+    color: var(--ink-2);
+  }
+  .lg-tplhead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+  }
+  .lg-tplname {
+    overflow-wrap: anywhere;
+  }
+  .lg-tplhead .lg-muted {
+    font-size: var(--fs-1);
+  }
+  /* A template's text, as written: line breaks kept, long ones scroll inside the box. */
+  .lg-tpltext {
+    max-height: 11em;
+    margin-top: 8px;
+    padding: 8px 12px;
+    overflow: auto;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: var(--fs-2);
+    line-height: 1.45;
+  }
+  .lg-tplgroup {
+    margin-top: 18px;
+  }
+  .lg-tplgroup .lg-tpls {
+    margin-top: 0;
+  }
+  .lg-tpladd {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* ---------- The log form's picker ---------- */
+  .lg-tplpick {
+    display: grid;
+    gap: 0;
+    max-width: 520px;
+  }
+  .lg-tplshow {
+    margin-top: 8px;
+  }
+  .lg-tplshow .lg-tpltext {
+    margin-top: 0;
+    background: var(--sheet);
+  }
+  .lg-tplshow-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin-top: 8px;
+  }
+
+  /* ---------- Reply marks on outreach entries ---------- */
+  .lg-entryreply {
+    margin-top: 6px;
+  }
+  .lg-replied {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+
+  /* ---------- "Which outreach got the reply?" ---------- */
+  .lg-replyask {
+    width: min(520px, calc(100vw - 32px));
+  }
+  .lg-replyask-body {
+    display: grid;
+    gap: 10px;
+    padding: 20px;
+  }
+  .lg-replyask-list {
+    display: grid;
+    max-height: min(52vh, 420px);
+    overflow-y: auto;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  .lg-replyopt {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+  }
+  .lg-replyopt:last-child {
+    border-bottom: 0;
+  }
+  .lg-replyopt:hover {
+    background: var(--paper-2);
+  }
+  .lg-replyopt:has(input:checked) {
+    background: var(--moss-wash);
+  }
+  .lg-replyopt .lg-check {
+    flex: none;
+    margin-top: 2px;
+  }
+  .lg-replyopt-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .lg-replyopt-when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-replyopt-meta {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    overflow-wrap: anywhere;
+  }
+  .lg-replyopt-note {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: var(--fs-1);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-replyask-acts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}
