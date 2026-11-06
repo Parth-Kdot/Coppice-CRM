@@ -24,6 +24,8 @@ The name comes from coppicing, the old forestry practice of cutting a tree back 
 
 **Sending and logging.** Coppice never sends email. Drafts open in your own Gmail, Outlook or mail app. Logging the outreach renews your claim and sets the next follow-up.
 
+**AI assistants (MCP).** Officers and owners can connect their own AI assistant (any assistant that supports remote MCP servers with OAuth) at `https://<your site>/api/mcp`. The assistant can list workspaces, search companies, read a company with its contacts and history, see the follow-up queue and your claims, and, if you allow changes, claim, log outreach and move stages as you, under the same claim rules as the app. Each owner turns it on per workspace in Settings (off by default). Sign-in is Google, and every new assistant gets a consent page that names it and what it asks for. Whatever an assistant reads, including contact names, emails and notes, goes to the company behind it. Its changes are marked "via assistant" in the history. Removing the connector in the assistant may not end its access. Turning assistants off blocks every assistant in that workspace while it stays off, and turning it back on lets back in every assistant members already allowed. Removing a member blocks their assistant while they are out of the workspace. There is no per-assistant disconnect yet.
+
 ## Stack
 
 Next.js 16 (App Router) and React 19 with TypeScript, Tailwind CSS 4, Prisma 7 with the pg driver adapter, Postgres on Supabase, Better Auth with Google sign-in and the organization plugin, Gemini for the AI features, Papa Parse for CSV and unpdf for PDF text. Hosted on Vercel. Tests run on Vitest against a real Postgres.
@@ -48,6 +50,12 @@ The app runs at http://localhost:3000.
 
 `.env.example` explains every variable. In short: `DATABASE_URL` and `DIRECT_URL` point at the local Postgres, `BETTER_AUTH_SECRET` comes from `openssl rand -base64 32`, the Google client ID and secret come from a Google Cloud OAuth client, and `WORKSPACE_CREATOR_EMAILS` lists who may create workspaces. `GEMINI_API_KEY` is optional; without it the AI features say so and stay off.
 
+### The MCP server
+
+Built on Better Auth's MCP and OAuth provider plugins (`lib/auth.ts`) and the official MCP SDK (`lib/mcp/`). Assistants register themselves (open dynamic client registration), sign in with Google, and get access tokens that last an hour and work only for `/api/mcp`. Discovery lives at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server/api/auth`. `BETTER_AUTH_URL` must be the public site address, since tokens are bound to `<BETTER_AUTH_URL>/api/mcp`. Tool calls are limited to 60 reads and 10 changes a minute per person.
+
+While the Google OAuth app is in Testing mode, only the Google accounts listed as test users can sign in, through an assistant or otherwise.
+
 ## Checks
 
 ```bash
@@ -58,4 +66,4 @@ npm test                      # needs the local Postgres running
 
 ## Status
 
-The core workflow works end to end: import, claims, the queue and board, the fact sheet, drafts, the claim checker and logging outreach. Next up are reply rates for each pitch template, research briefs on a company before outreach, a pipeline assistant that only acts after you approve, an MCP server so AI assistants can read and update a pipeline, and a turnover summary for each incoming board.
+The core workflow works end to end: import, claims, the queue and board, the fact sheet, drafts, the claim checker and logging outreach. Next up are reply rates for each pitch template, research briefs on a company before outreach, a pipeline assistant that only acts after you approve, and a turnover summary for each incoming board. Members can also connect their own AI assistant through the MCP server.

@@ -10,3 +10,5 @@ process.env.DATABASE_URL = testDatabaseUrls().appUrl;
 process.env.BETTER_AUTH_SECRET ??= "test-secret-at-least-32-characters-long";
 process.env.GOOGLE_CLIENT_ID ??= "test-google-client-id";
 process.env.GOOGLE_CLIENT_SECRET ??= "test-google-client-secret";
+// The MCP server's address and token audience come from the site address (lib/mcp/config.ts).
+process.env.BETTER_AUTH_URL ??= "http://localhost:3000";

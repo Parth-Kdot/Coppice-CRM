@@ -715,6 +715,21 @@
     font-size: var(--fs-2);
     font-variant-numeric: tabular-nums;
   }
+  /* A small stamp on history made by someone's AI assistant (the MCP server), so the record says so. */
+  .lg-via {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 0 5px;
+    border: 1px solid var(--edge);
+    color: var(--moss);
+    font-family: var(--font-sans);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.5;
+    white-space: nowrap;
+    vertical-align: 1px;
+  }
 
   /* ---------- Details, matches and conflicts ---------- */
   .lg-detailsform,

@@ -31,7 +31,7 @@ export type ArchivedCompany = { id: string; name: string; industry: string | nul
 export type Board = { columns: BoardColumn[]; archivedCount: number; archived: ArchivedCompany[] | null };
 
 // Postgres treats % and _ in a LIKE pattern as wildcards; a search for "100%" means the text.
-const literal = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
+export const literal = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 export function getBoard(tenant: Tenant, filters: BoardFilters): Promise<Board> {
   return withTenant(tenant, async (tx) => {
