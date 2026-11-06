@@ -6,6 +6,8 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    // `npx prisma db seed`; same as `npm run db:seed`. Refuses to run on a non-local database.
+    seed: "tsx prisma/seed.ts",
   },
   datasource: {
     // Migrations use the owner's connection (Supabase: the session pooler, port 5432). Only
