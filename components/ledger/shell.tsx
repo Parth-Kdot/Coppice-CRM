@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
-import { BoardIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, UserIcon } from "./icons";
+import { BoardIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon, UserIcon } from "./icons";
 import { LogoMark } from "./logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { useNoteLane } from "./providers";
@@ -15,7 +15,7 @@ import "./shell.css";
 // gives way to a bottom tab bar. The board serves as the companies view, so a company's own page
 // keeps the Board tab lit.
 
-type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "settings";
+type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "settings";
 
 function screenOf(pathname: string, workspaceId: string): Screen {
   const rest = pathname.slice(`/${workspaceId}`.length).replace(/\/+$/, "");
@@ -25,6 +25,7 @@ function screenOf(pathname: string, workspaceId: string): Screen {
   if (rest.startsWith("/companies/")) return "company";
   if (rest === "/import") return "import";
   if (rest === "/facts") return "facts";
+  if (rest === "/stats") return "stats";
   if (rest === "/settings") return "settings";
   return "queue";
 }
@@ -36,6 +37,7 @@ const PAGE_NAMES: Record<Screen, string> = {
   newCompany: "Add a company",
   import: "Import",
   facts: "Fact sheet",
+  stats: "Template stats",
   settings: "Settings",
 };
 
@@ -46,6 +48,7 @@ const TABS: Tab[] = [
   { key: "board", label: "Board", path: "/board", icon: <BoardIcon />, active: ["board", "company", "newCompany"] },
   { key: "import", label: "Import", path: "/import", icon: <ImportIcon />, active: ["import"] },
   { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, active: ["facts"] },
+  { key: "stats", label: "Stats", path: "/stats", icon: <StatsIcon />, active: ["stats"] },
   { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, active: ["settings"] },
 ];
 
@@ -72,7 +75,7 @@ function StatusLine({ stats, claimWindowDays, roleLabel }: { stats: ShellStats; 
 }
 
 // On a phone the spine gives way to a bottom tab bar: Queue, Board, Search, Facts and More. Search
-// opens the palette full screen. More opens a sheet with Import, Settings, Add a company and the account.
+// opens the palette full screen. More opens a sheet with Import, Add a company, Stats, Settings and the account.
 function PhoneTabs({ workspaceId, screen, me }: { workspaceId: string; screen: Screen; me: Me }) {
   const { open } = usePalette();
   const [more, setMore] = useState(false);
@@ -92,6 +95,7 @@ function PhoneTabs({ workspaceId, screen, me }: { workspaceId: string; screen: S
   const moreLinks = [
     { key: "import", label: "Import", path: "/import", icon: <ImportIcon />, active: ["import"] as Screen[] },
     { key: "new", label: "Add a company", path: "/companies/new", icon: <PlusIcon />, active: ["newCompany"] as Screen[] },
+    { key: "stats", label: "Template stats", path: "/stats", icon: <StatsIcon />, active: ["stats"] as Screen[] },
     { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, active: ["settings"] as Screen[] },
   ];
   const moreActive = moreLinks.some((l) => l.active.includes(screen));

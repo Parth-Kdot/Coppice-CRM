@@ -20,7 +20,7 @@ export function contentSecurityPolicy({ nonce, isDev, isHttps }: CspOptions): st
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    // No other site may show BoilerPitch inside a frame (clickjacking).
+    // No other site may show Coppice inside a frame (clickjacking).
     "frame-ancestors 'none'",
     // Only over HTTPS: on plain-HTTP localhost it would break loading our own files.
     ...(isHttps ? ["upgrade-insecure-requests"] : []),

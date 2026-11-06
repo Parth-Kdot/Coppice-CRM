@@ -84,6 +84,17 @@ export function FactsIcon(props: IconProps) {
   );
 }
 
+// Stats: three ruled bars on a baseline, like a tally in the margin.
+export function StatsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.8 16.6h14.4" />
+      <path d="M5.2 16.6V10.4M10 16.6V5.2M14.8 16.6V8.2" strokeWidth={2.2} />
+      <path d="M3.6 4.4l3.2 2.2 3.4-2.6 4.2 1.8" strokeWidth={THIN} />
+    </Icon>
+  );
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <Icon {...props}>

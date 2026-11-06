@@ -6,6 +6,7 @@ import { InviteForm } from "@/components/ledger/invite-form";
 import { YearMargin } from "@/components/ledger/marks";
 import { PageHead } from "@/components/ledger/shared";
 import { Stepper } from "@/components/ledger/stepper";
+import { TemplatesSection } from "@/components/ledger/templates-section";
 import { isConfigured } from "@/lib/ai/client";
 import { AI_WINDOW_DAYS, aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
@@ -198,6 +199,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           </div>
         </section>
 
+        <TemplatesSection me={me} workspaceId={workspaceId} />
+
         <section className="lg-sec" aria-labelledby="set-ai">
           <div className="lg-sec-label">
             <h2 id="set-ai" className="lg-sec-title">
@@ -213,7 +216,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
             <p className="max-w-[66ch]">
               Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
               it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
-              phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out.
+              phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out. A
+              template you base a draft on is sent too, masked the same way, so keep names out of templates.
             </p>
             <p className="max-w-[66ch]">
               Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers only when they are plain spreadsheet words (like

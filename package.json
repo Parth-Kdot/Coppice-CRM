@@ -1,5 +1,5 @@
 {
-  "name": "boilerpitch",
+  "name": "coppice",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "postinstall": "prisma generate",
     "test:coverage": "vitest run --coverage",
-    "db:setup": "tsx scripts/db-setup.ts"
+    "db:setup": "tsx scripts/db-setup.ts",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@google/genai": "2.28.0",

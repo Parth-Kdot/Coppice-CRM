@@ -2,7 +2,7 @@ import type { Channel, Stage } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
 import { when } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { REPLY_STAGES, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -156,8 +156,8 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
 }
 
 // aiDraftId: the AI draft this outreach sent, if any ("I sent it"), so stats can compare drafted
-// and hand-written emails.
-export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string; aiDraftId?: string | null };
+// and hand-written emails. templateId: the template it was based on, if any, for template stats.
+export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string; aiDraftId?: string | null; templateId?: string | null };
 
 // Records that you contacted the company. One transaction:
 // 1. A conditional UPDATE that only matches if YOU hold a LIVE claim. It sets last contacted
@@ -179,6 +179,15 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
         select: { id: true },
       });
       if (!draft) return { ok: false, error: "That draft wasn't found. Nothing was saved." };
+    }
+    // Only a template of this workspace that is still in use. Checked here, not left to row-level
+    // security alone, so the person gets a clear message instead of a failed insert.
+    if (input.templateId) {
+      const template = await tx.template.findFirst({
+        where: { id: input.templateId, workspaceId: actor.workspaceId, archivedAt: null },
+        select: { id: true },
+      });
+      if (!template) return { ok: false, error: "That template wasn't found, or it's archived. Nothing was saved." };
     }
 
     const updated = await tx.$queryRaw<{ fromStage: Stage; toStage: Stage }[]>`
@@ -214,6 +223,7 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
         channel: input.channel,
         note: input.note,
         aiDraftId: input.aiDraftId ?? null,
+        templateId: input.templateId ?? null,
       },
       select: { id: true },
     });
@@ -251,6 +261,25 @@ export function changeStage(actor: Membership, companyId: string, toStage: Stage
       data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage },
     });
     return { ok: true, data: { changed: true, fromStage, toStage } };
+  });
+}
+
+// "Which outreach got the reply?": once a company is in a reply stage (Replied, In conversation,
+// Committed), a person marks the outreach that got the answer, and template stats count it. The
+// outreach must be this company's, in this workspace. Same claim rule as a stage move. Marking only
+// ever sets gotReply; marking the same one twice is fine.
+export function markReply(actor: Membership, companyId: string, outreachId: string): Promise<ActionResult> {
+  return withTenant(actor, async (tx) => {
+    const row = await readClaim(tx, actor.workspaceId, companyId, { lock: true });
+    if (!row || row.archived) return NOT_FOUND;
+    if (!REPLY_STAGES.includes(row.stage)) return { ok: false, error: `This company is ${STAGE_LABELS[row.stage]}, so no outreach can be marked as the reply.` };
+    const blocked = blockedBy(row, actor);
+    if (blocked) return { ok: false, error: blocked };
+    const { count } = await tx.outreach.updateMany({
+      where: { id: outreachId, companyId, workspaceId: actor.workspaceId },
+      data: { gotReply: true },
+    });
+    return count === 1 ? { ok: true, data: undefined } : { ok: false, error: "That outreach wasn't found on this company." };
   });
 }
 
