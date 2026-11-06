@@ -1,12 +1,13 @@
 import type { z } from "zod";
 import type { AiFeature } from "@/generated/prisma/enums";
-import { generate, isConfigured, type AiErrorCode, type GenerateRequest } from "@/lib/ai/client";
+import { generate, isConfigured, providerOf, type AiErrorCode, type GenerateRequest } from "@/lib/ai/client";
 import { dbNow } from "@/lib/claims";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import type { ActionResult } from "@/lib/validation";
 
 // Every AI call in the app goes through runAi(). In order, it:
-// 1. refuses if the server has no API key, or the workspace has AI switched off;
+// 1. refuses if the server has no API key for the feature's provider, or the workspace has AI
+//    switched off;
 // 2. refuses if the workspace used its limit of AI calls in the last 30 days, or (for drafts)
 //    this person made too many drafts in the last 24 hours, so a free-tier quota is shared fairly;
 // 3. calls the model (lib/ai/client.ts), outside any database transaction;
@@ -47,8 +48,13 @@ export async function aiUsage(tenant: Tenant): Promise<AiUsage> {
 // Whether this person may make an AI call for this feature right now (steps 1 and 2 above).
 // runAi() checks it itself; a feature that has a side effect before its AI call (the drafter
 // claims the company) checks it first too, so a refused call leaves nothing behind.
+// Groq is only used by Smart import, which says what still works without it.
+export const GROQ_NOT_CONFIGURED = "Smart import needs a Groq key on this server (GROQ_API_KEY), and it isn't set. The normal import still works.";
+
 export async function aiGate(tenant: Tenant, feature: AiFeature): Promise<ActionResult> {
-  if (!isConfigured()) return { ok: false, error: AI_ERROR_MESSAGES.not_configured };
+  if (providerOf(feature) === "groq") {
+    if (!isConfigured("groq")) return { ok: false, error: GROQ_NOT_CONFIGURED };
+  } else if (!isConfigured()) return { ok: false, error: AI_ERROR_MESSAGES.not_configured };
   const usage = await aiUsage(tenant);
   if (!usage.enabled) return { ok: false, error: "AI is turned off for this workspace. An owner can turn it on in Settings." };
   if (usage.used >= usage.limit) {

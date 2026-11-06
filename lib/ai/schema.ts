@@ -71,3 +71,30 @@ export function toGeminiSchema(schema: z.ZodType): Json {
   // io: "input" describes what the model must send; reused: "inline" avoids $ref/$defs.
   return clean(z.toJSONSchema(schema, { io: "input", reused: "inline", cycles: "throw" })) as Json;
 }
+
+// The same for Groq's strict structured output: every property required, every object closed,
+// optional values as a union with null, and only the basic keywords it documents (types,
+// properties, items, enum, anyOf, description). Length and count limits are left to the Zod
+// re-check, like Gemini's.
+const GROQ_ALLOWED = new Set(["type", "description", "enum", "items", "anyOf", "properties", "additionalProperties", "required"]);
+
+function cleanForGroq(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(cleanForGroq);
+  if (node === null || typeof node !== "object") return node;
+  const out: Json = {};
+  for (const [key, value] of Object.entries(node as Json)) {
+    if (key === "oneOf") out.anyOf = cleanForGroq(value);
+    else if (key === "const") out.enum = [value];
+    else if (key === "properties") out.properties = Object.fromEntries(Object.entries(value as Json).map(([k, v]) => [k, cleanForGroq(v)]));
+    else if (GROQ_ALLOWED.has(key)) out[key] = cleanForGroq(value);
+  }
+  if (out.type === "object") {
+    out.additionalProperties = false;
+    out.required = Object.keys((out.properties as Json | undefined) ?? {});
+  }
+  return out;
+}
+
+export function toGroqSchema(schema: z.ZodType): Json {
+  return cleanForGroq(z.toJSONSchema(schema, { io: "input", reused: "inline", cycles: "throw" })) as Json;
+}

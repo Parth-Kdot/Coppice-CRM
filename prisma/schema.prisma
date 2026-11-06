@@ -37,6 +37,7 @@ model User {
   factsCreated     FactSheetItem[]       @relation("FactCreatedBy")
   factsVerified    FactSheetItem[]       @relation("FactVerifiedBy")
   aiDrafts         AiDraft[]
+  importSessions   ImportSession[]
 
   @@unique([email])
   @@map("user")
@@ -117,6 +118,8 @@ model Workspace {
   factSheetPages  FactSheetPage[]
   factSheetItems  FactSheetItem[]
   aiDrafts        AiDraft[]
+  importSessions  ImportSession[]
+  importChunks    ImportChunk[]
 
   @@unique([slug])
   @@map("workspace")
@@ -344,6 +347,11 @@ enum AiFeature {
   FACT_EXTRACTION
   DRAFT
   CLAIM_CHECK
+  // Smart import (AI feature 3): column suggestions and look-alike names (Gemini), and reading
+  // free-text cells (Groq).
+  IMPORT_MAPPING
+  IMPORT_LOOKALIKES
+  IMPORT_ROWS
 }
 
 enum AiRunStatus {
@@ -479,4 +487,54 @@ model AiDraft {
   @@index([workspaceId])
   @@index([contactId])
   @@index([createdById])
+}
+
+// ----- Smart import (AI feature 3: the Sheet Archaeologist) -----
+
+// One Smart import in progress: the file it reads (by hash, since the file itself is sent again
+// with every step), the column choices it was read with, and the sheet's board year. The browser
+// sends the free-text rows a chunk at a time; each chunk's checked proposals are staged in
+// ImportChunk, and nothing touches companies until the final import, which deletes the session.
+// Sessions older than 24 hours are ignored, and removed the next time the same person starts one
+// (only its creator can see a session; lib/smart-import/).
+model ImportSession {
+  id          String   @id @default(cuid())
+  workspaceId String
+  createdById String
+  fileHash    String
+  // ImportMapping, the free-text columns, and the rows to read, as the session was started.
+  mapping     Json
+  freeText    Json
+  rows        Json
+  cycleStart  Int
+  chunkCount  Int
+  // Look-alike pairs the AI suggested, checked by code (row numbers and existing company ids).
+  lookalikes  Json
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  chunks    ImportChunk[]
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([createdById])
+}
+
+// The checked proposals for one chunk of rows: what the AI read, each with the cell text it quoted.
+model ImportChunk {
+  id          String   @id @default(cuid())
+  workspaceId String
+  sessionId   String
+  index       Int
+  proposals   Json
+  model       String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session   ImportSession @relation(fields: [sessionId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  @@unique([sessionId, index])
+  @@index([sessionId, workspaceId])
+  @@index([workspaceId])
 }

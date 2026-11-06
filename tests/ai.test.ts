@@ -151,12 +151,18 @@ describe("generate (the Gemini client)", () => {
     expect(generation.thinkingConfig).not.toHaveProperty("thinkingBudget");
   });
 
-  it("routes each feature to its model, each with a fallback, and drafting with a last resort", async () => {
-    const models = Object.fromEntries(Object.entries(ROUTES).map(([f, r]) => [f, [r.model, r.fallback.model, r.lastResort?.model]]));
+  it("routes each feature to its model, each Gemini one with a fallback, and drafting with a last resort", async () => {
+    // Groq routes (Smart import's row pass) have one model and no fallback (tests/smart-import.test.ts).
+    const models = Object.fromEntries(
+      Object.entries(ROUTES).map(([f, r]) => [f, r.provider === "groq" ? [r.model] : [r.model, r.fallback.model, r.lastResort?.model]]),
+    );
     expect(models).toEqual({
       FACT_EXTRACTION: ["gemini-3.8-flash", "gemini-3.6-flash", undefined],
       DRAFT: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"],
       CLAIM_CHECK: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
+      IMPORT_MAPPING: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
+      IMPORT_LOOKALIKES: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
+      IMPORT_ROWS: ["openai/gpt-oss-120b"],
     });
     fakeGemini(answer(JSON.stringify(GOOD)));
     await generate({ ...request, feature: "CLAIM_CHECK" });
@@ -419,6 +425,11 @@ describe("AI drafts and row-level security", () => {
 describe("source guard", () => {
   it("only lib/ai/client.ts talks to Gemini", () => {
     const files = globSync("{app,lib,components}/**/*.{ts,tsx}").filter((f) => readFileSync(f, "utf8").includes("@google/genai"));
+    expect(files).toEqual(["lib/ai/client.ts"]);
+  });
+
+  it("only lib/ai/client.ts talks to Groq", () => {
+    const files = globSync("{app,lib,components}/**/*.{ts,tsx}").filter((f) => readFileSync(f, "utf8").includes("groq-sdk"));
     expect(files).toEqual(["lib/ai/client.ts"]);
   });
 });

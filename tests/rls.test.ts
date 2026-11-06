@@ -22,6 +22,8 @@ const TENANT_TABLES = [
   "FactSheetPage",
   "FactSheetItem",
   "AiDraft",
+  "ImportSession",
+  "ImportChunk",
 ] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {

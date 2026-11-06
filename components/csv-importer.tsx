@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useId, useState, useTransition, type ReactNode } from "react";
 import "@/components/ledger/zod-jitless";
-import { ChipGroup } from "@/components/ledger/chips";
 import { WarningIcon } from "@/components/ledger/icons";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import { Tick } from "@/components/ledger/marks";
 import { ErrorLine } from "@/components/ledger/shared";
+import { DuplicateGroups, type ShownGroup } from "@/components/csv-importer-duplicates";
+import { SmartColumns } from "@/components/csv-importer-smart/columns";
+import { SmartReview } from "@/components/csv-importer-smart/review";
+import { readingMatches, useSmartImport, type SmartActions } from "@/components/csv-importer-smart/use-smart-import";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
 import { IMPORT_FIELDS, type ActionResult, type ImportField, type ImportMapping } from "@/lib/validation";
 import "@/components/ledger/company.css";
@@ -17,6 +20,8 @@ type Props = {
   workspaceId: string;
   preview: (prev: ActionResult<ImportPreview> | null, form: FormData) => Promise<ActionResult<ImportPreview>>;
   run: (prev: ActionResult<ImportResult> | null, form: FormData) => Promise<ActionResult<ImportResult>>;
+  // Smart import (AI feature 3), offered only while AI is on for the workspace.
+  smart?: SmartActions;
 };
 
 const FIELD_LABELS: Record<ImportField, string> = {
@@ -58,7 +63,7 @@ const COLUMNS = ["Row", "Name", "Industry", "Website", "Contact", "Notes"] as co
 // The CSV import screen: pick a file, check the columns, review problems and look-alikes, import.
 // Every step sends the file to the server, which parses and checks it again (lib/csv.ts); this
 // component only shows what the server sends back and remembers the person's choices.
-export function CsvImporter({ workspaceId, preview, run }: Props) {
+export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [view, setView] = useState<ImportPreview | null>(null);
   // Rows the person chose to skip, starting from the suggested ones.
@@ -86,25 +91,39 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
       setSkips(new Set(res.data.defaultSkips));
     });
 
-  const importNow = (chosen: File, shown: ImportPreview) =>
-    startTransition(async () => {
-      setError(null);
-      const res = await run(
-        null,
-        send(chosen, { mapping: JSON.stringify(shown.mapping), skip: JSON.stringify([...skips]), seen: JSON.stringify(shown.seen) }),
-      );
-      if (!res.ok) return setError(res.error);
-      setResult(res.data);
-      setView(null);
-      setFile(null);
-    });
-
   const choose = (row: number, skip: boolean) =>
     setSkips((current) => {
       const next = new Set(current);
       if (skip) next.add(row);
       else next.delete(row);
       return next;
+    });
+
+  const smartState = useSmartImport({
+    actions: smart,
+    send: (fields) => (file ? send(file, fields) : null),
+    applyMapping: (mapping) => {
+      if (file) review(file, mapping);
+    },
+    skips,
+    choose,
+  });
+  // Smart import is used for the import only if its reading matches the columns shown now.
+  const smartReady = Boolean(smart && view && readingMatches(smartState, view.mapping));
+
+  const importNow = (chosen: File, shown: ImportPreview) =>
+    startTransition(async () => {
+      setError(null);
+      const fields = { mapping: JSON.stringify(shown.mapping), skip: JSON.stringify([...skips]), seen: JSON.stringify(shown.seen) };
+      const res =
+        smart && smartReady
+          ? await smart.run(null, send(chosen, { ...fields, sessionId: smartState.session!.sessionId, decisions: JSON.stringify(smartState.decisions()) }))
+          : await run(null, send(chosen, fields));
+      if (!res.ok) return setError(res.error);
+      setResult(res.data);
+      setView(null);
+      setFile(null);
+      smartState.reset();
     });
 
   if (result) {
@@ -142,6 +161,21 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
   }
 
   const label = (row: number) => view?.labels.find((l) => l.row === row);
+  // The exact look-alikes from the preview, then Smart import's, in one review.
+  const groups: ShownGroup[] = [
+    ...(view?.groups ?? []).map((g) => ({
+      key: `g${g.rows[0]}`,
+      reason: reason(g.matchedOn),
+      existing: g.existing,
+      rows: g.rows.map((row) => ({ row, name: label(row)?.name ?? "", website: label(row)?.website ?? null })),
+    })),
+    ...(smartReady ? smartState.session!.lookalikes : []).map((g) => ({
+      key: `l${g.rows.map((r) => r.row).join("-")}-${g.existing.map((c) => c.id).join("-")}`,
+      reason: g.why,
+      existing: g.existing,
+      rows: g.rows,
+    })),
+  ];
   // The Problems column only appears when one of the shown rows has a problem; the list under the table names every bad row.
   const showProblems = view ? view.sample.some((r) => r.errors.length > 0) : false;
   const importing = view ? view.rowCount - view.errors.length - skips.size : 0;
@@ -160,6 +194,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
               setFile(chosen);
               setView(null);
               setResult(null);
+              smartState.reset();
               if (chosen) review(chosen, null);
             }}
           />
@@ -216,6 +251,7 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
                 </button>
               </div>
             )}
+            {smart && <SmartColumns smart={smartState} actions={smart} view={view} pending={pending} />}
           </>
         )}
       </Entry>
@@ -301,63 +337,9 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
               </details>
             )}
 
-            {view.groups.length > 0 && (
-              <div className="lg-groups">
-                <h3 className="lg-h3">Possible duplicates</h3>
-                <p className="lg-hint mb-3">Choose Import or Skip for each row. Importing a look-alike keeps both as separate companies.</p>
-                {view.groups.map((group, gi) => (
-                  <div key={group.rows[0]} className="lg-group" role="group" aria-labelledby={`${id}-g${gi}`}>
-                    <div className="lg-group-head">
-                      <h4 id={`${id}-g${gi}`} className="lg-group-q">
-                        Same company?
-                      </h4>
-                      <span className="lg-tag lg-muted">{reason(group.matchedOn)}</span>
-                    </div>
-                    <div className="lg-group-cols">
-                      {group.existing.map((company) => (
-                        <div key={company.id} className="lg-dupcard lg-dupcard-have">
-                          <p className="lg-tag lg-muted">Already in the workspace</p>
-                          <p className="lg-dupname">
-                            <Link href={`/${workspaceId}/companies/${company.id}`} className="lg-link">
-                              {company.name}
-                            </Link>
-                          </p>
-                          <p className="lg-dupsite">
-                            {company.website || "No website"}
-                            {company.archived && <span className="lg-badge lg-badge-stale ml-2">archived</span>}
-                          </p>
-                        </div>
-                      ))}
-                      {group.rows.map((row) => {
-                        const entry = label(row);
-                        const skipped = skips.has(row);
-                        return (
-                          <div key={row} className="lg-dupcard" data-skipped={skipped || undefined}>
-                            <p className="lg-tag lg-muted">In your file, row {row}</p>
-                            <p className="lg-dupname">
-                              <span className="lg-nametext">
-                                Row {row}: {entry?.name}
-                              </span>
-                            </p>
-                            <p className="lg-dupsite">{entry?.website ? `(${entry.website})` : "No website"}</p>
-                            <ChipGroup
-                              legend={`Row ${row}`}
-                              hideLegend
-                              value={skipped ? "skip" : "import"}
-                              onChange={(value) => choose(row, value === "skip")}
-                              options={[
-                                { value: "import", label: "Import", ariaLabel: `Import row ${row}` },
-                                { value: "skip", label: "Skip", ariaLabel: `Skip row ${row}` },
-                              ]}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <DuplicateGroups idPrefix={id} workspaceId={workspaceId} groups={groups} skips={skips} choose={choose} />
+
+            {smart && <SmartReview smart={smartState} view={view} />}
           </>
         )}
       </Entry>
@@ -365,11 +347,18 @@ export function CsvImporter({ workspaceId, preview, run }: Props) {
       <Entry n={4} state={view ? "active" : "later"} title="Import">
         {file && view ? (
           <>
-            <p>
-              {importing} {importing === 1 ? "company" : "companies"} will be added as Not contacted. Nothing is imported until you press the button.
-            </p>
+            {smartReady ? (
+              <p>
+                {importing} {importing === 1 ? "company" : "companies"} will be added. The readings you kept set their stage, dates, contact and notes; the rest
+                start as Not contacted. Nothing is imported until you press the button.
+              </p>
+            ) : (
+              <p>
+                {importing} {importing === 1 ? "company" : "companies"} will be added as Not contacted. Nothing is imported until you press the button.
+              </p>
+            )}
             <div className="mt-3">
-              <button type="button" disabled={pending || importing === 0} onClick={() => importNow(file, view)} className="lg-btn lg-btn-primary">
+              <button type="button" disabled={pending || smartState.busy || importing === 0} onClick={() => importNow(file, view)} className="lg-btn lg-btn-primary">
                 {pending ? "Working..." : `Import ${importing} ${importing === 1 ? "company" : "companies"}`}
               </button>
             </div>

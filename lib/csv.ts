@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Papa from "papaparse";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, Stage } from "@/generated/prisma/client";
 import type { ContactFields, CompanyFields } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
 import { domainKey, groupLookAlikes, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
@@ -223,6 +223,17 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
 
 export type ImportResult = { imported: number; skipped: number; errored: number };
 
+// Smart import (lib/smart-import/) passes a hook that, inside the import's transaction, checks
+// what the person accepted from the AI's reading and returns it per row: a stage, dates, a line
+// added to the notes, and a contact for a row that has none. It also returns the look-alike groups
+// it flagged (rows and existing company ids), recorded like the exact ones below when imported.
+// Without a hook nothing changes.
+export type RowExtras = { stage?: Stage; lastContactedAt?: Date; nextFollowUpAt?: Date; noteLine?: string; contact?: ContactFields };
+export type SmartExtras = { rows: Map<number, RowExtras>; lookalikes: { rows: number[]; existing: string[] }[] };
+export type SmartHook = (tx: Tx, rows: CheckedRow[]) => Promise<ActionResult<SmartExtras>>;
+
+const withNoteLine = (notes: string | null, line: string | undefined) => (line ? (notes ? `${notes}\n\n${line}` : line) : notes);
+
 // Imports the file in one transaction: either every chosen row goes in, or none do.
 // `skip` is the rows the person chose to skip; `seen` is the existing look-alikes their preview
 // showed. Importing a row that matched an existing company (or another imported row) records the
@@ -233,6 +244,7 @@ export async function runImport(
   mapping: ImportMapping,
   skip: number[],
   seen: string[],
+  smart?: SmartHook,
 ): Promise<ActionResult<ImportResult>> {
   const table = parseCsv(text);
   if (!table.ok) return table;
@@ -254,24 +266,37 @@ export async function runImport(
 
     const toImport = valid.filter((r) => !skipped.has(r.row));
     const idOf = new Map(toImport.map((r) => [r.row, randomUUID()]));
+    const extras = smart ? await smart(tx, toImport) : null;
+    if (extras && !extras.ok) return extras;
+    const extra = (row: number) => extras?.data.rows.get(row);
 
     await tx.company.createMany({
       data: toImport.map((r) => ({
         id: idOf.get(r.row) as string,
         workspaceId: tenant.workspaceId,
         ...r.company,
+        ...(extra(r.row) && {
+          notes: withNoteLine(r.company.notes ?? null, extra(r.row)?.noteLine),
+          stage: extra(r.row)?.stage,
+          lastContactedAt: extra(r.row)?.lastContactedAt,
+          nextFollowUpAt: extra(r.row)?.nextFollowUpAt,
+        }),
         nameKey: nameKey(r.company.name),
         domainKey: domainKey(r.company.website),
       })),
     });
     await tx.contact.createMany({
-      data: toImport.flatMap((r) => (r.contact ? [{ workspaceId: tenant.workspaceId, companyId: idOf.get(r.row) as string, ...r.contact }] : [])),
+      data: toImport.flatMap((r) => {
+        const contact = r.contact ?? extra(r.row)?.contact;
+        return contact ? [{ workspaceId: tenant.workspaceId, companyId: idOf.get(r.row) as string, ...contact }] : [];
+      }),
     });
 
     // Imported look-alikes were chosen on purpose: remember each pair as separate.
-    const pairs = groups.flatMap((g) => {
+    const flagged = [...groups.map((g) => ({ rows: g.rows, existing: g.existing.map((c) => c.id) })), ...(extras?.data.lookalikes ?? [])];
+    const pairs = flagged.flatMap((g) => {
       const imported = g.rows.flatMap((row) => (idOf.has(row) ? [idOf.get(row) as string] : []));
-      const members = [...imported, ...g.existing.map((c) => c.id)];
+      const members = [...imported, ...g.existing];
       return imported.flatMap((id, i) => members.slice(i + 1).map((other) => orderedPair(id, other)));
     });
     await tx.companyPairDecision.createMany({
