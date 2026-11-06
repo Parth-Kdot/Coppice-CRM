@@ -1,0 +1,205 @@
+/* ==========================================================================================
+   Ledger, the Research Agent: the "Who to contact" panel on the company page (under the draft
+   letter, full width) and the approved pages list in Settings. It borrows the draft letter's head,
+   chips and letter card, and the settings register; only what is new to a brief lives here.
+   Plain CSS in a file, so the strict style-src policy allows it.
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- The panel ---------- */
+  .lg-briefform {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-briefform .lg-chipx span {
+    white-space: normal;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .lg-briefform .lg-chipx input:disabled + span {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  /* ---------- The brief: one card, items as ruled entries ---------- */
+  .lg-brief-card {
+    margin-top: 22px;
+    padding: 18px 20px 20px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-brief-note {
+    margin: 8px 0 4px;
+    max-width: 70ch;
+  }
+  .lg-brief-warn {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--rust);
+    background: var(--rust-wash);
+    color: var(--ink);
+  }
+  .lg-brief-warn > svg {
+    flex: none;
+    margin-top: 2px;
+    color: var(--rust);
+  }
+  .lg-brief-warn ul {
+    margin-top: 4px;
+    list-style: none;
+    font-size: var(--fs-1);
+    overflow-wrap: anywhere;
+  }
+  .lg-brief-empty {
+    margin-top: 14px;
+    color: var(--ink-2);
+  }
+  .lg-brief-items {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 28px;
+    margin-top: 6px;
+  }
+  .lg-brief-item {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-width: 0;
+    padding: 14px 0 16px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-brief-door {
+    color: var(--moss);
+  }
+  .lg-brief-title {
+    font-size: var(--fs-3);
+    overflow-wrap: anywhere;
+  }
+  .lg-brief-deadline .lg-tag {
+    margin-right: 4px;
+  }
+  .lg-brief-quote {
+    margin: 6px 0 4px;
+    padding-left: 12px;
+    border-left: 2px solid var(--rule);
+  }
+  .lg-brief-quote footer {
+    margin-top: 4px;
+    font-size: var(--fs-1);
+    overflow-wrap: anywhere;
+  }
+  .lg-brief-item > form,
+  .lg-brief-added {
+    margin-top: 6px;
+  }
+  .lg-brief-added {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    color: var(--moss);
+    font-size: var(--fs-2);
+    font-weight: 600;
+  }
+  .lg-brief-inboxes {
+    margin-top: 16px;
+  }
+  .lg-brief-inboxes ul {
+    list-style: none;
+    margin-top: 4px;
+  }
+  .lg-brief-inboxes li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 14px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-brief-email {
+    overflow-wrap: anywhere;
+  }
+  .lg-brief-pages {
+    margin-top: 14px;
+  }
+  .lg-brief-pages ul {
+    list-style: none;
+    margin-top: 6px;
+  }
+  .lg-brief-pages li {
+    display: grid;
+    gap: 2px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+    overflow-wrap: anywhere;
+    font-size: var(--fs-2);
+  }
+
+  /* ---------- Settings: the approved pages ---------- */
+  .lg-sourcelist {
+    list-style: none;
+    margin: -6px 0 0;
+  }
+  .lg-source {
+    display: grid;
+    gap: 2px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    overflow-wrap: anywhere;
+  }
+  .lg-source-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .lg-source-acts > form {
+    flex: none;
+  }
+  .lg-source-acts > details[open] {
+    flex: 1 1 100%;
+  }
+  .lg-sourceform {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 12px;
+    max-width: 760px;
+    margin-top: 16px;
+  }
+  .lg-sourceform .lg-error {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+
+  /* ---------- Narrow screens ---------- */
+  @media (max-width: 1100px) {
+    .lg-o-brief {
+      order: 6;
+    }
+    .lg-brief-items {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 760px) {
+    .lg-sourceform {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 640px) {
+    .lg-brief-card {
+      padding: 14px 14px 16px;
+    }
+    .lg-briefform .lg-chipx span {
+      min-height: 44px;
+    }
+  }
+}

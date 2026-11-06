@@ -157,6 +157,8 @@ describe("generate (the Gemini client)", () => {
       FACT_EXTRACTION: ["gemini-3.8-flash", "gemini-3.6-flash", undefined],
       DRAFT: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"],
       CLAIM_CHECK: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
+      RESEARCH_READ: ["gemini-3.8-flash", "gemini-3.6-flash", undefined],
+      RESEARCH_BRIEF: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
     });
     fakeGemini(answer(JSON.stringify(GOOD)));
     await generate({ ...request, feature: "CLAIM_CHECK" });

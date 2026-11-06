@@ -49,7 +49,7 @@ const KIND_LABELS: Record<FindingKind, string> = {
 
 // While a draft is on its way a quill writes a wavy rule across the area: the one loop in the app,
 // and only while waiting.
-function QuillWait({ label }: { label: string }) {
+export function QuillWait({ label }: { label: string }) {
   return (
     <div className="lg-quill-wait" role="status">
       <svg viewBox="0 0 240 28" preserveAspectRatio="none" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
