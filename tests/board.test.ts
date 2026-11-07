@@ -1,7 +1,20 @@
 import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
-import { unarchiveCompany } from "@/app/(app)/[workspaceId]/companies/actions";
+import { moveStage, unarchiveCompany } from "@/app/(app)/[workspaceId]/companies/actions";
 import type { Stage } from "@/generated/prisma/enums";
-import { COLUMN_SIZE, getBoard, SHOW_ALL_LIMIT, type Board } from "@/lib/board";
+import {
+  ARCHIVED_PAGE,
+  COLUMN_CAP,
+  COLUMN_SIZE,
+  getBoard,
+  NO_PAGING,
+  parseBoardPaging,
+  pagingParams,
+  SHOW_ALL_LIMIT,
+  withPaging,
+  type Board,
+  type BoardPaging,
+} from "@/lib/board";
+import { countPossibleDuplicates, listPossibleDuplicatePairs, markSeparate } from "@/lib/companies";
 import { day, when } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { nameKey } from "@/lib/duplicates";
@@ -198,5 +211,192 @@ describe("dates are shown in Purdue's time zone", () => {
     // 3 am UTC on Oct 25 is still the evening of Oct 24 in West Lafayette (UTC-4 in October).
     expect(day(new Date("2026-10-25T03:00:00Z"))).toBe("Oct 24");
     expect(when(new Date("2026-10-25T05:15:00Z"))).toBe("Oct 25, 2026, 1:15 AM");
+  });
+});
+
+// ----- Paging, the just-moved slip, and the look-alike count (de-bloat pass, P3) -----
+
+const page = (changes: Partial<BoardPaging>): BoardPaging => ({ ...NO_PAGING, ...changes });
+const many = (n: number, extra: Partial<Seed> = {}): Seed[] =>
+  Array.from({ length: n }, (_, i) => ({ name: `Company ${String(i).padStart(3, "0")}`, followUp: "2026-11-01T12:00:00Z", ...extra }));
+
+describe("a slip just moved (?moved=)", () => {
+  it("is shown at the top of its new column even when it sorts past the first 50", async () => {
+    // 149 replied companies with a follow-up date; the moved one has none, so it sorts last.
+    const ids = await seed(A, [...many(149, { stage: "REPLIED" }), { name: "Copperleaf Energy", stage: "REPLIED" }]);
+    const moved = ids[149];
+    const plain = column(await getBoard(A, NONE), "REPLIED");
+    expect(plain.cards.map((c) => c.id)).not.toContain(moved);
+
+    const board = await getBoard(A, NONE, page({ moved }));
+    const replied = column(board, "REPLIED");
+    expect(replied.cards[0]).toMatchObject({ id: moved, name: "Copperleaf Energy" });
+    expect(replied.pinned).toBe(moved);
+    expect(replied.cards).toHaveLength(COLUMN_SIZE + 1);
+    // The count is the real number of companies, not one more.
+    expect(replied.count).toBe(150);
+    expect(column(board, "NOT_CONTACTED").pinned).toBeNull();
+  });
+
+  it("is left where it is when it is already on the page, and ignored when the search hides it", async () => {
+    const ids = await seed(A, [{ name: "Alpha", stage: "CONTACTED" }, { name: "Beta", stage: "CONTACTED" }]);
+    const shown = column(await getBoard(A, NONE, page({ moved: ids[1] })), "CONTACTED");
+    expect(shown.cards.map((c) => c.name)).toEqual(["Alpha", "Beta"]);
+    expect(shown.pinned).toBeNull();
+    const searched = column(await getBoard(A, { ...NONE, q: "alpha" }, page({ moved: ids[1] })), "CONTACTED");
+    expect(searched.cards.map((c) => c.name)).toEqual(["Alpha"]);
+  });
+
+  it("never pins another workspace's company", async () => {
+    const [theirs] = await seed(B, [{ name: "B's company" }]);
+    const board = await getBoard(A, NONE, page({ moved: theirs }));
+    expect(board.columns.every((c) => c.pinned === null && c.cards.length === 0)).toBe(true);
+  });
+});
+
+describe("column paging: Show 50 more, up to 200", () => {
+  it("shows 50 more per step and stops at the cap", async () => {
+    await seed(A, many(260));
+    const at = async (n: number) => column(await getBoard(A, NONE, page({ more: { NOT_CONTACTED: n } })), "NOT_CONTACTED");
+    expect((await at(100)).cards).toHaveLength(100);
+    expect((await at(100)).hasMore).toBe(true);
+    expect((await at(200)).cards).toHaveLength(COLUMN_CAP);
+    // Asking past the cap (a hand-edited URL) still stops there.
+    expect((await at(5000)).cards).toHaveLength(COLUMN_CAP);
+    // Other columns are not affected.
+    expect(column(await getBoard(A, NONE, page({ more: { NOT_CONTACTED: 200 } })), "CONTACTED").cards).toHaveLength(0);
+  });
+
+  it("an old ?all=<stage> link opens that column to the cap, no further", async () => {
+    await seed(A, many(260));
+    const all = column(await getBoard(A, { ...NONE, all: "NOT_CONTACTED" }), "NOT_CONTACTED");
+    expect(all.cards).toHaveLength(COLUMN_CAP);
+    expect(all.hasMore).toBe(true);
+  });
+
+  test.each([
+    [{ more: "CONTACTED:100,REPLIED:150" }, { CONTACTED: 100, REPLIED: 150 }],
+    [{ more: "CONTACTED:120" }, { CONTACTED: 100 }],
+    [{ more: "CONTACTED:9999" }, { CONTACTED: 200 }],
+    [{ more: "CONTACTED:50,WON:100,REPLIED:-50,REPLIED:abc" }, {}],
+    [{ more: null }, {}],
+  ])("reads more=%j as %j, dropping anything malformed", (raw, expected) => {
+    expect(parseBoardPaging(raw).more).toEqual(expected);
+  });
+
+  it("reads and writes the rest of the paging, and keeps the filters' query", () => {
+    const paging = parseBoardPaging({ more: "REPLIED:100", moved: "abc-123", aupto: "150", aq: "  acme " });
+    expect(paging).toEqual({ more: { REPLIED: 100 }, moved: "abc-123", archivedUpto: 150, archivedQ: "acme" });
+    expect(pagingParams(paging)).toEqual([
+      ["more", "REPLIED:100"],
+      ["moved", "abc-123"],
+      ["aupto", "150"],
+      ["aq", "acme"],
+    ]);
+    expect(withPaging("?q=x", paging)).toBe("?q=x&more=REPLIED%3A100&moved=abc-123&aupto=150&aq=acme");
+    expect(withPaging("", NO_PAGING)).toBe("");
+    expect(parseBoardPaging({ moved: "x'; drop", aupto: "7" })).toMatchObject({ moved: null, archivedUpto: ARCHIVED_PAGE });
+  });
+
+  it("pages and filters the archived sheet on its own", async () => {
+    await seed(A, [...many(70, { archived: true }), { name: "Acme Old", archived: true }, { name: "Active one" }]);
+    const first = await getBoard(A, { ...NONE, archived: true });
+    expect(first.archivedCount).toBe(71);
+    expect(first.archived).toHaveLength(ARCHIVED_PAGE);
+    expect((await getBoard(A, { ...NONE, archived: true }, page({ archivedUpto: 100 }))).archived).toHaveLength(71);
+    const filtered = await getBoard(A, { ...NONE, archived: true }, page({ archivedQ: "acme" }));
+    expect(filtered.archived?.map((c) => c.name)).toEqual(["Acme Old"]);
+    expect(filtered.archivedMatching).toBe(1);
+    expect(filtered.archivedCount).toBe(71);
+  });
+
+  it("counts the whole workspace, ignoring the search, for the toolbar's controls", async () => {
+    await seed(A, [{ name: "Acme" }, { name: "Globex" }, { name: "Gone", archived: true }]);
+    expect((await getBoard(A, NONE)).workspaceTotal).toBe(2);
+    expect((await getBoard(A, { ...NONE, q: "acme" })).workspaceTotal).toBe(2);
+  });
+});
+
+describe("countPossibleDuplicates, the badge on the board's More menu", () => {
+  async function plant(rows: { id: string; nameKey: string; domainKey?: string | null }[], tenant: Tenant = A) {
+    await withTenant(tenant, (tx) =>
+      tx.company.createMany({
+        data: rows.map((r, i) => ({
+          id: r.id,
+          workspaceId: tenant.workspaceId,
+          name: r.id,
+          nameKey: r.nameKey,
+          domainKey: r.domainKey ?? null,
+          createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
+        })),
+      }),
+    );
+  }
+
+  it("is 0 with no look-alikes", async () => {
+    await plant([{ id: "c1", nameKey: "one" }, { id: "c2", nameKey: "two", domainKey: "two.com" }]);
+    expect(await countPossibleDuplicates(A)).toBe(0);
+  });
+
+  it("equals the length of the pair list for small data: overlaps, decisions and archived companies included", async () => {
+    await plant([
+      // c1 and c2 share both name and website: one pair, not two.
+      { id: "c1", nameKey: "acme", domainKey: "acme.com" },
+      { id: "c2", nameKey: "acme", domainKey: "acme.com" },
+      // c3 shares the website only, c4 the name only.
+      { id: "c3", nameKey: "acme labs", domainKey: "acme.com" },
+      { id: "c4", nameKey: "acme" },
+      { id: "c5", nameKey: "globex" },
+      { id: "c6", nameKey: "globex" },
+      { id: "c7", nameKey: "solo" },
+    ]);
+    const listed = async () => (await listPossibleDuplicatePairs(A)).length;
+    // Name "acme": c1-c2, c1-c4, c2-c4. Website: c1-c2 (again), c1-c3, c2-c3. Globex: c5-c6.
+    expect(await listed()).toBe(6);
+    expect(await countPossibleDuplicates(A)).toBe(6);
+    await markSeparate(A, "c5", "c6");
+    await markSeparate(A, "c1", "c3");
+    expect(await listed()).toBe(4);
+    expect(await countPossibleDuplicates(A)).toBe(4);
+    await withTenant(A, (tx) => tx.company.update({ where: { id: "c4" }, data: { archivedAt: new Date() } }));
+    expect(await listed()).toBe(2);
+    expect(await countPossibleDuplicates(A)).toBe(2);
+  });
+
+  it("stops at 51 for a big group, so the badge reads 50+", async () => {
+    // 40 companies on one website: 780 pairs.
+    await plant(Array.from({ length: 40 }, (_, i) => ({ id: `s${String(i).padStart(2, "0")}`, nameKey: `n${i}`, domainKey: "linkedin.com" })));
+    expect(await countPossibleDuplicates(A)).toBe(51);
+    expect(await listPossibleDuplicatePairs(A)).toHaveLength(50);
+  });
+
+  it("counts a big group exactly once most of its pairs are decided", async () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `s${String(i).padStart(2, "0")}`);
+    await plant(ids.map((id) => ({ id, nameKey: id, domainKey: "shared.com" })));
+    // Mark every pair separate except the three with s00.
+    const data: { workspaceId: string; companyAId: string; companyBId: string; decidedById: string }[] = [];
+    for (let i = 0; i < ids.length; i++)
+      for (let j = i + 1; j < ids.length; j++) if (!(i === 0 && j <= 3)) data.push({ workspaceId: "a", companyAId: ids[i], companyBId: ids[j], decidedById: "ownerA" });
+    await withTenant(A, (tx) => tx.companyPairDecision.createMany({ data }));
+    expect(await listPossibleDuplicatePairs(A)).toHaveLength(3);
+    expect(await countPossibleDuplicates(A)).toBe(3);
+  });
+
+  it("never counts another workspace's companies", async () => {
+    await plant([{ id: "b1", nameKey: "same" }, { id: "b2", nameKey: "same" }], B);
+    expect(await countPossibleDuplicates(A)).toBe(0);
+    expect(await countPossibleDuplicates(B)).toBe(1);
+  });
+});
+
+describe("moving a slip someone else holds", () => {
+  it("is still refused for an officer on the server, whatever the board shows", async () => {
+    const [id] = await seed(A, [{ name: "Held", stage: "CONTACTED" }]);
+    await withTenant(A, (tx) => tx.$executeRaw`UPDATE "Company" SET "claimedById" = 'ownerA', "claimExpiresAt" = now() + interval '1 day' WHERE id = ${id}`);
+    const result = await asUser("officerA", () => moveStage(null, form({ workspaceId: "a", companyId: id, stage: "REPLIED" })));
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("holds this company") });
+    expect(names(await getBoard(A, NONE), "CONTACTED")).toEqual(["Held"]);
+    // The owner may.
+    expect(await asUser("ownerA", () => moveStage(null, form({ workspaceId: "a", companyId: id, stage: "REPLIED" })))).toMatchObject({ ok: true });
   });
 });

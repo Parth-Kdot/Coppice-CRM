@@ -42,46 +42,74 @@
     margin-left: 8px;
   }
 
-  /* The All / By industry / By touch switch. The one selected state is a moss fill. */
-  .lg-splits {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+  /* One sentence, and nothing else, before any outreach is logged. */
+  .lg-stats-empty {
+    margin-top: 18px;
+    max-width: 60ch;
+    color: var(--ink-2);
+    font-size: var(--fs-3);
   }
-  .lg-split {
-    display: inline-flex;
-    align-items: center;
-    min-height: 40px;
-    padding: 0 12px;
-    border: 1px solid var(--edge);
-    border-radius: 3px;
-    background: var(--sheet);
-    color: var(--ink);
-    font-size: var(--fs-2);
-    text-decoration: none;
-    transition: background-color var(--dur-fast) ease;
+  .lg-stats-how {
+    margin-top: 4px;
   }
-  .lg-split:hover {
-    background: var(--paper-2);
+  .lg-stats-how .lg-rules {
+    margin-top: 4px;
   }
-  .lg-split:focus-visible {
-    outline: 2px solid var(--moss-2);
-    outline-offset: 2px;
+  /* The comparisons and gaps, each a closed section under the table. */
+  .lg-stats-more {
+    margin-top: 22px;
   }
-  .lg-split[aria-current="page"],
-  .lg-split[aria-current="page"]:hover {
-    border-color: var(--moss);
-    background: var(--moss);
-    color: var(--paper);
+  .lg-disc.lg-stats-more[data-variant] > .lg-disc-summary {
+    font-size: var(--fs-3);
+  }
+  .lg-stats-more .lg-tablewrap {
+    margin-top: 8px;
   }
 
-  /* The tables. A split row sits under its template, indented, on fresher paper. */
-  .lg-stattable td.lg-c-name {
-    min-width: 170px;
-    max-width: 280px;
+  /* The tables: four columns at fixed shares, so an industry list folded inside a row (its own
+     small table) lines up with the rows around it. A split row sits under its template, indented,
+     on fresher paper. */
+  .lg-stattable {
+    table-layout: fixed;
   }
-  .lg-stattable td.lg-c-range {
-    min-width: 170px;
+  .lg-col-name {
+    width: 40%;
+  }
+  .lg-col-rate {
+    width: 13%;
+  }
+  .lg-col-range {
+    width: 27%;
+  }
+  .lg-col-standing {
+    width: 20%;
+  }
+  .lg-table.lg-stattable td {
+    max-width: none;
+  }
+  .lg-stattable td.lg-c-name {
+    overflow-wrap: anywhere;
+  }
+  /* The counts behind "Details" are a phone thing; on a wide screen they are the range's tooltip. */
+  .lg-statdetails {
+    display: none;
+  }
+  .lg-subrow-more > td {
+    padding: 2px 10px 6px;
+  }
+  .lg-table.lg-stattable .lg-subrow-more > td {
+    background: var(--paper);
+  }
+  .lg-stattable-inner {
+    margin-top: 4px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-stattable-inner td {
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-disc-body > .lg-stattable-inner {
+    width: calc(100% + 20px);
+    margin-left: -20px;
   }
   .lg-stattable tr.lg-subrow td {
     background: var(--paper);
@@ -153,10 +181,6 @@
     vector-effect: non-scaling-stroke;
   }
 
-  /* The two comparisons, each a full-width panel: their tables need the room. */
-  .lg-statgrid {
-    display: grid;
-  }
   .lg-gaps {
     max-width: 720px;
   }
@@ -172,10 +196,69 @@
   }
 
   @media (max-width: 760px) {
-    .lg-stattable td.lg-c-name,
-    .lg-stattable td.lg-c-range {
-      max-width: none;
+    /* A phone row: the name (and its Standing) on top, then the rate and the bar. "Details" opens
+       the counts. An industry row drops its standing. */
+    .lg-table.lg-stattable tr {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) auto;
+      column-gap: 10px;
+      align-items: center;
+    }
+    .lg-table.lg-stattable td {
+      display: block;
       min-width: 0;
+      padding: 3px 0;
+      border-bottom: 0;
+    }
+    .lg-table.lg-stattable td::before {
+      content: none;
+    }
+    .lg-table.lg-stattable td.lg-c-name {
+      grid-row: 1;
+      grid-column: 1 / 3;
+    }
+    .lg-table.lg-stattable td.lg-c-standing {
+      grid-row: 1;
+      grid-column: 3;
+      justify-self: end;
+    }
+    .lg-table.lg-stattable td.lg-c-rate {
+      grid-row: 2;
+      grid-column: 1;
+      font-weight: 600;
+    }
+    .lg-table.lg-stattable td.lg-c-range {
+      grid-row: 2;
+      grid-column: 2 / 4;
+    }
+    .lg-table.lg-stattable .lg-subrow-more > td {
+      grid-column: 1 / -1;
+    }
+    .lg-stattable .lg-range-text {
+      display: none;
+    }
+    .lg-stattable .lg-rangebar {
+      width: 100%;
+    }
+    .lg-stattable tr.lg-subrow td.lg-c-standing {
+      display: none;
+    }
+    .lg-statdetails {
+      display: block;
+    }
+    .lg-statdetails .lg-disc-summary {
+      min-height: 32px;
+      font-size: var(--fs-1);
+    }
+    .lg-disc-body > .lg-stattable-inner {
+      width: auto;
+      margin-left: 0;
+    }
+    .lg-disc.lg-stats-more[data-variant] > .lg-disc-summary {
+      font-family: var(--font-sans);
+      font-size: var(--fs-2);
+      font-weight: 600;
+      line-height: 1.3;
     }
     /* On a phone each row is a small card; a split row is a lighter card tucked under its template. */
     .lg-stattable tr.lg-subrow {

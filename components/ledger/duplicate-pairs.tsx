@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useReducer, useRef } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { archiveDuplicate, keepSeparate } from "@/app/(app)/[workspaceId]/companies/actions";
 import { ActionForm } from "@/components/action-form";
 import { DuplicateIcon } from "@/components/ledger/icons";
@@ -12,12 +12,26 @@ import { archivedNote, initialPairList, openPairs, pairLabel, pairListReducer, s
 // The pairs in the board's "Possible duplicates" sheet (app/(app)/[workspaceId]/board/page.tsx).
 // The page renders the list on the server; this keeps a resolved pair on screen until it has
 // faded and slid out and its space has closed, the same motion as the import's duplicate review
-// (components/csv-importer-duplicates.tsx). The buttons are the same server actions as before:
-// "Same company: archive ..." (after the page's confirm dialog) and "Separate entries". A refusal
-// leaves the pair where it is with the reason under its buttons.
+// (components/csv-importer-duplicates.tsx). Each pair has two answers: "Same company..." asks which
+// one to keep (the one with a website, else the older one, is picked to start) and archives the
+// other; "Different companies" remembers they are separate. The same server actions as always
+// (archiveDuplicate, keepSeparate); a refusal leaves the pair where it is with the reason under it.
 
 export type PairCompany = { id: string; name: string; website: string | null };
-export type PairData = { key: string; a: PairCompany; b: PairCompany; matchedOn: string[] };
+export type PairData = { key: string; a: PairCompany; b: PairCompany; matchedOn: string[]; keepId?: string };
+
+// "example.com" from "https://www.example.com/about": the host is enough to compare two websites.
+export function siteHost(website: string | null): string | null {
+  if (!website) return null;
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(website) ? website : `https://${website}`);
+    return url.hostname.replace(/^www\./, "") + (url.pathname.length > 1 ? url.pathname.replace(/\/$/, "") : "");
+  } catch {
+    return website;
+  }
+}
+
+const reasonText = (matchedOn: string[]) => `Same ${matchedOn.join(" and ")}.`;
 
 type Props = {
   workspaceId: string;
@@ -111,56 +125,90 @@ export function DuplicatePairs({ workspaceId, pairs, more }: Props) {
 
   return (
     <ul className="lg-pairs">
-      {state.shown.map(({ key, a, b, matchedOn }) => {
-        const slot = state.leaving.get(key);
-        const label = pairLabel(slot ?? { n: open.findIndex((p) => p.key === key) + 1, of: open.length }, more);
+      {state.shown.map((pair) => {
+        const slot = state.leaving.get(pair.key);
+        const label = pairLabel(slot ?? { n: open.findIndex((p) => p.key === pair.key) + 1, of: open.length }, more);
         return (
-          <li key={key}>
-            <ExitCollapse leaving={slot !== undefined} entering={state.arrived.has(key)} onLeft={() => onLeft(key)}>
-              <div className="lg-pair" role="group" aria-label={`${label}: ${a.name} and ${b.name}`}>
-                <p className="lg-tag lg-pair-count">{label}</p>
-                <p id={headingId(key)} tabIndex={-1} className="lg-pair-names">
-                  <Link href={`/${workspaceId}/companies/${a.id}`} className="lg-link">
-                    {a.name}
-                  </Link>
-                  <span aria-hidden="true">and</span>
-                  <Link href={`/${workspaceId}/companies/${b.id}`} className="lg-link">
-                    {b.name}
-                  </Link>
-                </p>
-                <p className="lg-pair-site">{[a.website, b.website].filter(Boolean).join(" and ") || "No website on either"}</p>
-                <p className="lg-pair-why">
-                  <DuplicateIcon size={16} /> Same {matchedOn.join(" and ")}.
-                </p>
-                <div className="lg-actions">
-                  {[
-                    [b, a],
-                    [a, b],
-                  ].map(([keep, drop]) => (
-                    <ActionForm
-                      key={drop.id}
-                      action={archiveDuplicate}
-                      submitLabel={`Same company: archive ${drop.name}`}
-                      confirmMessage={`Archive ${drop.name} and keep ${keep.name}? You can unarchive it later.`}
-                      successMessage={archivedNote(drop.name)}
-                      onSuccess={() => resolve(key)}
-                    >
-                      <input type="hidden" name="workspaceId" value={workspaceId} />
-                      <input type="hidden" name="keepId" value={keep.id} />
-                      <input type="hidden" name="archiveId" value={drop.id} />
-                    </ActionForm>
-                  ))}
-                  <ActionForm action={keepSeparate} submitLabel="Separate entries" successMessage={separateNote(a.name, b.name)} onSuccess={() => resolve(key)}>
-                    <input type="hidden" name="workspaceId" value={workspaceId} />
-                    <input type="hidden" name="companyId" value={a.id} />
-                    <input type="hidden" name="otherId" value={b.id} />
-                  </ActionForm>
-                </div>
-              </div>
+          <li key={pair.key}>
+            <ExitCollapse leaving={slot !== undefined} entering={state.arrived.has(pair.key)} onLeft={() => onLeft(pair.key)}>
+              <Pair workspaceId={workspaceId} pair={pair} label={label} headingId={headingId(pair.key)} onResolved={() => resolve(pair.key)} />
             </ExitCollapse>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+function Pair({ workspaceId, pair, label, headingId, onResolved }: { workspaceId: string; pair: PairData; label: string; headingId: string; onResolved: () => void }) {
+  const { a, b, matchedOn } = pair;
+  const id = useId();
+  const [choosing, setChoosing] = useState(false);
+  const [keep, setKeep] = useState(pair.keepId === b.id ? b.id : a.id);
+  const kept = keep === a.id ? a : b;
+  const dropped = keep === a.id ? b : a;
+  const sameButton = useRef<HTMLButtonElement>(null);
+  const sites = matchedOn.includes("website") ? [siteHost(a.website), siteHost(b.website)].filter(Boolean) : [];
+
+  return (
+    <div className="lg-pair" role="group" aria-label={`${label}: ${a.name} and ${b.name}`}>
+      <p className="lg-tag lg-pair-count">{label}</p>
+      <p id={headingId} tabIndex={-1} className="lg-pair-names">
+        <Link href={`/${workspaceId}/companies/${a.id}`} className="lg-link lg-wrap-any">
+          {a.name}
+        </Link>
+        <span aria-hidden="true">and</span>
+        <Link href={`/${workspaceId}/companies/${b.id}`} className="lg-link lg-wrap-any">
+          {b.name}
+        </Link>
+      </p>
+      <p className="lg-pair-why">
+        <DuplicateIcon size={16} /> {reasonText(matchedOn)}
+        {sites.length > 0 && <span className="lg-pair-site lg-wrap-any">{[...new Set(sites)].join(" and ")}</span>}
+      </p>
+      {choosing ? (
+        <fieldset className="lg-pair-choose">
+          <legend className="lg-tag">Which one do you keep?</legend>
+          {[a, b].map((c) => (
+            <label key={c.id} className="lg-pair-opt">
+              <input type="radio" name={`${id}-keep`} value={c.id} checked={keep === c.id} onChange={() => setKeep(c.id)} className="lg-check" autoFocus={keep === c.id} />
+              <span className="lg-wrap-any">
+                Keep {c.name}
+                {c.id === pair.keepId && <span className="lg-muted"> (suggested)</span>}
+              </span>
+            </label>
+          ))}
+          <p className="lg-hint">The other is archived, never deleted. You can unarchive it later.</p>
+          <div className="lg-actions">
+            <ActionForm action={archiveDuplicate} submitLabel="Archive the other" submitAriaLabel={`Archive ${dropped.name}, keep ${kept.name}`} successMessage={archivedNote(dropped.name)} onSuccess={onResolved} small>
+              <input type="hidden" name="workspaceId" value={workspaceId} />
+              <input type="hidden" name="keepId" value={kept.id} />
+              <input type="hidden" name="archiveId" value={dropped.id} />
+            </ActionForm>
+            <button
+              type="button"
+              className="lg-btn lg-btn-sm lg-btn-quiet"
+              onClick={() => {
+                setChoosing(false);
+                requestAnimationFrame(() => sameButton.current?.focus());
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </fieldset>
+      ) : (
+        <div className="lg-actions">
+          <button ref={sameButton} type="button" className="lg-btn lg-btn-sm" onClick={() => setChoosing(true)} aria-label={`Same company: choose which of ${a.name} and ${b.name} to keep`}>
+            Same company...
+          </button>
+          <ActionForm action={keepSeparate} submitLabel="Different companies" submitAriaLabel={`${a.name} and ${b.name} are different companies`} successMessage={separateNote(a.name, b.name)} onSuccess={onResolved} small>
+            <input type="hidden" name="workspaceId" value={workspaceId} />
+            <input type="hidden" name="companyId" value={a.id} />
+            <input type="hidden" name="otherId" value={b.id} />
+          </ActionForm>
+        </div>
+      )}
+    </div>
   );
 }
