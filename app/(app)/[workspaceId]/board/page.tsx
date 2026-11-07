@@ -4,7 +4,7 @@ import { ActionForm } from "@/components/action-form";
 import { BoardSheet } from "@/components/ledger/board-sheet";
 import type { BoardCardData } from "@/components/ledger/board-slip";
 import { BoardView, type BoardColumnData } from "@/components/ledger/board-view";
-import { DuplicateIcon } from "@/components/ledger/icons";
+import { DuplicatePairs } from "@/components/ledger/duplicate-pairs";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { getBoard } from "@/lib/board";
 import { claimState, dbNow } from "@/lib/claims";
@@ -12,7 +12,7 @@ import { DUPLICATE_PAIR_LIMIT, listIndustries, listPossibleDuplicatePairs } from
 import { daysBetween, day } from "@/lib/dates";
 import { TERMINAL_STAGES } from "@/lib/stages";
 import { boardFiltersSchema, boardQuery, type BoardFilters } from "@/lib/validation";
-import { archiveDuplicate, keepSeparate, unarchiveCompany } from "../companies/actions";
+import { unarchiveCompany } from "../companies/actions";
 import { pageTitle } from "../page-title";
 
 export async function generateMetadata({ params }: PageProps<"/[workspaceId]/board">): Promise<Metadata> {
@@ -100,51 +100,16 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
             Companies that look alike (same name ignoring case and Inc/LLC/Corp, or same website). Archive the copy, or keep both as separate entries so they stop
             being flagged.
           </p>
-          {pairs.length === 0 ? (
-            <p className="lg-muted py-4">No look-alike pairs right now.</p>
-          ) : (
-            <ul className="lg-pairs">
-              {pairs.map(({ a, b, matchedOn }) => (
-                <li key={`${a.id}|${b.id}`} className="lg-pair">
-                  <p className="lg-pair-names">
-                    <Link href={`/${workspaceId}/companies/${a.id}`} className="lg-link">
-                      {a.name}
-                    </Link>
-                    <span aria-hidden="true">and</span>
-                    <Link href={`/${workspaceId}/companies/${b.id}`} className="lg-link">
-                      {b.name}
-                    </Link>
-                  </p>
-                  <p className="lg-pair-site">{[a.website, b.website].filter(Boolean).join(" and ") || "No website on either"}</p>
-                  <p className="lg-pair-why">
-                    <DuplicateIcon size={16} /> Same {matchedOn.join(" and ")}.
-                  </p>
-                  <div className="lg-actions">
-                    {[
-                      [b, a],
-                      [a, b],
-                    ].map(([keep, drop]) => (
-                      <ActionForm
-                        key={drop.id}
-                        action={archiveDuplicate}
-                        submitLabel={`Same company: archive ${drop.name}`}
-                        confirmMessage={`Archive ${drop.name} and keep ${keep.name}? You can unarchive it later.`}
-                      >
-                        <input type="hidden" name="workspaceId" value={workspaceId} />
-                        <input type="hidden" name="keepId" value={keep.id} />
-                        <input type="hidden" name="archiveId" value={drop.id} />
-                      </ActionForm>
-                    ))}
-                    <ActionForm action={keepSeparate} submitLabel="Separate entries">
-                      <input type="hidden" name="workspaceId" value={workspaceId} />
-                      <input type="hidden" name="companyId" value={a.id} />
-                      <input type="hidden" name="otherId" value={b.id} />
-                    </ActionForm>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <DuplicatePairs
+            workspaceId={workspaceId}
+            more={pairs.length === DUPLICATE_PAIR_LIMIT}
+            pairs={pairs.map(({ a, b, matchedOn }) => ({
+              key: `${a.id}|${b.id}`,
+              a: { id: a.id, name: a.name, website: a.website },
+              b: { id: b.id, name: b.name, website: b.website },
+              matchedOn,
+            }))}
+          />
         </BoardSheet>
       )}
 

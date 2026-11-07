@@ -598,6 +598,24 @@
   .lg-bsheet-count {
     font-family: var(--font-display);
   }
+  /* The sheet's own lane for margin notes, held at the bottom of its scroll. */
+  .lg-bsheet-notes {
+    position: sticky;
+    bottom: -28px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 -22px -28px;
+    padding: 0 22px;
+    background: var(--sheet);
+  }
+  .lg-bsheet-notes:not(:empty) {
+    margin-top: 14px;
+    padding-top: 10px;
+    padding-bottom: 14px;
+    border-top: 1px solid var(--rule);
+  }
   .lg-pairs,
   .lg-archived {
     list-style: none;
@@ -606,6 +624,30 @@
   .lg-pair {
     padding: 14px 0 16px;
     border-bottom: 1px solid var(--rule);
+  }
+  /* "Pair 2 of 5", as the import review numbers its groups. */
+  .lg-pair-count {
+    margin-bottom: 2px;
+    color: var(--moss);
+  }
+  .lg-pair-names:focus-visible {
+    outline-offset: 4px;
+  }
+  /* The line that takes the list's place once the last pair is answered. */
+  .lg-pairs-done {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+    font-weight: 600;
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-pairs-done:focus-visible {
+    outline-offset: 3px;
   }
   .lg-pair-names {
     display: flex;
@@ -619,6 +661,20 @@
     color: var(--ink-2);
     font-size: var(--fs-1);
     font-weight: 400;
+  }
+  /* A long name makes a long "Same company: archive ..." button: it wraps inside the sheet. */
+  .lg-pair .lg-actions {
+    max-width: 100%;
+  }
+  .lg-pair .lg-actions form {
+    max-width: 100%;
+  }
+  .lg-pair .lg-actions .lg-btn {
+    max-width: 100%;
+    padding-block: 7px;
+    white-space: normal;
+    text-align: left;
+    overflow-wrap: anywhere;
   }
   .lg-pair-why {
     display: flex;
