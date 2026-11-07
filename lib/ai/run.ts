@@ -9,14 +9,17 @@ import type { ActionResult } from "@/lib/validation";
 // Every AI call in the app goes through runAi(). In order, it:
 // 1. refuses if the server has no API key for the feature's provider, or the workspace has AI
 //    switched off;
-// 2. refuses if the workspace used its limit of AI calls in the last 30 days, or (for drafts)
-//    this person made too many drafts in the last 24 hours, so a free-tier quota is shared fairly;
+// 2. refuses if the workspace used its limit of AI calls in the last 30 days, or (for drafts and
+//    research briefs) this person made too many in the last 24 hours, so a free-tier quota is
+//    shared fairly;
 // 3. calls the model (lib/ai/client.ts), outside any database transaction;
 // 4. logs the call in AiRun (feature, model, tokens, time, success or a short error code).
 // Callers check membership first, as every server action does.
 
 export const AI_WINDOW_DAYS = 30;
 export const DAILY_DRAFTS_PER_PERSON = 40;
+// Research briefs (lib/research/brief.ts) fetch pages and make two AI calls each, so fewer.
+export const DAILY_BRIEFS_PER_PERSON = 10;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -95,6 +98,18 @@ export async function aiGate(tenant: Tenant, feature: AiFeature): Promise<Action
     );
     if (mine >= DAILY_DRAFTS_PER_PERSON) {
       return { ok: false, error: `You've made ${DAILY_DRAFTS_PER_PERSON} drafts in the last 24 hours. Try again tomorrow.` };
+    }
+  }
+  // A brief starts with its RESEARCH_READ call, so those count briefs. requestBrief
+  // (lib/research/brief.ts) also counts every brief row, written as RUNNING before any page is
+  // fetched, which includes ones that made no call or failed.
+  if (feature === "RESEARCH_READ") {
+    const since = new Date((await dbNow()).getTime() - DAY_MS);
+    const mine = await withTenant(tenant, (tx) =>
+      tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, userId: tenant.userId, feature: "RESEARCH_READ", createdAt: { gte: since } } }),
+    );
+    if (mine >= DAILY_BRIEFS_PER_PERSON) {
+      return { ok: false, error: `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.` };
     }
   }
   return { ok: true, data: undefined };

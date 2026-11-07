@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { WarningIcon } from "@/components/ledger/icons";
 import { InviteForm } from "@/components/ledger/invite-form";
+import { ResearchSourcesSection } from "@/components/ledger/research-sources";
 import { YearMargin } from "@/components/ledger/marks";
 import { PageHead } from "@/components/ledger/shared";
 import { Stepper } from "@/components/ledger/stepper";
@@ -12,6 +13,7 @@ import { AI_WINDOW_DAYS, aiUsageDetail } from "@/lib/ai/run";
 import { describeAiFailures, describeAiUsage } from "@/lib/ai/usage";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { listSources } from "@/lib/research/sources";
 import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS } from "@/lib/validation";
 import {
   cancelInvitation,
@@ -22,6 +24,7 @@ import {
   updateAiSettings,
   updateClaimWindow,
 } from "./actions";
+import { addResearchSource, archiveResearchSource, renameResearchSource } from "./research-actions";
 import "@/components/ledger/pages.css";
 import { pageTitle } from "../page-title";
 
@@ -62,6 +65,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
     aiUsageDetail({ userId: me.userId, workspaceId }),
   ]);
   const aiParts = ai.breakdown;
+  const aiOn = ai.enabled && isConfigured();
+  // Research pages: owners always manage them; officers see them only while the feature is on.
+  const sources = isOwner || aiOn ? await listSources({ userId: me.userId, workspaceId }) : [];
 
   const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
   const filled = ai.limit > 0 ? Math.min(METER_CELLS, Math.ceil((ai.used / ai.limit) * METER_CELLS)) : ai.used > 0 ? METER_CELLS : 0;
@@ -220,6 +226,10 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
               phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out. A
               template you base a draft on is sent too, masked the same way, so keep names out of templates.
+              {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
+              addresses and phone numbers masked (7 or more digits written in groups with spaces, dashes, dots, slashes or brackets, and 10 or more in one
+              run, in any script&apos;s digits, fullwidth ones included; a date, or a run of dates and years, standing on its own is left alone), plus the
+              company&apos;s name and website; never your notes or contacts.
             </p>
             <p className="max-w-[66ch]">
               Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers only when they are plain spreadsheet words (like
@@ -276,6 +286,16 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
             )}
           </div>
         </section>
+
+        {(isOwner || aiOn) && (
+          <ResearchSourcesSection
+            workspaceId={workspaceId}
+            sources={sources}
+            isOwner={isOwner}
+            aiOn={aiOn}
+            actions={{ add: addResearchSource, rename: renameResearchSource, archive: archiveResearchSource }}
+          />
+        )}
       </div>
     </div>
   );

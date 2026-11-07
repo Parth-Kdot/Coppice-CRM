@@ -24,6 +24,9 @@ const TENANT_TABLES = [
   "AiDraft",
   "ImportSession",
   "ImportChunk",
+  "ResearchSource",
+  "CompanyBrief",
+  "CompanyBriefPage",
 ] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {
@@ -266,5 +269,75 @@ describe("withTenant itself", () => {
     // ownerB is now a member of "a" only; "b" and its rows are gone.
     expect(await visibleIds({ userId: "ownerB", workspaceId: "b" })).toEqual(NOTHING);
     expect((await visibleIds({ userId: "ownerB", workspaceId: "a" })).companies).toEqual(["co-a"]);
+  });
+});
+
+describe("research tables (AI feature 2)", () => {
+  // A source, a brief and a brief page in each workspace, written as its owner.
+  async function seedResearch(tenant: Tenant, suffix: string) {
+    await withTenant(tenant, async (tx) => {
+      const { workspaceId, userId } = tenant;
+      await tx.researchSource.create({ data: { id: `rs-${suffix}`, workspaceId, url: `https://${suffix}.example/`, label: suffix, addedById: userId } });
+      await tx.companyBrief.create({ data: { id: `cb-${suffix}`, workspaceId, companyId: `co-${suffix}`, createdById: userId, status: "READY", brief: { items: [] } } });
+      await tx.companyBriefPage.create({ data: { id: `cp-${suffix}`, workspaceId, briefId: `cb-${suffix}`, position: 1, url: `https://${suffix}.example/` } });
+    });
+  }
+  const researchIds = (tenant: Tenant) =>
+    withTenant(tenant, async (tx) => ({
+      sources: (await tx.researchSource.findMany({ select: { id: true } })).map((r) => r.id),
+      briefs: (await tx.companyBrief.findMany({ select: { id: true } })).map((r) => r.id),
+      pages: (await tx.companyBriefPage.findMany({ select: { id: true } })).map((r) => r.id),
+    }));
+
+  beforeEach(async () => {
+    await seedResearch(A, "a");
+    await seedResearch(B, "b");
+  });
+
+  it("each workspace sees only its own sources, briefs and pages; outsiders and no tenant see nothing", async () => {
+    expect(await researchIds(A)).toEqual({ sources: ["rs-a"], briefs: ["cb-a"], pages: ["cp-a"] });
+    expect(await researchIds(OFFICER_A)).toEqual({ sources: ["rs-a"], briefs: ["cb-a"], pages: ["cp-a"] });
+    expect(await researchIds(B)).toEqual({ sources: ["rs-b"], briefs: ["cb-b"], pages: ["cp-b"] });
+    expect(await researchIds({ userId: "ownerB", workspaceId: "a" })).toEqual({ sources: [], briefs: [], pages: [] });
+    expect(await prisma.researchSource.count()).toBe(0);
+    expect(await prisma.companyBrief.count()).toBe(0);
+    expect(await prisma.companyBriefPage.count()).toBe(0);
+  });
+
+  it("A can't change or remove B's rows", async () => {
+    await withTenant(A, async (tx) => {
+      expect((await tx.researchSource.updateMany({ where: { id: "rs-b" }, data: { url: "https://evil.example/" } })).count).toBe(0);
+      expect((await tx.companyBrief.updateMany({ where: { id: "cb-b" }, data: { accepted: ["i1"] } })).count).toBe(0);
+      expect((await tx.companyBriefPage.deleteMany({ where: { id: "cp-b" } })).count).toBe(0);
+    });
+    expect(await researchIds(B)).toEqual({ sources: ["rs-b"], briefs: ["cb-b"], pages: ["cp-b"] });
+  });
+
+  const plant: [string, (tx: Prisma.TransactionClient) => Promise<unknown>][] = [
+    ["a source", (tx) => tx.researchSource.create({ data: { workspaceId: "b", url: "https://evil.example/", label: "x", addedById: "ownerA" } })],
+    ["a brief", (tx) => tx.companyBrief.create({ data: { workspaceId: "b", companyId: "co-b", createdById: "ownerA", status: "READY", brief: {} } })],
+    ["a brief page", (tx) => tx.companyBriefPage.create({ data: { workspaceId: "b", briefId: "cb-b", position: 2, url: "https://evil.example/" } })],
+  ];
+  test.for(plant)("A can't create %s in workspace B", async ([, create]) => {
+    await expect(withTenant(A, create)).rejects.toThrow(/row-level security/);
+    expect(await researchIds(B)).toEqual({ sources: ["rs-b"], briefs: ["cb-b"], pages: ["cp-b"] });
+  });
+
+  it("a brief can't point at another workspace's company, nor a page at another workspace's brief", async () => {
+    await expect(
+      withTenant(A, (tx) => tx.companyBrief.create({ data: { workspaceId: "a", companyId: "co-b", createdById: "ownerA", status: "READY", brief: {} } })),
+    ).rejects.toThrow(/foreign key/i);
+    await expect(
+      withTenant(A, (tx) => tx.companyBriefPage.create({ data: { workspaceId: "a", briefId: "cb-b", position: 2, url: "https://a.example/" } })),
+    ).rejects.toThrow(/foreign key/i);
+  });
+
+  it("only owners may write sources, even inside their own workspace", async () => {
+    await expect(
+      withTenant(OFFICER_A, (tx) => tx.researchSource.create({ data: { workspaceId: "a", url: "https://evil.example/", label: "x", addedById: "officerA" } })),
+    ).rejects.toThrow(/row-level security/);
+    expect((await withTenant(OFFICER_A, (tx) => tx.researchSource.updateMany({ data: { archivedAt: new Date() } }))).count).toBe(0);
+    expect((await withTenant(OFFICER_A, (tx) => tx.researchSource.deleteMany({}))).count).toBe(0);
+    expect((await withTenant(A, (tx) => tx.researchSource.updateMany({ data: { label: "renamed" } }))).count).toBe(1);
   });
 });

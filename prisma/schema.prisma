@@ -38,6 +38,8 @@ model User {
   factsVerified    FactSheetItem[]       @relation("FactVerifiedBy")
   aiDrafts         AiDraft[]
   importSessions   ImportSession[]
+  researchSources  ResearchSource[]
+  companyBriefs    CompanyBrief[]
 
   @@unique([email])
   @@map("user")
@@ -120,6 +122,9 @@ model Workspace {
   aiDrafts        AiDraft[]
   importSessions  ImportSession[]
   importChunks    ImportChunk[]
+  researchSources ResearchSource[]
+  companyBriefs   CompanyBrief[]
+  briefPages      CompanyBriefPage[]
 
   @@unique([slug])
   @@map("workspace")
@@ -221,6 +226,7 @@ model Company {
   pairsAsA     CompanyPairDecision[] @relation("PairCompanyA")
   pairsAsB     CompanyPairDecision[] @relation("PairCompanyB")
   aiDrafts     AiDraft[]
+  briefs       CompanyBrief[]
 
   // Lets contacts and outreach point at (company, workspace) together, so a row can never
   // link to a company in a different workspace.
@@ -352,6 +358,9 @@ enum AiFeature {
   IMPORT_MAPPING
   IMPORT_LOOKALIKES
   IMPORT_ROWS
+  // AI feature 2, the Research Agent: reading the fetched pages, then writing the brief.
+  RESEARCH_READ
+  RESEARCH_BRIEF
 }
 
 enum AiRunStatus {
@@ -536,5 +545,99 @@ model ImportChunk {
 
   @@unique([sessionId, index])
   @@index([sessionId, workspaceId])
+  @@index([workspaceId])
+}
+
+// ----- AI (feature 2: the Research Agent) -----
+
+// A web page an owner approved for research briefs. The server fetches only these URLs (and
+// redirects that stay on one of their hosts), never anything else. Removing one archives it.
+model ResearchSource {
+  id          String    @id @default(cuid())
+  workspaceId String
+  url         String
+  label       String
+  addedById   String
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  archivedAt  DateTime? @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  addedBy   User      @relation(fields: [addedById], references: [id], onDelete: Restrict)
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, archivedAt])
+  @@index([addedById])
+}
+
+enum BriefStatus {
+  // The AI read the pages; the brief may still have no items if nothing on them checked out.
+  READY
+  // No page could be read (robots.txt, blocked, too big ...), so no AI call was made.
+  NO_PAGES
+  // Being prepared: the row is written before any page is fetched, so it holds this person's slot
+  // in the daily limit (lib/research/brief.ts). Never shown.
+  RUNNING
+  // An AI call failed or the brief stopped with an error. Never shown, but it still counts.
+  FAILED
+}
+
+// A suggested "who to contact" brief for a company, built from approved pages only. Every item
+// carries a quote that code found on the page it cites. Nothing here changes the company until a
+// person accepts an item (lib/research/brief.ts).
+model CompanyBrief {
+  id          String      @id @default(cuid())
+  workspaceId String
+  companyId   String
+  createdById String
+  status      BriefStatus
+  // The checked items: { items: BriefItem[] }, each citing one of this brief's pages.
+  brief       Json
+  // Ids of items a person added to the company's notes.
+  accepted    String[]    @default([])
+  // Which model wrote the brief; null when no AI call was made.
+  model       String?
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   Company            @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  createdBy User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  pages     CompanyBriefPage[]
+
+  @@unique([id, workspaceId])
+  @@index([companyId, workspaceId, createdAt])
+  @@index([workspaceId])
+  @@index([createdById])
+  // This person's briefs in the last 24 hours, counted before each new one.
+  @@index([workspaceId, createdById, createdAt])
+}
+
+// One approved URL a brief tried to read: what was fetched (and when), or why it was skipped. The
+// stored text is exactly what the AI was shown (contact details masked), so quotes are checked
+// against it.
+model CompanyBriefPage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  briefId     String
+  // Order in the prompt (1-based); the AI cites pages by this number.
+  position    Int
+  url         String
+  // Where the last redirect landed; null if the page wasn't fetched.
+  finalUrl    String?
+  fetchedAt   DateTime? @db.Timestamptz(3)
+  // A short code like "robots" or "too_large" when the page was skipped.
+  skipReason  String?
+  // SHA-256 of the stored text.
+  sha256      String?
+  text        String?
+  // Phrases that looked like instructions to an AI ("ignore previous instructions" ...).
+  injection   String[]  @default([])
+  // Team inboxes (careers@, university.relations@ ...) found on the page by code, never by the AI.
+  inboxes     String[]  @default([])
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brief     CompanyBrief @relation(fields: [briefId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  @@unique([briefId, position])
+  @@index([briefId, workspaceId])
   @@index([workspaceId])
 }

@@ -74,6 +74,20 @@ export const ROUTES: Record<AiFeature, Route> = {
   // Smart import: free-text cells, which can contain names, so Groq (owner decision). Low reasoning
   // keeps a chunk of rows well inside the free tier's tokens per minute.
   IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000 },
+  // Research briefs (lib/research/brief.ts): reading up to six fetched pages is long input, like
+  // fact extraction; writing the brief from the passages read is short, so Flash-Lite goes first.
+  RESEARCH_READ: {
+    model: "gemini-3.8-flash",
+    thinkingLevel: ThinkingLevel.MEDIUM,
+    firstTryMs: 50_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.MEDIUM },
+  },
+  RESEARCH_BRIEF: {
+    model: "gemini-3.5-flash-lite",
+    thinkingLevel: ThinkingLevel.LOW,
+    firstTryMs: 20_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
 };
 
 export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";

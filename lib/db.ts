@@ -53,13 +53,36 @@ export type Tenant = { userId: string; workspaceId: string };
 // set_config(..., true) lasts only until the transaction ends. That matters with Supabase's
 // pooler, which hands the same connection to other requests afterwards. Never use plain SET.
 // Keep slow work (AI calls, network requests) outside: the transaction holds a connection.
-export function withTenant<T>(tenant: Tenant, run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+//
+// `isolationLevel: "Serializable"` is for a count followed by an insert that must not race with
+// the same thing in parallel (a limit): Postgres then fails all but one of the overlapping
+// transactions with a serialization error (Prisma's P2034, see isSerializationFailure), and the
+// caller retries or refuses.
+export function withTenant<T>(
+  tenant: Tenant,
+  run: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { isolationLevel?: Prisma.TransactionIsolationLevel } = {},
+): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.user_id', ${tenant.userId}, true), set_config('app.workspace_id', ${tenant.workspaceId}, true)`;
       return run(tx);
     },
     // Room for the pooler and network latency to Supabase.
-    { maxWait: 10_000, timeout: 15_000 },
+    { maxWait: 10_000, timeout: 15_000, ...options },
   );
+}
+
+// Whether a withTenant transaction failed only because a parallel one won (a serialization
+// failure or deadlock), so running it again may succeed. Prisma reports it as P2034, or, from the
+// pg driver adapter, as a DriverAdapterError whose cause has kind "TransactionWriteConflict" and
+// Postgres's code 40001 (40P01 for a deadlock).
+export function isSerializationFailure(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
+    const e = current as { code?: unknown; kind?: unknown; originalCode?: unknown; cause?: unknown };
+    if (e.code === "P2034" || e.kind === "TransactionWriteConflict" || e.originalCode === "40001" || e.originalCode === "40P01") return true;
+    current = e.cause;
+  }
+  return false;
 }
