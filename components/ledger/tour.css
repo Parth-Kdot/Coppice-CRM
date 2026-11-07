@@ -1,0 +1,248 @@
+/* The onboarding tour (tour.tsx): the welcome dialog, the coach card, the Resume pill and the
+   highlight on the real control. Loaded with the tour only, so ordinary pages never fetch it. */
+
+@layer components {
+  /* The highlight: a moss outline on the real control, no scrim, nothing hidden. */
+  [data-tour-focus] {
+    outline: 3px solid var(--moss) !important;
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
+
+  .lg-tour-card,
+  .lg-tour-welcome {
+    box-sizing: border-box;
+    color: var(--ink);
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    box-shadow: 0 10px 28px rgb(31 27 20 / 0.18);
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- The welcome: a real modal, centred ---------- */
+  .lg-tour-welcome {
+    width: min(440px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: 24px 24px 20px;
+    overflow: auto;
+  }
+  .lg-tour-welcome::backdrop {
+    background: rgb(31 27 20 / 0.35);
+  }
+  .lg-tour-welcome .lg-tour-title {
+    font-size: var(--fs-5);
+  }
+
+  /* ---------- The coach card: beside its control, or centred when it has none ---------- */
+  .lg-tour-card {
+    position: fixed;
+    z-index: 70;
+    width: min(340px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow: auto;
+    padding: 14px 16px 12px;
+    /* Centred until placed (and when the control isn't on this page). */
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    animation: lg-tour-in 160ms var(--ease-out);
+  }
+  .lg-tour-card[data-place="beside"] {
+    transform: none;
+  }
+  /* A tall control (the queue, the board): the card waits in the corner. */
+  .lg-tour-card[data-place="dock"] {
+    left: auto;
+    top: auto;
+    right: 24px;
+    bottom: 24px;
+    transform: none;
+  }
+  .lg-tour-card[data-kind="done"] {
+    width: min(400px, calc(100vw - 32px));
+  }
+
+  .lg-tour-count {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    margin-bottom: 2px;
+  }
+  /* The title takes focus so each card is announced; it is not a control, so no focus ring. */
+  .lg-tour-title {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.2;
+    outline: none;
+  }
+  .lg-tour-body {
+    margin-top: 6px;
+    font-size: var(--fs-2);
+    line-height: 1.45;
+  }
+  .lg-tour-go {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .lg-tour-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 14px;
+  }
+  .lg-tour-welcome .lg-tour-actions {
+    margin-top: 20px;
+  }
+  /* Hide / Later / End tour: quiet words at the end of the row, never the filled default. */
+  .lg-tour-quiet {
+    margin-left: auto;
+    border-color: transparent;
+    background: transparent;
+    color: var(--ink-2);
+  }
+
+  /* ---------- The Resume pill ---------- */
+  .lg-tour-pill {
+    position: fixed;
+    z-index: 45;
+    left: calc(var(--spine-w) + 16px);
+    bottom: 16px;
+    min-height: 40px;
+    max-width: calc(100vw - var(--spine-w) - 32px);
+    padding: 0 16px;
+    border: 1px solid var(--moss);
+    border-radius: 999px;
+    background: var(--sheet);
+    color: var(--moss);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgb(31 27 20 / 0.14);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lg-tour-pill:hover {
+    background: var(--moss-wash);
+  }
+  .lg-tour-pill:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+
+  /* ---------- Drawings of a control the page can't show yet ---------- */
+  .lg-tour-art {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+    background: var(--paper);
+    font-size: var(--fs-1);
+    color: var(--ink-2);
+  }
+  .lg-tour-art-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .lg-tour-art-bar {
+    flex: 1 1 60px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--rule);
+  }
+  .lg-tour-art-chip,
+  .lg-tour-art-btn {
+    padding: 1px 8px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: var(--sheet);
+    white-space: nowrap;
+  }
+  .lg-tour-art-chip[data-on] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+  .lg-tour-art-btn {
+    border-radius: 3px;
+    border-color: var(--moss);
+    color: var(--moss);
+    font-weight: 600;
+  }
+  .lg-tour-art-label {
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .lg-tour-art-cols {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .lg-tour-art-col {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .lg-tour-art-slip {
+    height: 18px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--sheet);
+  }
+  .lg-tour-art-flag {
+    text-decoration: underline wavy var(--rust);
+    text-underline-offset: 3px;
+  }
+
+  /* ---------- Phone: the card is a sheet docked above the tab bar ---------- */
+  @media (max-width: 760px) {
+    .lg-tour-card,
+    .lg-tour-card[data-place] {
+      left: 16px;
+      right: 16px;
+      top: auto;
+      bottom: calc(68px + env(safe-area-inset-bottom));
+      width: auto;
+      max-width: calc(100vw - 32px);
+      max-height: 45vh;
+      transform: none;
+    }
+    .lg-tour-card .lg-btn,
+    .lg-tour-card .lg-linkbtn,
+    .lg-tour-welcome .lg-btn {
+      min-height: 44px;
+    }
+    .lg-tour-pill {
+      left: 16px;
+      bottom: calc(72px + env(safe-area-inset-bottom));
+      min-height: 44px;
+      max-width: calc(100vw - 32px);
+    }
+  }
+
+  /* No slide or fade under reduced motion; the outline is there at once either way. */
+  @media (prefers-reduced-motion: reduce) {
+    .lg-tour-card {
+      animation: none;
+    }
+  }
+}
+
+@keyframes lg-tour-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

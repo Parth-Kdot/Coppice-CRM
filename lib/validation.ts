@@ -550,3 +550,13 @@ export const oauthScopeListSchema = z
     const names = scope.split(" ").filter(Boolean);
     return names.length <= MCP_SCOPES.length && new Set(names).size === names.length;
   }, "Each scope can be asked for once.");
+
+// Onboarding (the basics and AI tours, app/(app)/[workspaceId]/onboarding-actions.ts). Added by the
+// onboarding round. `step` is the index of the next unseen card; `event` says what happened: a card
+// was passed ("step"), the last card was reached ("done"), or the AI tour was put off ("later").
+export const tourProgressSchema = z.object({
+  workspaceId: id,
+  tour: z.enum(["basics", "ai"]),
+  step: z.number().int().min(0).max(20),
+  event: z.enum(["step", "done", "later"]),
+}).refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.");

@@ -98,6 +98,8 @@ function useFocusHeadingOnRouteChange(pathname: string) {
     const attempt = () => {
       const active = document.activeElement;
       if (active && active !== start && active !== document.body) return;
+      // The onboarding tour moved to this page and its card has focus: leave it there.
+      if (active?.closest("[data-tour-card]")) return;
       const target = (hash && document.getElementById(hash)) || document.querySelector<HTMLElement>("#main h1");
       if (target) {
         if (!target.hasAttribute("tabindex") && !target.matches("a[href], button, input, select, textarea, summary")) target.tabIndex = -1;
