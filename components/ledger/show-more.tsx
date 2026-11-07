@@ -57,7 +57,12 @@ export function ShowMore({
   moreText?: string;
   after?: ReactNode;
 }) {
-  const items = Children.toArray(children);
+  // The items as given, not through Children.toArray: a server-rendered list arrives as lazy
+  // elements whose keys toArray can't read (it would key them by position), and React would then
+  // reuse a removed row's node, still hidden by its exit, for the row after it.
+  const items = Array.isArray(children)
+    ? (children.flat(Infinity) as ReactNode[]).filter((c) => c !== null && c !== undefined && typeof c !== "boolean")
+    : Children.toArray(children);
   const [expanded, setExpanded] = useState(false);
   const { shown, hidden } = showMoreSplit(items.length, initial);
   const visible = expanded ? items : items.slice(0, shown);

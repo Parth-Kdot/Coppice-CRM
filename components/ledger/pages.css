@@ -1180,6 +1180,11 @@
   .lg-factpanel > .lg-panel-body {
     padding-top: 4px;
   }
+  /* A fact flying to the other section's count stays inside its panel's width, never over the
+     sidebar (fact-board.tsx). Clip, unlike hidden, leaves the vertical axis visible. */
+  .lg-factpanel {
+    overflow-x: clip;
+  }
   .lg-factpanel > .lg-panel-body > .lg-muted {
     margin-top: 12px;
   }

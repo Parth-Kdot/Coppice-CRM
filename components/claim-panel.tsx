@@ -36,6 +36,8 @@ type Props = {
 //
 // Rendered on the server; only the buttons run in the browser. Claiming stamps the new ticket and
 // drops the ribbon onto it; releasing tears the body off along the perforation (company-blocks.tsx).
+// Releasing your own claim asks nothing first (it is easy to take back): the note says so and offers
+// Undo, which claims it again. An owner's Force release still asks.
 // The section is keyed by state, so a new ticket is a new element and never inherits a torn one.
 export function ClaimPanel(props: Props) {
   const { state, holderName, expiresAt, actions } = props;
@@ -59,8 +61,8 @@ export function ClaimPanel(props: Props) {
         {...ids}
         submitLabel="Release"
         ariaLabel={`Release your claim on ${props.companyName}`}
-        confirmMessage={`Release your claim on ${props.companyName}? Someone else can claim it then.`}
         successMessage={`You released ${props.companyName}.`}
+        undo={actions.claim}
       />
     );
   } else if (state === "theirs") {

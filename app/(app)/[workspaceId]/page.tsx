@@ -52,9 +52,8 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
   const filters = queueFiltersSchema.parse({ mine: first("mine"), never: first("never"), all: first("all"), upto: first("upto") });
   const upto = clampUpto(filters.upto);
 
-  const home = await getQueueHome(membership, { upto, now });
-  // For the rows' own log form ("Log outreach" opens it under the row).
-  const today = await dbToday();
+  // `today` is for the rows' own log form ("Log outreach" opens it under the row); fetched alongside.
+  const [home, today] = await Promise.all([getQueueHome(membership, { upto, now }), dbToday()]);
   const total = home.yours.count + home.grabs.count + home.heldByOthers.count;
   const windowDays = workspace.claimWindowDays;
 

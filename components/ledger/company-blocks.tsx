@@ -11,7 +11,7 @@ import { STAGE_LABELS } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import { Disclosure, LazyDisclosure, useLazyDisclosure } from "./disclosure";
 import { boardYear } from "./board-year";
-import { focusSoon } from "./focus";
+import { focusSoon, whenDrawn } from "./focus";
 import { CopyLinkIcon, ExternalIcon } from "./icons";
 import { TurnoverRule } from "./marks";
 import { completeStamp, removeAway, restore } from "./motion-kit";
@@ -108,20 +108,6 @@ export function Clamp({ text, className = "" }: { text: string; className?: stri
 
 // ----- The claim ticket's buttons -----
 
-// Runs `run` on the element `find` returns once the server's fresh render has drawn it: looks again
-// on each frame for about a second, then gives up quietly. For a finish moment that plays on what
-// the action brought (the new ticket, the new outreach entry), never on a page load.
-export function whenDrawn<T extends Element>(find: () => T | null | undefined, run: (el: T) => void): void {
-  if (typeof window === "undefined") return;
-  let frames = 0;
-  const look = () => {
-    const el = find();
-    if (el && el.isConnected) return run(el);
-    if (++frames < 60) requestAnimationFrame(look);
-  };
-  requestAnimationFrame(look);
-}
-
 const TICKET = '[data-tour="company-claim"]';
 
 // Claim it / Claim again. On success the new ticket is stamped (a press, a moss ring) and the gilt
@@ -175,15 +161,42 @@ export function TicketRelease({
   ariaLabel,
   confirmMessage,
   successMessage,
+  undo,
 }: {
   action: Action;
   workspaceId: string;
   companyId: string;
   submitLabel: string;
   ariaLabel?: string;
-  confirmMessage: string;
+  // Asked first; left out for your own release, which "Undo" in the note takes back.
+  confirmMessage?: string;
   successMessage: string;
+  // Claims it again (the claim action), offered as "Undo" in the success note.
+  undo?: Action;
 }) {
+  const notify = useNotify();
+  const [, startTransition] = useTransition();
+  const takeBack = undo
+    ? () =>
+        startTransition(async () => {
+          const form = new FormData();
+          form.set("workspaceId", workspaceId);
+          form.set("companyId", companyId);
+          const result = await undo(null, form);
+          if (!result.ok) notify(result.error, "error");
+          else {
+            // The Undo button went with the note: focus the new ticket's button once it is drawn.
+            whenDrawn(
+              () => document.querySelector<HTMLElement>(`${TICKET}[data-kind="mine"]`),
+              (ticket) => {
+                const active = document.activeElement;
+                if (!active || active === document.body) ticket.querySelector<HTMLElement>("button")?.focus();
+                void completeStamp(ticket, { mark: ticket.querySelector(".lg-ticket-ribbon") });
+              },
+            );
+          }
+        })
+    : undefined;
   const tear = useCallback<Action>(
     async (prev, form) => {
       const ticket = document.querySelector<HTMLElement>(TICKET);
@@ -209,6 +222,7 @@ export function TicketRelease({
       submitAriaLabel={ariaLabel}
       confirmMessage={confirmMessage}
       successMessage={successMessage}
+      successUndo={takeBack}
       focusAfter={`${TICKET} button`}
       className="lg-ticket-form"
     >
@@ -259,21 +273,29 @@ export function CompanyHeader({
 }) {
   const [editing, setEditing] = useState(false);
   const stage = useStageMove();
-  // Archive, once confirmed: the company's sheet slides away while the server archives it, and the
-  // archived page takes its place. A refusal brings the sheet back.
+  // Archive, once confirmed: the working column (the claim ticket, the log form, outreach) slides
+  // away while the server archives it, and the rest of the sheet dims and holds until the archived
+  // page, drawn by the same render, takes its place, so the page is never blank in between. A
+  // refusal brings everything back.
   const archiveAction = menu?.archive;
   const archive = useCallback<Action>(
     async (prev, form) => {
       if (!archiveAction) return { ok: false, error: "Archive is not available here." };
       const sheet = document.querySelector<HTMLElement>(".lg-company .lg-cogrid");
-      const leaving = removeAway(sheet, { direction: "left", distance: 24, collapse: false, focus: document.querySelector<HTMLElement>(".lg-company .lg-back") });
+      const side = sheet?.querySelector<HTMLElement>(".lg-co-side") ?? null;
+      const back = () => {
+        restore(side);
+        sheet?.removeAttribute("data-archiving");
+      };
+      const leaving = removeAway(side, { direction: "right", distance: 24, collapse: false, focus: document.querySelector<HTMLElement>(".lg-company .lg-back") });
+      sheet?.setAttribute("data-archiving", "");
       try {
         const result = await archiveAction(prev, form);
-        if (!result.ok) restore(sheet);
+        if (!result.ok) back();
         else await leaving;
         return result;
       } catch (error) {
-        restore(sheet);
+        back();
         throw error;
       }
     },
@@ -315,7 +337,7 @@ export function CompanyHeader({
       });
     }
   }
-  if (menu?.canControl && archive) {
+  if (menu?.canControl && menu.archive) {
     items.push({
       key: "archive",
       label: "Archive",

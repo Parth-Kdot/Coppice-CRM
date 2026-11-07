@@ -52,6 +52,3 @@ export function replayAck(el: Element | null | undefined) {
     window.setTimeout(() => el.removeAttribute("data-ack"), 600),
   );
 }
-
-// Whether the person asked for reduced motion, for the few places that scroll from script.
-export const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;

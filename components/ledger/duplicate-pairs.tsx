@@ -6,8 +6,8 @@ import { archiveDuplicate, keepSeparate } from "@/app/(app)/[workspaceId]/compan
 import { ActionForm } from "@/components/action-form";
 import { DuplicateIcon } from "@/components/ledger/icons";
 import { Tick } from "@/components/ledger/marks";
-import { ExitCollapse, reducedMotion } from "@/components/ledger/motion";
-import { completeStamp } from "@/components/ledger/motion-kit";
+import { ExitCollapse } from "@/components/ledger/motion";
+import { completeStamp, prefersReducedMotion } from "@/components/ledger/motion-kit";
 import { archivedNote, initialPairList, openPairs, pairLabel, pairListReducer, separateNote, type PairListAction, type PairListState } from "@/lib/duplicate-review";
 
 // The pairs in the board's "Possible duplicates" sheet (app/(app)/[workspaceId]/board/page.tsx).
@@ -93,7 +93,7 @@ export function DuplicatePairs({ workspaceId, pairs, more }: Props) {
     focusDone.current = false;
     const el = document.getElementById(doneId);
     el?.focus({ preventScroll: true });
-    el?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+    el?.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
     // The last pair is settled: the line that replaces the list lands with a stamp.
     void completeStamp(el);
   }, [shownCount, doneId]);
@@ -109,7 +109,7 @@ export function DuplicatePairs({ workspaceId, pairs, more }: Props) {
       const el = document.getElementById(pending.target);
       if (!el) return;
       if (document.activeElement !== el) el.focus({ preventScroll: true });
-      el.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+      el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
     });
   };
 

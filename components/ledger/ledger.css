@@ -218,10 +218,12 @@
     color: var(--ink-2);
   }
 
-  /* A number that changes crossfades instead of jumping. */
+  /* A number that changes crossfades instead of jumping (not on the page's first draw). */
   .lg-count {
     display: inline-block;
     font-variant-numeric: tabular-nums;
+  }
+  .lg-count[data-changed] {
     animation: lg-fade var(--dur-base) var(--ease-out) both;
   }
 
@@ -802,10 +804,13 @@
   }
 
   /* ---------- Margin notes: the one place feedback is written ---------- */
-  /* In the workspace shell a note is written in the lane at the foot of the content column (the
-     footer, above the status line), so it never lies over the rows. Elsewhere it is fixed at the
-     bottom left. 360 px at most, the text wraps inside its box, and a note holds 3 s and then fades.
-     A refusal that belongs to a row is written in that row's own margin instead (.lg-rownote). */
+  /* In the workspace shell a note is written in the lane at the foot of the content column;
+     elsewhere it is fixed at the bottom left. When a note there would lie over what the person is
+     working on (the focused control, or the heading a fact just landed on) the lane moves to the
+     top, under the header, while notes show (providers.tsx placeLane). 360 px at most, the text
+     wraps inside its box, at most two at once, and a note holds about 2.5 s and then fades (one with
+     a follow-up, like "See it", holds 6 s). A refusal that belongs to a row is written in that row's
+     own margin instead (.lg-rownote). */
   .lg-notes {
     position: fixed;
     z-index: 120;
@@ -836,7 +841,19 @@
     pointer-events: auto;
     animation:
       lg-note-in var(--dur-base) var(--ease-out) both,
-      lg-note-out var(--dur-slow) ease 3000ms forwards;
+      lg-note-out var(--dur-slow) ease 2200ms forwards;
+  }
+  .lg-note-long {
+    animation:
+      lg-note-in var(--dur-base) var(--ease-out) both,
+      lg-note-out var(--dur-slow) ease 5500ms forwards;
+  }
+  .lg-note-act {
+    flex: none;
+    margin-left: 4px;
+  }
+  .lg-notes[data-at="top"] {
+    bottom: auto;
   }
   .lg-note svg {
     flex: none;

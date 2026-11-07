@@ -327,6 +327,11 @@
   .lg-notes-lane > * {
     pointer-events: auto;
   }
+  /* Moved up while a note at the foot would cover what the person is working on (top is set from
+     the header's measured bottom). */
+  .lg-notes-lane[data-at="top"] {
+    bottom: auto;
+  }
 
   .lg-pagehead {
     display: flex;

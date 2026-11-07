@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { groupByPage, type Groupable } from "@/app/(app)/[workspaceId]/facts/fact-groups";
+import { groupByPage, verifyAllLabel, type Groupable } from "@/app/(app)/[workspaceId]/facts/fact-groups";
 
 const pdf = (id: string, pageNumber: number | null, fileName = "packet.pdf"): Groupable => ({ id, fromPdf: true, pageNumber, fileName });
 const hand = (id: string): Groupable => ({ id, fromPdf: false, pageNumber: null, fileName: null });
@@ -41,5 +41,16 @@ describe("groupByPage", () => {
 
   test("a deleted file is named as such when files are shown", () => {
     expect(shape(groupByPage([{ id: "a", fromPdf: true, pageNumber: 4, fileName: null }], true))).toEqual([["Page 4 of a deleted file", ["a"]]]);
+  });
+});
+
+describe("verifyAllLabel", () => {
+  test.each([
+    [1, 1, "Verify 1 with its quote found"],
+    [1, 3, "Verify 1 with its quote found"],
+    [4, 4, "Verify all 4"],
+    [2, 5, "Verify 2 with quotes found"],
+  ])("%i of %i waiting: %s", (quoted, waiting, label) => {
+    expect(verifyAllLabel(quoted, waiting)).toBe(label);
   });
 });

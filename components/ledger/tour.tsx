@@ -179,8 +179,8 @@ export function Tour(props: TourProps) {
   const aiList = useMemo(() => aiSteps({ role, aiConfigured, aiOn, mcpOn, empty }), [role, aiConfigured, aiOn, mcpOn, empty]);
   const aiCards = aiList.filter((s) => s.kind === "coach").length;
   const basicsList = useMemo(
-    () => basicsSteps({ role, empty, basicsRole: progress.basicsDone ? progress.basicsRole : null, claimWindowDays, aiCards }),
-    [role, empty, progress.basicsDone, progress.basicsRole, claimWindowDays, aiCards],
+    () => basicsSteps({ role, empty, basicsRole: progress.basicsDone ? progress.basicsRole : null, claimWindowDays, aiCards, aiConfigured }),
+    [role, empty, progress.basicsDone, progress.basicsRole, claimWindowDays, aiCards, aiConfigured],
   );
 
   const [run, setRun] = useState<Run | null>(() =>
@@ -711,6 +711,16 @@ export function Tour(props: TourProps) {
             </button>
             <button type="button" className="lg-btn lg-btn-sm lg-tour-quiet" onClick={run.tour === "ai" ? endAi : run.replay ? close : hide}>
               {run.tour === "ai" || run.replay ? "End tour" : "Hide"}
+            </button>
+          </>
+        ) : run.tour === "basics" && !progress.aiDone && !aiConfigured ? (
+          // AI isn't set up here: finishing is the main button, the AI tour an option.
+          <>
+            <button type="button" className="lg-btn lg-btn-sm lg-btn-primary" onClick={later}>
+              Done
+            </button>
+            <button type="button" className="lg-btn lg-btn-sm lg-tour-quiet" onClick={startAi}>
+              Take the AI tour
             </button>
           </>
         ) : run.tour === "basics" && !progress.aiDone ? (

@@ -28,3 +28,10 @@ export function groupByPage<T extends Groupable>(facts: T[], showFile: boolean):
   // Page order; the same page of two files keeps the order the files first appear in.
   return [...groups.values()].sort((a, b) => a.page - b.page || a.order - b.order).map(({ key, title, facts: list }) => ({ key, title, facts: list }));
 }
+
+// The bulk button's label, for `quoted` facts with their quote found out of `waiting`:
+// "Verify 1 with its quote found", "Verify all 4", "Verify 3 with quotes found".
+export function verifyAllLabel(quoted: number, waiting: number): string {
+  if (quoted === 1) return "Verify 1 with its quote found";
+  return quoted === waiting ? `Verify all ${quoted}` : `Verify ${quoted} with quotes found`;
+}

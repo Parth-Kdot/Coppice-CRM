@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { exitOffset, flightVector, hexToRgba, moveSpan, MOVE_LIMIT_S, ringShadow, shouldAnimate, TIMING } from "@/components/ledger/motion-kit";
+import { exitOffset, flightVector, hexToRgba, moveSpan, MOVE_LIMIT_S, ringShadow, shouldAnimate, TIMING, withinReach } from "@/components/ledger/motion-kit";
 
 describe("motion kit timing", () => {
   test.each(Object.entries(TIMING))("%s ends within the move limit", (_name, parts) => {
@@ -46,6 +46,21 @@ describe("flightVector", () => {
     { name: "reach clamped to 0", from: box(0, 0), to: box(100, 0), opts: { reach: -1 }, expected: { x: 0, y: 0 } },
   ])("$name", ({ from, to, opts, expected }) => {
     expect(flightVector(from, to, opts)).toEqual(expected);
+  });
+});
+
+describe("withinReach", () => {
+  const box = (left: number, top: number, width = 600, height = 40) => ({ left, top, width, height });
+  const viewport = { width: 1280, height: 860 };
+
+  test.each([
+    { name: "on screen, close by", from: box(140, 300), to: box(240, 500, 20, 20), expected: true },
+    { name: "below the fold", from: box(140, 300), to: box(240, 1200, 20, 20), expected: false },
+    { name: "above the top", from: box(140, 300), to: box(240, -200, 20, 20), expected: false },
+    { name: "off to the side (another board column)", from: box(16, 300, 340), to: box(1400, 300, 300), expected: false },
+    { name: "on screen but more than a viewport away", from: box(140, -900), to: box(240, 20, 20, 20), expected: false },
+  ])("$name", ({ from, to, expected }) => {
+    expect(withinReach(from, to, viewport)).toBe(expected);
   });
 });
 

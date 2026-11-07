@@ -8,6 +8,7 @@ import { focusSoon } from "@/components/ledger/focus";
 import { Tick } from "@/components/ledger/marks";
 import { completeStamp, removeAway } from "@/components/ledger/motion-kit";
 import { useNotify } from "@/components/ledger/providers";
+import { Count } from "@/components/ledger/shared";
 import { ShowMore } from "@/components/ledger/show-more";
 import { bulkAnswers, chosenOption, choiceEffects, groupOptions, groupOutcome, groupsLeft, kindOf, nameIn, type ReviewGroup } from "@/lib/import-review";
 import type { Quote } from "@/lib/smart-import";
@@ -129,6 +130,9 @@ function GroupCard({
   );
 }
 
+// How far into the old card's slide the next card takes its place.
+const SWAP_MS = 140;
+
 export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggested, choose, chooseMany, confirmed, confirm, reopen, current, setCurrent, doNotContact }: Props) {
   const notify = useNotify();
   const doneId = `${idPrefix}-groups-done`;
@@ -142,6 +146,8 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
   // Confirm while it slides away does nothing).
   const [risen, setRisen] = useState<string | null>(null);
   const leaving = useRef<string | null>(null);
+  // What the last Confirm decided, read out (the card's own change and the count say it on screen).
+  const [said, setSaid] = useState("");
 
   if (groups.length === 0) return null;
 
@@ -161,9 +167,12 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
     leaving.current = group.key;
     const rest = open.filter((g) => g.key !== group.key);
     const next = open[at + 1] ?? rest[0] ?? null;
-    notify(`${groupOutcome(group, skips)} ${groupsLeft(rest.length)}`);
-    // Only the screen waits on the slide: the choice itself is already in the skips.
-    await removeAway(document.getElementById(groupDomId(idPrefix, group.key)));
+    setSaid(`${groupOutcome(group, skips)} ${groupsLeft(rest.length)}`);
+    // Only the screen waits on the slide: the choice itself is already in the skips. The card only
+    // slides out; the next one rises into its place at once, so the review is never empty.
+    // It swaps once the card has mostly faded (the slide's ease is front-loaded), not after it.
+    const leavingCard = removeAway(document.getElementById(groupDomId(idPrefix, group.key)), { collapse: false });
+    await Promise.race([leavingCard, new Promise<void>((resolve) => window.setTimeout(resolve, SWAP_MS))]);
     leaving.current = null;
     confirm([group.key]);
     setCurrent(next?.key ?? null);
@@ -176,8 +185,12 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
   return (
     <section className="lg-groups" aria-labelledby={`${idPrefix}-dup-h`}>
       <h3 id={`${idPrefix}-dup-h`} className="lg-h3">
-        Possible duplicates <span className="lg-muted">{groups.length.toLocaleString("en-US")}</span>
+        Possible duplicates <Count value={open.length.toLocaleString("en-US")} className="lg-muted" />
+        <span className="lg-sr"> to decide</span>
       </h3>
+      <p className="lg-sr" role="status">
+        {said}
+      </p>
       {bulk.length > 0 && showBulk && (
         <div className="lg-bulkbar" role="group" aria-label="Decide many groups at once">
           {bulk.map((answer) => (
