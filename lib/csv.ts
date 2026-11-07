@@ -3,8 +3,8 @@ import Papa from "papaparse";
 import type { Prisma, Stage } from "@/generated/prisma/client";
 import type { ContactFields, CompanyFields } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
-import { domainKey, groupLookAlikes, lookalikePairs, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
-import { CONTAINED_WHY } from "@/lib/import-review";
+import { findContained, loadSavedNames, type NameLookalike } from "@/lib/csv-contained";
+import { domainKey, groupLookAlikes, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import {
   companyFieldsSchema,
   contactFieldsSchema,
@@ -160,43 +160,25 @@ async function findGroups(tx: Tx, workspaceId: string, rows: CheckedRow[]): Prom
     ...keyed.map((k) => ({ ...k, id: `row:${k.row}`, name: "", website: null, archivedAt: null })),
   ];
   // A group matters if it has a row from the file and something else: another row or a company.
+  // Its reasons are only the ones a row shares: two saved companies that share a website don't
+  // make a row's group "same website".
+  const viaRow = (members: typeof items, reason: MatchReason) => {
+    const keyOf = (m: (typeof items)[number]) => (reason === "name" ? m.nameKey : m.domainKey);
+    const count = new Map<string, number>();
+    for (const m of members) {
+      const key = keyOf(m);
+      if (key) count.set(key, (count.get(key) ?? 0) + 1);
+    }
+    return members.some((m) => m.row !== null && (count.get(keyOf(m) ?? "") ?? 0) > 1);
+  };
   return groupLookAlikes(items)
     .map((g) => ({
       rows: g.members.flatMap((m) => (m.row === null ? [] : [m.row])).sort((a, b) => a - b),
       existing: g.members.flatMap((m) => (m.row === null ? [{ id: m.id, name: m.name, website: m.website, archived: m.archivedAt !== null }] : [])),
-      matchedOn: g.matchedOn,
+      matchedOn: g.matchedOn.filter((reason) => viaRow(g.members, reason)),
     }))
     .filter((g) => g.rows.length > 0)
     .sort((a, b) => a.rows[0] - b.rows[0]);
-}
-
-// Names where one is inside the other ("Avum" and "Avum Space"), which the exact keys above miss:
-// rows of the file against each other and against companies already saved. Plain code, no AI
-// (lib/duplicates.ts lookalikePairs, the same check Smart import runs). Only shown for a person to
-// decide; nothing is skipped by default, and the import's checks don't depend on them.
-export type NameLookalike = { rows: { row: number; name: string; website: string | null }[]; existing: ExistingMatch[]; why: string };
-export const CONTAINED_SHOWN = 100;
-
-async function findContained(tx: Tx, workspaceId: string, rows: CheckedRow[]): Promise<NameLookalike[]> {
-  if (rows.length === 0) return [];
-  const companies = await tx.company.findMany({
-    where: { workspaceId },
-    select: { id: true, name: true, website: true, archivedAt: true, nameKey: true, domainKey: true },
-    orderBy: { createdAt: "asc" },
-  });
-  const items = [
-    ...rows.map((r) => ({ key: `r${r.row}`, name: r.company.name, isRow: true, nameKey: nameKey(r.company.name), domainKey: domainKey(r.company.website), row: r, company: null })),
-    ...companies.map((c) => ({ key: `c:${c.id}`, name: c.name, isRow: false, nameKey: c.nameKey, domainKey: c.domainKey, row: null, company: c })),
-  ];
-  return lookalikePairs(items, [], CONTAINED_SHOWN)
-    .map(({ members }) => ({
-      rows: members
-        .flatMap((m) => (m.row ? [{ row: m.row.row, name: m.row.company.name, website: m.row.company.website ?? null }] : []))
-        .sort((a, b) => a.row - b.row),
-      existing: members.flatMap((m) => (m.company ? [{ id: m.company.id, name: m.company.name, website: m.company.website, archived: m.company.archivedAt !== null }] : [])),
-      why: CONTAINED_WHY,
-    }))
-    .sort((a, b) => a.rows[0].row - b.rows[0].row);
 }
 
 // What the person sees before importing: suggested defaults are to skip rows that match a
@@ -205,6 +187,8 @@ async function findContained(tx: Tx, workspaceId: string, rows: CheckedRow[]): P
 function defaultSkips(groups: DuplicateGroup[]): number[] {
   return groups.flatMap((g) => (g.existing.length > 0 ? g.rows : g.rows.slice(1))).sort((a, b) => a - b);
 }
+
+export type { NameLookalike } from "@/lib/csv-contained";
 
 export type ImportPreview = {
   headers: string[];
@@ -237,10 +221,12 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
   if (!checked.ok) return checked;
 
   const valid = checked.data.filter((r) => r.errors.length === 0);
-  const { groups, contained } = await withTenant(tenant, async (tx) => ({
+  const { groups, saved } = await withTenant(tenant, async (tx) => ({
     groups: await findGroups(tx, tenant.workspaceId, valid),
-    contained: await findContained(tx, tenant.workspaceId, valid),
+    saved: valid.length > 0 ? await loadSavedNames(tx, tenant.workspaceId) : [],
   }));
+  // Compared after the transaction has closed: it is plain code over every saved name.
+  const contained = findContained(valid, saved);
   const grouped = new Set(groups.flatMap((g) => g.rows));
   return {
     ok: true,

@@ -216,6 +216,16 @@ describe("previewImport: names inside other names", () => {
     expect(preview.seen).toEqual([]);
   });
 
+  it("gives a group only the reasons a row of the file shares", async () => {
+    // Initech Inc shares Initech's website; the row (no website) only shares their name.
+    const inc = await createCompany(OWNER, { name: "Initech Inc", website: "initech.com" }, [initechId]);
+    if (inc.status !== "saved") throw new Error("seed");
+    const preview = ok(await previewImport(OWNER, "Name,Website\nInitech Co,\n", nameSite));
+    expect(preview.groups).toHaveLength(1);
+    expect(preview.groups[0].existing.map((c) => c.name).sort()).toEqual(["Initech", "Initech Inc"]);
+    expect(preview.groups[0].matchedOn).toEqual(["name"]);
+  });
+
   it("leaves pairs the exact check already groups to that check, and short names alone", async () => {
     const text = "Name,Website\nAcme,acme.com\nAcme Labs,acme.com\nIBM,\nIBM Research,\n";
     const preview = ok(await previewImport(OWNER, text, nameSite));

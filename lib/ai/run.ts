@@ -46,8 +46,8 @@ export async function aiUsage(tenant: Tenant): Promise<AiUsage> {
   return { enabled: workspace.aiEnabled, limit: workspace.aiMonthlyLimit, used };
 }
 
-// What the same 30-day count is made of, by feature, for Settings. One grouped query, scoped to
-// the workspace, counting failed calls too (they count toward the limit).
+// What the same 30-day count is made of, by feature. One grouped query, scoped to the workspace,
+// counting failed calls too (they count toward the limit).
 export async function aiBreakdown(tenant: Tenant): Promise<AiBreakdown> {
   const since = new Date((await dbNow()).getTime() - AI_WINDOW_DAYS * DAY_MS);
   const groups = await withTenant(tenant, (tx) =>
@@ -58,6 +58,16 @@ export async function aiBreakdown(tenant: Tenant): Promise<AiBreakdown> {
     }),
   );
   return breakdownAiUsage(groups.map((g) => ({ feature: g.feature, status: g.status, count: g._count._all })));
+}
+
+// For Settings: the switch, the limit, and the 30-day count with what it is made of. The count is
+// the breakdown's total, so the two numbers come from one query and can never disagree.
+export async function aiUsageDetail(tenant: Tenant): Promise<AiUsage & { breakdown: AiBreakdown }> {
+  const [workspace, breakdown] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { aiEnabled: true, aiMonthlyLimit: true } }),
+    aiBreakdown(tenant),
+  ]);
+  return { enabled: workspace.aiEnabled, limit: workspace.aiMonthlyLimit, used: breakdown.total, breakdown };
 }
 
 // Whether this person may make an AI call for this feature right now (steps 1 and 2 above).

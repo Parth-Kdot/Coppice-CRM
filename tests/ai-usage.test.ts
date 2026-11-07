@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { aiBreakdown } from "@/lib/ai/run";
+import { aiBreakdown, aiUsage, aiUsageDetail } from "@/lib/ai/run";
 import { breakdownAiUsage, describeAiFailures, describeAiUsage } from "@/lib/ai/usage";
 import { dbNow } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
@@ -19,7 +19,8 @@ describe("breakdownAiUsage (pure)", () => {
       { feature: "IMPORT_ROWS", status: "FAILED", count: 1 },
       { feature: "FACT_EXTRACTION", status: "SUCCEEDED", count: 2 },
     ]);
-    expect(describeAiUsage(b)).toBe("4 drafts, 4 claim checks, 3 Smart import calls, 2 fact sheet reads.");
+    expect(describeAiUsage(b)).toBe("4 draft calls, 4 claim checks, 3 Smart import calls, 2 fact sheet reads.");
+    expect(b.total).toBe(13);
     expect(b.failed).toBe(1);
   });
 
@@ -29,7 +30,7 @@ describe("breakdownAiUsage (pure)", () => {
       { feature: "DRAFT", status: "FAILED", count: 1 },
       { feature: "FACT_EXTRACTION", status: "SUCCEEDED", count: 1 },
     ]);
-    expect(describeAiUsage(b)).toBe("2 drafts, 1 fact sheet read.");
+    expect(describeAiUsage(b)).toBe("2 draft calls, 1 fact sheet read.");
     expect(b.parts.map((p) => p.count)).toEqual([2, 1]);
   });
 
@@ -68,8 +69,13 @@ describe("aiBreakdown (database)", () => {
     await add(A, "DRAFT", "SUCCEEDED", 5, 31);
     await add(B, "DRAFT", "SUCCEEDED", 9);
     const b = await aiBreakdown(A);
-    expect(describeAiUsage(b)).toBe("3 drafts, 3 claim checks, 1 Smart import call.");
+    expect(describeAiUsage(b)).toBe("3 draft calls, 3 claim checks, 1 Smart import call.");
     expect(b.failed).toBe(1);
-    expect(describeAiUsage(await aiBreakdown(B))).toBe("9 drafts.");
+    expect(describeAiUsage(await aiBreakdown(B))).toBe("9 draft calls.");
+    // Settings' count is the breakdown's total: the same number aiUsage counts.
+    const detail = await aiUsageDetail(A);
+    expect(detail.used).toBe(7);
+    expect(detail.used).toBe((await aiUsage(A)).used);
+    expect(detail.breakdown.parts.map((p) => p.count)).toEqual([3, 3, 1]);
   });
 });

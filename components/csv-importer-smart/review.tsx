@@ -1,16 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { ImportChoice } from "@/components/csv-importer-choice";
 import { WarningIcon } from "@/components/ledger/icons";
 import { useNotify } from "@/components/ledger/providers";
-import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import type { ImportPreview } from "@/lib/csv";
 import type { Quote, RowProposal, SmartStart } from "@/lib/smart-import";
 import { futureHint } from "@/lib/smart-import/dates";
-import { STAGE_LABELS } from "@/lib/stages";
-import { SMART_NOTE_MAX, SMART_STAGES } from "@/lib/validation";
-import { hasReading, readingMatches, type RowEdits, type SmartState } from "./use-smart-import";
+import { Readings, Source } from "./readings";
+import { hasReading, readingMatches, type SmartState } from "./use-smart-import";
 import "@/components/ledger/smart-import.css";
 
 // Step 3 of the importer with Smart import on: what was read, one card per row, each reading with
@@ -20,49 +17,6 @@ import "@/components/ledger/smart-import.css";
 
 // Where a row's import choice is decided, when it is in a duplicate group.
 export type GroupRef = { index: number; jump: () => void };
-
-function Source({ quotes }: { quotes: Quote[] }) {
-  return (
-    <p className="lg-smart-src">
-      {quotes.map((q, i) => (
-        <span key={i}>
-          {i > 0 && " "}From {q.header}: <q className="lg-quote">{q.quote}</q>
-        </span>
-      ))}
-    </p>
-  );
-}
-
-const QUESTIONS: Record<string, string> = {
-  Stage: "Use this stage?",
-  "Last contacted": "Use this date?",
-  "Follow up": "Use this date?",
-  Contact: "Use this contact?",
-  "Add to notes": "Add this line?",
-};
-
-function Item({ label, row, kept, onKeep, quotes, children }: { label: string; row: number; kept: boolean; onKeep: (keep: boolean) => void; quotes: Quote[]; children: ReactNode }) {
-  return (
-    <div className="lg-smart-item" data-dropped={!kept || undefined}>
-      <p className="lg-tag">{label}</p>
-      <div className="lg-smart-ctl">
-        {children}
-        <Source quotes={quotes} />
-      </div>
-      <ImportChoice
-        className="lg-smart-choice"
-        question={QUESTIONS[label] ?? "Use it?"}
-        value={kept ? "use" : "leave"}
-        onChange={(value) => onKeep(value === "use")}
-        caption={kept ? "Used when you import." : "Left out of the import."}
-        options={[
-          { value: "use", label: "Use", ariaLabel: `Use ${label.toLowerCase()} for row ${row}` },
-          { value: "leave", label: "Leave out", ariaLabel: `Leave out ${label.toLowerCase()} for row ${row}` },
-        ]}
-      />
-    </div>
-  );
-}
 
 function DoNotContact({ smart, row, quote }: { smart: SmartState; row: number; quote: Quote }) {
   const skipped = smart.skipsHas(row);
@@ -88,100 +42,6 @@ function DoNotContact({ smart, row, quote }: { smart: SmartState; row: number; q
         ]}
       />
     </div>
-  );
-}
-
-function DateItem({ label, row, kept, value, quote, onKeep, onChange }: { label: string; row: number; kept: boolean; value: string; quote: Quote; onKeep: (keep: boolean) => void; onChange: (value: string) => void }) {
-  return (
-    <Item label={label} row={row} kept={kept} onKeep={onKeep} quotes={[quote]}>
-      <input type="date" className="lg-input lg-smart-date" aria-label={`${label}, row ${row}`} value={value} onChange={(ev) => onChange(ev.target.value)} />
-    </Item>
-  );
-}
-
-// The readings of one row. Each edit keeps the reading; Drop leaves it out of the import.
-function Readings({ smart, row, p, e }: { smart: SmartState; row: number; p: RowProposal; e: RowEdits }) {
-  const edit = (change: Partial<RowEdits>) => smart.edit(row, change);
-  return (
-    <>
-      {p.stage && e.stage && (
-        <Item label="Stage" row={row} kept={e.stage.keep} onKeep={(keep) => edit({ stage: { ...e.stage!, keep } })} quotes={[p.stage]}>
-          <LedgerMenu
-            hideLabel
-            label={`Stage for row ${row}`}
-            value={e.stage.value}
-            options={SMART_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }))}
-            onChange={(value) => edit({ stage: { keep: true, value } })}
-          />
-        </Item>
-      )}
-      {p.lastContactedOn && e.last && (
-        <DateItem
-          label="Last contacted"
-          row={row}
-          kept={e.last.keep}
-          value={e.last.value}
-          quote={p.lastContactedOn}
-          onKeep={(keep) => edit({ last: { ...e.last!, keep } })}
-          onChange={(value) => edit({ last: { keep: true, value } })}
-        />
-      )}
-      {p.followUpOn && e.follow && (
-        <DateItem
-          label="Follow up"
-          row={row}
-          kept={e.follow.keep}
-          value={e.follow.value}
-          quote={p.followUpOn}
-          onKeep={(keep) => edit({ follow: { ...e.follow!, keep } })}
-          onChange={(value) => edit({ follow: { keep: true, value } })}
-        />
-      )}
-      {p.contact && e.contact && (
-        <Item label="Contact" row={row} kept={e.contact.keep} onKeep={(keep) => edit({ contact: { ...e.contact!, keep } })} quotes={[p.contact]}>
-          <div className="lg-smart-pair">
-            <input
-              className="lg-input"
-              aria-label={`Contact name, row ${row}`}
-              value={e.contact.value.name}
-              maxLength={120}
-              onChange={(ev) => edit({ contact: { keep: true, value: { ...e.contact!.value, name: ev.target.value } } })}
-            />
-            <input
-              className="lg-input"
-              aria-label={`Contact title, row ${row}`}
-              placeholder="Title"
-              value={e.contact.value.title}
-              maxLength={120}
-              onChange={(ev) => edit({ contact: { keep: true, value: { ...e.contact!.value, title: ev.target.value } } })}
-            />
-          </div>
-        </Item>
-      )}
-      {p.note && e.note && (
-        <Item label="Add to notes" row={row} kept={e.note.keep} onKeep={(keep) => edit({ note: { ...e.note!, keep } })} quotes={p.note.quotes}>
-          <textarea
-            className="lg-textarea lg-smart-note"
-            aria-label={`Line added to the notes, row ${row}`}
-            value={e.note.value}
-            maxLength={SMART_NOTE_MAX}
-            onChange={(ev) => edit({ note: { keep: true, value: ev.target.value } })}
-          />
-        </Item>
-      )}
-      {p.dropped.length > 0 && (
-        <details className="lg-smart-dropped">
-          <summary>
-            {p.dropped.length} {p.dropped.length === 1 ? "reading" : "readings"} Coppice couldn&apos;t verify
-          </summary>
-          <ul>
-            {p.dropped.map((d, i) => (
-              <li key={i}>{d}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </>
   );
 }
 
@@ -235,7 +95,8 @@ function RowCard({
         (skipped ? (
           <div className="lg-smart-skipped">
             <p>This row won&apos;t be imported, so what was read from it isn&apos;t used.</p>
-            {!dnc && (
+            {/* In a group, the group is where it is imported or skipped; for a do-not-contact row, the line above. */}
+            {!dnc && !group && (
               <button
                 type="button"
                 className="lg-btn lg-btn-sm"
@@ -260,12 +121,15 @@ export function SmartReview({
   view,
   groupOf,
   choose,
+  onYear,
 }: {
   smart: SmartState;
   view: ImportPreview;
   // The duplicate group each row is in, if any.
   groupOf: (row: number) => GroupRef | undefined;
   choose: (row: number, skip: boolean) => void;
+  // Goes to the board year menu in step 2, from the hint that the sheet may be from the year before.
+  onYear: () => void;
 }) {
   if (!readingMatches(smart, view.mapping)) return null;
   const session = smart.session as SmartStart;
@@ -277,6 +141,7 @@ export function SmartReview({
     .sort((a, b) => a - b);
   const dropped = smart.proposals.reduce((n, p) => n + p.dropped.length, 0);
   const nothing = smart.proposals.filter((p) => !hasReading(p)).length;
+  const hint = futureHint(smart.proposals, session.cycleStart);
 
   return (
     <div className="lg-groups">
@@ -287,9 +152,24 @@ export function SmartReview({
           : `${rows.length} ${rows.length === 1 ? "row has" : "rows have"} something to review. Every reading starts as Use and is applied when you import: leave out or change any that are wrong.`}
         {nothing > 0 && ` ${nothing} ${nothing === 1 ? "row" : "rows"} said nothing Coppice could check.`}
         {dropped > 0 && ` ${dropped} ${dropped === 1 ? "reading" : "readings"} Coppice couldn't verify ${dropped === 1 ? "is" : "are"} listed under ${dropped === 1 ? "its row" : "their rows"} and won't be imported.`}{" "}
-        {futureHint(smart.proposals, session.cycleStart)} Coppice never imports Committed or Declined, and never logs outreach or claims a
-        company.
+        Coppice never imports Committed or Declined, and never logs outreach or claims a company.
       </p>
+      {hint && (
+        <p className="lg-smart-yearhint" role="note">
+          <WarningIcon size={14} className="mr-1 inline-block align-[-2px]" />
+          {hint}{" "}
+          <a
+            href="#"
+            className="lg-link"
+            onClick={(event) => {
+              event.preventDefault();
+              onYear();
+            }}
+          >
+            Change the sheet&apos;s year
+          </a>
+        </p>
+      )}
       {rows.map((row) => {
         const p = byRow.get(row);
         const dnc = p?.doNotContact ?? session.doNotContact.find((d) => d.row === row) ?? null;

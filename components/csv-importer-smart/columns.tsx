@@ -42,7 +42,7 @@ function FreeTextColumns({ smart, view }: { smart: SmartState; view: ImportPrevi
 function BoardYear({ smart, actions }: { smart: SmartState; actions: SmartActions }) {
   const { options } = actions;
   return (
-    <div className="lg-smart-year">
+    <div className="lg-smart-year" id="smart-year">
       <p className="lg-maplabel" aria-hidden="true">
         The sheet is from
       </p>
@@ -96,8 +96,11 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
           </p>
           {smart.mappingNote && (
             <div className="lg-smart-mapnote" role="status">
-              <p>{smart.mappingNote.changes.join(". ")}.</p>
-              <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={smart.undoMapping}>
+              <p>
+                {smart.mappingNote.changes.join(". ")}.
+                {smart.mappingNote.why && ` ${smart.mappingNote.why}`}
+              </p>
+              <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={() => smart.undoMapping(view.mapping)}>
                 Undo
               </button>
             </div>

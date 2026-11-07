@@ -2,11 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ImportChoice } from "@/components/csv-importer-choice";
-import { ExternalIcon, WarningIcon } from "@/components/ledger/icons";
+import { ExistingCard, RowCard } from "@/components/csv-importer-dupcards";
 import { Tick } from "@/components/ledger/marks";
 import { ExitCollapse, reducedMotion } from "@/components/ledger/motion";
 import { useNotify } from "@/components/ledger/providers";
-import type { ExistingMatch } from "@/lib/csv";
 import { chosenOption, choiceEffects, groupCaption, groupOptions, groupOutcome, groupsLeft, kindOf, nameIn, type ReviewGroup } from "@/lib/import-review";
 import type { Quote } from "@/lib/smart-import";
 
@@ -34,80 +33,6 @@ type Props = {
 
 export const groupDomId = (idPrefix: string, key: string) => `${idPrefix}-grp-${key}`;
 const headingId = (idPrefix: string, key: string) => `${groupDomId(idPrefix, key)}-h`;
-
-function ExistingCard({ workspaceId, company }: { workspaceId: string; company: ExistingMatch }) {
-  return (
-    <div className="lg-dupcard lg-dupcard-have">
-      <p className="lg-tag lg-muted">Already in Coppice</p>
-      <p className="lg-dupname">
-        <a href={`/${workspaceId}/companies/${company.id}`} target="_blank" rel="noopener noreferrer" className="lg-link">
-          {company.name}
-          <ExternalIcon size={13} className="ml-1 inline-block align-[-1px]" aria-hidden="true" />
-          <span className="lg-sr"> (opens in a new tab)</span>
-        </a>
-      </p>
-      <p className="lg-dupsite">
-        {company.website || "No website"}
-        {company.archived && <span className="lg-badge lg-badge-stale ml-2">archived</span>}
-      </p>
-    </div>
-  );
-}
-
-function DoNotContactLine({ quote }: { quote: Quote }) {
-  return (
-    <p className="lg-dupdnc">
-      <WarningIcon size={14} className="mr-1 inline-block align-[-2px]" />
-      The sheet says not to contact them: <q className="lg-quote">{quote.quote}</q>. Importing it means you accept that.
-    </p>
-  );
-}
-
-function RowCard({
-  group,
-  entry,
-  skipped,
-  choose,
-  dnc,
-  withSwitch,
-}: {
-  group: ReviewGroup;
-  entry: ReviewGroup["rows"][number];
-  skipped: boolean;
-  choose: (row: number, skip: boolean) => void;
-  dnc: Quote | undefined;
-  withSwitch: boolean;
-}) {
-  const { row } = entry;
-  return (
-    <div className="lg-dupcard" data-skipped={skipped || undefined}>
-      <p className="lg-dupcard-top">
-        <span className="lg-tag lg-muted">In your file, row {row}</span>
-        <span className="lg-dupstate" data-on={!skipped || undefined}>
-          {skipped ? "Will skip" : "Will import"}
-        </span>
-      </p>
-      <p className="lg-dupname">
-        <span className="lg-nametext">{nameIn(group, row)}</span>
-      </p>
-      <p className="lg-dupsite">{entry.website || "No website"}</p>
-      {dnc && <DoNotContactLine quote={dnc} />}
-      {withSwitch && (
-        <ImportChoice
-          className="lg-dupchoice"
-          question="Import this row?"
-          value={skipped ? "skip" : "import"}
-          onChange={(value) => choose(row, value === "skip")}
-          caption={skipped ? "Not imported." : "Added as a new company."}
-          options={[
-            { value: "import", label: "Will import", ariaLabel: `Import row ${row}` },
-            { value: "skip", label: "Will skip", ariaLabel: `Skip row ${row}` },
-          ]}
-        />
-      )}
-    </div>
-  );
-}
 
 function GroupCard({
   idPrefix,
@@ -158,7 +83,11 @@ function GroupCard({
           options={options.map((o) => ({ value: o.value, label: o.label, suggested: o.value === suggestedValue }))}
         />
       )}
-      {kind === "rows" && <p className="lg-hint mt-3">Choose for each row. {groupCaption(group, skips)}</p>}
+      {kind === "rows" && (
+        <p className="lg-hint mt-3">
+          {group.rows.length === 1 ? "Choose for this row." : "Choose for each row."} {groupCaption(group, skips)}
+        </p>
+      )}
       <div className="lg-group-foot">
         <button type="button" className="lg-btn lg-btn-primary" onClick={onConfirm}>
           Confirm
@@ -185,6 +114,18 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
     if (entering) document.getElementById(headingId(idPrefix, entering))?.focus();
   }, [entering, idPrefix]);
 
+  // When the last open group has left, the done line takes focus, once it is on the page.
+  const focusDone = useRef(false);
+  const openCount = pending.length;
+  useEffect(() => {
+    if (openCount > 0 || !focusDone.current) return;
+    focusDone.current = false;
+    const el = document.getElementById(doneId);
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+  }, [openCount, doneId]);
+
   if (groups.length === 0) return null;
 
   const onConfirm = (group: ReviewGroup) => {
@@ -205,14 +146,19 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
       nextSet.delete(key);
       return nextSet;
     });
-    confirm(key);
     const target = focusNext.current;
     focusNext.current = null;
+    if (target === doneId) focusDone.current = true;
+    confirm(key);
+    if (!target || target === doneId) return;
     window.requestAnimationFrame(() => {
-      const el = target ? document.getElementById(target) : null;
+      const el = document.getElementById(target);
       if (!el) return;
       if (document.activeElement !== el) el.focus({ preventScroll: true });
-      el.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+      // The whole group, "Group i of N" included, comes into view under the sticky summary (its
+      // scroll-margin is the bar's height), not just its heading.
+      // "start", since a group taller than the screen with its top above it isn't moved by "nearest".
+      (el.closest(".lg-dupgroup") ?? el).scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
     });
   };
 

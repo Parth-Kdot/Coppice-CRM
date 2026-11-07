@@ -136,6 +136,8 @@ describe("quotes, dates and do-not-contact (code checks)", () => {
     ["March 2nd, 2026", { month: 3, day: 2, year: 2026 }],
     ["reach out in Aug", { month: 8, day: null, year: null }],
     ["Sept 2027", { month: 9, day: null, year: 2027 }],
+    // Read as written; placing it says that 2027 has no Feb 29.
+    ["2/29/2027", { month: 2, day: 29, year: 2027 }],
     ["may reach out in Aug", { month: 8, day: null, year: null }],
     // Ambiguous or not a date at all: dropped, not guessed.
     ["emailed 3/2, again 4/5", null],
@@ -394,13 +396,24 @@ describe("year boundaries, Feb 29 and the two-year window", () => {
     ["Jun 30 on the last day of the board year is today", "6/30", 2025, "2026-06-30", "2026-06-30"],
     ["Feb 29 in a leap spring that has passed", "2/29", 2027, "2028-03-05", "2028-02-29"],
     ["Mar 1 right after a leap day", "3/1", 2027, "2028-03-05", "2028-03-01"],
+    // The board year's spring (2029) has no Feb 29: the most recent one not after today is used.
+    ["Feb 29 in a board year without one, the last one in the autumn after it", "2/29", 2028, "2028-11-07", "2028-02-29"],
+    ["Feb 29 in a board year without one, the last one in the spring after it", "2/29", 2028, "2029-04-01", "2028-02-29"],
   ] as const)("last contacted: %s", ([, text, cycleStart, today, expected]) => {
     expect(readDates(text, null, cycleStart, today).lastContactedOn?.date).toBe(expected);
+  });
+
+  it("doesn't count a Feb 29 moved past a year without one as a future date", () => {
+    // 2029's spring has no Feb 29, so the last one (2028) is used: nothing was in the future.
+    expect(readDates("2/29", null, 2028, "2028-11-07").future).toBeFalsy();
+    // Dec 31 at the board year's start really would be in the future, so it counts.
+    expect(readDates("12/31", null, 2026, "2026-07-02").future).toBe(true);
   });
 
   test.for([
     ["Feb 29 that would be in the future has no earlier leap day", "2/29", 2027, "2027-10-01", 'Last contacted: Feb 29, 2028 would be in the future'],
     ["Feb 29 in a board year with no leap day", "2/29", 2026, "2026-11-07", 'Last contacted: "2/29" isn\'t a real day in 2027'],
+    ["a written Feb 29 in a year without one", "2/29/2027", 2026, "2026-11-07", 'Last contacted: "2/29/2027" isn\'t a real day in 2027'],
   ] as const)("last contacted drop: %s", ([, text, cycleStart, today, message]) => {
     const p = readDates(text, null, cycleStart, today);
     expect(p.lastContactedOn).toBeNull();
@@ -423,6 +436,13 @@ describe("year boundaries, Feb 29 and the two-year window", () => {
     expect(p.followUpOn).toBeNull();
     expect(p.dropped).toHaveLength(1);
     expect(p.dropped[0]).toMatch(/^Follow-up: /);
+    expect(p.dropped).toEqual(["Follow-up: Feb 29, 2032 isn't within a year of today"]);
+  });
+
+  it("says a written follow-up day doesn't exist in its year, instead of calling it unclear", () => {
+    const p = readDates(null, "2/29/2027", 2026, "2026-11-07");
+    expect(p.followUpOn).toBeNull();
+    expect(p.dropped).toEqual(['Follow-up: "2/29/2027" isn\'t a real day in 2027']);
   });
 });
 

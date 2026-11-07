@@ -53,7 +53,9 @@ export function mergeGroups(sources: ReviewSource[]): ReviewGroup[] {
     .map((g) => {
       const rows = [...g.rows.values()].sort((a, b) => a.row - b.row);
       const existing = [...g.existing.values()];
-      const key = `r${rows.map((r) => r.row).join("-")}${existing.length ? `_c${existing.map((c) => c.id).join("-")}` : ""}`;
+      // Sorted, so the same members always make the same key whatever order the sources came in.
+      const ids = existing.map((c) => c.id).sort();
+      const key = `r${rows.map((r) => r.row).join("-")}${ids.length ? `_c${ids.join("-")}` : ""}`;
       return { key, reasons: g.reasons, existing, rows };
     })
     .filter((g) => g.rows.length + g.existing.length > 1)
@@ -124,9 +126,11 @@ export function groupCaption(group: ReviewGroup, skips: ReadonlySet<number>): st
   const kind = kindOf(group);
   const imported = group.rows.filter((r) => !skips.has(r.row)).map((r) => nameIn(group, r.row));
   const skipped = group.rows.filter((r) => skips.has(r.row)).map((r) => nameIn(group, r.row));
-  if (kind === "existing") {
-    const have = group.existing[0].name;
-    return skipped.length ? `Nothing is added. ${have} stays as it is.` : `${imported[0]} is added as its own company, next to ${have}.`;
+  // One row and the saved companies it looks like (one for the "existing" kind, or more).
+  if (kind === "existing" || group.rows.length === 1) {
+    const have = list(group.existing.map((c) => c.name));
+    const one = group.existing.length === 1;
+    return skipped.length ? `Nothing is added. ${have} ${one ? "stays as it is" : "stay as they are"}.` : `${imported[0]} is added as its own company, next to ${have}.`;
   }
   if (skipped.length === 0) return group.rows.length === 2 ? "Both are imported as separate companies." : "All of them are imported as separate companies.";
   if (imported.length === 0) return group.rows.length === 2 ? "Neither is imported." : "None of them is imported.";
@@ -153,10 +157,16 @@ export const groupsLeft = (n: number) => (n === 0 ? "That was the last group." :
 export function unconfirmedNote(groups: ReviewGroup[], confirmed: ReadonlySet<string>, skips: ReadonlySet<number>, suggested: ReadonlySet<number>): string | null {
   const open = groups.filter((g) => !confirmed.has(g.key));
   if (open.length === 0) return null;
-  const changed = open.some((g) => g.rows.some((r) => skips.has(r.row) !== suggested.has(r.row)));
+  const changed = openChanged(groups, confirmed, skips, suggested);
   const n = open.length;
   const groupsWord = `${n} ${n === 1 ? "group" : "groups"}`;
   return changed ? `${groupsWord} not confirmed yet ${n === 1 ? "uses" : "use"} the choice shown in ${n === 1 ? "it" : "them"}.` : `${groupsWord} not reviewed yet ${n === 1 ? "uses its" : "use their"} suggested choice.`;
+}
+
+// Whether any group not confirmed yet shows a choice other than its suggested one, so the summary's
+// button can't say it imports "suggested choices" when it doesn't.
+export function openChanged(groups: ReviewGroup[], confirmed: ReadonlySet<string>, skips: ReadonlySet<number>, suggested: ReadonlySet<number>): boolean {
+  return groups.some((g) => !confirmed.has(g.key) && g.rows.some((r) => skips.has(r.row) !== suggested.has(r.row)));
 }
 
 // Which fields a new mapping changed, as sentences: "Smart import set Notes to "Status notes"".
@@ -171,4 +181,19 @@ const FIELD_NAMES: Record<ImportField, string> = {
 export function mappingChanges(before: ImportMapping, after: ImportMapping, headers: string[]): string[] {
   const column = (index: number | null) => (index === null ? "Not in this file" : headers[index]?.trim() || `Column ${index + 1}`);
   return IMPORT_FIELDS.filter((f) => before[f] !== after[f]).map((f) => `Smart import set ${FIELD_NAMES[f]} to "${column(after[f])}"`);
+}
+
+// Undoing what Smart import changed in the columns, without touching what the person changed by
+// hand since: a field goes back only if it still holds the column Smart import gave it, and only
+// if its old column isn't now used by another field (a column used twice is refused).
+export function revertSmartMapping(current: ImportMapping, before: ImportMapping, after: ImportMapping): ImportMapping {
+  // Indexed by field below; the name field is never null in any of the three, so none becomes null.
+  const next: Record<(typeof IMPORT_FIELDS)[number], number | null> = { ...current };
+  for (const f of IMPORT_FIELDS) {
+    if (before[f] === after[f] || current[f] !== after[f]) continue;
+    const old = before[f];
+    const taken = old !== null && IMPORT_FIELDS.some((g) => g !== f && next[g] === old);
+    if (!taken) next[f] = old;
+  }
+  return next as ImportMapping;
 }

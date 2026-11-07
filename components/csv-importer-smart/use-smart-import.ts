@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ImportResult } from "@/lib/csv";
-import { mappingChanges } from "@/lib/import-review";
+import { mappingChanges, revertSmartMapping } from "@/lib/import-review";
 import type { ColumnSuggestion, RowProposal, SmartChunk, SmartChunkResult, SmartOptions, SmartStart } from "@/lib/smart-import";
 import { SMART_STAGES, type ActionResult, type ImportMapping, type SmartDecision } from "@/lib/validation";
 
@@ -121,7 +121,7 @@ export function useSmartImport({
   const [freeText, setFreeText] = useState<number[]>([]);
   const [cycle, setCycle] = useState(actions?.options.current ?? 0);
   // What turning Smart import on changed in the columns, and the columns before, for Undo.
-  const [mappingNote, setMappingNote] = useState<{ changes: string[]; before: ImportMapping } | null>(null);
+  const [mappingNote, setMappingNote] = useState<{ changes: string[]; why: string | null; before: ImportMapping; after: ImportMapping } | null>(null);
   const reading = useReading();
   const { session, clearReading } = reading;
 
@@ -145,12 +145,15 @@ export function useSmartImport({
   };
 
   // Turning it on asks for column suggestions and applies them, and says what changed; the person
-  // can undo that or change any column.
+  // can undo that or change any column. Turning it off puts back the columns it changed, so the
+  // normal import never loses a column (Notes) to a setting it no longer shows.
   const turn = async (value: boolean, current: { mapping: ImportMapping; headers: string[] }) => {
+    const restore = !value && mappingNote ? revertSmartMapping(current.mapping, mappingNote.before, mappingNote.after) : null;
     setOn(value);
     setError(null);
     setMappingNote(null);
     discardReading();
+    if (restore && JSON.stringify(restore) !== JSON.stringify(current.mapping)) applyMapping(restore);
     const form = value && actions?.options.groq ? send({}) : null;
     if (!actions || !form) return;
     setBusy(true);
@@ -161,14 +164,20 @@ export function useSmartImport({
     setNote(res.data.note);
     const changes = mappingChanges(current.mapping, res.data.mapping, current.headers);
     if (changes.length > 0) {
-      setMappingNote({ changes, before: current.mapping });
+      const notes = current.mapping.notes;
+      // Notes taken off its column because Smart import reads that column instead.
+      const why =
+        notes !== null && res.data.mapping.notes === null && res.data.freeText.includes(notes)
+          ? `It reads "${current.headers[notes]?.trim() || `Column ${notes + 1}`}" with AI instead and proposes a line for each company's notes from it, which you can use, change or leave out. Undo keeps the column as plain notes.`
+          : null;
+      setMappingNote({ changes, why, before: current.mapping, after: res.data.mapping });
       applyMapping(res.data.mapping);
     }
   };
-  const undoMapping = () => {
+  const undoMapping = (current: ImportMapping) => {
     if (!mappingNote) return;
     discardReading();
-    applyMapping(mappingNote.before);
+    applyMapping(revertSmartMapping(current, mappingNote.before, mappingNote.after));
     setMappingNote(null);
   };
 

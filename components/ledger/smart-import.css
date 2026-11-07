@@ -122,6 +122,19 @@
   .lg-smart-date {
     max-width: 200px;
   }
+  /* Under a date that code moved to the year before. */
+  .lg-smart-moved {
+    margin-top: 4px;
+    font-size: var(--fs-1);
+  }
+  /* "Is the sheet from 2025-26?" on its own line, with the way to change it. */
+  .lg-smart-yearhint {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-left: 3px solid var(--rust);
+    background: var(--paper-2);
+    font-size: var(--fs-1);
+  }
   .lg-smart-pair {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

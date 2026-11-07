@@ -2,7 +2,7 @@ import { z } from "zod";
 import { matchKey } from "@/lib/ai/text";
 import { addDays } from "@/lib/dates";
 import { contactFieldsSchema, SMART_NOTE_MAX } from "@/lib/validation";
-import { boardYearOf, longDay, parseDateText, placeFollowUp, placeLastContacted, resolveDate, yearLabel, type Placed } from "./dates";
+import { boardYearOf, daysIn, longDay, parseDateText, placeFollowUp, placeLastContacted, resolveDate, yearLabel, type Placed } from "./dates";
 
 // What Smart import accepts from the AI's reading of free-text cells (lib/smart-import/). The
 // model is never trusted: every quote must really be in the cell it names (spacing and smart quotes
@@ -102,7 +102,9 @@ function dateFrom(proposal: RowProposal, q: Quote | null, what: string, cycleSta
   const parts = parseDateText(q.quote);
   const date = parts && resolveDate(parts, cycleStart, opts);
   if (!date) {
-    proposal.dropped.push(`${what}: "${q.quote}" isn't one clear date`);
+    const year = parts && parts.day !== null ? (parts.year ?? (parts.month >= 7 ? cycleStart : cycleStart + 1)) : null;
+    const noDay = parts && parts.day !== null && year !== null && parts.day > daysIn(year, parts.month);
+    proposal.dropped.push(noDay ? `${what}: "${q.quote}" isn't a real day in ${year}` : `${what}: "${q.quote}" isn't one clear date`);
     return null;
   }
   return { date, quote: q };

@@ -7,8 +7,9 @@ import { replayAck } from "@/components/ledger/motion";
 // A choice in the importer's review, drawn as one joined switch (two options side by side) or a
 // short list (a group's answers), on ChipGroup's real radio inputs. It reads as a state, not as
 // buttons: a visible question above, a check on the chosen side, and one line under it saying
-// what will happen. A checked radio sends no change when clicked again, so that click is caught
-// here and answered: the chosen side settles and "Already set" is shown and read out.
+// what will happen. A checked radio sends no change when clicked again (or on Space), so that
+// click or key is caught here and answered: the chosen side settles and "Already set" is shown
+// and read out.
 
 export type ImportChoiceOption<T extends string> = { value: T; label: string; ariaLabel?: string; suggested?: boolean };
 
@@ -62,6 +63,12 @@ export function ImportChoice<T extends string>({
           ),
           onClick: (event) => {
             if (o.value === value) acknowledge(event.currentTarget.nextElementSibling);
+          },
+          // Space (or Enter) on the chosen side sends no click either: answered the same way.
+          onKeyDown: (event) => {
+            if (o.value !== value || (event.key !== " " && event.key !== "Enter")) return;
+            event.preventDefault();
+            acknowledge(event.currentTarget.nextElementSibling);
           },
         }))}
       />

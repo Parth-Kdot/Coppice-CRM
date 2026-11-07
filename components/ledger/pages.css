@@ -285,10 +285,11 @@
     font-weight: 600;
     overflow-wrap: anywhere;
   }
+  /* A website breaks after its dots and slashes (<wbr> from the review), not mid-word. */
   .lg-dupsite {
     margin-bottom: 8px;
     color: var(--ink-2);
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .lg-dupcard[data-skipped] .lg-nametext {
     color: var(--ink-2);
@@ -781,6 +782,28 @@
     color: var(--ink-2);
     font-size: var(--fs-1);
   }
+  /* An import refused by the server: one line in the bar that leads to the reason in step 4. */
+  .lg-importbar-err {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    flex-basis: 100%;
+    color: var(--rust);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-importbar-err svg {
+    flex: none;
+  }
+  /* What the review scrolls to sits just under the bar, never behind it. */
+  .lg-importerr,
+  .lg-groups-done {
+    scroll-margin-top: calc(var(--importbar-top) + var(--importbar-room));
+  }
+  .lg-importerr:focus-visible {
+    outline-offset: 3px;
+  }
 
   /* A choice: real radios drawn as one joined switch, or as a short list of answers. The chosen
      side is the moss fill with a check; the others are flat paper with an empty ring, so it reads
@@ -891,6 +914,21 @@
     font-weight: 500;
     opacity: 0.85;
     white-space: nowrap;
+  }
+  /* Too narrow to keep "Suggested" beside a long answer: it goes on its own line under it. */
+  @container (max-width: 420px) {
+    .lg-seg-list .lg-chipx > span {
+      flex-wrap: wrap;
+      row-gap: 0;
+    }
+    .lg-seg-list .lg-chipx span.lg-seg-text {
+      flex: 1 1 0;
+    }
+    .lg-seg-list .lg-chipx span.lg-seg-sugg {
+      flex-basis: 100%;
+      margin-left: 0;
+      padding-left: 21px;
+    }
   }
   /* A list: one answer per line, the whole width. */
   .lg-seg-list .lg-chips {
@@ -1131,8 +1169,6 @@
       justify-content: space-between;
       width: 100%;
     }
-    /* The button already says it uses the suggested choices; the line says how many groups. */
-    .lg-importbar-cap,
     .lg-importbar-long {
       display: none;
     }

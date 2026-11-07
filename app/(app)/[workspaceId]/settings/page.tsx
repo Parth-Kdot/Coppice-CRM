@@ -8,7 +8,7 @@ import { PageHead } from "@/components/ledger/shared";
 import { Stepper } from "@/components/ledger/stepper";
 import { TemplatesSection } from "@/components/ledger/templates-section";
 import { isConfigured } from "@/lib/ai/client";
-import { AI_WINDOW_DAYS, aiBreakdown, aiUsage } from "@/lib/ai/run";
+import { AI_WINDOW_DAYS, aiUsageDetail } from "@/lib/ai/run";
 import { describeAiFailures, describeAiUsage } from "@/lib/ai/usage";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -41,7 +41,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   const me = await requireMembershipOr404(workspaceId);
   const isOwner = me.role === "owner";
 
-  const [workspace, members, invitations, ai, aiParts] = await Promise.all([
+  const [workspace, members, invitations, ai] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
       select: { name: true, claimWindowDays: true },
@@ -59,9 +59,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           orderBy: { createdAt: "desc" },
         })
       : [],
-    aiUsage({ userId: me.userId, workspaceId }),
-    aiBreakdown({ userId: me.userId, workspaceId }),
+    aiUsageDetail({ userId: me.userId, workspaceId }),
   ]);
+  const aiParts = ai.breakdown;
 
   const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
   const filled = ai.limit > 0 ? Math.min(METER_CELLS, Math.ceil((ai.used / ai.limit) * METER_CELLS)) : ai.used > 0 ? METER_CELLS : 0;

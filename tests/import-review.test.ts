@@ -10,8 +10,10 @@ import {
   groupsLeft,
   kindOf,
   mappingChanges,
+  revertSmartMapping,
   mergeGroups,
   nameIn,
+  openChanged,
   unconfirmedNote,
   type ReviewGroup,
   type ReviewSource,
@@ -139,6 +141,23 @@ describe("a row that matches a company already in Coppice", () => {
   });
 });
 
+describe("one row and two saved companies", () => {
+  const quillon = group([r(8, "Quillon Software Co")], [{ ...initech, id: "c2", name: "Quillon Software Inc." }, { ...initech, id: "c1", name: "Quillon Software" }]);
+
+  it("speaks of the one row, not of \"them\"", () => {
+    expect(groupCaption(quillon, skips(8))).toBe("Nothing is added. Quillon Software Inc. and Quillon Software stay as they are.");
+    expect(groupCaption(quillon, skips())).toBe("Quillon Software Co is added as its own company, next to Quillon Software Inc. and Quillon Software.");
+    expect(groupOutcome(quillon, skips(8))).toBe("Quillon Software Co will be skipped, it's already in Coppice.");
+  });
+
+  it("gets the same key whatever order the saved companies came in", () => {
+    const [a] = mergeGroups([{ reason: "Same name", existing: quillon.existing, rows: quillon.rows }]);
+    const [b] = mergeGroups([{ reason: "Same name", existing: [...quillon.existing].reverse(), rows: quillon.rows }]);
+    expect(a.key).toBe("r8_cc1-c2");
+    expect(b.key).toBe(a.key);
+  });
+});
+
 describe("three or more entries", () => {
   const three = group([r(5, "Avum"), r(6, "Avum Space"), r(7, "Avum")]);
 
@@ -175,6 +194,13 @@ describe("the review's progress", () => {
     // A change in a confirmed group doesn't count.
     expect(unconfirmedNote([a, b], new Set(["a"]), skips(4), suggested)).toBe("1 group not reviewed yet uses its suggested choice.");
   });
+
+  it("knows when an open group no longer shows its suggested choice, for the summary's button", () => {
+    const suggested = skips(3, 4);
+    expect(openChanged([a, b], new Set(), suggested, suggested)).toBe(false);
+    expect(openChanged([a, b], new Set(), skips(3), suggested)).toBe(true);
+    expect(openChanged([a, b], new Set(["b"]), skips(3), suggested)).toBe(false);
+  });
 });
 
 describe("mappingChanges: what turning Smart import on changed", () => {
@@ -206,5 +232,32 @@ describe("decisionsFrom: a do-not-contact row's acceptance follows the skips", (
 
   it("leaves out a reading the person left out", () => {
     expect(decisionsFrom([4], { skips: skips(), edits: { 4: { stage: { keep: false, value: "CONTACTED" } } }, doNotContact: skips() })).toEqual([]);
+  });
+});
+
+describe("revertSmartMapping: turning Smart import off or Undo", () => {
+  // Before Smart import: Notes on column 3. Smart import took Notes off (it reads column 3 with AI)
+  // and set Contact name to column 4.
+  const before: ImportMapping = { name: 0, industry: 1, website: 2, notes: 3, contactName: null, contactEmail: null };
+  const after: ImportMapping = { ...before, notes: null, contactName: 4 };
+
+  it("puts back every field Smart import changed when nothing was changed by hand", () => {
+    expect(revertSmartMapping(after, before, after)).toEqual(before);
+  });
+
+  it("keeps a field the person changed by hand after Smart import", () => {
+    const current = { ...after, contactName: 5 };
+    expect(revertSmartMapping(current, before, after)).toEqual({ ...before, contactName: 5 });
+  });
+
+  it("keeps a hand change to a field Smart import never touched", () => {
+    const current = { ...after, industry: null };
+    expect(revertSmartMapping(current, before, after)).toEqual({ ...before, industry: null });
+  });
+
+  it("doesn't put a column back where another field now uses it", () => {
+    // The person moved column 3 to Contact name by hand, so Notes can't take it back.
+    const current = { ...after, contactName: 3 };
+    expect(revertSmartMapping(current, before, after)).toEqual({ ...after, contactName: 3 });
   });
 });
