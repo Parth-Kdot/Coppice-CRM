@@ -123,18 +123,6 @@
 }
 
 /* Shared by lists that settle a decision and move on (components/ledger/motion.tsx). */
-/* An item leaving: it fades and slides left; .lg-exit then closes its height. */
-@keyframes lg-exit-slide {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-}
-
 /* An item arriving or coming back: it rises into place. */
 @keyframes lg-enter-rise {
   from {
@@ -671,23 +659,7 @@
   }
 
   /* ---------- Leave and arrive (components/ledger/motion.tsx ExitCollapse) ---------- */
-  /* The slide plays first, then the row closes, so what is below moves up into the gap. */
-  .lg-exit {
-    display: grid;
-    grid-template-rows: 1fr;
-    transition: grid-template-rows var(--dur-base) var(--ease-out);
-  }
-  .lg-exit > .lg-exit-inner {
-    min-height: 0;
-  }
-  .lg-exit[data-leaving] {
-    grid-template-rows: 0fr;
-    transition-delay: 160ms;
-  }
-  .lg-exit[data-leaving] > .lg-exit-inner {
-    overflow: hidden;
-    animation: lg-exit-slide var(--dur-base) var(--ease-out) forwards;
-  }
+  /* Leaving is the motion kit's removeAway; arriving rises into place. */
   .lg-exit[data-entering] > .lg-exit-inner {
     animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
   }
@@ -695,6 +667,28 @@
   [data-ack] {
     outline: 2px solid transparent;
     animation: lg-ack-settle 420ms var(--ease-out);
+  }
+
+  /* ---------- The inline "Saved" note beside a settings Save (components/action-form.tsx) ---------- */
+  /* Empty, the slot takes no room (it stays in the page so the note is announced). */
+  .lg-saved-slot:empty {
+    position: absolute;
+  }
+  /* StampOnNew's wrapper (components/ledger/stamp-on-new.tsx) adds no box. */
+  .lg-stampscope {
+    display: contents;
+  }
+  .lg-saved {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px 2px 6px;
+    border: 1px solid var(--moss);
+    border-radius: 2px;
+    background: var(--moss-wash);
+    color: var(--moss);
+    font-size: var(--fs-1);
+    font-weight: 600;
   }
 
   /* ---------- Marks ---------- */

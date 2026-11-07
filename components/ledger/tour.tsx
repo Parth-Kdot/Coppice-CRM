@@ -18,6 +18,8 @@ import {
 } from "@/lib/onboarding-steps";
 import { STAGE_LABELS } from "@/lib/stages";
 import { focusSoon } from "./focus";
+import { Tick } from "./marks";
+import { celebrate, completeStamp } from "./motion-kit";
 import { useNotify } from "./providers";
 import { autoOpenView, isEditable, placeCard, scrollTarget } from "./tour-logic";
 import "./tour.css";
@@ -220,6 +222,11 @@ export function Tour(props: TourProps) {
   const welcomeRef = useRef<HTMLDialogElement>(null);
   const navDone = useRef(0);
   const opened = useRef("");
+  // The reward for moving on: the pip of the card just finished gets a stamp, and reaching the last
+  // card celebrates its seal. Set by Next, played once the new card is drawn.
+  const stampPip = useRef<number | null>(null);
+  const finished = useRef(false);
+  const sealRef = useRef<HTMLSpanElement>(null);
 
   const base = `/${workspaceId}`;
   const onRoute = useCallback(
@@ -305,6 +312,8 @@ export function Tour(props: TourProps) {
       return;
     }
     const target = steps[i];
+    if (step.kind === "coach" && target.kind === "coach") stampPip.current = index;
+    if (target.kind === "done") finished.current = true;
     if (target.kind === "done") {
       // Reaching the last card finishes the tour. A replay of the basics writes nothing; a replay of
       // the AI tour only records that it was finished.
@@ -522,6 +531,20 @@ export function Tour(props: TourProps) {
     return () => dialog.removeEventListener("close", reopen);
   }, [welcome]);
 
+  // Next's reward, once the new card is drawn (the motion kit skips it under reduced motion).
+  useEffect(() => {
+    if (!stepKey) return;
+    const card = cardRef.current;
+    if (stampPip.current !== null) {
+      void completeStamp(card?.querySelector(`[data-pip="${stampPip.current}"]`));
+      stampPip.current = null;
+    }
+    if (finished.current && step?.kind === "done") {
+      finished.current = false;
+      void celebrate(sealRef.current, { mark: sealRef.current?.querySelector("svg") });
+    }
+  }, [stepKey, step]);
+
   // The Alt+T listener calls the latest resume (it reads the current card and progress).
   useLayoutEffect(() => {
     resumeRef.current = resume;
@@ -618,14 +641,33 @@ export function Tour(props: TourProps) {
       }}
     >
       {step.kind === "coach" && (
-        <p className="lg-tour-count">
-          {tourName} · {index + 1} of {steps.length}
-          {!phone && <span className="lg-tour-keys"> · Alt+T returns here</span>}
-        </p>
+        <>
+          {/* One pip per card along the top, filled as each is finished; the count says the same. */}
+          <span className="lg-tour-pips" aria-hidden="true">
+            {steps.map((s, i) => (
+              <span key={s.key} data-pip={i} data-state={i < index ? "done" : i === index ? "now" : undefined} />
+            ))}
+          </span>
+          <p className="lg-tour-count">
+            {tourName} · {index + 1} of {steps.length}
+            {!phone && <span className="lg-tour-keys"> · Alt+T returns here</span>}
+          </p>
+        </>
       )}
-      <h2 id={titleId} ref={titleRef} tabIndex={-1} className="lg-tour-title">
-        {step.title}
-      </h2>
+      {step.kind === "done" ? (
+        <div className="lg-tour-donehead">
+          <span className="lg-tour-seal" ref={sealRef} aria-hidden="true">
+            <Tick size={20} auto={false} className="lg-tick-draw" />
+          </span>
+          <h2 id={titleId} ref={titleRef} tabIndex={-1} className="lg-tour-title">
+            {step.title}
+          </h2>
+        </div>
+      ) : (
+        <h2 id={titleId} ref={titleRef} tabIndex={-1} className="lg-tour-title">
+          {step.title}
+        </h2>
+      )}
       <p id={bodyId} className="lg-tour-body">
         {body}
       </p>

@@ -1,51 +1,38 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { removeAway } from "./motion-kit";
 
-// Small motion pieces any Ledger list can share. All of it is CSS in ledger.css (keyframes
-// lg-exit-slide, lg-enter-rise and lg-ack-settle, the .lg-exit collapse), driven by data
-// attributes, so the strict style policy allows it and the global reduced-motion rule turns it
-// into an instant swap. A state change never waits on an animation for long: every end event has
-// a timer behind it.
+// Small motion pieces any Ledger list can share. Leaving runs on the motion kit
+// (components/ledger/motion-kit.ts: removeAway); arriving and the "already set" settle are CSS in
+// ledger.css (keyframes lg-enter-rise and lg-ack-settle), driven by data attributes. Both keep to
+// the strict style policy and to reduced motion (the kit skips the move, the global CSS rule turns
+// the keyframes off). A state change never waits on an animation for long: every move resolves on
+// a timer even if no frame runs.
 
-// Slower than the CSS (slide 220 ms, then the collapse 220 ms after 160 ms), so the end event
-// normally wins.
-export const EXIT_FALLBACK_MS = 800;
-
-// Calls `onDone` once, when `active` turns true and either the CSS signals the end or the timer
-// runs out. Returns the handler to pass to onTransitionEnd or onAnimationEnd.
-export function useMotionEnd(active: boolean, onDone: () => void, { property, ms = EXIT_FALLBACK_MS }: { property?: string; ms?: number } = {}) {
-  const done = useRef(false);
-  const latest = useRef(onDone);
+// A block that can leave: it slides and fades out, then its height closes so what is below moves
+// up into its place, and then `onLeft` runs (the caller takes it out of state). While leaving it is
+// inert, so a second click can't land on it. `entering` gives the opposite on arrival: it rises
+// into place.
+export function ExitCollapse({ leaving, entering = false, onLeft, className = "", children }: { leaving: boolean; entering?: boolean; onLeft: () => void; className?: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const latest = useRef(onLeft);
   useEffect(() => {
-    latest.current = onDone;
+    latest.current = onLeft;
   });
   useEffect(() => {
-    done.current = false;
-    if (!active) return;
-    const timer = window.setTimeout(() => {
-      if (done.current) return;
-      done.current = true;
-      latest.current();
-    }, ms);
-    return () => window.clearTimeout(timer);
-  }, [active, ms]);
-  return (event: React.TransitionEvent | React.AnimationEvent) => {
-    // Children animate too (ticks, counts): only this element's own end counts.
-    if (!active || done.current || event.target !== event.currentTarget) return;
-    if (property && "propertyName" in event && event.propertyName !== property) return;
-    done.current = true;
-    latest.current();
-  };
-}
-
-// A block that can leave: it fades and slides out, then its height closes so what is below moves
-// up into its place. While leaving it is inert, so a second click can't land on it. `entering`
-// gives the opposite on arrival: it rises into place.
-export function ExitCollapse({ leaving, entering = false, onLeft, className = "", children }: { leaving: boolean; entering?: boolean; onLeft: () => void; className?: string; children: ReactNode }) {
-  const onEnd = useMotionEnd(leaving, onLeft, { property: "grid-template-rows" });
+    if (!leaving) return;
+    let live = true;
+    // A second run (a development double effect) gets the same promise back: it is already leaving.
+    void removeAway(box.current).then(() => {
+      if (live) latest.current();
+    });
+    return () => {
+      live = false;
+    };
+  }, [leaving]);
   return (
-    <div className={`lg-exit ${className}`} data-leaving={leaving || undefined} data-entering={(entering && !leaving) || undefined} inert={leaving} onTransitionEnd={onEnd}>
+    <div ref={box} className={`lg-exit ${className}`} data-entering={(entering && !leaving) || undefined} inert={leaving}>
       <div className="lg-exit-inner">{children}</div>
     </div>
   );

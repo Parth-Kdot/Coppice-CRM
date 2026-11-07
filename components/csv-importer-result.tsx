@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { decodeCsvBytes } from "@/app/(app)/[workspaceId]/import/read-file";
 import { Disclosure } from "@/components/ledger/disclosure";
+import { Tick } from "@/components/ledger/marks";
+import { celebrate } from "@/components/ledger/motion-kit";
 import { ShowMore } from "@/components/ledger/show-more";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportResult } from "@/lib/csv";
@@ -11,6 +13,8 @@ import type { ImportResult } from "@/lib/csv";
 // The importer's result (components/csv-importer.tsx): three tallies, the names behind them
 // (folded), the rows that couldn't be imported with why and a download of just those rows, and
 // where to go next. The tally takes focus, so it is read out and the keyboard starts from there.
+// Finishing an import is a moment: the tally gets the motion kit's celebrate, and the seal in the
+// line above it settles down onto the page.
 
 export type Named = { row: number; name: string };
 export type Failed = Named & { reason: string };
@@ -90,8 +94,11 @@ function FailedList({ failed, file }: { failed: Failed[]; file: File }) {
 
 export function ImportDone({ workspaceId, result, again }: { workspaceId: string; result: Done; again: () => void }) {
   const tallyRef = useRef<HTMLDListElement>(null);
+  const sealRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     tallyRef.current?.focus({ preventScroll: true });
+    // Only a file that added something is worth a celebration.
+    if (result.data.imported > 0) void celebrate(tallyRef.current, { mark: sealRef.current });
   }, [result]);
 
   const count = new Map<string, number>();
@@ -102,8 +109,20 @@ export function ImportDone({ workspaceId, result, again }: { workspaceId: string
   const repeated = new Set([...count].filter(([, n]) => n > 1).map(([key]) => key));
   const n = (v: number) => v.toLocaleString("en-US");
 
+  const added = result.data.imported;
   return (
     <div className="lg-importdone">
+      <p className="lg-importdone-head">
+        <span className="lg-importdone-seal" ref={sealRef} data-none={added === 0 || undefined}>
+          <Tick size={22} auto={false} className="lg-tick-draw" />
+        </span>
+        <span className="lg-importdone-words">
+          <span className="lg-tag">Import finished</span>
+          <span className="lg-importdone-line">
+            {added === 0 ? "Nothing new on the board" : `${n(added)} ${added === 1 ? "company is" : "companies are"} on the board`}
+          </span>
+        </span>
+      </p>
       <dl className="lg-tally" role="status" tabIndex={-1} ref={tallyRef}>
         <div>
           <dt className="lg-tag">Imported</dt>

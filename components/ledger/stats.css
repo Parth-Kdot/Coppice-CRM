@@ -8,6 +8,25 @@
   .lg-page-stats {
     max-width: 1100px;
   }
+  /* Panels sit closer together here than on the roomier pages: the numbers are the point. */
+  .lg-page-stats .lg-panel {
+    margin-top: 14px;
+  }
+  .lg-page-stats .lg-panel-head {
+    padding: 10px 20px 8px;
+  }
+  .lg-page-stats .lg-panel-body {
+    padding: 12px 20px 16px;
+  }
+  /* The named template reads in the display serif, like a heading in the ledger. */
+  .lg-verdict-name {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+  }
+  .lg-verdict-line[data-standing="best"] .lg-verdict-name {
+    color: var(--moss);
+  }
 
   /* The verdict: one line per name, the badge in the margin. */
   .lg-verdict-line {
@@ -57,7 +76,7 @@
   }
   /* The comparisons and gaps, each a closed section under the table. */
   .lg-stats-more {
-    margin-top: 22px;
+    margin-top: 14px;
   }
   .lg-disc.lg-stats-more[data-variant] > .lg-disc-summary {
     font-size: var(--fs-3);
@@ -196,6 +215,12 @@
   }
 
   @media (max-width: 760px) {
+    .lg-page-stats .lg-panel-head {
+      padding: 10px 14px 8px;
+    }
+    .lg-page-stats .lg-panel-body {
+      padding: 10px 14px 14px;
+    }
     /* A phone row: the name (and its Standing) on top, then the rate and the bar. "Details" opens
        the counts. An industry row drops its standing. */
     .lg-table.lg-stattable tr {

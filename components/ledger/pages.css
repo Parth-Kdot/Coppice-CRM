@@ -565,8 +565,12 @@
     padding-top: 16px;
     border-top: 1px solid var(--rule);
   }
-  .lg-aiform > .lg-btn {
+  .lg-aiform > .lg-btn,
+  .lg-aiform > .lg-saved-slot {
     justify-self: start;
+  }
+  .lg-aiform > .lg-btn + .lg-saved-slot {
+    margin-top: -6px;
   }
   .lg-aistate {
     display: inline-flex;
@@ -871,6 +875,11 @@
   .lg-dupgroup {
     scroll-margin-top: calc(var(--importbar-top) + var(--importbar-room));
   }
+  /* The next group rises into the place of the one just confirmed (the global reduced-motion rule
+     makes it instant). */
+  .lg-dupgroup[data-rise] {
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
   .lg-dupgroup .lg-group-head {
     display: grid;
     gap: 2px;
@@ -992,8 +1001,21 @@
   .lg-filelabel {
     cursor: pointer;
   }
+  /* The import's steps sit tighter than the generic ledger steps: a narrower margin, less air. */
+  .lg-impsteps {
+    padding: 0 20px;
+  }
+  .lg-impsteps .lg-step {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .lg-impsteps .lg-step-margin {
+    padding-top: 14px;
+  }
   .lg-impsteps .lg-step-body {
-    padding-bottom: 18px;
+    padding: 12px 0 14px 20px;
+  }
+  .lg-impsteps .lg-groups {
+    margin-top: 16px;
   }
   .lg-impsteps .lg-step-h {
     margin-bottom: 6px;
@@ -1090,7 +1112,45 @@
     flex: none;
   }
   .lg-importdone {
-    margin-top: 20px;
+    margin-top: 12px;
+  }
+  /* "Import finished / 12 companies are on the board", beside a round moss seal. */
+  .lg-importdone-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .lg-importdone-seal {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1.5px solid var(--moss);
+    border-radius: 50%;
+    outline: 1px solid var(--moss);
+    outline-offset: 2px;
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+  .lg-importdone-seal[data-none] {
+    border-color: var(--edge);
+    outline-color: var(--edge);
+    background: var(--paper-2);
+    color: var(--ink-2);
+  }
+  .lg-importdone-words {
+    display: grid;
+    gap: 0;
+  }
+  .lg-importdone-words .lg-tag {
+    color: var(--moss);
+  }
+  .lg-importdone-line {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.15;
   }
   .lg-resultlists {
     display: grid;
@@ -1110,7 +1170,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 10px 20px;
-    margin-top: 20px;
+    margin-top: 16px;
   }
 
   /* ---------- Fact sheet: every fact with its quote at a glance, grouped by page ----------

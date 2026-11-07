@@ -500,6 +500,16 @@
     gap: 4px;
     font-size: var(--fs-1);
   }
+  /* A slip with no follow-up yet says what the company does instead, quietly, in the serif. */
+  .lg-slip-ind {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink-2);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--fs-2);
+  }
   .lg-slip-moved {
     flex: none;
     padding: 0 5px;

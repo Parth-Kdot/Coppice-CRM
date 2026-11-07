@@ -7,12 +7,13 @@ import { ActionForm } from "@/components/action-form";
 import { DuplicateIcon } from "@/components/ledger/icons";
 import { Tick } from "@/components/ledger/marks";
 import { ExitCollapse, reducedMotion } from "@/components/ledger/motion";
+import { completeStamp } from "@/components/ledger/motion-kit";
 import { archivedNote, initialPairList, openPairs, pairLabel, pairListReducer, separateNote, type PairListAction, type PairListState } from "@/lib/duplicate-review";
 
 // The pairs in the board's "Possible duplicates" sheet (app/(app)/[workspaceId]/board/page.tsx).
 // The page renders the list on the server; this keeps a resolved pair on screen until it has
-// faded and slid out and its space has closed, the same motion as the import's duplicate review
-// (components/csv-importer-duplicates.tsx). Each pair has two answers: "Same company..." asks which
+// slid away and its space has closed (the motion kit's removeAway, the same move as the import's
+// duplicate review in components/csv-importer-duplicates.tsx), and the last one ends on a stamp. Each pair has two answers: "Same company..." asks which
 // one to keep (the one with a website, else the older one, is picked to start) and archives the
 // other; "Different companies" remembers they are separate. The same server actions as always
 // (archiveDuplicate, keepSeparate); a refusal leaves the pair where it is with the reason under it.
@@ -93,6 +94,8 @@ export function DuplicatePairs({ workspaceId, pairs, more }: Props) {
     const el = document.getElementById(doneId);
     el?.focus({ preventScroll: true });
     el?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+    // The last pair is settled: the line that replaces the list lands with a stamp.
+    void completeStamp(el);
   }, [shownCount, doneId]);
 
   const onLeft = (key: string) => {

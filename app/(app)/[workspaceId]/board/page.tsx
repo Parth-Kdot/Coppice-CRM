@@ -66,6 +66,7 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
     cards: column.cards.map((card): BoardCardData => ({
       id: card.id,
       name: card.name,
+      industry: card.industry,
       stage: card.stage,
       days: card.nextFollowUpAt ? daysBetween(card.nextFollowUpAt, now) : null,
       dueOn: card.nextFollowUpAt ? day(card.nextFollowUpAt) : null,

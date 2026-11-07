@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ImportChoice } from "@/components/csv-importer-choice";
 import { ExistingCard, RowCard } from "@/components/csv-importer-dupcards";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { focusSoon } from "@/components/ledger/focus";
 import { Tick } from "@/components/ledger/marks";
+import { completeStamp, removeAway } from "@/components/ledger/motion-kit";
 import { useNotify } from "@/components/ledger/providers";
 import { ShowMore } from "@/components/ledger/show-more";
 import { bulkAnswers, chosenOption, choiceEffects, groupOptions, groupOutcome, groupsLeft, kindOf, nameIn, type ReviewGroup } from "@/lib/import-review";
@@ -16,7 +17,9 @@ import type { Quote } from "@/lib/smart-import";
 // five or more open groups share a kind, one line above decides them all ("Skip all 12 already in
 // Coppice"). Confirmed groups fold into "Decided", where Change brings one back. Every answer only
 // adds rows to or removes them from the importer's skips, which is all the server is sent. Nothing
-// is merged: importing a look-alike keeps both as separate companies.
+// is merged: importing a look-alike keeps both as separate companies. Confirm is the one moment
+// with motion: the group slides away (the motion kit's removeAway), the next one rises into its
+// place, and the last one ends on a stamped "Every group is decided."
 
 type Props = {
   idPrefix: string;
@@ -50,6 +53,7 @@ function GroupCard({
   suggested,
   choose,
   doNotContact,
+  rise,
   onConfirm,
   onBack,
   onNext,
@@ -57,6 +61,8 @@ function GroupCard({
   group: ReviewGroup;
   position: number;
   total: number;
+  // Rises into place: it follows a group just confirmed.
+  rise: boolean;
   onConfirm: () => void;
   onBack: (() => void) | null;
   onNext: (() => void) | null;
@@ -67,7 +73,14 @@ function GroupCard({
   const suggestedValue = chosenOption(group, suggested);
   const names = [...group.rows.map((r) => nameIn(group, r.row)), ...group.existing.map((c) => `${c.name} in Coppice`)];
   return (
-    <div id={groupDomId(idPrefix, group.key)} className="lg-group lg-dupgroup" role="group" aria-labelledby={groupHeadingId(idPrefix, group.key)} data-tour="dup-group">
+    <div
+      id={groupDomId(idPrefix, group.key)}
+      className="lg-group lg-dupgroup"
+      role="group"
+      aria-labelledby={groupHeadingId(idPrefix, group.key)}
+      data-tour="dup-group"
+      data-rise={rise || undefined}
+    >
       <div className="lg-group-head">
         <p className="lg-tag lg-group-count">
           Group {position.toLocaleString("en-US")} of {total.toLocaleString("en-US")}
@@ -125,6 +138,10 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
   const decided = useMemo(() => groups.filter((g) => confirmed.has(g.key)), [groups, confirmed]);
   const bulk = useMemo(() => bulkAnswers(open), [open]);
   const [showBulk, setShowBulk] = useState(true);
+  // The group that rises in after a Confirm, and the one on its way out (a second Enter on its
+  // Confirm while it slides away does nothing).
+  const [risen, setRisen] = useState<string | null>(null);
+  const leaving = useRef<string | null>(null);
 
   if (groups.length === 0) return null;
 
@@ -139,13 +156,21 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
     focusGroup(key);
   };
 
-  const onConfirm = (group: ReviewGroup) => {
+  const onConfirm = async (group: ReviewGroup) => {
+    if (leaving.current === group.key) return;
+    leaving.current = group.key;
     const rest = open.filter((g) => g.key !== group.key);
     const next = open[at + 1] ?? rest[0] ?? null;
     notify(`${groupOutcome(group, skips)} ${groupsLeft(rest.length)}`);
+    // Only the screen waits on the slide: the choice itself is already in the skips.
+    await removeAway(document.getElementById(groupDomId(idPrefix, group.key)));
+    leaving.current = null;
     confirm([group.key]);
     setCurrent(next?.key ?? null);
+    setRisen(next?.key ?? null);
     focusGroup(next?.key ?? null);
+    // The last one: "Every group is decided." lands with a stamp once it is drawn.
+    if (!next) requestAnimationFrame(() => void completeStamp(document.getElementById(doneId)));
   };
 
   return (
@@ -192,11 +217,12 @@ export function DuplicateGroups({ idPrefix, workspaceId, groups, skips, suggeste
           group={shown}
           position={position.get(shown.key) ?? 1}
           total={groups.length}
+          rise={risen === shown.key}
           skips={skips}
           suggested={suggested}
           choose={choose}
           doNotContact={doNotContact}
-          onConfirm={() => onConfirm(shown)}
+          onConfirm={() => void onConfirm(shown)}
           onBack={at > 0 ? () => show(open[at - 1].key) : null}
           onNext={at < open.length - 1 ? () => show(open[at + 1].key) : null}
         />

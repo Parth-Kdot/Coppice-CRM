@@ -32,11 +32,12 @@ function Verdict({ templates, verdict }: { templates: TemplateLine[]; verdict: A
   const b = find(verdict.best);
   const w = find(verdict.worst);
   const { rated } = verdict;
+  const inUse = templates.filter((t) => !t.archived).length;
   const named = (label: "Best" | "Worst", line: TemplateLine) => (
-    <p className="lg-verdict-line">
+    <p className="lg-verdict-line" data-standing={label === "Best" ? "best" : "worst"}>
       <span className={`lg-badge ${label === "Best" ? "lg-best" : "lg-worst"}`}>{label}</span>
       <span>
-        <strong>{line.name}</strong>: {sentence(line.stat)}.
+        <strong className="lg-verdict-name">{line.name}</strong>: {sentence(line.stat)}.
       </span>
     </p>
   );
@@ -55,6 +56,11 @@ function Verdict({ templates, verdict }: { templates: TemplateLine[]; verdict: A
         <h2 id="stats-verdict" className="lg-panel-title">
           Best and worst
         </h2>
+        {inUse > 0 && (
+          <span className="lg-panel-count">
+            {rated} of {inUse} in use rated
+          </span>
+        )}
       </div>
       <div className="lg-panel-body">
         {b && named("Best", b)}
@@ -119,7 +125,9 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
 
   return (
     <div className="lg-page-stats">
-      <PageHead title="Template stats">{more}</PageHead>
+      <PageHead title="Template stats" sub="Which templates get replies, from outreach logged in Coppice.">
+        {more}
+      </PageHead>
       <Disclosure variant="inline" summary="How to read this" className="lg-stats-how">
         <ul className="lg-rules">
           {RULES_NOTE.map((rule) => (
