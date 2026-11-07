@@ -98,3 +98,37 @@ function cleanForGroq(node: unknown): unknown {
 export function toGroqSchema(schema: z.ZodType): Json {
   return cleanForGroq(z.toJSONSchema(schema, { io: "input", reused: "inline", cycles: "throw" })) as Json;
 }
+
+// ----- Repairing a reply instead of throwing it away -----
+//
+// Length and count limits aren't sent to the models (above), so a reply can break one with an
+// otherwise good answer: one wordy fact in a 40-page packet, an 81-character angle, a third draft.
+// Rejecting the whole reply for that wastes the call (it still counts toward the limit), so the
+// schemas use these instead. Every value is still checked: a clamped string is cut to its limit,
+// a list keeps only the items that pass their own check, up to its limit, and anything else in
+// the reply must still match exactly. The JSON Schema the model is sent is unchanged.
+
+// Text cut to at most `max` characters, at the last space when there is one near the end, so a
+// short label never ends mid-word.
+export function clampText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return (space >= max - 20 && space > 0 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+// A string the model writes for people to read (an angle, a reason): cut to `max`, never refused.
+export const clamped = (max: number) =>
+  z
+    .string()
+    .overwrite((text) => clampText(text, max))
+    .max(max);
+
+// A list whose items are checked one by one: an item that fails its own schema is dropped (not the
+// whole reply), and only the first `max` that pass are kept.
+export function keptItems<T extends z.ZodType>(item: T, max: number) {
+  return z
+    .array(item.catch(null as unknown as z.output<T>))
+    .overwrite((list) => list.filter((entry) => entry !== null && entry !== undefined).slice(0, max))
+    .max(max);
+}

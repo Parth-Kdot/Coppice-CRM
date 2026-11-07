@@ -10,7 +10,7 @@ import { prisma, withTenant } from "@/lib/db";
 import { draftEmail, recentDrafts } from "@/lib/drafts";
 import { addFact } from "@/lib/facts";
 import { form, redirectTo } from "./helpers/form";
-import { answer, apiError, calls, fakeGemini } from "./helpers/gemini";
+import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
 
@@ -319,5 +319,116 @@ describe("draft actions", () => {
     const fields = { workspaceId: "a", companyId, channel: "EMAIL", note: "Sent", followUpOn: addDays(await dbToday(), 7), aiDraftId };
     expect(await asUser("officerA", () => logOutreachAction(null, form(fields)))).toEqual({ ok: true, data: undefined });
     expect(await withTenant(OWNER, (tx) => tx.outreach.findFirst({ select: { aiDraftId: true, note: true } }))).toEqual({ aiDraftId, note: "Sent" });
+  });
+});
+
+// ----- Found in the AI stress runs -----
+
+describe("draftEmail: one bad field never wastes the call", () => {
+  const ask = (tenant: Membership = OWNER, id = companyId) => draftEmail(tenant, id, { kind: "FIRST_TOUCH", contactId: null, note: null });
+
+  it("cuts an angle over 80 characters to fit, instead of failing the reply", async () => {
+    const long = "Leads with the six hundred students at the hackathon and the career fair right after";
+    expect(long.length).toBeGreaterThan(80);
+    fakeGemini(...drafted(variant(1, { angle: long }), variant(2)));
+    const result = await ask();
+    if (!result.ok) throw new Error(result.error);
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0].angle.length).toBeLessThanOrEqual(80);
+    expect(long.startsWith(result.data[0].angle)).toBe(true);
+  });
+
+  it("keeps the first two of three variants", async () => {
+    fakeGemini(...drafted(variant(1), variant(2), variant(3)));
+    const result = await ask();
+    expect(result).toMatchObject({ ok: true, data: [{ angle: "Angle 1" }, { angle: "Angle 2" }] });
+  });
+
+  it("drops only the variant whose subject or body is over its limit", async () => {
+    fakeGemini(...drafted(variant(1, { subject: "S".repeat(121) }), variant(2)));
+    expect(await ask()).toMatchObject({ ok: true, data: [{ angle: "Angle 2" }] });
+    fakeGemini(...drafted(variant(3), variant(4, { body: `Hi {{firstName}},\n\n${"x".repeat(3000)}\n\n{{senderName}}\n{{orgName}}` })));
+    expect(await ask()).toMatchObject({ ok: true, data: [{ angle: "Angle 3" }] });
+  });
+});
+
+describe("draftEmail: what the log says", () => {
+  const runs = () => withTenant(OWNER, (tx) => tx.aiRun.findMany({ select: { userId: true, feature: true, status: true, error: true }, orderBy: { createdAt: "asc" } }));
+
+  it("logs drafts that all broke the rules as FAILED broke_rules, not SUCCEEDED", async () => {
+    fakeGemini(answer(JSON.stringify({ variants: [variant(1, { body: "Hi John,\n\nDana\nRiverbend" })] })));
+    expect(await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null })).toEqual({
+      ok: false,
+      error: "The AI's drafts broke the drafting rules. Try again.",
+    });
+    expect(await runs()).toEqual([{ userId: "ownerA", feature: "DRAFT", status: "FAILED", error: "broke_rules" }]);
+  });
+
+  it("a blocked draft says to reword the note", async () => {
+    fakeGemini(reply({ promptFeedback: { blockReason: "SAFETY" } }));
+    expect(await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: "something" })).toEqual({
+      ok: false,
+      error: "The AI declined to answer that. Try rewording your note.",
+    });
+  });
+
+  it("a claim someone else holds gives the reserved call back: nothing is logged", async () => {
+    fakeGemini();
+    await claimCompany(OWNER, companyId);
+    expect((await draftEmail(OFFICER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null })).ok).toBe(false);
+    expect(await runs()).toEqual([]);
+  });
+
+  it("refused by the workspace limit: no claim is taken, and no call is made", async () => {
+    await prisma.workspace.update({ where: { id: "a" }, data: { aiMonthlyLimit: 0 } });
+    fakeGemini();
+    expect(await draftEmail(OFFICER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null })).toMatchObject({ ok: false, error: expect.stringContaining("AI calls") });
+    expect(await claimOf(companyId)).toEqual({ claimedById: null });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("three officers drafting different companies at once with one call left: one drafts, the others keep no claim", async () => {
+    // Two calls per click (draft, then check), so a limit with room for one draft call only.
+    await prisma.workspace.update({ where: { id: "a" }, data: { aiMonthlyLimit: 1 } });
+    await prisma.membership.create({ data: { id: "m-ownerB-a", workspaceId: "a", userId: "ownerB", role: "member", createdAt: new Date() } });
+    const people: Membership[] = [OWNER, OFFICER, { userId: "ownerB", workspaceId: "a", role: "member" }];
+    const ids = [companyId, await newCompany("Initech"), await newCompany("Hooli")];
+    fakeGemini(answer(JSON.stringify({ variants: [variant(1), variant(2)] })));
+    const results = await Promise.all(people.map((p, i) => draftEmail(p, ids[i], { kind: "FIRST_TOUCH", contactId: null, note: null })));
+    const won = results.findIndex((r) => r.ok);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect((await runs()).filter((r) => r.feature === "DRAFT")).toHaveLength(1);
+    for (const [i, id] of ids.entries()) expect(await claimOf(id)).toEqual({ claimedById: i === won ? people[i].userId : null });
+    // The winner's drafts are saved; its claim check found the limit reached and said so.
+    const saved = results[won];
+    if (!saved.ok) throw new Error(saved.error);
+    expect(saved.data[0].check?.error).toMatch(/has used its 1 AI calls/);
+  });
+});
+
+describe("draftEmail: the claim check right after drafting is quick", () => {
+  const draft = () => draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId, note: null });
+  const variants = () => answer(JSON.stringify({ variants: [variant(1), variant(2)] }));
+
+  test.for([
+    ["a rate limit", () => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED"), "The AI is busy right now. Try again in a minute."],
+    ["an overloaded model", () => apiError(503, "Overloaded", "UNAVAILABLE"), "The AI service isn't responding. Try again in a few minutes."],
+    ["a cut-off answer", () => answer('{"issues": [', "MAX_TOKENS"), "The AI's answer was cut off. Try again."],
+    ["a timeout", () => new DOMException("The operation was aborted.", "AbortError"), "The AI took too long to answer. Try again."],
+    ["a blocked check", () => reply({ promptFeedback: { blockReason: "SAFETY" } }), "The AI declined to answer this request. Try again later."],
+  ] as const)("on %s: one try on Flash-Lite, the drafts are kept, and each says why it wasn't checked", async ([, failure, message]) => {
+    fakeGemini(variants(), failure());
+    const result = await draft();
+    if (!result.ok) throw new Error(result.error);
+    expect(result.data).toHaveLength(2);
+    for (const d of result.data) expect(d.check).toMatchObject({ ai: [], error: message });
+    // The draft call, then one claim-check call: no fallback model after a Draft click.
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+    expect(await draftCount()).toBe(2);
+  });
+
+  it("asks for at most 20 seconds", async () => {
+    const { DRAFT_CHECK_DEADLINE_MS } = await import("@/lib/drafts");
+    expect(DRAFT_CHECK_DEADLINE_MS).toBe(20_000);
   });
 });

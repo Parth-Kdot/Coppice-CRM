@@ -4,11 +4,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from 
 import * as actions from "@/app/(app)/[workspaceId]/facts/actions";
 import type { Membership } from "@/lib/authz";
 import { readPdfPages } from "@/lib/ai/pdf";
+import { NOT_A_PDF, PDF_MAX_BYTES, PDF_TOO_BIG, pdfFileProblem } from "@/lib/ai/pdf-limits";
 import { maskContactDetails, matchKey, numbersIn, quoteFound } from "@/lib/ai/text";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import * as facts from "@/lib/facts";
 import { form, redirectTo } from "./helpers/form";
-import { answer, calls, fakeGemini } from "./helpers/gemini";
+import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
 
@@ -116,6 +117,10 @@ describe("readPdfPages", () => {
 
   it("refuses a file that isn't a PDF", async () => {
     expect(await readPdfPages(new TextEncoder().encode("not a pdf at all"))).toEqual({ ok: false, error: "That file couldn't be read as a PDF." });
+  });
+
+  it("refuses a real password-protected PDF (RC4, made with pypdf)", async () => {
+    expect(await readPdfPages(pdf("password-packet.pdf"))).toEqual({ ok: false, error: "That PDF is password-protected. Upload a copy without a password." });
   });
 
   it("refuses a password-protected PDF", async () => {
@@ -415,5 +420,54 @@ describe("fact sheet actions", () => {
     ]) {
       expect(await asUser<unknown>("officerA", run)).toEqual({ ok: false, error: owner });
     }
+  });
+});
+
+// ----- Found in the AI stress runs -----
+
+describe("uploadFactSheet: one wordy fact never throws the read away", () => {
+  const good = EXTRACTED.facts[0];
+
+  it("drops only the fact over 300 characters, and keeps the rest", async () => {
+    fakeGemini(answer(JSON.stringify({ facts: [good, { text: `${"A very long fact. ".repeat(17)}`.slice(0, 301), quote: good.quote, page: 1 }] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 1, quotesFound: 1 } });
+    expect((await items()).map((f) => f.text)).toEqual([good.text]);
+  });
+
+  it("keeps the first 150 facts of a longer list", async () => {
+    const many = Array.from({ length: 151 }, (_, i) => ({ text: `Fact number ${i + 1}.`, quote: good.quote, page: 1 }));
+    fakeGemini(answer(JSON.stringify({ facts: many })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 150 } });
+  });
+
+  it("cuts a quote over 600 characters, and checks what is left against the page", async () => {
+    fakeGemini(answer(JSON.stringify({ facts: [{ ...good, quote: `${good.quote} ${"x".repeat(700)}` }] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 1 } });
+  });
+
+  it("a blocked read says so for a file, not a note", async () => {
+    fakeGemini(reply({ promptFeedback: { blockReason: "SAFETY" } }));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({
+      ok: false,
+      error: "The AI declined to read this file. Try exporting the packet again, or add the facts by hand.",
+    });
+  });
+
+  it("a 500 on 3.8 Flash, then 3.6 Flash answers", async () => {
+    fakeGemini(apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify({ facts: [good] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 1 } });
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.6-flash"]);
+  });
+});
+
+describe("the upload rules the browser checks before sending", () => {
+  test.for([
+    ["a PDF at exactly 3.5 MB", { name: "packet.pdf", size: PDF_MAX_BYTES }, null],
+    ["one byte over", { name: "packet.pdf", size: PDF_MAX_BYTES + 1 }, PDF_TOO_BIG],
+    ["an upper-case extension", { name: "PACKET.PDF", size: 1000 }, null],
+    ["a Word file", { name: "packet.docx", size: 1000 }, NOT_A_PDF],
+    ["an empty file", { name: "packet.pdf", size: 0 }, NOT_A_PDF],
+  ] as const)("%s", ([, file, problem]) => {
+    expect(pdfFileProblem(file)).toBe(problem);
   });
 });

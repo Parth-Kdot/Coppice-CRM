@@ -107,7 +107,8 @@ function registerActions(server: McpServer, principal: McpPrincipal) {
     "change_stage",
     {
       title: "Change stage",
-      description: "Move a company to another stage. COMMITTED and DECLINED need confirm: true after the person agrees.",
+      description:
+        "Move a company to another stage. Moving to COMMITTED or DECLINED, or moving a company out of them (reopening a closed pitch), needs confirm: true after the person agrees.",
       inputSchema: mcpChangeStageSchema,
       // Marked destructive so the assistant's app asks the person first: Committed and Declined end
       // the pitch and release the claim, and confirm: true is filled in by the assistant itself.

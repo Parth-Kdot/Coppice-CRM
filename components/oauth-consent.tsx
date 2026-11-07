@@ -32,7 +32,16 @@ export function ConsentButtons({ clientName }: { clientName: string }) {
   return (
     <div className="lg-consent-acts">
       <button type="button" className="lg-btn lg-btn-primary" disabled={going !== null} onClick={() => answer(true)}>
-        {going === "allow" ? "Connecting..." : `Allow ${clientName}`}
+        {going === "allow" ? (
+          "Connecting..."
+        ) : (
+          <>
+            Allow{" "}
+            <span className="lg-trunc" title={clientName}>
+              <bdi>{clientName}</bdi>
+            </span>
+          </>
+        )}
       </button>
       <button type="button" className="lg-btn" disabled={going !== null} onClick={() => answer(false)}>
         {going === "deny" ? "Saying no..." : "Deny"}

@@ -9,6 +9,7 @@ import { ConsentButtons } from "@/components/oauth-consent";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { SCOPE_LABELS } from "@/lib/mcp/config";
+import { safeClientName } from "@/lib/mcp/oauth-limits";
 import "@/components/ledger/ledger.css";
 import "@/components/ledger/auth.css";
 
@@ -18,6 +19,10 @@ export const metadata: Metadata = { title: "Allow an assistant?" };
 // time an AI assistant asks for their account. It names the app, where it sends them back, and
 // each thing it asks for; the person allows or denies. Nothing is shown from a request whose
 // signature doesn't check out or has expired, so a hand-made link can't dress up a fake app.
+// The app's name is whatever it registered with, so it is shown without control or formatting
+// characters and inside <bdi> (a right-to-left override in it can't reorder Coppice's own words),
+// and where it sends the person back is shown first, under the heading: that host is the one thing
+// an app can't fake.
 
 type Search = Record<string, string | string[] | undefined>;
 
@@ -67,7 +72,8 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
     : null;
 
   const scopes = (params.get("scope") ?? "").split(" ").filter(Boolean);
-  const name = client?.client_name?.trim() || "An unnamed app";
+  const name = safeClientName(client?.client_name) || "An unnamed app";
+  const backTo = returnsTo(params.get("redirect_uri"));
   const workspaces = client
     ? await prisma.membership.findMany({
         where: { userId: session.user.id, workspace: { mcpEnabled: true } },
@@ -91,7 +97,12 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
         ) : (
           <>
             <p className="lg-sc">Connect an assistant</p>
-            <h1 className="lg-auth-title lg-consent-title">Allow {name} to use your Coppice account?</h1>
+            <h1 className="lg-auth-title lg-consent-title">
+              Allow <bdi>{name}</bdi> to use your Coppice account?
+            </h1>
+            <p className="lg-auth-sub">
+              It sends you back to <strong className="lg-wrap-any">{backTo}</strong>
+            </p>
             <dl className="lg-consent-facts">
               <div>
                 <dt>Signed in as</dt>
@@ -99,16 +110,12 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
                   {session.user.name} ({session.user.email})
                 </dd>
               </div>
-              <div>
-                <dt>Sends you back to</dt>
-                <dd>{returnsTo(params.get("redirect_uri"))}</dd>
-              </div>
             </dl>
             <p className="lg-error lg-consent-warn">
               <WarningIcon size={16} />
               <span>
-                Coppice doesn&apos;t check who made this app: any app can call itself &quot;{name}&quot;. Allow it only if you just started
-                this from your own assistant.
+                Coppice doesn&apos;t check who made this app: any app can call itself &ldquo;<bdi>{name}</bdi>&rdquo;. Allow it only if you just
+                started this from your own assistant.
               </span>
             </p>
             <h2 className="lg-h3">It asks to</h2>

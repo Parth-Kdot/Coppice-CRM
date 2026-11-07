@@ -71,6 +71,10 @@ export type RowProposal = {
   // board year's whole story, which comes back as a fresh lead.
   note: { text: string; quotes: Quote[] } | null;
   doNotContact: Quote | null;
+  // This board year's sheet says they committed or declined. The stage is never set from it, and
+  // the row starts skipped, so nobody pitches a sponsor who already said yes or no; the person can
+  // import it anyway (as Not contacted, with the note).
+  outcome?: { value: "committed" | "declined" } & Quote;
   // How many of the AI's items were dropped by a check, and why.
   dropped: string[];
   // A last-contacted date was moved a year earlier, or dropped, because it would be in the future.
@@ -181,6 +185,9 @@ function checkContact(proposal: RowProposal, contact: Answer["contact"], q: Quot
   return { name: name.data, title: shownTitle, ...q };
 }
 
+// "Aug 2025", for a date the sheet gave only as a month.
+const monthYear = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", year: "numeric" });
+
 // A past board year never sets a stage or dates: it comes back as a fresh lead, with its story in
 // the notes.
 function pastYearNote(cycleStart: number, status: { value: Status; quote: Quote } | null, last: Dated, follow: Dated): RowProposal["note"] {
@@ -196,7 +203,9 @@ function pastYearNote(cycleStart: number, status: { value: Status; quote: Quote 
     quotes.push(last.quote);
   }
   if (follow) {
-    parts.push(`follow-up was ${longDay(follow.date)}`);
+    // "reach out in Aug" names a month, not a day: the note says only what the sheet said.
+    const parts2 = parseDateText(follow.quote.quote);
+    parts.push(`follow-up was ${parts2 && parts2.day === null ? monthYear(follow.date) : longDay(follow.date)}`);
     quotes.push(follow.quote);
   }
   return parts.length > 0 ? { text: `From the ${yearLabel(cycleStart)} sheet: ${parts.join("; ")}.`.slice(0, SMART_NOTE_MAX), quotes } : null;
@@ -231,6 +240,7 @@ function checkRow({ row, cells }: ReadRow, answer: Answer | undefined, ctx: Cont
   if (status && (status.value === "committed" || status.value === "declined")) {
     const text = `The ${yearLabel(ctx.cycleStart)} sheet says ${OUTCOME_WORD[status.value]}: "${status.quote.quote}".`;
     proposal.note = { text: text.slice(0, SMART_NOTE_MAX), quotes: [status.quote] };
+    proposal.outcome = { value: status.value as "committed" | "declined", ...status.quote };
   }
   if (last) proposal.lastContactedOn = { date: last.date, ...last.quote };
   if (follow) proposal.followUpOn = { date: follow.date, ...follow.quote };

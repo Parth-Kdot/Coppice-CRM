@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DraftKind } from "@/generated/prisma/enums";
-import { aiGate, runAi } from "@/lib/ai/run";
+import { releaseAi, reserveAi, runAi } from "@/lib/ai/run";
+import { clamped, keptItems } from "@/lib/ai/schema";
 import { promptSafe } from "@/lib/ai/text";
 import { CHANNEL_LABELS } from "@/lib/channels";
 import { aiCheck, readCheck, saveChecks, type DraftCheck } from "@/lib/claim-check";
@@ -23,18 +24,16 @@ import type { ActionResult } from "@/lib/validation";
 
 const EARLIER_OUTREACH_SHOWN = 5;
 
-const Variants = z.object({
-  variants: z
-    .array(
-      z.object({
-        angle: z.string().max(80).describe("A few words on what this variant leads with, for the officer"),
-        subject: z.string().min(1).max(120),
-        body: z.string().min(1).max(3000).describe("The email body as plain text, no markdown"),
-      }),
-    )
-    .min(1)
-    .max(2),
+// One over-long field never throws the whole reply away: the angle (a label for the officer) is cut
+// to fit, a variant whose subject or body is over its limit is dropped on its own, and only the
+// first two variants are kept (lib/ai/schema.ts).
+export const ANGLE_MAX = 80;
+const Variant = z.object({
+  angle: clamped(ANGLE_MAX).describe(`A few words on what this variant leads with, for the officer, at most ${ANGLE_MAX} characters`),
+  subject: z.string().min(1).max(120).describe("The subject line, at most 120 characters"),
+  body: z.string().min(1).max(3000).describe("The email body as plain text, no markdown, at most 3000 characters"),
 });
+export const Variants = z.object({ variants: keptItems(Variant, 2).min(1).describe("Exactly two variants") });
 
 const SYSTEM = `You write short sponsorship emails for a Purdue University student organization, sent by one of its officers to someone at a company.
 
@@ -68,13 +67,22 @@ function usable(text: string): boolean {
   return !/[^\s@]+@[^\s@]+\.\w+|\[email\]|\[phone\]/.test(text);
 }
 
+export const DRAFT_RULES_BROKEN = "The AI's drafts broke the drafting rules. Try again.";
+
 // templateId: an optional template (lib/templates.ts) to base both drafts on.
 export type DraftRequest = { kind: DraftKind; contactId: string | null; note: string | null; templateId?: string | null };
 
+// What a drafting reply must pass, besides its schema (logged FAILED "broke_rules" when none does).
+// The body must greet and sign off through the placeholders: a model that writes names itself
+// invents them ("Hi John" to Hank, signed by a made-up officer), as Flash-Lite did on 2026-10-26.
+const signedProperly = (body: string) => PLACEHOLDERS.every((p) => new RegExp(`\\{\\{\\s*${p}\\s*\\}\\}`).test(body));
+export const usableVariants = (data: z.output<typeof Variants>) => data.variants.filter((v) => usable(v.subject) && usable(v.body) && signedProperly(v.body));
+
+// When the drafts are saved, the claim check gets one quick try on its main model: the officer is
+// still waiting, and "Check with AI" on each draft is there if it doesn't answer in time.
+export const DRAFT_CHECK_DEADLINE_MS = 20_000;
+
 export async function draftEmail(tenant: Tenant, companyId: string, request: DraftRequest): Promise<ActionResult<DraftView[]>> {
-  // Refused before anything is written: no claim is taken for a call that can't happen.
-  const gate = await aiGate(tenant, "DRAFT");
-  if (!gate.ok) return gate;
   const contact = request.contactId
     ? await withTenant(tenant, (tx) =>
         tx.contact.findFirst({
@@ -94,8 +102,15 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
     : null;
   if (request.templateId && !template) return { ok: false, error: "That template wasn't found, or it's archived." };
 
+  // The call is reserved (counted) before the claim is taken, so a call refused by a limit never
+  // leaves a claim behind, and a claim that is refused gives the reserved call back.
+  const reserved = await reserveAi(tenant, "DRAFT");
+  if (!reserved.ok) return reserved;
   const claim = await claimCompany(tenant, companyId);
-  if (!claim.ok) return claim;
+  if (!claim.ok) {
+    await releaseAi(tenant, reserved.data);
+    return claim;
+  }
 
   const context = await withTenant(tenant, async (tx) => ({
     company: await tx.company.findFirstOrThrow({
@@ -132,13 +147,17 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
       (template ? " Base both on the template: keep its structure, tone and ask, and drop anything in it the facts don't support." : ""),
   );
 
-  const result = await runAi(tenant, { feature: "DRAFT", system: SYSTEM, prompt: lines.join("\n\n"), schema: Variants });
+  const result = await runAi(
+    tenant,
+    { feature: "DRAFT", system: SYSTEM, prompt: lines.join("\n\n"), schema: Variants },
+    {
+      reservation: reserved.data,
+      accept: (data) => (usableVariants(data).length > 0 ? null : "broke_rules"),
+      messages: { broke_rules: DRAFT_RULES_BROKEN, blocked: "The AI declined to answer that. Try rewording your note." },
+    },
+  );
   if (!result.ok) return result;
-  // The body must greet and sign off through the placeholders: a model that writes names itself
-  // invents them ("Hi John" to Hank, signed by a made-up officer), as Flash-Lite did on 2026-10-26.
-  const signedProperly = (body: string) => PLACEHOLDERS.every((p) => new RegExp(`\\{\\{\\s*${p}\\s*\\}\\}`).test(body));
-  const variants = result.data.variants.filter((v) => usable(v.subject) && usable(v.body) && signedProperly(v.body));
-  if (variants.length === 0) return { ok: false, error: "The AI's drafts broke the drafting rules. Try again." };
+  const variants = usableVariants(result.data);
 
   const values = {
     firstName: contact?.name.trim().split(/\s+/)[0] || "there",
@@ -172,7 +191,7 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
 
   // The Claim Checker reads both drafts in one call, after they're saved, so a failed check never
   // loses a draft (lib/claim-check.ts).
-  const checks = await aiCheck(tenant, saved, { ...values, firstName: contact ? values.firstName : null });
+  const checks = await aiCheck(tenant, saved, { ...values, firstName: contact ? values.firstName : null }, { deadlineMs: DRAFT_CHECK_DEADLINE_MS, fallback: false });
   await saveChecks(tenant, saved.map((d) => d.id), checks);
   return { ok: true, data: saved.map((d, i) => ({ ...d, check: checks[i] })) };
 }

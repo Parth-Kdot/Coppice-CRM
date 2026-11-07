@@ -1,6 +1,6 @@
 import type { Membership } from "@/lib/authz";
 import { withTenant, type Tenant } from "@/lib/db";
-import type { ActionResult } from "@/lib/validation";
+import { SOURCE_LABEL_MAX, type ActionResult } from "@/lib/validation";
 
 // The approved sources: the only pages research briefs may read. Owners add, label and archive
 // them (archiving is removing; nothing is deleted). Officers can see the list. Each write is
@@ -24,7 +24,15 @@ export function listSources(tenant: Tenant): Promise<SourceView[]> {
 }
 
 // `url` is already checked and normalized by addResearchSourceSchema. Without a label, the
-// page's host is used.
+// page's host and path are used ("careers.acme.com/students"), so two pages on one site don't
+// look the same.
+export function defaultSourceLabel(url: string): string {
+  const { hostname, pathname } = new URL(url);
+  const path = pathname.replace(/\/+$/, "");
+  const label = `${hostname}${path}`;
+  return label.length > SOURCE_LABEL_MAX ? `${label.slice(0, SOURCE_LABEL_MAX - 1)}…` : label;
+}
+
 export function addSource(owner: Membership, url: string, label: string | null): Promise<ActionResult<{ sourceId: string }>> {
   if (owner.role !== "owner") return Promise.resolve(ownersOnly);
   return withTenant(owner, async (tx) => {
@@ -32,7 +40,7 @@ export function addSource(owner: Membership, url: string, label: string | null):
     if (active.some((s) => s.url === url)) return { ok: false, error: "That page is already on the list." };
     if (active.length >= RESEARCH_SOURCES_MAX) return { ok: false, error: `A workspace can have at most ${RESEARCH_SOURCES_MAX} sources. Archive one first.` };
     const source = await tx.researchSource.create({
-      data: { workspaceId: owner.workspaceId, url, label: label ?? new URL(url).hostname, addedById: owner.userId },
+      data: { workspaceId: owner.workspaceId, url, label: label ?? defaultSourceLabel(url), addedById: owner.userId },
       select: { id: true },
     });
     return { ok: true, data: { sourceId: source.id } };

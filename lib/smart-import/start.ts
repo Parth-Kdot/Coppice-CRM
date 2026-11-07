@@ -1,4 +1,4 @@
-import { aiGate } from "@/lib/ai/run";
+import { aiGate, aiUsage } from "@/lib/ai/run";
 import { dbToday } from "@/lib/claims";
 import { checkRows, parseCsv } from "@/lib/csv";
 import { withTenant, type Tenant } from "@/lib/db";
@@ -7,7 +7,7 @@ import { CHUNK_ROWS, findDoNotContact, type Quote } from "./check";
 import { notFreeText } from "./columns";
 import { boardYearOf } from "./dates";
 import { findLookalikes, type LookalikeGroup } from "./lookalikes";
-import { AI_OFF, aiOn, hashOf, PAST_YEARS, readRows, sessionSince, type SessionRows } from "./shared";
+import { AI_OFF, aiOn, dncCells, hashOf, PAST_YEARS, readRows, sessionSince, type SessionRows } from "./shared";
 
 export type SmartStart = {
   sessionId: string;
@@ -58,7 +58,21 @@ export async function startSmartRead(
 
   const rows = readRows(table.data, valid, freeText).filter((r) => r.cells.length > 0);
   const read = rows.slice(0, SMART_MAX_ROWS).map((r) => r.row);
-  const dnc = rows.flatMap((r) => {
+
+  // Said before any call is made: a sheet whose reading needs more AI calls than the workspace has
+  // left would stop partway. One call per chunk, and one for the look-alikes.
+  const needed = Math.ceil(read.length / CHUNK_ROWS) + 1;
+  const usage = await aiUsage(tenant);
+  if (read.length > 0 && usage.limit - usage.used < needed) {
+    const left = Math.max(0, usage.limit - usage.used);
+    return {
+      ok: false,
+      error: `Reading this sheet takes ${needed} AI calls, and this workspace has ${left} left for the last 30 days. Untick some columns, import without Smart import, or ask an owner to raise the limit in Settings.`,
+    };
+  }
+
+  // Do-not-contact lines are looked for in every cell but the name and email, ticked or not.
+  const dnc = dncCells(table.data, valid, mapping).flatMap((r) => {
     for (const cell of r.cells) {
       const hit = findDoNotContact(cell.text);
       if (hit) return [{ row: r.row, column: cell.column, header: cell.header, quote: hit }];

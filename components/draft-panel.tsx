@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useMemo, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AiDraftIcon, CheckIcon, CopyLinkIcon, ExternalIcon, WarningIcon } from "@/components/ledger/icons";
 import { ChipGroup, type ChipOption } from "@/components/ledger/chips";
 import { LogOutreachForm } from "@/components/ledger/log-form";
+import { focusSoon } from "@/components/ledger/focus";
 import { Tick } from "@/components/ledger/marks";
+import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { DraftKind } from "@/generated/prisma/enums";
 import type { DraftCheck } from "@/lib/claim-check";
@@ -28,6 +30,8 @@ type Props = {
   factCount: number;
   // The workspace's AI calls in the last 30 days and its limit, from aiUsage().
   usage: { used: number; limit: number };
+  // Your drafts in the last 24 hours and the daily limit (lib/ai/run.ts draftsToday).
+  daily: { used: number; limit: number };
   // Your latest drafts for this company, so they survive a reload.
   initialDrafts: DraftView[];
   // Today in West Lafayette, from the database, for the follow-up date box.
@@ -118,10 +122,40 @@ function FindingList({ findings }: { findings: Finding[] }) {
 // that open it in Gmail, Outlook or the default mail app. Nothing is sent from here.
 export function DraftPanel(props: Props) {
   const id = useId();
-  const [state, draftAction, pending] = useActionState(props.actions.draft, null);
+  const notify = useNotify();
+  // The last Draft click that failed, with the note typed for it. If that click lost the claim to
+  // someone else, the page refresh that follows removes this panel, and with it the message and
+  // the note; so on the way out they are written as a margin note instead, and focus goes to the
+  // page's heading rather than falling to the page itself.
+  // Only right after the click (the refresh comes within seconds), not when leaving the page later.
+  const lastFailure = useRef<{ error: string; note: string; at: number } | null>(null);
+  const [state, draftAction, pending] = useActionState(async (prev: ActionResult<DraftView[]> | null, form: FormData) => {
+    const result = await props.actions.draft(prev, form);
+    lastFailure.current = result.ok ? null : { error: result.error, note: String(form.get("note") ?? "").trim(), at: Date.now() };
+    return result;
+  }, null);
+  useEffect(
+    () => () => {
+      const failed = lastFailure.current;
+      if (!failed || Date.now() - failed.at > 15_000) return;
+      notify(failed.note ? `${failed.error} Your note was: "${failed.note}"` : failed.error, "error");
+      focusSoon("h1");
+    },
+    [notify],
+  );
+  // The Draft button is disabled while drafting, so the browser drops focus to the page. When the
+  // answer comes back, focus goes to the first draft, or back to the button after a failure.
+  const letters = useRef<HTMLDivElement>(null);
+  const draftButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!state || document.activeElement !== document.body) return;
+    focusSoon(state.ok ? () => letters.current?.querySelector<HTMLElement>("h3") ?? null : draftButton.current);
+  }, [state]);
   const drafts = state?.ok ? state.data : props.initialDrafts;
   const [kind, setKind] = useState<DraftKind>(props.hasOutreach ? "FOLLOW_UP" : "FIRST_TOUCH");
   const limitReached = props.usage.used >= props.usage.limit;
+  // The server refuses the 41st draft of the day too; this says so before the click.
+  const dailyReached = props.daily.used >= props.daily.limit;
 
   const kindOptions: ChipOption<DraftKind>[] = [
     { value: "FIRST_TOUCH", label: "First email" },
@@ -135,7 +169,8 @@ export function DraftPanel(props: Props) {
           Draft an email
         </h2>
         <p className="lg-hint">
-          Two drafts built only from verified facts. Nothing is sent from here: each one opens in your own mail. {props.usage.used} of {props.usage.limit} AI calls used in the last 30 days. Drafting uses two AI calls: one to write both drafts, one to check them.
+          Two drafts built only from verified facts, opened in your own mail. Uses 2 of your workspace&apos;s AI calls ({props.usage.used} of{" "}
+          {props.usage.limit} used this month).
         </p>
       </div>
 
@@ -189,10 +224,13 @@ export function DraftPanel(props: Props) {
           />
         </div>
         <div className="lg-draftgo">
-          <button type="submit" disabled={pending || limitReached} className="lg-btn lg-btn-primary">
+          <button ref={draftButton} type="submit" disabled={pending || limitReached || dailyReached} className="lg-btn lg-btn-primary">
             <AiDraftIcon size={18} />
-            {pending ? "Drafting... (up to a minute)" : "Draft two emails"}
+            {pending ? "Drafting... (usually under a minute)" : "Draft two emails"}
           </button>
+          <p className="lg-hint lg-draft-daily">
+            Your drafts today: {props.daily.used} of {props.daily.limit}
+          </p>
           <p className="lg-hint">
             Drafting claims this company for you. The AI only uses facts verified on the{" "}
             <Link href={`/${props.workspaceId}/facts`} className="lg-link">
@@ -202,6 +240,11 @@ export function DraftPanel(props: Props) {
             {props.factCount === 0 ? ", and there are none yet, so drafts won't say anything specific about your org." : "."}
           </p>
         </div>
+        {dailyReached && !limitReached && (
+          <div className="lg-draftlimit">
+            <ErrorLine>You&apos;ve made {props.daily.limit} drafts in the last 24 hours. Try again tomorrow.</ErrorLine>
+          </div>
+        )}
         {limitReached && (
           <div className="lg-draftlimit">
             <ErrorLine>
@@ -220,10 +263,10 @@ export function DraftPanel(props: Props) {
         )}
       </form>
 
-      {pending && <QuillWait label="Writing two drafts. This takes up to a minute." />}
+      {pending && <QuillWait label="Writing two drafts. This usually takes under a minute." />}
 
       {drafts.length > 0 && (
-        <div className="lg-letters">
+        <div className="lg-letters" ref={letters}>
           {drafts.map((draft, i) => (
             <DraftCard key={draft.id} draft={draft} index={i} {...props} />
           ))}
@@ -346,6 +389,11 @@ function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Props & { 
     if (result.ok) setCheck(result.data);
     return result;
   }, null);
+  // "Check again" is disabled, then gone, once the check is back: focus goes to what it found.
+  const statusLine = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (state && document.activeElement === document.body) focusSoon(statusLine.current);
+  }, [state]);
 
   const fresh = check !== null && check.subject === subject && check.body === body;
   const ruleFindings = useMemo(() => checkRules(`${subject}\n${body}`, props.rules), [subject, body, props.rules]);
@@ -399,8 +447,9 @@ function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Props & { 
         </p>
         {aiFindings.length > 0 && <FindingList findings={aiFindings} />}
         {aiRan && aiFindings.length === 0 && <p className="lg-hint">The AI found no statement the facts don&apos;t support.</p>}
-        <p className="lg-hint mt-1">{status}</p>
-        <p className="lg-hint">Checking uses one AI call.</p>
+        <p className="lg-hint mt-1" ref={statusLine}>
+          {status}
+        </p>
         {checking && <QuillWait label="Checking..." />}
         {needsCheck && (
           <form action={checkAction} className="lg-cc-actions">

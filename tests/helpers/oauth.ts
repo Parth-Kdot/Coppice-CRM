@@ -181,10 +181,18 @@ export async function legacyToolCall(token: string, name: string, args: Record<s
   return { init, call };
 }
 
-// The official MCP client (current protocol), talking to the route handler directly.
-export async function mcpClient(token: string) {
+// The current MCP protocol revision, which the server answers directly (lib/mcp/handler.ts).
+export const MODERN_PROTOCOL = "2026-07-28";
+
+// The official MCP client, talking to the route handler directly. By default it is pinned to the
+// current protocol (2026-07-28, server/discover): the SDK's own default is the legacy 2025 era,
+// which `era: "sdk-default"` keeps for the test that covers older clients.
+export async function mcpClient(token: string, { era = "modern" }: { era?: "modern" | "sdk-default" } = {}) {
   const { Client, StreamableHTTPClientTransport } = await import("@modelcontextprotocol/client");
-  const client = new Client({ name: "coppice-test", version: "1.0.0" });
+  const client = new Client(
+    { name: "coppice-test", version: "1.0.0" },
+    era === "modern" ? { versionNegotiation: { mode: { pin: MODERN_PROTOCOL } } } : undefined,
+  );
   const transport = new StreamableHTTPClientTransport(new URL(mcpResourceUrl()), {
     requestInit: { headers: { authorization: `Bearer ${token}` } },
     fetch: (input, init) => handleMcpRequest(new Request(input, init)),

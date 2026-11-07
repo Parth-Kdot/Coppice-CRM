@@ -1,8 +1,11 @@
 import { requireMcpAuth } from "@better-auth/mcp";
+import { createResourceServerChallenge } from "@better-auth/oauth-provider";
+import { APIError } from "better-auth/api";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { auth } from "@/lib/auth";
 import { READ_SCOPE, WRITE_SCOPE, mcpResourceUrl } from "@/lib/mcp/config";
 import { readCappedText, withBody } from "@/lib/mcp/body";
+import { grantIsLive } from "@/lib/mcp/grant";
 import { buildMcpServer } from "@/lib/mcp/server";
 import type { McpPrincipal } from "@/lib/mcp/tools";
 
@@ -15,7 +18,10 @@ import type { McpPrincipal } from "@/lib/mcp/tools";
 //    requests (no MCP sessions), so it works on Vercel's short-lived functions. Clients on the
 //    current protocol (2026-07-28) are served directly; older clients (2025 protocol) get the SDK's
 //    stateless fallback, which answers each POST on its own and refuses session GET/DELETE.
-// 3. Each tool then checks membership and the workspace's MCP switch (lib/mcp/tools.ts).
+// 3. The grant behind the token must still stand: the person's consent for that assistant, and for
+//    a token with offline_access a live refresh token (lib/mcp/grant.ts). A revoked or stolen
+//    grant stops working at once instead of when its JWT expires.
+// 4. Each tool then checks membership and the workspace's MCP switch (lib/mcp/tools.ts).
 
 // Tool arguments are small; 64 KB is plenty and keeps a flood of large bodies cheap to refuse.
 const BODY_LIMIT = 64 * 1024;
@@ -39,6 +45,22 @@ function principalFrom(extra: Extra): McpPrincipal {
 const rpcError = (status: number, code: number, message: string) => Response.json({ jsonrpc: "2.0", error: { code, message }, id: null }, { status });
 const unauthorized = () => rpcError(401, -32001, "This token can't be used with Coppice.");
 
+// A grant that was revoked: a 401 with the same WWW-Authenticate challenge the plugin sends for a
+// missing token (built by the plugin's own helper), so the assistant asks the person to connect
+// again instead of failing for the rest of the hour.
+const CHALLENGE_SCOPES = [READ_SCOPE, WRITE_SCOPE];
+function revoked(): Response {
+  const challenge = createResourceServerChallenge(
+    new APIError("UNAUTHORIZED", { message: "This connection to Coppice was revoked. Connect your assistant again." }),
+    mcpResourceUrl(),
+    { challengeScopes: CHALLENGE_SCOPES },
+  );
+  if (!challenge) return unauthorized();
+  const headers = new Headers(challenge.headers);
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message: challenge.message }, id: null }), { status: 401, headers });
+}
+
 // One message per request. The 2025-03-26 protocol allowed a JSON array of up to 100 messages in
 // one POST, which would run 100 tool calls for the price of one request; no current client sends
 // batches, so they are refused before the SDK sees them.
@@ -57,6 +79,7 @@ export const handleMcpRequest = requireMcpAuth(
     // (Better Auth 1.7.12 adds the same check inside requireMcpAuth).
     if (typeof claims.sub !== "string" || typeof claims.azp !== "string" || claims.sub === claims.azp) return unauthorized();
     const scopes = typeof claims.scope === "string" ? claims.scope.split(" ") : [];
+    if (!(await grantIsLive(claims.azp, claims.sub, scopes))) return revoked();
     const single = await singleMessage(request);
     if (single instanceof Response) return single;
     return mcp.fetch(single, {
@@ -72,5 +95,5 @@ export const handleMcpRequest = requireMcpAuth(
   },
   // Every call needs coppice:read; a client with no token is told to ask for read and write, and the
   // consent page shows the person exactly that.
-  { resource: mcpResourceUrl(), requiredScopes: [READ_SCOPE], challengeScopes: [READ_SCOPE, WRITE_SCOPE] },
+  { resource: mcpResourceUrl(), requiredScopes: [READ_SCOPE], challengeScopes: CHALLENGE_SCOPES },
 );

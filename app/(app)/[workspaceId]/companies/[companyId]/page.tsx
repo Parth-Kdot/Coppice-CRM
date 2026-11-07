@@ -15,7 +15,7 @@ import { LogOutreachForm } from "@/components/ledger/log-form";
 import { isLongOverdue, OverdueMark } from "@/components/ledger/overdue";
 import { RouteMap } from "@/components/ledger/route-map";
 import { isConfigured } from "@/lib/ai/client";
-import { aiUsage } from "@/lib/ai/run";
+import { aiUsage, DAILY_DRAFTS_PER_PERSON, draftsToday } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { factNumbers } from "@/lib/claim-rules";
 import { claimView, dbNow, dbToday } from "@/lib/claims";
@@ -123,6 +123,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
   const researchOn = showAi && configured && ai !== null && ai.enabled;
   const facts = canDraft && ai?.enabled ? await verifiedFacts(tenant) : [];
   const drafts = canDraft && ai?.enabled ? await recentDrafts(tenant, companyId) : [];
+  const draftedToday = canDraft && ai?.enabled ? await draftsToday(tenant) : 0;
   const sources = researchOn ? await listSources(tenant) : [];
   const brief = researchOn ? await latestBrief(tenant, companyId) : null;
   const companyDomain = domainKey(company.website);
@@ -223,6 +224,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
             hasOutreach={company.outreachTotal > 0}
             factCount={facts.length}
             usage={{ used: ai.used, limit: ai.limit }}
+            daily={{ used: draftedToday, limit: DAILY_DRAFTS_PER_PERSON }}
             initialDrafts={drafts}
             today={today}
             rules={{ factNumbers: factNumbers(facts), website: company.website }}
@@ -241,7 +243,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
               const host = new URL(source.url).hostname;
               const site = domainKey(host);
               const suggested = companyDomain !== null && site !== null && (site === companyDomain || site.endsWith(`.${companyDomain}`));
-              return { id: source.id, label: source.label, host, suggested };
+              return { id: source.id, label: source.label, host, url: source.url, suggested };
             })}
             isOwner={isOwner}
             usage={{ used: ai.used, limit: ai.limit }}

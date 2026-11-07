@@ -20,6 +20,8 @@ const SESSION_MS = 24 * 60 * 60 * 1000;
 export const PAST_YEARS = 5;
 
 export const AI_OFF = "AI is turned off for this workspace, so Smart import is off. The normal import still works.";
+// The same, said once Smart import has started: the switch must go off before the normal import.
+export const AI_OFF_MIDWAY = "AI is turned off for this workspace now. Turn off Smart import above, then import.";
 export const EXPIRED = "This Smart import has expired or was started elsewhere. Turn Smart import off and on to start again.";
 export const FILE_CHANGED = "The file changed since Smart import started. Turn Smart import off and on to start again.";
 export const REVIEW_AGAIN = "The Smart import choices don't match what was read. Review them again.";
@@ -32,6 +34,23 @@ export const hashOf = (text: string) => createHash("sha256").update(text).digest
 
 // Sessions started before this moment (by the database's clock) are ignored.
 export const sessionSince = async () => new Date((await dbNow()).getTime() - SESSION_MS);
+
+// Every cell of a valid row that code checks for a do-not-contact line: all of them but the company
+// name and the contact's email (a name or an address can't say it). This is code, not AI, so
+// nothing is sent anywhere; it runs over unticked columns too, so a "do not contact" in a Notes
+// column that isn't read is still found.
+export function dncCells(table: Table, valid: CheckedRow[], mapping: ImportMapping): ReadRow[] {
+  const skip = new Set([mapping.name, mapping.contactEmail].filter((c) => c !== null));
+  const validRows = new Set(valid.map((r) => r.row));
+  return table.rows
+    .filter((r) => validRows.has(r.row))
+    .map((r) => ({
+      row: r.row,
+      cells: r.cells.flatMap((cell, column) =>
+        skip.has(column) || !cell.trim() ? [] : [{ column, header: table.headers[column] ?? `Column ${column + 1}`, text: promptSafe(cell.trim()).slice(0, CELL_MAX) }],
+      ),
+    }));
+}
 
 // The free-text cells of a row, as the AI is shown them: masked, angle brackets swapped, cut to
 // CELL_MAX. Cells with no letters ("3", "-") don't count.

@@ -1,11 +1,11 @@
 import { extractText, getDocumentProxy } from "unpdf";
+import { PDF_MAX_BYTES, PDF_MAX_PAGES } from "@/lib/ai/pdf-limits";
 import type { ActionResult } from "@/lib/validation";
 
 // Reads the text of an uploaded PDF page by page (unpdf: PDF.js with no native parts or workers).
 // The text is what the AI is shown, and what its quotes are checked against later.
 
-export const PDF_MAX_BYTES = 3.5 * 1024 * 1024;
-export const PDF_MAX_PAGES = 40;
+export { PDF_MAX_BYTES, PDF_MAX_PAGES };
 const READ_TIMEOUT_MS = 20_000;
 
 export async function readPdfPages(bytes: Uint8Array): Promise<ActionResult<string[]>> {

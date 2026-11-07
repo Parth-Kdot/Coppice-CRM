@@ -1,12 +1,12 @@
 import type { Prisma } from "@/generated/prisma/client";
-import { AI_ERROR_MESSAGES, runAi } from "@/lib/ai/run";
+import { AI_ERROR_MESSAGES, isRetryableAiError, runAi } from "@/lib/ai/run";
 import { promptSafe } from "@/lib/ai/text";
 import { dbToday } from "@/lib/claims";
 import { checkRows, parseCsv } from "@/lib/csv";
 import { withTenant, type Tenant } from "@/lib/db";
 import { CHUNK_ROWS, checkRowsRead, RowsRead, type ReadRow, type RowProposal } from "./check";
 import { yearLabel } from "./dates";
-import { AI_OFF, aiOn, EXPIRED, loadSession, readRows, REVIEW_AGAIN, sessionSince } from "./shared";
+import { AI_OFF_MIDWAY, aiOn, EXPIRED, loadSession, readRows, REVIEW_AGAIN, sessionSince } from "./shared";
 
 // Reading free-text cells with Groq (IMPORT_ROWS), one chunk per call. These cells can contain
 // names, so they go to Groq, never Gemini (owner decision). The cells are data, not instructions:
@@ -35,15 +35,18 @@ const sheetOf = (shown: ReadRow[]) =>
 
 // The company name of each row is sent along, so the review can say which row is which.
 export type SmartChunk = { index: number; proposals: RowProposal[]; names: { row: number; name: string }[] };
-// A rate limit is worth saying apart from other failures: the person waits, then continues.
-export type SmartChunkResult = { ok: true; data: SmartChunk } | { ok: false; error: string; rateLimited: boolean };
+// A rate limit is worth saying apart from other failures: the reading waits a minute, then goes on
+// (the browser counts down; the server never retries). `retryable` marks the other failures that
+// can clear by trying again (a timeout, a busy service); a bad key, a refused request, an exhausted
+// budget or AI turned off can't, so the page offers no Continue for those.
+export type SmartChunkResult = { ok: true; data: SmartChunk } | { ok: false; error: string; rateLimited: boolean; retryable?: true };
 
-const fail = (error: string, rateLimited = false) => ({ ok: false as const, error, rateLimited });
+const fail = (error: string, rateLimited = false, retryable = false) => ({ ok: false as const, error, rateLimited, ...(retryable || rateLimited ? { retryable: true as const } : {}) });
 
 // Reads one chunk of rows with Groq and stages the checked proposals. Reading a chunk that's
 // already staged returns it again without another AI call.
 export async function readSmartChunk(tenant: Tenant, text: string, sessionId: string, index: number): Promise<SmartChunkResult> {
-  if (!(await aiOn(tenant))) return fail(AI_OFF);
+  if (!(await aiOn(tenant))) return fail(AI_OFF_MIDWAY);
   const since = await sessionSince();
   const loaded = await withTenant(tenant, async (tx) => {
     const session = await loadSession(tx, tenant, sessionId, text, since);
@@ -74,9 +77,9 @@ export async function readSmartChunk(tenant: Tenant, text: string, sessionId: st
   });
   if (!read.ok) {
     if (read.error === AI_ERROR_MESSAGES.rate_limited) {
-      return fail("Groq's free tier has reached its limit for the minute. Wait a minute, then press Continue: rows already read are kept.", true);
+      return fail("Groq's free tier has reached its limit for the minute. Wait a minute, then press Continue, or let Coppice go on by itself: rows already read are kept.", true);
     }
-    return fail(read.error);
+    return fail(read.error, false, isRetryableAiError(read.error));
   }
 
   const proposals = checkRowsRead(shown, read.data, { cycleStart: session.cycleStart, today: await dbToday(), hasContact });

@@ -105,7 +105,7 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
       options: smart.options,
       suggest: guard(smart.suggest, refusal(""), refusal(UNREACHABLE)),
       start: guard(smart.start, refusal(""), refusal(UNREACHABLE)),
-      read: guard(smart.read, { ...refusal(""), rateLimited: false }, { ...refusal(UNREACHABLE), rateLimited: false }),
+      read: guard(smart.read, { ...refusal(""), rateLimited: false }, { ...refusal(UNREACHABLE), rateLimited: false, retryable: true as const }),
       run: guard(smart.run, refusal(""), refusal(UNREACHABLE)),
     };
   }, [smart, gens]);

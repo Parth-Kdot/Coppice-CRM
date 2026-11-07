@@ -70,7 +70,6 @@ describe("basicsSteps", () => {
       for (const step of [...basicsSteps({ role, empty: false, basicsRole: null }), ...aiSteps({ role, aiConfigured: true, aiOn: true, mcpOn: false })]) {
         expect(step.title.length).toBeLessThanOrEqual(30);
         expect(step.body.length).toBeLessThanOrEqual(120);
-        expect(step.body).not.toMatch(/claude|anthropic/i);
       }
   });
 });

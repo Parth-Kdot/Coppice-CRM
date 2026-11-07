@@ -262,6 +262,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                 <input name="enabled" type="checkbox" defaultChecked={ai.enabled} className="lg-check" />
                 <span>AI on for this workspace</span>
               </label>
+              <p className="lg-hint">This doesn&apos;t affect AI assistants; turn those off under AI assistants below.</p>
               <div className="lg-setrow">
                 <span className="lg-label !mb-0">Limit</span>
                 <Stepper name="limit" label={`AI calls allowed per ${AI_WINDOW_DAYS} days`} defaultValue={ai.limit} min={0} max={AI_LIMIT_MAX} step={10} />

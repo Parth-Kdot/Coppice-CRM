@@ -603,6 +603,9 @@ enum AiFeature {
 enum AiRunStatus {
   SUCCEEDED
   FAILED
+  // A call reserved before it is made (lib/ai/run.ts reserveAi), so calls made at the same moment
+  // can't all pass the limits; it becomes SUCCEEDED or FAILED once the model answers.
+  RUNNING
 }
 
 enum FactSource {
