@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { focusSoon } from "@/components/ledger/focus";
 import { Tick } from "@/components/ledger/marks";
+import { celebrate } from "@/components/ledger/motion-kit";
 import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
 import { pdfFileProblem } from "@/lib/ai/pdf-limits";
@@ -25,6 +26,19 @@ function Quill({ label }: { label: string }) {
 const leftOutLine = (n: number) =>
   `${n === 1 ? "1 fact" : `${n} facts`} from the packet couldn't be kept (too long or incomplete). Add ${n === 1 ? "it" : "them"} by hand if you need ${n === 1 ? "it" : "them"}.`;
 
+// A packet read is a big finish: once the fresh render puts its facts on the page, the list they
+// wait in ("#facts-waiting", whose data-count changes) gets one celebrate(). Gives up after about
+// a second and a half; the margin note has said it either way.
+function celebrateNewFacts(before: string | undefined) {
+  let frames = 0;
+  const look = () => {
+    const list = document.getElementById("facts-waiting");
+    if (list && list.dataset.count !== before) return void celebrate(list);
+    if (++frames < 90) requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
+}
+
 // The packet upload: pick a PDF, then "Upload and read". The server reads the PDF and asks the AI for
 // its facts, which usually takes under a minute, so the button and a written line say that it is working.
 export function PacketUpload({
@@ -37,7 +51,9 @@ export function PacketUpload({
   const id = useId();
   const notify = useNotify();
   const [state, formAction, pending] = useActionState(async (prev: ActionResult<{ leftOut: number }> | null, form: FormData) => {
+    const before = document.getElementById("facts-waiting")?.dataset.count;
     const result = await action(prev, form);
+    if (result.ok) celebrateNewFacts(before);
     // The page re-renders once the facts are saved (the first upload's form moves under "Upload
     // another packet"), so the note lives in the message as well as under the button.
     if (result.ok) notify(`Packet read. Check the facts below.${result.data.leftOut > 0 ? ` ${leftOutLine(result.data.leftOut)}` : ""}`);
