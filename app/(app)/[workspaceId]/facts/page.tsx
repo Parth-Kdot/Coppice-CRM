@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
-import { CheckIcon, FactsIcon, WarningIcon } from "@/components/ledger/icons";
-import { Tick, YearMargin } from "@/components/ledger/marks";
+import { Disclosure, LazyDisclosure } from "@/components/ledger/disclosure";
+import { FactsIcon } from "@/components/ledger/icons";
 import { PacketUpload } from "@/components/ledger/packet-upload";
-import { Empty, PageHead } from "@/components/ledger/shared";
+import { PageHead } from "@/components/ledger/shared";
 import { isConfigured } from "@/lib/ai/client";
 import { aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
 import { day } from "@/lib/dates";
-import { getFactSheet, isStale, type FactSheetView } from "@/lib/facts";
+import { getFactSheet, hasMaskToken, isStale, type FactSheetView } from "@/lib/facts";
 import { FACT_MAX } from "@/lib/validation";
-import { addFact, deleteFact, deleteFactSheet, setFactVerified, updateFact, uploadFactSheet } from "./actions";
+import { addFact, deleteFact, deleteFactSheet, setFactVerified, updateFact, uploadFactSheet, verifyQuotedFacts } from "./actions";
+import { FactItem, FactSource, type FactView } from "./fact-item";
 import "@/components/ledger/pages.css";
 import { pageTitle } from "../page-title";
 
@@ -25,28 +26,11 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/fac
 export const maxDuration = 150;
 
 type Fact = FactSheetView["facts"][number];
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-// Facts read from a packet are listed under the page they came from, hand-written ones under their own heading.
-type Group = { key: string; title: string; facts: Fact[] };
-function groupByPage(facts: Fact[], showFile: boolean): Group[] {
-  const groups = new Map<string, Group>();
-  for (const fact of facts) {
-    const file = fact.factSheet?.fileName ?? "a deleted file";
-    const of = showFile ? ` of ${file}` : "";
-    const [key, title] =
-      fact.source === "PDF"
-        ? fact.pageNumber
-          ? [`p${fact.pageNumber}:${file}`, `Page ${fact.pageNumber}${of}`]
-          : [`p0:${file}`, `Page unknown${of}`]
-        : ["hand", "Added by hand"];
-    const group = groups.get(key) ?? { key, title, facts: [] };
-    group.facts.push(fact);
-    groups.set(key, group);
-  }
-  const rank = (g: Group) => (g.key === "hand" ? Infinity : Number(g.key.slice(1, g.key.indexOf(":"))) || 1e6);
-  return [...groups.values()].sort((a, b) => rank(a) - rank(b));
-}
-
+// The fact sheet: the only things the AI drafter may say about the org. The owner checks what the
+// AI read from the packet (waiting first), verifies, edits or adds facts; officers read the
+// verified ones. Every action is the owner's, checked again on the server.
 export default async function FactSheetPage({ params }: PageProps<"/[workspaceId]/facts">) {
   const { workspaceId } = await params;
   const me = await requireMembershipOr404(workspaceId);
@@ -54,233 +38,201 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
   const isOwner = me.role === "owner";
   const [sheet, ai, now] = await Promise.all([getFactSheet(tenant), aiUsage(tenant), dbNow()]);
 
-  const unverified = sheet.facts.filter((f) => !f.verifiedAt);
-  const verified = sheet.facts.filter((f) => f.verifiedAt);
-  const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
-  const aiReady = isConfigured() && ai.enabled;
+  const view = (f: Fact): FactView => ({
+    id: f.id,
+    text: f.text,
+    fromPdf: f.source === "PDF",
+    quote: f.quote,
+    pageNumber: f.pageNumber,
+    fileName: f.factSheet?.fileName ?? null,
+    quoteFound: f.quoteFound,
+    verified: f.verifiedAt !== null,
+    verifiedLine: f.verifiedAt ? `Verified by ${f.verifiedBy?.name ?? "a former member"} on ${day(f.verifiedAt)}` : null,
+    stale: isStale(f, now),
+    masked: hasMaskToken(f.text),
+  });
+  const waiting = sheet.facts.filter((f) => !f.verifiedAt).map(view);
+  const verified = sheet.facts.filter((f) => f.verifiedAt).map(view);
 
-  const factRow = (fact: Fact) => {
-    const isVerified = fact.verifiedAt !== null;
+  if (!isOwner) {
     return (
-      <li key={fact.id} className="lg-fact" data-verified={isVerified || undefined}>
-        <YearMargin iso={fact.verifiedAt ?? fact.createdAt} />
-        <span className="lg-factmark" role="img" aria-label={isVerified ? "Verified" : "Not verified"}>
-          {isVerified && <Tick size={20} />}
-        </span>
-        <div className="lg-factbody">
-          <p className="lg-facttext">{fact.text}</p>
-          {fact.source === "PDF" ? (
-            <>
-              {fact.quote && (
-                <p className="lg-factsrc">
-                  <span className="lg-quote">&ldquo;{fact.quote}&rdquo;</span>
-                </p>
-              )}
-              <p className={`lg-quotecheck ${fact.quoteFound ? "lg-ok" : "lg-late"}`}>
-                {fact.quoteFound ? <CheckIcon size={16} /> : <WarningIcon size={16} />}
-                <span>
-                  {fact.quoteFound
-                    ? "Quote found on that page"
-                    : "Quote not found on that page, or it doesn't match the fact. Check the PDF."}
-                </span>
-              </p>
-            </>
-          ) : (
-            <p className="lg-factsrc">Added by hand</p>
-          )}
-          {(isVerified || isStale(fact, now)) && (
-            <p className="lg-factmeta">
-              {isVerified && (
-                <span>
-                  Verified by {fact.verifiedBy?.name ?? "a former member"} on {day(fact.verifiedAt as Date)}
-                </span>
-              )}
-              {isStale(fact, now) && <span className="lg-badge lg-badge-stale">Stale: over a year old</span>}
-            </p>
-          )}
-          {isOwner && (
-            <div className="lg-factacts">
-              <ActionForm
-                action={setFactVerified}
-                submitLabel={isVerified ? "Unverify" : "Verify"}
-                successMessage={isVerified ? "Fact unverified." : "Fact verified."}
-                primary={!isVerified}
-                small
-              >
-                {ids}
-                <input type="hidden" name="factId" value={fact.id} />
-                <input type="hidden" name="verified" value={isVerified ? "0" : "1"} />
-              </ActionForm>
-              <ActionForm action={deleteFact} submitLabel="Delete" successMessage="Fact deleted." confirmMessage="Delete this fact?" small>
-                {ids}
-                <input type="hidden" name="factId" value={fact.id} />
-              </ActionForm>
-              <details className="lg-factedit">
-                <summary>Edit (saving also verifies it)</summary>
-                <ActionForm action={updateFact} submitLabel="Save fact" successMessage="Fact saved and verified." className="lg-editform" small>
-                  {ids}
-                  <input type="hidden" name="factId" value={fact.id} />
-                  <label className="lg-label" htmlFor={`edit-${fact.id}`}>
-                    Fact
-                  </label>
-                  <textarea id={`edit-${fact.id}`} name="text" required maxLength={FACT_MAX} rows={2} defaultValue={fact.text} className="lg-textarea" />
-                </ActionForm>
-              </details>
-            </div>
-          )}
-        </div>
-      </li>
-    );
-  };
-
-  const factList = (facts: Fact[]) => {
-    const groups = groupByPage(facts, sheet.sheets.length > 1);
-    return (
-      <div>
-        {groups.map((group) => (
-          <section key={group.key} className="lg-factgroup" aria-label={group.title}>
-            <h3 className="lg-factgroup-h lg-tag">{group.title}</h3>
+      <div className="lg-page-facts">
+        <PageHead title="Fact sheet" sub="Only verified facts here can appear in AI drafts." />
+        <section className="lg-factsec" aria-labelledby="facts-verified-h">
+          <h2 id="facts-verified-h" className="lg-factsec-h">
+            {verified.length === 0 ? "No verified facts yet. Your chair adds them here." : `${plural(verified.length, "verified fact", "verified facts")} the drafter can use`}
+          </h2>
+          {verified.length > 0 && (
             <ul className="lg-facts-list">
-              {group.facts.map((fact) => factRow(fact))}
+              {verified.map((fact) => (
+                <li key={fact.id} className="lg-fact">
+                  <p className="lg-facttext">
+                    <span>{fact.text}</span>
+                  </p>
+                  {fact.fromPdf && <FactSource fact={{ ...fact, verifiedLine: null }} />}
+                </li>
+              ))}
             </ul>
-          </section>
-        ))}
+          )}
+        </section>
       </div>
     );
-  };
+  }
+
+  const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
+  const aiReady = isConfigured() && ai.enabled;
+  const quoted = waiting.filter((f) => f.fromPdf && f.quoteFound && !f.masked).length;
+  const empty = sheet.facts.length === 0;
+  const list = (facts: FactView[]) => (
+    <ul className="lg-facts-list">
+      {facts.map((fact, i) => (
+        <FactItem
+          key={fact.id}
+          workspaceId={workspaceId}
+          fact={fact}
+          nextId={facts[i + 1]?.id ?? facts[i - 1]?.id ?? null}
+          setVerified={setFactVerified}
+          remove={deleteFact}
+          update={updateFact}
+        />
+      ))}
+    </ul>
+  );
+
+  const addForm = (
+    <ActionForm action={addFact} submitLabel="Add fact" successMessage="Added and verified." className="lg-addfact" primary={empty}>
+      {ids}
+      <div className="lg-addfact-field">
+        <label className="lg-label" htmlFor="facts-new">
+          New fact
+        </label>
+        <input id="facts-new" name="text" required maxLength={FACT_MAX} placeholder="Our hackathon draws 600 students." className="lg-input" />
+      </div>
+    </ActionForm>
+  );
+
+  const upload = (
+    <>
+      {!aiReady ? (
+        <p>
+          {isConfigured() ? (
+            <>
+              Turn AI on in{" "}
+              <Link href={`/${workspaceId}/settings`} className="lg-link">
+                Settings
+              </Link>{" "}
+              to read a packet.
+            </>
+          ) : (
+            "AI isn't set up on this server yet, so a packet can't be read here."
+          )}
+        </p>
+      ) : (
+        <>
+          <PacketUpload workspaceId={workspaceId} action={uploadFactSheet} />
+          <p className="lg-uploadnote">A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading takes up to a minute.</p>
+          <Disclosure variant="inline" summary="What is sent">
+            <p className="lg-uploadnote">
+              The PDF&apos;s text goes to Google&apos;s free Gemini tier with emails and phone numbers masked, so don&apos;t upload anything you wouldn&apos;t
+              hand a sponsor. The facts it finds wait here until you verify them.
+            </p>
+          </Disclosure>
+        </>
+      )}
+      {sheet.sheets.length > 0 && (
+        <ul className="lg-files">
+          {sheet.sheets.map((s) => (
+            <li key={s.id}>
+              <FactsIcon size={18} />
+              <span className="lg-wrap-any">
+                {s.fileName}: {plural(s.pageCount, "page", "pages")}, uploaded {day(s.createdAt)} by {s.uploadedBy.name}
+              </span>
+              <ActionForm
+                action={deleteFactSheet}
+                submitLabel="Delete file"
+                submitAriaLabel={`Delete ${s.fileName}`}
+                successMessage="File and its facts deleted."
+                confirmMessage={`Delete ${s.fileName} and every fact read from it? Facts added by hand stay.`}
+                small
+                focusAfter=".lg-page-facts .lg-h1"
+              >
+                {ids}
+                <input type="hidden" name="factSheetId" value={s.id} />
+              </ActionForm>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
 
   return (
     <div className="lg-page-facts">
-      <PageHead
-        title="Fact sheet"
-        sub="The AI drafter may only state facts on this page, and only once an owner has verified them. Upload your sponsorship packet and the AI lists its facts with the sentence and page each came from; check each one against your packet before verifying it."
-      />
-      {sheet.facts.length > 0 && (
-        <p className="lg-factsum">
-          <span>
-            <strong>{sheet.facts.length}</strong> {sheet.facts.length === 1 ? "fact" : "facts"}
-          </span>
-          <span>
-            <strong>{verified.length}</strong> verified
-          </span>
-          {isOwner && (
-            <span>
-              <strong>{unverified.length}</strong> waiting for your check
-            </span>
-          )}
-        </p>
-      )}
+      <PageHead title="Fact sheet" sub="Only verified facts here can appear in AI drafts." />
 
-      {isOwner && (
-        <section className="lg-panel" aria-labelledby="facts-upload">
-          <div className="lg-panel-head">
-            <h2 id="facts-upload" className="lg-panel-title">
-              Upload the sponsorship packet
-            </h2>
-          </div>
-          <div className="lg-panel-body">
-            {!aiReady ? (
-              <p>
-                {isConfigured() ? (
-                  <>
-                    Turn AI on in{" "}
-                    <Link href={`/${workspaceId}/settings`} className="lg-link">
-                      Settings
-                    </Link>{" "}
-                    to read a packet.
-                  </>
-                ) : (
-                  "AI isn't set up on this server yet, so a packet can't be read here."
-                )}{" "}
-                You can still add facts by hand below.
-              </p>
-            ) : (
-              <>
-                <PacketUpload workspaceId={workspaceId} action={uploadFactSheet} />
-                <p className="lg-uploadnote">
-                  A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading it takes up to a minute. Its text goes to Google&apos;s free Gemini
-                  tier with emails and phone numbers masked, so don&apos;t upload anything you wouldn&apos;t hand a sponsor.
-                </p>
-              </>
-            )}
-            {sheet.sheets.length > 0 && (
-              <ul className="lg-files">
-                {sheet.sheets.map((s) => (
-                  <li key={s.id}>
-                    <FactsIcon size={18} />
-                    <span>
-                      {s.fileName}: {s.pageCount} {s.pageCount === 1 ? "page" : "pages"}, uploaded {day(s.createdAt)} by {s.uploadedBy.name}
-                    </span>
-                    <ActionForm
-                      action={deleteFactSheet}
-                      submitLabel="Delete file"
-                      successMessage="File and its facts deleted."
-                      confirmMessage={`Delete ${s.fileName} and every fact read from it? Facts added by hand stay.`}
-                      small
-                    >
-                      {ids}
-                      <input type="hidden" name="factSheetId" value={s.id} />
-                    </ActionForm>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
-      )}
-
-      {isOwner && (
-        <section className="lg-panel" aria-labelledby="facts-waiting">
-          <div className="lg-panel-head">
-            <h2 id="facts-waiting" className="lg-panel-title">
-              Waiting for your check
-            </h2>
-            <span className="lg-panel-count">{unverified.length}</span>
-          </div>
-          {unverified.length > 0 && <p className="lg-panel-note">The drafter does not use these until you verify them.</p>}
-          <div className="lg-panel-body">
-            {unverified.length === 0 ? <p className="lg-muted">Nothing to check.</p> : factList(unverified)}
-          </div>
-        </section>
-      )}
-
-      <section className="lg-panel" aria-labelledby="facts-verified">
-        <div className="lg-panel-head">
-          <h2 id="facts-verified" className="lg-panel-title">
-            Verified
-          </h2>
-          <span className="lg-panel-count">{verified.length}</span>
-        </div>
-        <div className="lg-panel-body">
-          {verified.length === 0 ? (
-            <Empty kind="facts">
-              <p className="lg-empty-title">No verified facts yet, so the drafter has nothing to say about your org.</p>
-            </Empty>
-          ) : (
-            factList(verified)
-          )}
-        </div>
-      </section>
-
-      {isOwner && (
-        <section className="lg-panel" aria-labelledby="facts-add">
-          <div className="lg-panel-head">
-            <h2 id="facts-add" className="lg-panel-title">
-              Add a fact by hand
-            </h2>
-          </div>
-          <div className="lg-panel-body">
-            <ActionForm action={addFact} submitLabel="Add fact" successMessage="Added and verified." className="lg-addfact" primary>
-              {ids}
-              <div className="lg-addfact-field">
-                <label className="lg-label" htmlFor="facts-new">
-                  New fact
-                </label>
-                <input id="facts-new" name="text" required maxLength={FACT_MAX} placeholder="Our hackathon draws 600 students." className="lg-input" />
+      {empty ? (
+        <>
+          <section className="lg-panel" aria-labelledby="facts-add-h" data-tour="facts-add">
+            <div className="lg-panel-head">
+              <h2 id="facts-add-h" className="lg-panel-title">
+                Add a fact
+              </h2>
+            </div>
+            <div className="lg-panel-body">{addForm}</div>
+          </section>
+          <section className="lg-panel" aria-labelledby="facts-upload-h" data-tour="facts-upload">
+            <div className="lg-panel-head">
+              <h2 id="facts-upload-h" className="lg-panel-title">
+                Or read them from your sponsorship packet
+              </h2>
+            </div>
+            <div className="lg-panel-body">{upload}</div>
+          </section>
+        </>
+      ) : (
+        <>
+          {waiting.length > 0 && (
+            <section className="lg-panel" aria-labelledby="facts-waiting-h">
+              <div className="lg-panel-head">
+                <h2 id="facts-waiting-h" className="lg-panel-title" tabIndex={-1}>
+                  Waiting for your check <span className="lg-panel-count">{waiting.length}</span>
+                </h2>
+                {quoted > 0 && (
+                  <ActionForm
+                    action={verifyQuotedFacts}
+                    submitLabel={quoted === waiting.length ? `Verify all ${quoted}` : `Verify all ${quoted} with quotes found`}
+                    successMessage={`${plural(quoted, "fact", "facts")} verified.`}
+                    primary
+                    small
+                    submitDataTour="facts-verify-all"
+                    focusAfter="#facts-verified-h"
+                  >
+                    {ids}
+                  </ActionForm>
+                )}
               </div>
-            </ActionForm>
-          </div>
-        </section>
+              <div className="lg-panel-body">{list(waiting)}</div>
+            </section>
+          )}
+
+          <section className="lg-panel" aria-labelledby="facts-verified-h">
+            <div className="lg-panel-head">
+              <h2 id="facts-verified-h" className="lg-panel-title" tabIndex={-1}>
+                Verified <span className="lg-panel-count">{verified.length}</span>
+              </h2>
+            </div>
+            <div className="lg-panel-body">
+              {verified.length === 0 ? <p className="lg-muted">None yet. Drafts say nothing about your org until you verify a fact.</p> : list(verified)}
+              <LazyDisclosure variant="inline" summary="+ Add a fact" className="mt-3" data-tour="facts-add">
+                {addForm}
+              </LazyDisclosure>
+            </div>
+          </section>
+
+          <Disclosure summary="Upload another packet" count={sheet.sheets.length || undefined} data-tour="facts-upload" className="lg-factupload">
+            {upload}
+          </Disclosure>
+        </>
       )}
     </div>
   );

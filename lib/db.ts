@@ -86,3 +86,11 @@ export function isSerializationFailure(error: unknown): boolean {
   }
   return false;
 }
+
+// P4: a transaction-scoped advisory lock on `key`, taken as the transaction's first statement so
+// two runs of the same work (two imports into one workspace) go one after the other: the second
+// waits until the first commits or rolls back, then sees what it wrote. Released with the
+// transaction, so nothing can leak it across the pooler.
+export async function advisoryXactLock(tx: Prisma.TransactionClient, key: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}

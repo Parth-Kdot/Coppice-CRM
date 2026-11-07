@@ -12,6 +12,14 @@ import { FACT_MAX, type ActionResult } from "@/lib/validation";
 // verifies it. Owners can also edit, delete, or add facts by hand. Officers can read them.
 
 const ownersOnly = { ok: false, error: "Only the workspace owner can do that." } as const;
+
+// Contact details are masked as "[email]" and "[phone]" before a page goes to the AI, so a fact
+// holding one of those tokens would put the token itself into an email to a sponsor.
+const MASK_TOKEN = /\[(?:email|phone)\]/i;
+export const hasMaskToken = (text: string) => MASK_TOKEN.test(text);
+export const MASKED_FACT = "Facts can't hold [email] or [phone]: drafts would send those words as they are. Leave contact details out of the fact.";
+const MASKED_VERIFY = "This fact holds [email] or [phone], so drafts can't use it. Edit it first.";
+const stripNul = (text: string) => text.replace(/\u0000/g, "");
 const FACT_NOT_FOUND = { ok: false, error: "Fact not found." } as const;
 
 // What the AI is asked to return.
@@ -45,7 +53,8 @@ export async function uploadFactSheet(owner: Membership, fileName: string, bytes
   const read = await readPdfPages(bytes);
   if (!read.ok) return read;
   // What the AI is shown is also what's stored to check its quotes against.
-  const pages = read.data.map(promptSafe);
+  // NULs are dropped first: Postgres refuses them in text.
+  const pages = read.data.map((page) => promptSafe(stripNul(page)));
 
   const document = pages.map((text, i) => `<page number="${i + 1}">\n${text}\n</page>`).join("\n");
   const extracted = await runAi(owner, {
@@ -59,8 +68,10 @@ export async function uploadFactSheet(owner: Membership, fileName: string, bytes
   // One copy of each fact, and only real pages.
   const seen = new Set<string>();
   const facts = extracted.data.facts
-    .map((f) => ({ ...f, text: f.text.trim(), quote: f.quote.trim() }))
-    .filter((f) => f.text && !seen.has(f.text.toLowerCase()) && seen.add(f.text.toLowerCase()))
+    .map((f) => ({ ...f, text: stripNul(f.text).trim(), quote: stripNul(f.quote).trim() }))
+    // A fact made of masked contact details ("Contact us at [email]") is no use to a draft.
+    .filter((f) => f.text && !hasMaskToken(f.text))
+    .filter((f) => !seen.has(f.text.toLowerCase()) && seen.add(f.text.toLowerCase()))
     .map((f) => {
       const page = f.page >= 1 && f.page <= pages.length ? f.page : null;
       return { ...f, page, found: page !== null && quoteFound(f.quote, pages[page - 1], f.text) };
@@ -124,7 +135,12 @@ export type FactSheetView = Awaited<ReturnType<typeof getFactSheet>>;
 export function verifiedFacts(tenant: Tenant) {
   return withTenant(tenant, (tx) =>
     tx.factSheetItem.findMany({
-      where: { workspaceId: tenant.workspaceId, verifiedAt: { not: null } },
+      where: {
+        workspaceId: tenant.workspaceId,
+        verifiedAt: { not: null },
+        // Never a fact holding a masked token, even one verified before that was refused.
+        NOT: [{ text: { contains: "[email]", mode: "insensitive" } }, { text: { contains: "[phone]", mode: "insensitive" } }],
+      },
       select: { id: true, text: true, verifiedAt: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
@@ -138,6 +154,11 @@ export const isStale = (fact: { verifiedAt: Date | null; createdAt: Date }, now:
 export function setFactVerified(owner: Membership, factId: string, verified: boolean): Promise<ActionResult> {
   if (owner.role !== "owner") return Promise.resolve(ownersOnly);
   return withTenant(owner, async (tx) => {
+    if (verified) {
+      const fact = await tx.factSheetItem.findFirst({ where: { id: factId, workspaceId: owner.workspaceId }, select: { text: true } });
+      if (!fact) return FACT_NOT_FOUND;
+      if (hasMaskToken(fact.text)) return { ok: false, error: MASKED_VERIFY };
+    }
     const { count } = await tx.factSheetItem.updateMany({
       where: { id: factId, workspaceId: owner.workspaceId },
       data: verified ? { verifiedAt: new Date(), verifiedById: owner.userId } : { verifiedAt: null, verifiedById: null },
@@ -146,14 +167,35 @@ export function setFactVerified(owner: Membership, factId: string, verified: boo
   });
 }
 
-// An owner's edit is their own statement, so it counts as verified. A fact from the PDF keeps its
-// quote, which is checked again: change "$2,500" to "$3,000" and it shows "quote doesn't match".
-export function updateFact(owner: Membership, factId: string, text: string): Promise<ActionResult> {
+// "Verify all n with quotes found": every fact waiting for a check whose quote was found on its
+// page, in one go. Facts whose quote wasn't found, and any holding a masked token, stay waiting.
+export function verifyQuotedFacts(owner: Membership): Promise<ActionResult<{ verified: number }>> {
   if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  return withTenant(owner, async (tx) => {
+    const { count } = await tx.factSheetItem.updateMany({
+      where: {
+        workspaceId: owner.workspaceId,
+        verifiedAt: null,
+        source: "PDF",
+        quoteFound: true,
+        NOT: [{ text: { contains: "[email]", mode: "insensitive" } }, { text: { contains: "[phone]", mode: "insensitive" } }],
+      },
+      data: { verifiedAt: new Date(), verifiedById: owner.userId },
+    });
+    return { ok: true, data: { verified: count } };
+  });
+}
+
+// An owner's edit is their own statement. A hand-written fact stays verified; a fact from the PDF
+// keeps its quote, which is checked again, and is verified only while the quote still supports the
+// new text: change "$2,500" to "$3,000" and it goes back to waiting, with "quote doesn't match".
+export function updateFact(owner: Membership, factId: string, text: string): Promise<ActionResult<{ verified: boolean }>> {
+  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (hasMaskToken(text)) return Promise.resolve({ ok: false, error: MASKED_FACT });
   return withTenant(owner, async (tx) => {
     const fact = await tx.factSheetItem.findFirst({
       where: { id: factId, workspaceId: owner.workspaceId },
-      select: { quote: true, pageNumber: true, factSheetId: true },
+      select: { source: true, quote: true, pageNumber: true, factSheetId: true },
     });
     if (!fact) return FACT_NOT_FOUND;
     let found = false;
@@ -164,17 +206,19 @@ export function updateFact(owner: Membership, factId: string, text: string): Pro
       });
       found = page !== null && quoteFound(fact.quote, page.text, text);
     }
+    const verified = fact.source === "MANUAL" || found;
     await tx.factSheetItem.updateMany({
       where: { id: factId, workspaceId: owner.workspaceId },
-      data: { text, quoteFound: found, verifiedAt: new Date(), verifiedById: owner.userId },
+      data: { text, quoteFound: found, ...(verified ? { verifiedAt: new Date(), verifiedById: owner.userId } : { verifiedAt: null, verifiedById: null }) },
     });
-    return { ok: true, data: undefined };
+    return { ok: true, data: { verified } };
   });
 }
 
 // A fact typed in by an owner: verified, with no quote to check.
 export function addFact(owner: Membership, text: string): Promise<ActionResult<{ factId: string }>> {
   if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (hasMaskToken(text)) return Promise.resolve({ ok: false, error: MASKED_FACT });
   return withTenant(owner, async (tx) => {
     const fact = await tx.factSheetItem.create({
       data: {

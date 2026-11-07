@@ -55,14 +55,34 @@ export async function setFactVerified(_prev: ActionResult | null, form: FormData
   return { ok: true, data: undefined };
 }
 
-export async function updateFact(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+// Says whether the edit is verified: a fact from the PDF whose quote no longer supports the new
+// text goes back to waiting for a check.
+export async function updateFact(_prev: ActionResult<{ verified: boolean }> | null, form: FormData): Promise<ActionResult<{ verified: boolean }>> {
   const parsed = updateFactSchema.safeParse({ workspaceId: form.get("workspaceId"), factId: form.get("factId"), text: form.get("text") });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { workspaceId, factId, text } = parsed.data;
 
+  let result: ActionResult<{ verified: boolean }>;
   try {
     const owner = await requireOwner(workspaceId);
-    const result = await facts.updateFact(owner, factId, text);
+    result = await facts.updateFact(owner, factId, text);
+    if (!result.ok) return result;
+  } catch (e) {
+    return failure(e);
+  }
+  revalidatePath(factsPath(workspaceId));
+  return result;
+}
+
+// "Verify all n with quotes found": one action and one revalidation for the whole list.
+export async function verifyQuotedFacts(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = workspaceIdSchema.safeParse(form.get("workspaceId"));
+  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  const workspaceId = parsed.data;
+
+  try {
+    const owner = await requireOwner(workspaceId);
+    const result = await facts.verifyQuotedFacts(owner);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
@@ -78,7 +98,8 @@ export async function addFact(_prev: ActionResult | null, form: FormData): Promi
 
   try {
     const owner = await requireOwner(workspaceId);
-    await facts.addFact(owner, text);
+    const result = await facts.addFact(owner, text);
+    if (!result.ok) return result;
   } catch (e) {
     return failure(e);
   }

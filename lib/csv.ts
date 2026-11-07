@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import Papa from "papaparse";
 import type { Prisma, Stage } from "@/generated/prisma/client";
 import type { ContactFields, CompanyFields } from "@/lib/companies";
-import { withTenant, type Tenant } from "@/lib/db";
+import { advisoryXactLock, withTenant, type Tenant } from "@/lib/db";
 import { findContained, loadSavedNames, type NameLookalike } from "@/lib/csv-contained";
 import { domainKey, groupLookAlikes, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import {
@@ -27,7 +27,10 @@ export type Table = { headers: string[]; rows: { row: number; cells: string[] }[
 // Parses CSV text into headers and rows. `row` is the spreadsheet row number (the header is row
 // 1), so messages match what people see in Google Sheets or Excel. Handles a byte-order mark,
 // Windows line endings, quoted commas and line breaks, and blank lines; refuses broken quoting.
+export const NOT_UTF8 = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File > Download > CSV.";
 export function parseCsv(text: string): ActionResult<Table> {
+  // A NUL character means binary or UTF-16 text read the wrong way; Postgres would refuse it.
+  if (text.includes("\u0000")) return { ok: false, error: NOT_UTF8 };
   const parsed = Papa.parse<string[]>(text.replace(/^﻿/, ""), { skipEmptyLines: false });
   const quoteError = parsed.errors.find((e) => e.type === "Quotes");
   if (quoteError) {
@@ -69,6 +72,13 @@ const GUESSES: [keyof ImportMapping, RegExp][] = [
   ["name", /\b(company|organization|organisation|org|sponsor|business|employer|name)\b/],
 ];
 
+// Whether the name column was found from its header, or only assumed (no header looked like one).
+export function nameHeaderFound(headers: string[], mapping: ImportMapping): boolean {
+  const pattern = GUESSES.find(([field]) => field === "name")?.[1];
+  const header = headers[mapping.name]?.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() ?? "";
+  return Boolean(pattern?.test(header));
+}
+
 // A first guess at which column fills which field, from the headers. Each column is used once;
 // if no header looks like a company name, the first column is assumed to be it.
 export function guessMapping(headers: string[]): ImportMapping {
@@ -101,9 +111,38 @@ export type CheckedRow = {
   company: CompanyFields;
   contact: ContactFields | null;
   errors: string[];
+  // Never block the row: what was left out of it, and why ("contact left out: no valid email").
+  warnings: string[];
 };
 
-// Checks every row with the same rules as the Add company and Add contact forms.
+// A cell that held bytes the file's encoding couldn't map (U+FFFD): never saved.
+const UNREADABLE = "\uFFFD";
+export const UNREADABLE_ROW = "This row has characters Coppice can't read. In Excel use Save As, CSV UTF-8.";
+
+// The contact a row brings, if any, and what was left out. A company is never refused over its
+// contact: with an email and no name, the name is the email's first part ("hello" for
+// hello@orbit.com); a bad email is left out (with the name kept, when there is one).
+function checkContact(nameCell: string, emailCell: string): { contact: ContactFields | null; warnings: string[] } {
+  const name = nameCell.trim();
+  const email = emailCell.trim();
+  if (!name && !email) return { contact: null, warnings: [] };
+  const warnings: string[] = [];
+  const parsedEmail = email ? contactFieldsSchema.shape.email.safeParse(email) : null;
+  const goodEmail = parsedEmail?.success ? parsedEmail.data : null;
+  if (email && !goodEmail) warnings.push(name ? "Contact email left out: not a valid address." : "Contact left out: no valid email.");
+  let contactName = name;
+  if (!contactName && goodEmail) {
+    contactName = goodEmail.split("@")[0];
+    warnings.push(`Contact named "${contactName}" from their email.`);
+  }
+  if (!contactName) return { contact: null, warnings };
+  const parsed = contactFieldsSchema.safeParse({ name: contactName, email: goodEmail, title: null });
+  if (!parsed.success) return { contact: null, warnings: [...warnings, `Contact left out: ${parsed.error.issues[0].message}`] };
+  return { contact: parsed.data, warnings };
+}
+
+// Checks every row with the same rules as the Add company form. The contact is checked like the
+// Add contact form, but only ever leaves the row with a warning.
 export function checkRows(table: Table, mapping: ImportMapping): ActionResult<CheckedRow[]> {
   const outOfRange = Object.values(mapping).some((c) => c !== null && c >= table.headers.length);
   if (outOfRange) return { ok: false, error: "The column choices don't match this file. Choose them again." };
@@ -118,22 +157,20 @@ export function checkRows(table: Table, mapping: ImportMapping): ActionResult<Ch
       const errors: string[] = [];
 
       const companyInput = { name: cell("name"), industry: cell("industry"), website: cell("website"), notes: cell("notes") };
+      const unreadable = [...Object.values(companyInput), cell("contactName"), cell("contactEmail")].some((v) => v.includes(UNREADABLE));
       const company = companyFieldsSchema.safeParse(companyInput);
-      if (!company.success) errors.push(...company.error.issues.map((i) => i.message));
+      if (unreadable) errors.push(UNREADABLE_ROW);
+      else if (!company.success) errors.push(...company.error.issues.map((i) => i.message));
 
-      let contact: ContactFields | null = null;
-      if (cell("contactName").trim() || cell("contactEmail").trim()) {
-        const parsed = contactFieldsSchema.safeParse({ name: cell("contactName"), email: cell("contactEmail"), title: null });
-        if (parsed.success) contact = parsed.data;
-        else errors.push(...parsed.error.issues.map((i) => `Contact: ${i.message}`));
-      }
+      const { contact, warnings } = errors.length ? { contact: null, warnings: [] } : checkContact(cell("contactName"), cell("contactEmail"));
 
       // Rows with errors show what was typed (trimmed); good rows show the checked values.
       const typed = (value: string) => value.trim() || null;
-      const shown = company.success
-        ? company.data
-        : { name: companyInput.name.trim(), industry: typed(companyInput.industry), website: typed(companyInput.website), notes: typed(companyInput.notes) };
-      return { row, company: shown, contact, errors };
+      const shown =
+        company.success && !unreadable
+          ? company.data
+          : { name: companyInput.name.trim(), industry: typed(companyInput.industry), website: typed(companyInput.website), notes: typed(companyInput.notes) };
+      return { row, company: shown, contact, errors, warnings };
     }),
   };
 }
@@ -196,8 +233,14 @@ export type ImportPreview = {
   rowCount: number;
   // The first 10 rows as they'll be imported, with their problems.
   sample: CheckedRow[];
-  // Every row that can't be imported, and why.
-  errors: { row: number; messages: string[] }[];
+  // Every row that can't be imported, and why (with the name as typed, for the result's list).
+  errors: { row: number; name: string; messages: string[] }[];
+  // Rows that import with something left out (a contact without a valid email). Never blocking.
+  warnings: { row: number; name: string; messages: string[] }[];
+  // Whether the name column was only assumed (no header looked like a company name).
+  nameAssumed: boolean;
+  // Set when the file wasn't UTF-8 and was read as Windows (Western) text instead.
+  encodingGuess?: "windows-1252";
   groups: DuplicateGroup[];
   // Names inside other names, shown with the groups above; they suggest no skips.
   contained: NameLookalike[];
@@ -213,7 +256,12 @@ export type ImportPreview = {
 
 export const PREVIEW_ROWS = 10;
 
-export async function previewImport(tenant: Tenant, text: string, mapping: ImportMapping | null): Promise<ActionResult<ImportPreview>> {
+export async function previewImport(
+  tenant: Tenant,
+  text: string,
+  mapping: ImportMapping | null,
+  encodingGuess?: "windows-1252",
+): Promise<ActionResult<ImportPreview>> {
   const table = parseCsv(text);
   if (!table.ok) return table;
   const chosen = mapping ?? guessMapping(table.data.headers);
@@ -235,7 +283,10 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
       mapping: chosen,
       rowCount: checked.data.length,
       sample: checked.data.slice(0, PREVIEW_ROWS),
-      errors: checked.data.filter((r) => r.errors.length > 0).map((r) => ({ row: r.row, messages: r.errors })),
+      errors: checked.data.filter((r) => r.errors.length > 0).map((r) => ({ row: r.row, name: r.company.name, messages: r.errors })),
+      warnings: valid.filter((r) => r.warnings.length > 0).map((r) => ({ row: r.row, name: r.company.name, messages: r.warnings })),
+      nameAssumed: mapping === null && !nameHeaderFound(table.data.headers, chosen),
+      ...(encodingGuess ? { encodingGuess } : {}),
       groups,
       contained,
       labels: valid.filter((r) => grouped.has(r.row)).map((r) => ({ row: r.row, name: r.company.name, website: r.company.website ?? null })),
@@ -283,6 +334,9 @@ export async function runImport(
   const skipped = new Set(skip);
 
   return withTenant(tenant, async (tx) => {
+    // Two imports into one workspace go one after the other, so the second sees what the first
+    // added (and its seen-check refuses it) instead of both passing before either writes.
+    await advisoryXactLock(tx, `import:${tenant.workspaceId}`);
     const groups = await findGroups(tx, tenant.workspaceId, valid);
     const seenIds = new Set(seen);
     if (groups.some((g) => g.existing.some((c) => !seenIds.has(c.id)))) {
@@ -295,8 +349,25 @@ export async function runImport(
     if (extras && !extras.ok) return extras;
     const extra = (row: number) => extras?.data.rows.get(row);
 
-    await tx.company.createMany({
-      data: toImport.map((r) => ({
+    // Imported look-alikes were chosen on purpose: remember them as separate. A star, not every
+    // pair: each imported row with each saved company it looked like, and with the group's first
+    // imported row. Worked out before writing, so an import that would record too many is refused
+    // whole.
+    const flagged = [...groups.map((g) => ({ rows: g.rows, existing: g.existing.map((c) => c.id) })), ...(extras?.data.lookalikes ?? [])];
+    const pairs = new Map<string, [string, string]>();
+    for (const g of flagged) {
+      const imported = g.rows.flatMap((row) => (idOf.has(row) ? [idOf.get(row) as string] : []));
+      const [anchor, ...rest] = imported;
+      for (const id of imported) for (const other of g.existing) pairs.set(orderedPair(id, other).join("|"), orderedPair(id, other));
+      for (const id of rest) pairs.set(orderedPair(id, anchor).join("|"), orderedPair(id, anchor));
+      if (pairs.size > IMPORT_MAX_PAIRS) {
+        return { ok: false, error: "Too many of these rows look alike to import together. Skip more of the look-alikes, or split the file." };
+      }
+    }
+
+    // Written in chunks, one after another: one statement at a time on the transaction's connection.
+    await inChunks(
+      toImport.map((r) => ({
         id: idOf.get(r.row) as string,
         workspaceId: tenant.workspaceId,
         ...r.company,
@@ -309,26 +380,28 @@ export async function runImport(
         nameKey: nameKey(r.company.name),
         domainKey: domainKey(r.company.website),
       })),
-    });
-    await tx.contact.createMany({
-      data: toImport.flatMap((r) => {
+      (data) => tx.company.createMany({ data }),
+    );
+    await inChunks(
+      toImport.flatMap((r) => {
         const contact = r.contact ?? extra(r.row)?.contact;
         return contact ? [{ workspaceId: tenant.workspaceId, companyId: idOf.get(r.row) as string, ...contact }] : [];
       }),
-    });
-
-    // Imported look-alikes were chosen on purpose: remember each pair as separate.
-    const flagged = [...groups.map((g) => ({ rows: g.rows, existing: g.existing.map((c) => c.id) })), ...(extras?.data.lookalikes ?? [])];
-    const pairs = flagged.flatMap((g) => {
-      const imported = g.rows.flatMap((row) => (idOf.has(row) ? [idOf.get(row) as string] : []));
-      const members = [...imported, ...g.existing];
-      return imported.flatMap((id, i) => members.slice(i + 1).map((other) => orderedPair(id, other)));
-    });
-    await tx.companyPairDecision.createMany({
-      data: pairs.map(([companyAId, companyBId]) => ({ workspaceId: tenant.workspaceId, companyAId, companyBId, decidedById: tenant.userId })),
-      skipDuplicates: true,
-    });
+      (data) => tx.contact.createMany({ data }),
+    );
+    await inChunks(
+      [...pairs.values()].map(([companyAId, companyBId]) => ({ workspaceId: tenant.workspaceId, companyAId, companyBId, decidedById: tenant.userId })),
+      (data) => tx.companyPairDecision.createMany({ data, skipDuplicates: true }),
+    );
 
     return { ok: true, data: { imported: toImport.length, skipped: skipped.size, errored } };
   });
+}
+
+// At most this many look-alike pairs are remembered by one import.
+export const IMPORT_MAX_PAIRS = 5000;
+const CHUNK = 500;
+
+async function inChunks<T>(items: T[], write: (chunk: T[]) => Promise<unknown>): Promise<void> {
+  for (let i = 0; i < items.length; i += CHUNK) await write(items.slice(i, i + CHUNK));
 }

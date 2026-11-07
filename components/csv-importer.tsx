@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type DragEvent } from "react";
 import "@/components/ledger/zod-jitless";
-import { reducedMotion } from "@/components/ledger/motion";
-import { ErrorLine } from "@/components/ledger/shared";
-import { DuplicateGroups, groupDomId } from "@/components/csv-importer-duplicates";
+import { fileProblem } from "@/app/(app)/[workspaceId]/import/read-file";
+import { DuplicateGroups, groupHeadingId } from "@/components/csv-importer-duplicates";
 import { ImportDone, type Done } from "@/components/csv-importer-result";
 import { SampleRows } from "@/components/csv-importer-sample";
-import { ColumnsGrid, Entry, RowProblems } from "@/components/csv-importer-steps";
+import { ColumnsGrid, ColumnsLine, Entry, RowProblems, RowWarnings, swapColumn } from "@/components/csv-importer-steps";
 import { ImportSummary } from "@/components/csv-importer-summary";
 import { SmartColumns } from "@/components/csv-importer-smart/columns";
 import { SmartReview } from "@/components/csv-importer-smart/review";
 import { readingMatches, useSmartImport, type SmartActions } from "@/components/csv-importer-smart/use-smart-import";
+import { Disclosure } from "@/components/ledger/disclosure";
+import { focusSoon } from "@/components/ledger/focus";
+import { ImportIcon, WarningIcon } from "@/components/ledger/icons";
+import { reducedMotion } from "@/components/ledger/motion";
+import { useNotify } from "@/components/ledger/providers";
+import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
-import { CONTAINED_WHY, mergeGroups, openChanged, unconfirmedNote, type ReviewSource } from "@/lib/import-review";
+import { CONTAINED_WHY, carryDecisions, generations, mergeGroups, previewSources, type ReviewGroup, type ReviewSource } from "@/lib/import-review";
 import type { Quote } from "@/lib/smart-import";
-import type { ActionResult, ImportMapping } from "@/lib/validation";
+import type { ActionResult, ImportField, ImportMapping } from "@/lib/validation";
 import "@/components/ledger/company.css";
 import "@/components/ledger/pages.css";
 
@@ -27,24 +32,42 @@ type Props = {
   smart?: SmartActions;
 };
 
-const reason = (matchedOn: string[]) => (matchedOn.length === 2 ? "Same name and website" : matchedOn[0] === "website" ? "Same website" : "Same name");
+// A problem the server reported (a refusal) reads as is; one it couldn't answer (the network, a
+// crash) gets a Try again.
+type Problem = { text: string; retry: boolean };
+const UNREACHABLE = "Coppice couldn't check the file just now. Try again.";
 
-// The CSV import screen: pick a file, check the columns, review problems and look-alikes, import.
-// Every step sends the file to the server, which parses and checks it again (lib/csv.ts); this
-// component only shows what the server sends back and remembers the person's choices.
+// The CSV import screen: drop or choose a file, check the columns, review problems and look-alikes,
+// import. Every step sends the file to the server, which parses and checks it again (lib/csv.ts);
+// this component only shows what the server sends back and remembers the person's choices.
+//
+// Each chosen file gets a generation number. A preview, a Smart import suggestion or a reading
+// chunk that comes back for an older file is dropped, so the page never mixes two files.
 export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
+  const notify = useNotify();
   const [file, setFile] = useState<File | null>(null);
   const [view, setView] = useState<ImportPreview | null>(null);
   // Rows the person chose to skip, starting from the suggested ones.
   const [skips, setSkips] = useState<Set<number>>(new Set());
   // Duplicate groups the person confirmed. Only for the screen: the server gets the skips.
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
+  // The group shown in the one-at-a-time review.
+  const [current, setCurrent] = useState<string | null>(null);
   const [result, setResult] = useState<Done | null>(null);
-  // A preview's problem shows by the columns; an import's by the Import button.
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<Problem | null>(null);
+  const [importError, setImportError] = useState<Problem | null>(null);
+  const [gridOpen, setGridOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [pending, startTransition] = useTransition();
   const id = useId();
+  const inputId = `${id}-file`;
+  const errorId = `${id}-import-error`;
+
+  const [gens] = useState(generations);
+  const fileNow = useRef<File | null>(null);
+  // What the review looked like at the last render, so a new preview can keep its decisions.
+  const latest = useRef<{ groups: ReviewGroup[]; skips: Set<number>; confirmed: Set<string> }>({ groups: [], skips: new Set(), confirmed: new Set() });
 
   const send = (chosen: File, fields: Record<string, string>) => {
     const form = new FormData();
@@ -54,32 +77,81 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
     return form;
   };
 
-  // Asks the server for a preview, with the guessed columns (mapping null) or the chosen ones.
-  // Every choice goes back to the suggested one, so confirmed groups start over too.
-  const review = (chosen: File, mapping: ImportMapping | null) =>
-    startTransition(async () => {
-      setPreviewError(null);
-      setImportError(null);
-      const res = await preview(null, send(chosen, mapping ? { mapping: JSON.stringify(mapping) } : {}));
-      if (!res.ok) return setPreviewError(res.error);
-      setView(res.data);
-      setSkips(new Set([...res.data.defaultSkips, ...smartState.heldRows(res.data.mapping)]));
-      setConfirmed(new Set());
-    });
-
   const choose = (row: number, skip: boolean) =>
-    setSkips((current) => {
-      const next = new Set(current);
+    setSkips((now) => {
+      if (now.has(row) === skip) return now;
+      const next = new Set(now);
       if (skip) next.add(row);
       else next.delete(row);
       return next;
     });
+  const chooseMany = (effects: { row: number; skip: boolean }[]) =>
+    setSkips((now) => {
+      const next = new Set(now);
+      for (const e of effects) {
+        if (e.skip) next.add(e.row);
+        else next.delete(e.row);
+      }
+      return next;
+    });
+
+  // Smart import's calls, guarded: a throw becomes a message, and an answer for a file that is no
+  // longer chosen is dropped (as an empty refusal, which the panel shows as nothing).
+  const guardedSmart = useMemo<SmartActions | undefined>(() => {
+    if (!smart) return undefined;
+    const guard = gens.guard;
+    const refusal = (error: string) => ({ ok: false as const, error });
+    return {
+      options: smart.options,
+      suggest: guard(smart.suggest, refusal(""), refusal(UNREACHABLE)),
+      start: guard(smart.start, refusal(""), refusal(UNREACHABLE)),
+      read: guard(smart.read, { ...refusal(""), rateLimited: false }, { ...refusal(UNREACHABLE), rateLimited: false }),
+      run: guard(smart.run, refusal(""), refusal(UNREACHABLE)),
+    };
+  }, [smart, gens]);
+
+  // Asks the server for a preview, with the guessed columns (mapping null) or the chosen ones. With
+  // `carry`, groups that didn't change keep their choices and their Confirm.
+  const review = (chosen: File, mapping: ImportMapping | null, carry: boolean) => {
+    const at = gens.current();
+    startTransition(async () => {
+      setPreviewError(null);
+      setImportError(null);
+      let res: ActionResult<ImportPreview>;
+      try {
+        res = await preview(null, send(chosen, mapping ? { mapping: JSON.stringify(mapping) } : {}));
+      } catch {
+        if (at === gens.current()) setPreviewError({ text: UNREACHABLE, retry: true });
+        return;
+      }
+      if (at !== gens.current()) return;
+      if (!res.ok) {
+        setPreviewError({ text: res.error, retry: false });
+        if (mapping) setGridOpen(true);
+        return;
+      }
+      const data = res.data;
+      const extra = readingMatches(smartState, data.mapping) ? lookalikeSources(smartState.session!.lookalikes) : [];
+      const groups = mergeGroups(previewSources(data, extra));
+      const suggested = [...data.defaultSkips, ...smartState.heldRows(data.mapping)];
+      const kept = carry ? carryDecisions(latest.current, { groups, suggested }) : { skips: new Set(suggested), confirmed: new Set<string>(), lost: 0 };
+      setView(data);
+      setSkips(kept.skips);
+      setConfirmed(kept.confirmed);
+      if (kept.lost > 0) notify(`${kept.lost} decided ${kept.lost === 1 ? "group" : "groups"} changed and need${kept.lost === 1 ? "s" : ""} another look.`);
+      if (!carry) {
+        setCurrent(null);
+        setGridOpen(data.nameAssumed);
+      }
+    });
+  };
 
   const smartState = useSmartImport({
-    actions: smart,
-    send: (fields) => (file ? send(file, fields) : null),
+    actions: guardedSmart,
+    // Nothing for a file that is no longer chosen, which also stops a reading in progress.
+    send: (fields) => (file && file === fileNow.current ? send(file, fields) : null),
     applyMapping: (mapping) => {
-      if (file) review(file, mapping);
+      if (file && file === fileNow.current) review(file, mapping, true);
     },
     skips,
     choose,
@@ -93,19 +165,11 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
 
   // The duplicate review: exact groups, names inside names, and Smart import's look-alikes, joined
   // so that each row is decided in one group only.
-  const label = (row: number) => view?.labels.find((l) => l.row === row);
-  const sources: ReviewSource[] = view
-    ? [
-        ...view.groups.map((g) => ({
-          reason: reason(g.matchedOn),
-          existing: g.existing,
-          rows: g.rows.map((row) => ({ row, name: label(row)?.name ?? "", website: label(row)?.website ?? null })),
-        })),
-        ...view.contained.map((g) => ({ reason: g.why, existing: g.existing, rows: g.rows })),
-        ...(smartReady ? smartState.session!.lookalikes : []).map((g) => ({ reason: g.reason === "contained" ? CONTAINED_WHY : g.why, existing: g.existing, rows: g.rows })),
-      ]
-    : [];
-  const groups = mergeGroups(sources);
+  const smartLookalikes = smartReady ? smartState.session!.lookalikes : null;
+  const groups = view ? mergeGroups(previewSources(view, smartLookalikes ? lookalikeSources(smartLookalikes) : [])) : [];
+  useLayoutEffect(() => {
+    latest.current = { groups, skips, confirmed };
+  });
   const doNotContact = new Map<number, Quote>(
     smartReady
       ? [...smartState.session!.doNotContact.map((d) => [d.row, d] as const), ...smartState.proposals.flatMap((p) => (p.doNotContact ? [[p.row, p.doNotContact] as const] : []))]
@@ -113,243 +177,317 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
   );
   const suggested = new Set([...(view?.defaultSkips ?? []), ...doNotContact.keys()]);
   const open = groups.filter((g) => !confirmed.has(g.key));
-  const unconfirmed = unconfirmedNote(groups, confirmed, skips, suggested);
-  const changed = openChanged(groups, confirmed, skips, suggested);
   const importing = view ? view.rowCount - view.errors.length - skips.size : 0;
 
-  // Scrolls to a group and gives its heading focus, bringing it back from Decided if needed (then
-  // it scrolls once the group is on the page again).
-  const pendingJump = useRef<string | null>(null);
-  const scrollToGroup = (key: string) => {
-    const el = document.getElementById(groupDomId(id, key));
-    if (!el) return false;
-    el.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
-    document.getElementById(`${groupDomId(id, key)}-h`)?.focus({ preventScroll: true });
-    return true;
-  };
-  const jumpTo = (key: string) => {
-    if (!confirmed.has(key)) {
-      scrollToGroup(key);
+  // Picking a file: checked here first (name and size), so a wrong file is refused at once.
+  // A refused file leaves whatever is on the page as it was.
+  const pick = (chosen: File | null) => {
+    if (!chosen) return;
+    const problem = fileProblem(chosen);
+    if (problem) {
+      setPickError(problem);
       return;
     }
-    pendingJump.current = key;
-    setConfirmed((current) => new Set([...current].filter((k) => k !== key)));
+    gens.next();
+    smartState.reset();
+    setResult(null);
+    setPreviewError(null);
+    setImportError(null);
+    setPickError(null);
+    fileNow.current = chosen;
+    setFile(chosen);
+    setView(null);
+    setSkips(new Set());
+    setConfirmed(new Set());
+    setCurrent(null);
+    setGridOpen(false);
+    review(chosen, null, false);
   };
-  useEffect(() => {
-    if (pendingJump.current && scrollToGroup(pendingJump.current)) pendingJump.current = null;
-  });
 
-  // A refused import is explained in step 4, where "Start the review again" is. Whichever button
-  // started it (the summary's at the top, or step 4's), the reason is brought into view under the
-  // summary and takes focus, so the press never looks like it did nothing.
-  const errorId = `${id}-import-error`;
-  const showError = useRef(false);
-  const seeError = () => {
-    const el = document.getElementById(errorId);
-    if (!el) return;
-    el.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
-    el.focus({ preventScroll: true });
+  const busy = pending || smartState.busy;
+  // The drop zone (and the input in it) gives way to the review, or the review to the drop zone:
+  // focus that fell to <body> goes to the file input, so the keyboard carries on from there.
+  const reviewing = Boolean(view);
+  useEffect(() => {
+    if (!busy && (!document.activeElement || document.activeElement === document.body)) document.getElementById(inputId)?.focus({ preventScroll: true });
+  }, [reviewing, busy, inputId]);
+
+  const jumpTo = (key: string) => {
+    if (confirmed.has(key)) setConfirmed((now) => new Set([...now].filter((k) => k !== key)));
+    setCurrent(key);
+    focusSoon(`#${CSS.escape(groupHeadingId(id, key))}`);
   };
-  useEffect(() => {
-    if (pending || !importError || !showError.current) return;
-    showError.current = false;
-    seeError();
-  });
 
-  const importNow = (chosen: File, shown: ImportPreview) =>
+  const importNow = (chosen: File, shown: ImportPreview) => {
+    const at = gens.current();
     startTransition(async () => {
       setImportError(null);
-      showError.current = false;
       const fields = { mapping: JSON.stringify(shown.mapping), skip: JSON.stringify([...skips]), seen: JSON.stringify(shown.seen) };
       const nameOf = new Map(shown.names.map((n) => [n.row, n.name]));
       const names = {
         imported: shown.names.filter((n) => !skips.has(n.row)),
         skipped: [...skips].sort((a, b) => a - b).map((row) => ({ row, name: nameOf.get(row) ?? `Row ${row}` })),
+        failed: shown.errors.map((e) => ({ row: e.row, name: e.name, reason: e.messages.join(" ") })),
       };
-      const res =
-        smart && smartReady
-          ? await smart.run(null, send(chosen, { ...fields, sessionId: smartState.session!.sessionId, decisions: JSON.stringify(smartState.decisions()) }))
-          : await run(null, send(chosen, fields));
-      if (!res.ok) {
-        showError.current = true;
-        return setImportError(res.error);
+      let res: ActionResult<ImportResult>;
+      try {
+        res =
+          guardedSmart && smartReady
+            ? await guardedSmart.run(null, send(chosen, { ...fields, sessionId: smartState.session!.sessionId, decisions: JSON.stringify(smartState.decisions()) }))
+            : await run(null, send(chosen, fields));
+      } catch {
+        res = { ok: false, error: "Coppice couldn't finish the import just now. Nothing was imported. Try again." };
       }
-      setResult({ data: res.data, ...names });
+      if (at !== gens.current()) return;
+      if (!res.ok) {
+        setImportError({ text: res.error, retry: /review/i.test(res.error) });
+        focusSoon(`#${CSS.escape(errorId)}`);
+        return;
+      }
+      setResult({ data: res.data, ...names, file: chosen });
+      gens.next();
+      fileNow.current = null;
       setView(null);
       setFile(null);
       setConfirmed(new Set());
       smartState.reset();
     });
+  };
+
+  // The one file input, shared by the drop zone and "Choose another file". Its value is cleared
+  // once read, so choosing the same file again (fixed and re-exported) is read again.
+  const input = (
+    <input
+      id={inputId}
+      type="file"
+      accept=".csv,text/csv"
+      className="lg-file"
+      autoComplete="off"
+      disabled={busy}
+      onChange={(e) => {
+        const chosen = e.target.files?.[0] ?? null;
+        e.target.value = "";
+        pick(chosen);
+      }}
+    />
+  );
 
   if (result) {
     return (
-      <ol className="lg-entries" aria-label="Import steps">
-        <Entry n={4} state="done" title="Done">
-          <ImportDone workspaceId={workspaceId} result={result} again={() => setResult(null)} />
-        </Entry>
-      </ol>
+      <div className="lg-importer">
+        <ImportDone
+          workspaceId={workspaceId}
+          result={result}
+          again={() => {
+            setResult(null);
+            focusSoon(`#${CSS.escape(inputId)}`);
+          }}
+        />
+      </div>
     );
   }
 
-  const canImport = !pending && !smartState.busy && importing > 0;
-  const importButtonLabel = pending ? "Working..." : `Import ${importing} ${importing === 1 ? "company" : "companies"}`;
-  // A refusal that means the file or the choices no longer match needs a fresh preview.
-  const needsReview = importError !== null && /review/i.test(importError);
+  if (!file || !view) {
+    const onDrop = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setDragging(false);
+      if (busy) return;
+      pick(event.dataTransfer.files?.[0] ?? null);
+    };
+    return (
+      <div className="lg-importer">
+        <div
+          className="lg-dropzone"
+          data-dragging={dragging || undefined}
+          data-tour="import-drop"
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (!dragging) setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          <ImportIcon size={28} className="lg-dropzone-icon" />
+          <p className="lg-dropzone-text">
+            {pending && file ? (
+              <span role="status">Reading {file.name}...</span>
+            ) : (
+              <>
+                Drop a .csv here or{" "}
+                <span className="lg-filerow">
+                  {input}
+                  <label htmlFor={inputId} className="lg-btn lg-btn-primary">
+                    Choose a CSV file
+                  </label>
+                </span>
+              </>
+            )}
+          </p>
+          <ErrorLine>{pickError ?? previewError?.text}</ErrorLine>
+          {previewError?.retry && file && (
+            <button type="button" className="lg-btn lg-btn-sm" onClick={() => review(file, null, false)}>
+              Try again
+            </button>
+          )}
+        </div>
+        <Disclosure variant="inline" summary="How to export from Sheets or Excel" className="mt-3">
+          <ul className="lg-howto">
+            <li>Google Sheets: File, Download, Comma-separated values (.csv).</li>
+            <li>Excel: File, Save As, CSV UTF-8 (Comma delimited).</li>
+            <li>Keep the header row. Up to 2,000 rows and 3 MB.</li>
+            <li>Each company is added as Not contacted, with at most one contact.</li>
+          </ul>
+          <p className="mt-2">
+            <a href="/coppice-import-template.csv" download className="lg-link">
+              Download a template
+            </a>{" "}
+            <span className="lg-muted">(Company, Industry, Website, Notes, Contact name, Contact email)</span>
+          </p>
+        </Disclosure>
+      </div>
+    );
+  }
+
+  // When nothing can be imported, the bar says why instead of offering a button.
+  const validRows = view.rowCount - view.errors.length;
+  const existingRows = new Set(groups.filter((g) => g.existing.length > 0).flatMap((g) => g.rows.map((r) => r.row)));
+  const zeroReason =
+    validRows === 0
+      ? "Nothing to import: every row has a problem (see below)."
+      : [...skips].every((row) => existingRows.has(row))
+        ? "Nothing to import: every row is already in Coppice."
+        : "Nothing to import: every row is set to skip.";
 
   return (
     <div className="lg-importer">
-      {file && view && (
-        <ImportSummary
-          importing={importing}
-          skipping={skips.size}
-          toReview={open.length}
-          errored={view.errors.length}
-          unconfirmed={unconfirmed}
-          changed={changed}
-          onJump={open.length > 0 ? () => jumpTo(open[0].key) : null}
-          onImport={() => importNow(file, view)}
-          disabled={!canImport}
-          pending={pending}
-          failed={!pending && importError !== null}
-          onSeeError={seeError}
-        />
+      <ImportSummary
+        importing={importing}
+        skipping={skips.size}
+        toReview={open.length}
+        errored={view.errors.length}
+        zeroReason={zeroReason}
+        onJump={open.length > 0 ? () => jumpTo(open.find((g) => g.key === current)?.key ?? open[0].key) : null}
+        onImport={() => importNow(file, view)}
+        disabled={busy || importing <= 0}
+        pending={pending}
+      />
+      {importError && !pending && (
+        <div className="lg-importerr" id={errorId} tabIndex={-1}>
+          <ErrorLine>{importError.text}</ErrorLine>
+          {importError.retry && (
+            <button type="button" onClick={() => review(file, view.mapping, true)} className="lg-btn lg-btn-sm mt-2">
+              Start the review again
+            </button>
+          )}
+        </div>
       )}
-      <ol className="lg-entries" aria-label="Import steps">
-        <Entry n={1} state={view ? "done" : "active"} title="Choose a .csv file">
+      <ol className="lg-entries lg-impsteps" aria-label="Import steps">
+        <Entry n={1} done title="File">
           <div className="lg-filerow">
-            <input
-              id={`${id}-file`}
-              type="file"
-              accept=".csv,text/csv"
-              className="lg-file"
-              onChange={(e) => {
-                const chosen = e.target.files?.[0] ?? null;
-                setFile(chosen);
-                setView(null);
-                setResult(null);
-                setConfirmed(new Set());
-                smartState.reset();
-                if (chosen) review(chosen, null);
+            <span className="lg-filename lg-wrap-any">
+              <strong>{file.name}</strong> · {view.rowCount.toLocaleString("en-US")} {view.rowCount === 1 ? "row" : "rows"}
+            </span>
+            {input}
+            <label htmlFor={inputId} className="lg-linkbtn lg-filelabel">
+              Choose another file
+            </label>
+          </div>
+          {view.encodingGuess && (
+            <p className="lg-impwarn" role="note">
+              <WarningIcon size={14} />
+              <span>This file isn&apos;t UTF-8; Coppice read it as Windows (Western). Check the names below look right.</span>
+            </p>
+          )}
+          <ErrorLine>{pickError}</ErrorLine>
+        </Entry>
+
+        <Entry n={2} done={!gridOpen && !previewError} title="Columns">
+          <p className="lg-colsrow">
+            <ColumnsLine view={view} />{" "}
+            <button type="button" className="lg-linkbtn" aria-expanded={gridOpen} aria-controls={`${id}-grid`} onClick={() => setGridOpen((v) => !v)}>
+              {gridOpen ? "Done" : "Change"}
+            </button>
+          </p>
+          {view.nameAssumed && gridOpen && <p className="lg-hint">No header looked like a company name, so the first free column was used. Check it.</p>}
+          <div id={`${id}-grid`} hidden={!gridOpen}>
+            <ColumnsGrid
+              view={view}
+              disabled={busy}
+              onChange={(field: ImportField, column) => {
+                if (busy) return;
+                const swapped = swapColumn(view.mapping, view.headers, field, column);
+                if ("error" in swapped) return notify(swapped.error, "error");
+                if (swapped.note) notify(swapped.note);
+                review(file, swapped.mapping, true);
               }}
             />
-            <label htmlFor={`${id}-file`} className="lg-btn">
-              {file ? "Choose another file" : "Choose a CSV file"}
-            </label>
-            <span className="lg-filename lg-muted" aria-live="polite">
-              {pending && !view ? "Working..." : (file?.name ?? "No file chosen")}
-            </span>
           </div>
-          {!view && previewError && <ErrorLine>{previewError}</ErrorLine>}
-        </Entry>
-
-        <Entry n={2} state={view ? "set" : "later"} title="Check the columns" later="Appears once a file is chosen.">
-          {file && view && (
-            <>
-              <p className="lg-hint mb-3">
-                {view.rowCount} {view.rowCount === 1 ? "row" : "rows"} found. Guessed from your headers; change any that are wrong. A change starts the review
-                below over.
-              </p>
-              <ColumnsGrid
-                view={view}
-                onChange={(mapping) => {
-                  if (!pending) review(file, mapping);
-                }}
-              />
-              {pending && (
-                <p className="lg-hint mt-2" role="status">
-                  Working...
-                </p>
-              )}
-              {previewError && (
-                <div className="mt-2">
-                  <ErrorLine>{previewError}</ErrorLine>
-                  <button type="button" onClick={() => review(file, view.mapping)} className="lg-btn lg-btn-sm mt-2">
-                    Try again
-                  </button>
-                </div>
-              )}
-              {smart && <SmartColumns smart={smartState} actions={smart} view={view} pending={pending} />}
-            </>
+          {pending && (
+            <p className="lg-hint mt-2" role="status">
+              Working...
+            </p>
           )}
-        </Entry>
-
-        <Entry
-          n={3}
-          state={view ? (open.length > 0 ? "active" : "done") : "later"}
-          title="Review"
-          later="The first rows, the problems and any look-alike companies show here."
-        >
-          {file && view && (
-            <>
-              <SampleRows sample={view.sample} />
-
-              <RowProblems errors={view.errors} />
-
-              <DuplicateGroups
-                idPrefix={id}
-                workspaceId={workspaceId}
-                groups={groups}
-                skips={skips}
-                suggested={suggested}
-                choose={choose}
-                confirmed={confirmed}
-                confirm={(key) => setConfirmed((current) => new Set([...current, key]))}
-                reopen={(key) => setConfirmed((current) => new Set([...current].filter((k) => k !== key)))}
-                doNotContact={doNotContact}
-              />
-
-              {smart && (
-                <SmartReview
-                  smart={smartState}
-                  view={view}
-                  choose={choose}
-                  onYear={() => {
-                    const el = document.getElementById("smart-year");
-                    el?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
-                    el?.querySelector("button")?.focus({ preventScroll: true });
-                  }}
-                  groupOf={(row) => {
-                    const at = groups.findIndex((g) => g.rows.some((r) => r.row === row));
-                    return at < 0 ? undefined : { index: at + 1, jump: () => jumpTo(groups[at].key) };
-                  }}
-                />
-              )}
-            </>
-          )}
-        </Entry>
-
-        <Entry n={4} state={view ? (open.length > 0 ? "next" : "active") : "later"} title="Import">
-          {file && view ? (
-            <>
-              <p>
-                {importing} {importing === 1 ? "company" : "companies"} will be added
-                {smartReady ? ". The readings you use set their stage, dates, contact and notes; the rest start as Not contacted." : " as Not contacted."}
-                {unconfirmed ? ` ${unconfirmed}` : ""} Nothing is imported until you press the button.
-              </p>
-              <div className="mt-3">
-                <button type="button" disabled={!canImport} onClick={() => importNow(file, view)} className="lg-btn lg-btn-primary">
-                  {importButtonLabel}
+          {previewError && !pending && (
+            <div className="mt-2">
+              <ErrorLine>{previewError.text}</ErrorLine>
+              {previewError.retry && (
+                <button type="button" onClick={() => review(file, view.mapping, true)} className="lg-btn lg-btn-sm mt-2">
+                  Try again
                 </button>
-              </div>
-              {!pending && importError && (
-                <div className="lg-importerr mt-2" id={errorId} tabIndex={-1}>
-                  <ErrorLine>{importError}</ErrorLine>
-                  {needsReview && (
-                    <>
-                      <button type="button" onClick={() => review(file, view.mapping)} className="lg-btn lg-btn-sm mt-2">
-                        Start the review again
-                      </button>
-                      <p className="lg-hint mt-1">Coppice checks the file again, and every choice goes back to the suggested one.</p>
-                    </>
-                  )}
-                </div>
               )}
-            </>
-          ) : (
-            <p className="lg-hint">Nothing is imported until you press the button here.</p>
+            </div>
+          )}
+          {smart && guardedSmart && (
+            <div data-tour="smart-switch" className="lg-smartentry">
+              <Disclosure variant="inline" summary="Smart import: read notes with AI" defaultOpen={smartState.on || smartState.session !== null}>
+                <SmartColumns smart={smartState} actions={guardedSmart} view={view} pending={pending} />
+              </Disclosure>
+            </div>
+          )}
+        </Entry>
+
+        <Entry n={3} done={open.length === 0} title="Review">
+          <RowProblems errors={view.errors} allFail={validRows === 0} />
+          <RowWarnings warnings={view.warnings} />
+          <SampleRows sample={view.sample} defaultOpen={Boolean(view.encodingGuess)} />
+          <DuplicateGroups
+            idPrefix={id}
+            workspaceId={workspaceId}
+            groups={groups}
+            skips={skips}
+            suggested={suggested}
+            choose={choose}
+            chooseMany={chooseMany}
+            confirmed={confirmed}
+            confirm={(keys) => setConfirmed((now) => new Set([...now, ...keys]))}
+            reopen={(key) => setConfirmed((now) => new Set([...now].filter((k) => k !== key)))}
+            current={current}
+            setCurrent={setCurrent}
+            doNotContact={doNotContact}
+          />
+          {smart && (
+            <SmartReview
+              smart={smartState}
+              view={view}
+              choose={choose}
+              onYear={() => {
+                const el = document.getElementById("smart-year");
+                const fold = el?.closest("details");
+                if (fold) fold.open = true;
+                el?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+                el?.querySelector("button")?.focus({ preventScroll: true });
+              }}
+              groupOf={(row) => {
+                const at = groups.findIndex((g) => g.rows.some((r) => r.row === row));
+                return at < 0 ? undefined : { index: at + 1, jump: () => jumpTo(groups[at].key) };
+              }}
+            />
           )}
         </Entry>
       </ol>
     </div>
   );
 }
+
+const lookalikeSources = (lookalikes: { reason: string; why: string; existing: ReviewSource["existing"]; rows: ReviewSource["rows"] }[]): ReviewSource[] =>
+  lookalikes.map((g) => ({ reason: g.reason === "contained" ? CONTAINED_WHY : g.why, existing: g.existing, rows: g.rows }));

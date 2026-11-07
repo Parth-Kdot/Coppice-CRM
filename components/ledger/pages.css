@@ -131,9 +131,6 @@
     border-color: var(--moss);
     color: var(--moss);
   }
-  .lg-step-state {
-    color: var(--ink-2);
-  }
   .lg-step-body {
     min-width: 0;
     padding: 16px 0 24px 24px;
@@ -144,9 +141,6 @@
     font-weight: 400;
     font-size: var(--fs-4);
     line-height: 1.2;
-  }
-  .lg-step[data-state="later"] .lg-step-h {
-    color: var(--ink-2);
   }
   .lg-mapgrid {
     display: grid;
@@ -215,32 +209,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .lg-problems {
-    margin-top: 16px;
-    padding: 12px 14px;
-    border: 1px solid var(--edge);
-    background: var(--paper-2);
-  }
-  .lg-problems summary {
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .lg-problems ul {
-    list-style: none;
-    display: grid;
-    gap: 4px;
-    margin-top: 8px;
-  }
-  .lg-problems li {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-  }
-  .lg-problems li svg {
-    flex: none;
-    margin-top: 3px;
-  }
-
   /* Look-alike groups: what is already in the workspace next to each row in the file. */
   .lg-groups {
     margin-top: 28px;
@@ -291,11 +259,6 @@
     color: var(--ink-2);
     overflow-wrap: break-word;
   }
-  .lg-dupcard[data-skipped] .lg-nametext {
-    color: var(--ink-2);
-    text-decoration: line-through;
-    text-decoration-thickness: 1.5px;
-  }
   .lg-dupcard .lg-dupchoice {
     margin-top: auto;
   }
@@ -335,17 +298,6 @@
   }
 
   /* ---------- Fact sheet ---------- */
-  .lg-factsum {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 20px;
-    margin-top: 14px;
-    color: var(--ink);
-    font-variant-numeric: tabular-nums;
-  }
-  .lg-factsum strong {
-    font-weight: 600;
-  }
   .lg-facts-list {
     list-style: none;
   }
@@ -356,59 +308,6 @@
     padding: 6px 0;
     border-bottom: 2px solid var(--ink-2);
     color: var(--ink-2);
-  }
-  .lg-fact {
-    display: flex;
-    gap: 12px;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  .lg-fact:last-child {
-    border-bottom: 0;
-  }
-  .lg-fact > .lg-margin {
-    flex: 0 0 54px;
-    padding-top: 4px;
-    border-right: 1px solid var(--rule);
-  }
-  .lg-factmark {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border: 1px dashed var(--edge);
-    border-radius: 50%;
-    background: transparent;
-    color: var(--moss);
-  }
-  .lg-fact[data-verified] .lg-factmark {
-    border-style: solid;
-    border-color: var(--moss);
-    background: var(--moss-wash);
-  }
-  .lg-factbody {
-    min-width: 0;
-    flex: 1;
-  }
-  .lg-facttext {
-    overflow-wrap: anywhere;
-    font-family: var(--font-display);
-    font-size: var(--fs-3);
-    line-height: 1.4;
-  }
-  .lg-factsrc {
-    overflow-wrap: anywhere;
-    margin-top: 6px;
-    color: var(--ink-2);
-  }
-  .lg-factsrc .lg-quote {
-    color: var(--ink);
-  }
-  .lg-factpage {
-    font-weight: 600;
-    color: var(--ink);
-    font-variant-numeric: tabular-nums;
   }
   .lg-quotecheck {
     display: flex;
@@ -797,44 +696,6 @@
   .lg-importbar-n {
     font-weight: 700;
   }
-  .lg-importbar-ok {
-    color: var(--moss);
-  }
-  .lg-importbar-ok svg {
-    display: inline-block;
-    vertical-align: -2px;
-  }
-  .lg-importbar-acts .lg-link {
-    white-space: nowrap;
-  }
-  .lg-importbar-acts {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 16px;
-  }
-  .lg-importbar-short {
-    display: none;
-  }
-  .lg-importbar-cap {
-    flex-basis: 100%;
-    color: var(--ink-2);
-    font-size: var(--fs-1);
-  }
-  /* An import refused by the server: one line in the bar that leads to the reason in step 4. */
-  .lg-importbar-err {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 8px;
-    flex-basis: 100%;
-    color: var(--rust);
-    font-size: var(--fs-1);
-    font-weight: 600;
-  }
-  .lg-importbar-err svg {
-    flex: none;
-  }
   /* What the review scrolls to sits just under the bar, never behind it. */
   .lg-importerr,
   .lg-groups-done {
@@ -1092,63 +953,248 @@
   .lg-groups-done:focus-visible {
     outline-offset: 3px;
   }
-  .lg-decided {
-    margin-top: 14px;
-    border: 1px solid var(--rule);
+  /* ---------- P4: import (drop zone, one-line steps, notes, one group at a time, result) ---------- */
+  .lg-dropzone {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 40px 20px;
+    border: 1.5px dashed var(--edge);
     background: var(--sheet);
+    text-align: center;
   }
-  .lg-decided > summary {
+  .lg-dropzone[data-dragging] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-dropzone-icon {
+    color: var(--ink-2);
+  }
+  .lg-dropzone-text {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    min-height: 40px;
-    padding: 0 14px;
-    font-weight: 600;
+    justify-content: center;
+    gap: 8px 10px;
+    min-width: 0;
+  }
+  .lg-dropzone-text .lg-filerow {
+    display: inline-flex;
+  }
+  .lg-howto {
+    display: grid;
+    gap: 4px;
+    padding-left: 18px;
+    list-style: disc;
+  }
+  .lg-file:focus-visible + .lg-linkbtn {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-file:disabled + .lg-linkbtn {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .lg-filelabel {
     cursor: pointer;
   }
-  .lg-decided ul {
-    border-top: 1px solid var(--rule);
+  .lg-impsteps .lg-step-body {
+    padding-bottom: 18px;
+  }
+  .lg-impsteps .lg-step-h {
+    margin-bottom: 6px;
+    font-size: var(--fs-3);
+  }
+  .lg-colsrow {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-colpair strong {
+    font-weight: 600;
+  }
+  .lg-mapset {
+    min-width: 0;
+    margin: 12px 0 0;
+    padding: 0;
+    border: 0;
+  }
+  .lg-mapset:disabled {
+    opacity: 0.6;
+  }
+  .lg-smartentry {
+    margin-top: 10px;
+  }
+  .lg-impwarn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    color: var(--rust);
+    font-weight: 600;
+  }
+  .lg-impwarn svg {
+    flex: none;
+    margin-top: 4px;
+  }
+  .lg-impnote + .lg-impnote {
+    margin-top: 2px;
+  }
+  .lg-rowlist {
+    display: grid;
+    gap: 4px;
+    margin-top: 6px;
+    list-style: none;
+  }
+  .lg-rowlist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-rowlist li svg {
+    flex: none;
+    margin-top: 4px;
+  }
+  .lg-importbar-line {
+    min-width: 0;
+  }
+  .lg-importbar .lg-btn {
+    flex: none;
+    white-space: nowrap;
+  }
+  .lg-importerr {
+    margin-top: 10px;
+  }
+  .lg-bulkbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 10px;
+  }
+  .lg-group-nav {
+    display: inline-flex;
+    gap: 16px;
+    margin-left: auto;
+  }
+  .lg-decided {
+    margin-top: 10px;
   }
   .lg-decided li {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
     gap: 6px 14px;
-    padding: 8px 14px;
+    padding: 6px 0;
     border-bottom: 1px solid var(--rule);
-    overflow-wrap: anywhere;
-    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
   }
   .lg-decided li:last-child {
     border-bottom: 0;
   }
-  .lg-decided li .lg-btn {
+  .lg-decided li .lg-linkbtn {
     flex: none;
   }
-
-  /* The first rows of the file, folded on a phone. */
-  .lg-sample > summary,
-  .lg-resultnames > summary {
-    min-height: 32px;
-    color: var(--ink-2);
-    font-size: var(--fs-1);
-    cursor: pointer;
+  .lg-importdone {
+    margin-top: 20px;
   }
   .lg-resultlists {
     display: grid;
-    gap: 10px;
-    max-width: 520px;
+    gap: 2px;
+    max-width: 640px;
     margin-top: 14px;
   }
-  .lg-resultnames > summary {
-    color: var(--ink);
-    font-size: var(--fs-2);
-    font-weight: 600;
-  }
-  .lg-resultnames ul {
-    margin-top: 4px;
+  .lg-resultlist {
     padding-left: 18px;
     list-style: disc;
+  }
+  .lg-resultfail li {
+    color: var(--rust);
+  }
+  .lg-resultnext {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 20px;
+    margin-top: 20px;
+  }
+
+  /* ---------- P4: fact sheet (one row per fact, one action, the rest in its menu) ---------- */
+  .lg-facts-list {
+    list-style: none;
+  }
+  .lg-fact {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-fact:last-child {
+    border-bottom: 0;
+  }
+  .lg-fact:focus-visible {
+    outline-offset: 2px;
+  }
+  .lg-fact-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px 14px;
+  }
+  .lg-fact-row .lg-facttext {
+    flex: 1;
+  }
+  .lg-facttext {
+    min-width: 0;
     overflow-wrap: anywhere;
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    line-height: 1.4;
+  }
+  .lg-factcheck {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 8px;
+    font-family: var(--font-body, inherit);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    vertical-align: 2px;
+  }
+  .lg-factcheck svg {
+    flex: none;
+  }
+  .lg-fact-acts {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+  }
+  .lg-fact-form {
+    display: flex;
+  }
+  .lg-fact .lg-editform {
+    margin-top: 10px;
+  }
+  .lg-factsource {
+    margin-top: 2px;
+  }
+  .lg-factsource .lg-quote {
+    color: var(--ink);
+  }
+  .lg-factsec {
+    margin-top: 20px;
+  }
+  .lg-factsec-h {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ink-2);
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+  }
+  .lg-factupload {
+    margin-top: 20px;
+  }
+  .lg-panel-title .lg-panel-count {
+    margin-left: 6px;
   }
 
   /* ---------- Phones ---------- */
@@ -1187,10 +1233,6 @@
     .lg-step-body {
       padding-left: 14px;
     }
-    .lg-step-state {
-      font-size: 0.6875rem;
-      letter-spacing: 0.04em;
-    }
     /* Under the shell's own sticky bar. */
     .lg-importer {
       --importbar-top: 49px;
@@ -1203,25 +1245,11 @@
     .lg-importbar-line {
       font-size: var(--fs-1);
     }
-    .lg-importbar-acts {
-      flex-wrap: nowrap;
-      justify-content: space-between;
-      width: 100%;
-    }
-    .lg-importbar-long {
-      display: none;
-    }
-    .lg-importbar-short {
-      display: inline;
-    }
     .lg-group {
       padding: 10px 10px 12px;
     }
     .lg-dupcard {
       padding: 10px 12px 12px;
-    }
-    .lg-decided li {
-      flex-wrap: wrap;
     }
 
     /* The review table becomes a stack of small cards, one per row of the file. */
@@ -1282,7 +1310,6 @@
     .lg-tally > div {
       padding: 10px 12px 12px;
     }
-    .lg-fact > .lg-margin,
     .lg-member > .lg-margin {
       display: none;
     }
@@ -1293,6 +1320,37 @@
     .lg-factacts .lg-btn,
     .lg-memberacts .lg-btn {
       min-height: 44px;
+    }
+  }
+  /* P4: under 640 px the import drops its step margin, and the bar is one line. */
+  @media (max-width: 640px) {
+    .lg-impsteps {
+      padding: 0 14px;
+    }
+    .lg-impsteps .lg-step {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-impsteps .lg-step-margin {
+      display: none;
+    }
+    .lg-impsteps .lg-step-body {
+      padding-left: 0;
+    }
+    .lg-importbar {
+      flex-wrap: nowrap;
+    }
+    .lg-importbar-long,
+    .lg-importbar-review {
+      display: none;
+    }
+    .lg-dropzone {
+      padding: 28px 14px;
+    }
+    .lg-fact-row {
+      flex-wrap: wrap;
+    }
+    .lg-fact-acts {
+      margin-left: auto;
     }
   }
 }

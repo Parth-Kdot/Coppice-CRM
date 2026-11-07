@@ -62,12 +62,12 @@ export function mergeGroups(sources: ReviewSource[]): ReviewGroup[] {
     .sort((a, b) => a.rows[0].row - b.rows[0].row);
 }
 
-// Two rows of the file, or one row and one company already saved, are decided with one answer.
-// Anything bigger is decided row by row.
+// Two rows of the file, or one row and the companies already saved that it looks like, are
+// decided with one answer. Anything bigger is decided row by row.
 export type GroupKind = "pair" | "existing" | "rows";
 export function kindOf(group: ReviewGroup): GroupKind {
   if (group.rows.length === 2 && group.existing.length === 0) return "pair";
-  if (group.rows.length === 1 && group.existing.length === 1) return "existing";
+  if (group.rows.length === 1 && group.existing.length >= 1) return "existing";
   return "rows";
 }
 
@@ -96,8 +96,9 @@ export function groupOptions(group: ReviewGroup): GroupOption[] {
   }
   if (kind === "existing") {
     const row = group.rows[0].row;
+    const matches = group.existing.length > 1 ? ` (${group.existing.length} matches)` : "";
     return [
-      { value: "skip", label: "Skip, it's already in Coppice", skip: [row] },
+      { value: "skip", label: `Skip, it's already in Coppice${matches}`, skip: [row] },
       { value: "separate", label: "Add it as a separate company", skip: [] },
     ];
   }
@@ -196,4 +197,96 @@ export function revertSmartMapping(current: ImportMapping, before: ImportMapping
     if (!taken) next[f] = old;
   }
   return next as ImportMapping;
+}
+
+// ----- Keeping the review across a new preview (P4) -----
+
+// The review's sources from a preview: exact groups, names inside names, and (when its reading
+// matches the columns) Smart import's look-alikes. The importer joins them with mergeGroups.
+export type PreviewForReview = {
+  groups: { rows: number[]; existing: ExistingMatch[]; matchedOn: string[] }[];
+  contained: { rows: ReviewRow[]; existing: ExistingMatch[]; why: string }[];
+  labels: { row: number; name: string; website: string | null }[];
+};
+export const matchedReason = (matchedOn: string[]) => (matchedOn.length === 2 ? "Same name and website" : matchedOn[0] === "website" ? "Same website" : "Same name");
+
+export function previewSources(view: PreviewForReview, extra: ReviewSource[] = []): ReviewSource[] {
+  const label = new Map(view.labels.map((l) => [l.row, l]));
+  return [
+    ...view.groups.map((g) => ({
+      reason: matchedReason(g.matchedOn),
+      existing: g.existing,
+      rows: g.rows.map((row) => ({ row, name: label.get(row)?.name ?? "", website: label.get(row)?.website ?? null })),
+    })),
+    ...view.contained.map((g) => ({ reason: g.why, existing: g.existing, rows: g.rows })),
+    ...extra,
+  ];
+}
+
+// After a new preview (another column chosen), every group whose members are unchanged keeps what
+// the person decided: its rows keep their skips and it stays confirmed. A group that changed, or
+// is new, starts from the new suggestion. `lost` counts the confirmed groups that changed, so the
+// importer can say "2 decided groups changed and need another look."
+export function carryDecisions(
+  before: { groups: ReviewGroup[]; skips: ReadonlySet<number>; confirmed: ReadonlySet<string> },
+  after: { groups: ReviewGroup[]; suggested: Iterable<number> },
+): { skips: Set<number>; confirmed: Set<string>; lost: number } {
+  const keep = new Map(before.groups.map((g) => [g.key, g]));
+  const afterKeys = new Set(after.groups.map((g) => g.key));
+  const skips = new Set(after.suggested);
+  const confirmed = new Set<string>();
+  for (const g of after.groups) {
+    if (!keep.has(g.key)) continue;
+    for (const r of g.rows) {
+      if (before.skips.has(r.row)) skips.add(r.row);
+      else skips.delete(r.row);
+    }
+    if (before.confirmed.has(g.key)) confirmed.add(g.key);
+  }
+  const lost = [...before.confirmed].filter((key) => !afterKeys.has(key) && keep.has(key)).length;
+  return { skips, confirmed, lost };
+}
+
+// The bulk answers offered above the groups when five or more share a kind: every row that is
+// already in Coppice skipped, or the first of every in-file pair kept. Each returns the skips to
+// set and the groups it decides.
+export const BULK_MIN = 5;
+export type BulkAnswer = { kind: "existing" | "pair"; label: string; groups: ReviewGroup[]; effects: { row: number; skip: boolean }[] };
+export function bulkAnswers(open: ReviewGroup[]): BulkAnswer[] {
+  const existing = open.filter((g) => kindOf(g) === "existing");
+  const pairs = open.filter((g) => kindOf(g) === "pair");
+  const answers: BulkAnswer[] = [];
+  const n = (v: number) => v.toLocaleString("en-US");
+  if (existing.length >= BULK_MIN) {
+    answers.push({ kind: "existing", label: `Skip all ${n(existing.length)} already in Coppice`, groups: existing, effects: existing.flatMap((g) => choiceEffects(g, "skip")) });
+  }
+  if (pairs.length >= BULK_MIN) {
+    answers.push({ kind: "pair", label: `Keep the first of each pair (${n(pairs.length)})`, groups: pairs, effects: pairs.flatMap((g) => choiceEffects(g, "first")) });
+  }
+  return answers;
+}
+
+// ----- One file at a time (P4) -----
+
+// Each chosen file starts a new generation. A call made for an older generation (a preview, a
+// Smart import suggestion, a reading chunk) is answered with `stale` instead of its real answer,
+// and a call that throws with `failed`, so a late answer for the previous file can never land on
+// the page for the new one.
+export function generations() {
+  let now = 0;
+  return {
+    next: () => ++now,
+    current: () => now,
+    guard:
+      <A extends unknown[], T>(call: (...args: A) => Promise<T>, stale: T, failed: T) =>
+      async (...args: A): Promise<T> => {
+        const at = now;
+        try {
+          const res = await call(...args);
+          return at === now ? res : stale;
+        } catch {
+          return at === now ? failed : stale;
+        }
+      },
+  };
 }

@@ -99,16 +99,18 @@ describe("checkRows", () => {
       company: { name: "Globex", industry: "Energy", website: "globex.com", notes: "trailing spaces everywhere" },
       contact: { name: "Hank Scorpio", email: "hank@globex.com", title: null },
       errors: [],
+      warnings: [],
     });
     expect(byRow.get(2)?.contact).toEqual({ name: "Jen Park", email: "jpark@acme.com", title: null });
     expect(byRow.get(7)?.errors).toEqual(["Enter a company name."]);
     expect(byRow.get(8)?.errors).toEqual(["Enter a website like acme.com or https://acme.com."]);
-    expect(byRow.get(9)?.errors).toEqual(["Contact: Enter a valid email address."]);
+    // A bad contact email never sinks the company: the row imports, with the name and a warning.
+    expect(byRow.get(9)).toMatchObject({ errors: [], contact: { name: "Pat Lee", email: null, title: null }, warnings: ["Contact email left out: not a valid address."] });
   });
 
-  it("asks for a contact name when only an email is given", () => {
+  it("names an email-only contact from the email's first part, with a warning", () => {
     const rows = ok(checkRows(ok(parseCsv("Name,Email\nAcme,a@acme.com")), { ...MAPPING, industry: null, website: null, notes: null, contactName: null, contactEmail: 1 }));
-    expect(rows[0].errors).toEqual(["Contact: Enter the contact's name."]);
+    expect(rows[0]).toMatchObject({ errors: [], contact: { name: "a", email: "a@acme.com", title: null }, warnings: ['Contact named "a" from their email.'] });
   });
 
   it("treats missing cells at the end of a short row as empty", () => {
@@ -133,7 +135,8 @@ describe("previewImport", () => {
     expect(preview.mapping).toEqual(MAPPING);
     expect(preview.rowCount).toBe(40);
     expect(preview.sample).toHaveLength(10);
-    expect(preview.errors.map((e) => e.row)).toEqual([7, 8, 9]);
+    expect(preview.errors.map((e) => e.row)).toEqual([7, 8]);
+    expect(preview.warnings).toEqual([{ row: 9, name: "Bad Email Inc", messages: ["Contact email left out: not a valid address."] }]);
     expect(preview.groups).toEqual([
       { rows: [2, 4], existing: [], matchedOn: ["name"] },
       { rows: [11], existing: [{ id: initechId, name: "Initech", website: "initech.com", archived: false }], matchedOn: ["name", "website"] },
@@ -157,7 +160,7 @@ describe("previewImport", () => {
   it("has nothing to compare when every row has errors", async () => {
     const preview = ok(await previewImport(OWNER, "Name,Website\n,acme.com\n", { name: 0, website: 1, industry: null, notes: null, contactName: null, contactEmail: null }));
     expect(preview).toMatchObject({ rowCount: 1, groups: [], defaultSkips: [], seen: [] });
-    expect(preview.errors).toEqual([{ row: 2, messages: ["Enter a company name."] }]);
+    expect(preview.errors).toEqual([{ row: 2, name: "", messages: ["Enter a company name."] }]);
   });
 
   it("passes on file and mapping problems", async () => {
@@ -257,10 +260,10 @@ describe("runImport", () => {
 
   it("imports the messy 40-row sheet with the suggested choices", async () => {
     const p = await preview();
-    expect(await runImport(OWNER, MESSY, MAPPING, p.defaultSkips, p.seen)).toEqual({ ok: true, data: { imported: 35, skipped: 2, errored: 3 } });
+    expect(await runImport(OWNER, MESSY, MAPPING, p.defaultSkips, p.seen)).toEqual({ ok: true, data: { imported: 36, skipped: 2, errored: 2 } });
 
     const all = await companies();
-    expect(all).toHaveLength(36); // Initech already there, plus 35
+    expect(all).toHaveLength(37); // Initech already there, plus 36
     expect(all.filter((c) => c.name === "Initech")).toHaveLength(1);
     expect(await company("ACME, Inc.")).toBeUndefined();
     expect(await company("Smith, Jones & Co")).toMatchObject({ industry: "Consulting", website: "smithjones.com" });
@@ -271,14 +274,15 @@ describe("runImport", () => {
     for (const c of all) expect(c).toMatchObject({ stage: "NOT_CONTACTED", claimedById: null, nextFollowUpAt: null });
     // One contact per row that named one; email lowercased.
     const contacts = await withTenant(OWNER, (tx) => tx.contact.findMany({ select: { name: true, email: true } }));
-    expect(contacts).toHaveLength(17);
+    expect(contacts).toHaveLength(18);
+    expect(contacts).toContainEqual({ name: "Pat Lee", email: null });
     expect(contacts).toContainEqual({ name: "Jen Park", email: "jpark@acme.com" });
   });
 
   it("imports look-alikes the person chose to keep, and remembers them as separate", async () => {
     const p = await preview();
     const result = ok(await runImport(OWNER, MESSY, MAPPING, [], p.seen));
-    expect(result).toEqual({ imported: 37, skipped: 0, errored: 3 });
+    expect(result).toEqual({ imported: 38, skipped: 0, errored: 2 });
     expect((await companies()).filter((c) => c.name === "Initech")).toHaveLength(2);
     // Acme Corp and ACME, Inc. are one pair; the two Initechs another.
     expect(await withTenant(OWNER, (tx) => tx.companyPairDecision.count())).toBe(2);
@@ -347,7 +351,7 @@ describe("import actions", () => {
       skip: JSON.stringify(preview.defaultSkips),
       seen: JSON.stringify(preview.seen),
     });
-    expect(await asUser("officerA", () => runAction(null, run))).toEqual({ ok: true, data: { imported: 35, skipped: 2, errored: 3 } });
+    expect(await asUser("officerA", () => runAction(null, run))).toEqual({ ok: true, data: { imported: 36, skipped: 2, errored: 2 } });
   });
 
   test.for([
@@ -399,5 +403,152 @@ describe("import actions", () => {
 
   it("refuses a malformed workspace id", async () => {
     expect(await asUser("ownerA", () => previewAction(null, previewForm({ workspaceId: "" })))).toEqual({ ok: false, error: expect.any(String) });
+  });
+});
+
+describe("reading files in other encodings (P4)", () => {
+  const nameOnly: ImportMapping = { name: 0, industry: 1, website: null, notes: 2, contactName: null, contactEmail: null };
+  const bytesFile = (bytes: Uint8Array<ArrayBuffer>, name = "sheet.csv") => new File([bytes], name, { type: "text/csv" });
+  const formOf = (file: File, extra: Record<string, string> = {}) => {
+    const data = new FormData();
+    data.set("workspaceId", "a");
+    data.set("file", file);
+    for (const [k, v] of Object.entries(extra)) data.set(k, v);
+    return data;
+  };
+  const SHEET = "Company,Industry,Notes\nCafé Olé Roasters,Food,Résumé review\nNiño Bakery,Food,\n";
+  const utf16 = (text: string, bigEndian: boolean) => {
+    const out = new Uint8Array(2 + text.length * 2);
+    out.set(bigEndian ? [0xfe, 0xff] : [0xff, 0xfe]);
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      out[2 + 2 * i] = bigEndian ? code >> 8 : code & 0xff;
+      out[3 + 2 * i] = bigEndian ? code & 0xff : code >> 8;
+    }
+    return out;
+  };
+  // Windows-1252 for the few accented letters the sheet uses.
+  const cp1252 = (text: string) => new Uint8Array([...text].map((c) => c.charCodeAt(0)));
+
+  test.for([
+    ["UTF-8", new TextEncoder().encode(SHEET), undefined],
+    ["UTF-8 with a byte-order mark", new TextEncoder().encode(`﻿${SHEET}`), undefined],
+    ["UTF-16 LE (Excel Unicode Text)", utf16(SHEET, false), undefined],
+    ["UTF-16 BE", utf16(SHEET, true), undefined],
+    ["Windows-1252 (Excel CSV on Windows)", cp1252(SHEET), "windows-1252"],
+  ] as const)("reads %s, and says so when it guessed Windows text", async ([, bytes, guess]) => {
+    const preview = ok(await asUser("ownerA", () => previewAction(null, formOf(bytesFile(new Uint8Array(bytes))))));
+    expect(preview.names.map((n) => n.name)).toEqual(["Café Olé Roasters", "Niño Bakery"]);
+    expect(preview.sample[0].company.notes).toBe("Résumé review");
+    expect(preview.encodingGuess).toBe(guess);
+    expect(preview.errors).toEqual([]);
+    // And imports the same names.
+    const run = formOf(bytesFile(new Uint8Array(bytes)), { mapping: JSON.stringify(preview.mapping), skip: "[]", seen: "[]" });
+    expect(await asUser("ownerA", () => runAction(null, run))).toEqual({ ok: true, data: { imported: 2, skipped: 0, errored: 0 } });
+    expect(await company("Café Olé Roasters")).toMatchObject({ notes: "Résumé review" });
+  });
+
+  it("refuses text with a NUL character instead of sending it to the database", async () => {
+    const error = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File > Download > CSV.";
+    expect(parseCsv("Company,Notes\nNul Co,bad\u0000cell\n")).toEqual({ ok: false, error });
+    expect(await asUser("ownerA", () => previewAction(null, formOf(bytesFile(new TextEncoder().encode("Company\nNul\u0000 Co\n")))))).toEqual({ ok: false, error });
+    // A UTF-16 file without its byte-order mark reads as UTF-8 full of NULs: refused, not a crash.
+    const noBom = utf16(SHEET, false).subarray(2);
+    expect(await asUser("ownerA", () => previewAction(null, formOf(bytesFile(new Uint8Array(noBom)))))).toEqual({ ok: false, error });
+    expect(await runImport(OWNER, "Company\nNul\u0000 Co\n", nameOnly, [], [])).toEqual({ ok: false, error });
+    expect(await companies()).toHaveLength(1);
+  });
+
+  it("never saves a replacement character: such a row can't be imported", () => {
+    const rows = ok(checkRows(ok(parseCsv("Company,Industry,Notes\nCaf� Ol�,Food,\nPlain Co,Food,R�sum�\nGood Co,Food,ok\n")), nameOnly));
+    expect(rows.map((r) => r.errors)).toEqual([
+      ["This row has characters Coppice can't read. In Excel use Save As, CSV UTF-8."],
+      ["This row has characters Coppice can't read. In Excel use Save As, CSV UTF-8."],
+      [],
+    ]);
+  });
+});
+
+describe("contacts never sink a company (P4)", () => {
+  const twoColumns: ImportMapping = { name: 0, industry: null, website: null, notes: null, contactName: null, contactEmail: 1 };
+  test.for([
+    ["an email and no name", "Orbit Labs,hello@orbitlabs.com", { name: "hello", email: "hello@orbitlabs.com", title: null }, ['Contact named "hello" from their email.']],
+    ["a bad email and no name", "Nova Foods,not-an-email", null, ["Contact left out: no valid email."]],
+    ["nothing", "Plain Co,", null, []],
+  ] as const)("a row with %s imports the company", async ([, line, contact, warnings]) => {
+    const text = `Company,Email\n${line}\n`;
+    const preview = ok(await previewImport(OWNER, text, twoColumns));
+    expect(preview.errors).toEqual([]);
+    expect(preview.warnings).toEqual(warnings.length ? [{ row: 2, name: line.split(",")[0], messages: warnings }] : []);
+    expect(ok(checkRows(ok(parseCsv(text)), twoColumns))[0].contact).toEqual(contact);
+    expect(ok(await runImport(OWNER, text, twoColumns, [], preview.seen))).toEqual({ imported: 1, skipped: 0, errored: 0 });
+  });
+
+  it("imports every row of a Company, Email sheet", async () => {
+    const text = "Company,Email\nOrbit Labs,hello@orbitlabs.com\nNova Foods,not-an-email\nPlain Co,\n";
+    const preview = ok(await previewImport(OWNER, text, null));
+    expect(preview.mapping).toMatchObject({ name: 0, contactEmail: 1 });
+    expect(ok(await runImport(OWNER, text, preview.mapping, [], preview.seen))).toEqual({ imported: 3, skipped: 0, errored: 0 });
+  });
+});
+
+describe("look-alikes imported anyway are remembered as a star, not every pair (P4)", () => {
+  const siteOnly: ImportMapping = { name: 0, industry: null, website: 1, notes: null, contactName: null, contactEmail: null };
+  const pairs = () => withTenant(OWNER, (tx) => tx.companyPairDecision.count());
+
+  it("300 rows on one website write at most 299 pairs", async () => {
+    const text = `Company,Website\n${Array.from({ length: 300 }, (_, i) => `Shared ${i},shared-site.com`).join("\n")}\n`;
+    const preview = ok(await previewImport(OWNER, text, siteOnly));
+    expect(preview.groups).toHaveLength(1);
+    expect(ok(await runImport(OWNER, text, siteOnly, [], preview.seen))).toEqual({ imported: 300, skipped: 0, errored: 0 });
+    expect(await pairs()).toBe(299);
+  });
+
+  it("pairs each imported row with every saved company it looked like", async () => {
+    const text = "Company,Website\nInitech,\nInitech,\n";
+    const preview = ok(await previewImport(OWNER, text, siteOnly));
+    expect(ok(await runImport(OWNER, text, siteOnly, [], preview.seen))).toEqual({ imported: 2, skipped: 0, errored: 0 });
+    // Row 2 and row 3 each with the saved Initech, and row 3 with row 2.
+    expect(await pairs()).toBe(3);
+  });
+
+  it("LinkedIn pages of different companies are not one group", async () => {
+    const text = `Company,Website\n${Array.from({ length: 300 }, (_, i) => `Linked ${i},https://www.linkedin.com/company/linked-${i}`).join("\n")}\n`;
+    const preview = ok(await previewImport(OWNER, text, siteOnly));
+    expect(preview.groups).toEqual([]);
+    expect(preview.defaultSkips).toEqual([]);
+  });
+});
+
+describe("two imports of the same file at once (P4)", () => {
+  it("imports it once: the second waits, then sees the first's companies and refuses", async () => {
+    const text = `Company,Website\n${Array.from({ length: 200 }, (_, i) => `Twice ${i},twice${i}.com`).join("\n")}\n`;
+    const siteOnly: ImportMapping = { name: 0, industry: null, website: 1, notes: null, contactName: null, contactEmail: null };
+    const preview = ok(await previewImport(OWNER, text, siteOnly));
+    const results = await Promise.all([runImport(OWNER, text, siteOnly, [], preview.seen), runImport(OWNER, text, siteOnly, [], preview.seen)]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.find((r) => !r.ok)).toEqual({ ok: false, error: expect.stringContaining("was added since your preview") });
+    expect(await companies()).toHaveLength(201);
+  });
+
+  it("takes the workspace's import lock first, so an import waits for one already running", async () => {
+    const holder = new Client({ connectionString: testDatabaseUrls().ownerUrl });
+    await holder.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtext('import:a'))");
+      let finished = false;
+      const nameOnly: ImportMapping = { name: 0, industry: null, website: null, notes: null, contactName: null, contactEmail: null };
+      const running = runImport(OWNER, "Name\nWaiting Co\n", nameOnly, [], []).then((r) => {
+        finished = true;
+        return r;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(finished).toBe(false);
+      await holder.query("COMMIT");
+      expect(await running).toEqual({ ok: true, data: { imported: 1, skipped: 0, errored: 0 } });
+    } finally {
+      await holder.end();
+    }
   });
 });
