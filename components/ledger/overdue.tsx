@@ -12,6 +12,8 @@ import { HourglassIcon, type HourglassFill } from "./icons";
 //                                          gets a 3 px rust rule in its margin (class lg-rule-row, data-od="long")
 //
 // Rust always comes with words and a glass, never as a color alone, and never as a filled background.
+//
+// shortDue(days) is the compact wording for tight layouts: "Due today" | "9d late" | "In 3d".
 
 export type OverdueLevel = "upcoming" | "today" | "late" | "overdue" | "long";
 
@@ -39,6 +41,15 @@ export function overdueText(days: number, dueOn?: string): string {
   if (days === -1) return "Due tomorrow";
   if (days >= -7 || !dueOn) return `Due in ${-days} days`;
   return `Due ${dueOn}`;
+}
+
+// The compact form for tight places (the queue between 760 and 1100 px, board slips): "Due today",
+// "9d late", "In 3d". Same `days` as overdueText (positive is overdue). Callers keep the full words,
+// overdueText(days, dueOn), in sr-only text and in title=.
+export function shortDue(days: number): string {
+  if (days === 0) return "Due today";
+  if (days > 0) return `${days}d late`;
+  return `In ${-days}d`;
 }
 
 // Whether the row it sits in should carry the long-overdue rule in its margin.

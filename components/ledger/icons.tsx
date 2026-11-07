@@ -6,7 +6,7 @@ import type { Stage } from "@/generated/prisma/enums";
 // and thin like a pen nib. No hatching below 32 px: the engraved variants at the bottom of this file
 // are for 48 px and up (landing, empty states).
 
-type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & { size?: number };
+export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & { size?: number };
 
 function Icon({ size = 20, children, ...rest }: IconProps & { children: ReactNode }) {
   return (
@@ -289,6 +289,17 @@ export function PlusIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M10 4.2v11.6M4.2 10h11.6" />
+    </Icon>
+  );
+}
+
+// More: three dots in a row, for every overflow control (the ⋯ menus, the phone's More tab).
+export function MoreIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="4.6" cy="10" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="10" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="15.4" cy="10" r="1.25" fill="currentColor" stroke="none" />
     </Icon>
   );
 }

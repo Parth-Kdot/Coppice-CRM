@@ -905,3 +905,415 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ==========================================================================================
+   Shared primitives (P1): Disclosure, OverflowMenu, ShowMore / MoreLink, Segmented, RowsSkeleton,
+   and the truncation and tap-target utilities. Other packages append their own rules in a block
+   commented with their package id; these class names are part of the shared API.
+   ========================================================================================== */
+
+@keyframes lg-skel-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+@layer components {
+  /* ---------- .lg-linkbtn: a <button> that looks like a link ---------- */
+  .lg-linkbtn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--moss);
+    font: inherit;
+    font-weight: 500;
+    text-align: left;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+  .lg-linkbtn:hover:not(:disabled) {
+    text-decoration-thickness: 2px;
+  }
+  .lg-linkbtn:disabled,
+  .lg-linkbtn[aria-disabled="true"] {
+    color: var(--ink-2);
+    cursor: not-allowed;
+  }
+
+  /* ---------- Disclosure (components/ledger/disclosure.tsx) ---------- */
+  .lg-disc {
+    min-width: 0;
+  }
+  .lg-disc[data-variant="section"] {
+    border-top: 1px solid var(--rule);
+  }
+  .lg-disc-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    list-style: none;
+    cursor: pointer;
+  }
+  .lg-disc-summary::-webkit-details-marker {
+    display: none;
+  }
+  button.lg-disc-summary {
+    width: 100%;
+  }
+  .lg-disc[data-variant="section"] > .lg-disc-summary {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    font-weight: 400;
+    line-height: 1.2;
+  }
+  .lg-disc[data-variant="inline"] {
+    display: block;
+  }
+  .lg-disc[data-variant="inline"] > .lg-disc-summary {
+    display: inline-flex;
+    gap: 4px;
+    color: var(--moss);
+    font-size: var(--fs-2);
+    font-weight: 500;
+  }
+  .lg-disc[data-variant="inline"] > button.lg-disc-summary {
+    width: auto;
+  }
+  .lg-disc[data-variant="inline"] > .lg-disc-summary .lg-disc-title {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .lg-disc[data-variant="section"] > .lg-disc-summary:hover .lg-disc-title {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 5px;
+  }
+  .lg-disc-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-disc-chev {
+    flex: none;
+    color: var(--ink-2);
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .lg-disc[data-variant="inline"] .lg-disc-chev {
+    color: var(--moss);
+  }
+  .lg-disc[open] > .lg-disc-summary .lg-disc-chev,
+  .lg-disc[data-open="true"] > .lg-disc-summary .lg-disc-chev {
+    transform: rotate(90deg);
+  }
+  .lg-disc-count {
+    color: var(--ink-2);
+    font-family: var(--font-sans);
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-disc[data-variant="section"] > .lg-disc-body {
+    padding: 4px 0 16px 24px;
+  }
+  .lg-disc[data-variant="inline"] > .lg-disc-body {
+    padding: 6px 0 4px 20px;
+  }
+  .lg-disc-body[hidden] {
+    display: none;
+  }
+
+  /* ---------- OverflowMenu (components/ledger/overflow-menu.tsx) ---------- */
+  .lg-omenu-btn {
+    min-width: 38px;
+    padding: 0 8px;
+  }
+  .lg-omenu-btn[data-pending] {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .lg-omenu {
+    position: fixed;
+    z-index: 130;
+    min-width: 200px;
+    max-width: min(320px, calc(100vw - 16px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    border-top: 1px solid var(--ink-2);
+    border-radius: 0;
+    box-shadow: 2px 2px 0 var(--ink-2);
+    animation: lg-fade var(--dur-fast) var(--ease-out) both;
+  }
+  .lg-omenu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    min-height: 40px;
+    padding: 6px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-2);
+    font-weight: 500;
+    line-height: 1.25;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lg-omenu-item:hover:not([aria-disabled]),
+  .lg-omenu-item:focus-visible {
+    background: var(--moss-wash);
+  }
+  .lg-omenu-item:focus-visible {
+    outline-offset: -2px;
+  }
+  .lg-omenu-item[aria-disabled] {
+    color: var(--ink-2);
+    cursor: not-allowed;
+  }
+  .lg-omenu-label {
+    overflow-wrap: anywhere;
+  }
+  .lg-omenu-hint {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 400;
+    overflow-wrap: anywhere;
+  }
+  /* Destructive: rust words below a rule, never a filled button. */
+  .lg-omenu-danger {
+    color: var(--rust);
+  }
+  .lg-omenu-item:not(.lg-omenu-danger) + .lg-omenu-danger {
+    margin-top: 4px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-omenu-danger:hover:not([aria-disabled]),
+  .lg-omenu-danger:focus-visible {
+    background: var(--rust-wash);
+  }
+
+  /* ---------- ShowMore / MoreLink (components/ledger/show-more.tsx) ---------- */
+  .lg-showmore {
+    margin-top: 8px;
+    font-size: var(--fs-2);
+  }
+  .lg-morelink {
+    margin-top: 10px;
+    font-size: var(--fs-2);
+  }
+  .lg-morelink:focus {
+    outline: none;
+  }
+
+  /* ---------- Segmented (components/ledger/segmented.tsx): joined paper chips ---------- */
+  .lg-seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .lg-seg-opt {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 13px;
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    background: var(--sheet);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-2);
+    font-weight: 500;
+    line-height: 1.1;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease,
+      color var(--dur-fast) ease;
+  }
+  .lg-seg-opt + .lg-seg-opt {
+    margin-left: -1px;
+  }
+  .lg-seg-opt:first-child {
+    border-radius: 3px 0 0 3px;
+  }
+  .lg-seg-opt:last-child {
+    border-radius: 0 3px 3px 0;
+  }
+  .lg-seg-opt:only-child {
+    border-radius: 3px;
+  }
+  .lg-seg-opt:hover:not([aria-current="true"]) {
+    z-index: 1;
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-seg-opt[aria-current="true"] {
+    z-index: 1;
+    background: var(--moss);
+    border-color: var(--moss);
+    color: var(--paper);
+    font-weight: 600;
+    cursor: default;
+  }
+  .lg-seg-opt:focus-visible {
+    z-index: 2;
+  }
+  .lg-seg-count {
+    color: var(--ink-2);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-seg-opt[aria-current="true"] .lg-seg-count {
+    color: inherit;
+  }
+  /* A pending navigation: a small dot under the label, only if it takes a moment. */
+  .lg-seg-pend {
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0;
+    visibility: hidden;
+  }
+  .lg-seg-pend[data-pending] {
+    visibility: visible;
+    animation: lg-fade var(--dur-fast) ease 100ms forwards;
+  }
+
+  /* ---------- RowsSkeleton (components/ledger/skeleton.tsx) ---------- */
+  .lg-skel {
+    min-width: 0;
+    padding-top: 8px;
+  }
+  .lg-skel-title {
+    width: min(40%, 280px);
+    height: 30px;
+    margin-bottom: 18px;
+    border-radius: 2px;
+    background: var(--paper-2);
+    animation: lg-skel-pulse 1200ms ease-in-out infinite alternate;
+  }
+  .lg-skel-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .lg-skel-col {
+    min-width: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-skel-row {
+    display: flex;
+    align-items: center;
+    height: var(--pitch);
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-skel-bar {
+    display: block;
+    width: 72%;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--paper-2);
+    animation: lg-skel-pulse 1200ms ease-in-out infinite alternate;
+  }
+  .lg-skel-row[data-w="1"] .lg-skel-bar {
+    width: 54%;
+  }
+  .lg-skel-row[data-w="2"] .lg-skel-bar {
+    width: 64%;
+  }
+  .lg-skel-row[data-w="3"] .lg-skel-bar {
+    width: 46%;
+  }
+  @media (max-width: 760px) {
+    .lg-skel-col:not(:first-child) {
+      display: none;
+    }
+  }
+}
+
+@layer utilities {
+  /* One line, cut with an ellipsis. Pair with title= carrying the full text. On an inline element
+     it becomes an inline-block so the cut can happen; on a flex or grid child min-width:0 lets it shrink. */
+  .lg-trunc {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  :where(a, span, strong, em, b, i, code, time, label).lg-trunc {
+    display: inline-block;
+    vertical-align: bottom;
+  }
+  /* User strings that may hold one long word (emails, URLs, company names). */
+  .lg-wrap-any {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Tap targets: at least 44 px tall on touch screens (padding, not font size). */
+  @media (pointer: coarse) {
+    .lg-btn,
+    summary,
+    .lg-chipbody,
+    .lg-linkbtn,
+    .lg-list a,
+    .lg-omenu-item,
+    .lg-seg-opt {
+      min-height: 44px;
+    }
+    .lg-list a:not(.lg-trunc) {
+      display: inline-flex;
+      align-items: center;
+    }
+    .lg-list a.lg-trunc {
+      line-height: 44px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-omenu,
+  .lg-skel-title,
+  .lg-skel-bar,
+  .lg-seg-pend[data-pending] {
+    animation: none !important;
+  }
+  .lg-seg-pend[data-pending] {
+    opacity: 1;
+  }
+  .lg-disc-chev {
+    transition: none !important;
+  }
+}
