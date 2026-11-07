@@ -3,6 +3,7 @@ import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
 import { placeholderProblem } from "@/lib/placeholders";
 import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
+import { MCP_SCOPES } from "@/lib/mcp/config";
 
 // Every server action parses its input with one of these before touching the database.
 
@@ -58,6 +59,15 @@ export const aiSettingsSchema = z.object({
     .int("Use a whole number.")
     .min(0, `Use 0 to ${AI_LIMIT_MAX}.`)
     .max(AI_LIMIT_MAX, `Use 0 to ${AI_LIMIT_MAX}.`),
+});
+
+// The switch for outside AI assistants (MCP), owner only: a checkbox, "on" when ticked.
+export const mcpSettingsSchema = z.object({
+  workspaceId: id,
+  enabled: z
+    .string()
+    .nullable()
+    .transform((v) => v === "on"),
 });
 
 // Shape every server action returns (project convention).
@@ -466,3 +476,58 @@ export const requestBriefSchema = companyRefSchema.extend({
 });
 // "Add to notes" on one item of a brief.
 export const acceptBriefItemSchema = companyRefSchema.extend({ briefId: id, itemId: z.string().min(1).max(40) });
+// ----- MCP tools (outside AI assistants, lib/mcp) -----
+
+// The arguments an assistant sends to each tool. The MCP SDK checks them against these before a
+// tool runs, and also publishes them (as JSON Schema) so the assistant knows what to send. That's
+// why they hold no transforms: the published schema has to describe the input as sent.
+const mcpWorkspace = id.describe("The workspace's id, from list_workspaces.");
+const mcpCompany = id.describe("The company's id, from list_companies or get_follow_up_queue.");
+
+export const mcpWorkspaceSchema = z.object({ workspaceId: mcpWorkspace });
+
+export const MCP_LIST_LIMIT = 50;
+export const mcpListCompaniesSchema = z.object({
+  workspaceId: mcpWorkspace,
+  query: z.string().trim().max(100).optional().describe("Text to find in the company's name, website or industry. Leave out to list companies by name."),
+  stage: z.enum(Stage).optional().describe("Only companies at this stage."),
+});
+
+export const mcpCompanySchema = z.object({ workspaceId: mcpWorkspace, companyId: mcpCompany });
+
+export const mcpQueueSchema = z.object({
+  workspaceId: mcpWorkspace,
+  onlyMine: z.boolean().optional().describe("Only companies you hold."),
+  includeNeverContacted: z.boolean().optional().describe("Also list fresh leads nobody has contacted yet."),
+});
+
+export const mcpLogOutreachSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  channel: z.enum(Channel).describe("How you reached out."),
+  note: z.string().trim().max(NOTE_MAX).optional().describe("A short note on what was said."),
+  followUpOn: z.iso.date().describe("When to follow up, as YYYY-MM-DD: from today to a year out."),
+});
+
+export const mcpChangeStageSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  stage: z.enum(Stage).describe("The stage to move the company to."),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe("Required as true for COMMITTED or DECLINED, which end the pitch and release the claim. Ask the person first."),
+});
+
+// A space-separated scope list sent to the OAuth endpoints (authorize, consent, token). The plugin
+// checks that each name is one it allows, but not how often a name appears, and it copies the list
+// into every consent, code and token row. So a name may appear only once, and the list can't be
+// longer than the scopes Coppice defines.
+export const oauthScopeListSchema = z
+  .string()
+  // Single spaces only, matching how the OAuth plugin splits the list (it keeps empty entries).
+  .regex(/^[\x21\x23-\x5B\x5D-\x7E]+( [\x21\x23-\x5B\x5D-\x7E]+)*$/, "Scopes are separated by single spaces.")
+  .refine((scope) => {
+    const names = scope.split(" ").filter(Boolean);
+    return names.length <= MCP_SCOPES.length && new Set(names).size === names.length;
+  }, "Each scope can be asked for once.");

@@ -14,6 +14,7 @@ import { describeAiFailures, describeAiUsage } from "@/lib/ai/usage";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { listSources } from "@/lib/research/sources";
+import { mcpResourceUrl } from "@/lib/mcp/config";
 import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS } from "@/lib/validation";
 import {
   cancelInvitation,
@@ -23,6 +24,7 @@ import {
   removeMember,
   updateAiSettings,
   updateClaimWindow,
+  updateMcpSettings,
 } from "./actions";
 import { addResearchSource, archiveResearchSource, renameResearchSource } from "./research-actions";
 import "@/components/ledger/pages.css";
@@ -47,7 +49,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   const [workspace, members, invitations, ai] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { name: true, claimWindowDays: true },
+      select: { name: true, claimWindowDays: true, mcpEnabled: true },
     }),
     prisma.membership.findMany({
       where: { workspaceId },
@@ -238,6 +240,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               date&rdquo;), not their words. Its free-text cells, which can include names, go to Groq instead, with
               email addresses and phone numbers masked. Groq says it doesn&apos;t keep what it&apos;s sent by default, apart from logs it may hold for up to 30 days to
               look into errors or abuse.
+              An AI assistant a member connects is separate (see AI assistants below): what it reads, contact names included, goes to
+              the company behind it.
             </p>
             {!isConfigured() && (
               <p className="lg-error">
@@ -296,6 +300,63 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
             actions={{ add: addResearchSource, rename: renameResearchSource, archive: archiveResearchSource }}
           />
         )}
+        <section className="lg-sec" aria-labelledby="set-mcp">
+          <div className="lg-sec-label">
+            <h2 id="set-mcp" className="lg-sec-title">
+              AI assistants
+            </h2>
+            <p className="lg-sec-sub">
+              <span className="lg-aistate" data-on={workspace.mcpEnabled}>
+                {workspace.mcpEnabled ? "On for this workspace" : "Off for this workspace"}
+              </span>
+            </p>
+          </div>
+          <div className="lg-sec-body">
+            <p className="max-w-[66ch]">
+              Members can connect their own AI assistant, any assistant that supports remote MCP servers, to Coppice. It can read this workspace and, if the member allows it, claim companies, log outreach and move stages as them,
+              under the same rules as the app. What it does is marked &quot;via assistant&quot; in a company&apos;s history.
+            </p>
+            <p className="lg-mcp-privacy max-w-[66ch]">
+              <WarningIcon size={16} />
+              <span>
+                Everything an assistant reads here goes to the AI company behind it, under that company&apos;s terms: company names and
+                notes, contact names, emails and titles, and outreach notes. Coppice&apos;s own masking does not apply.
+              </span>
+            </p>
+            <h3 className="lg-h3 mt-4">How to connect</h3>
+            <ol className="lg-mcp-steps">
+              <li>
+                In your assistant, add a custom connector (or remote MCP server) with this address:
+                <code className="lg-mcp-url">{mcpResourceUrl()}</code>
+              </li>
+              <li>Sign in with Google, with the same account you use for Coppice.</li>
+              <li>Coppice shows what the assistant asks for. Allow it, or deny it.</li>
+            </ol>
+            <p className="lg-hint mt-3 max-w-[66ch]">
+              Access lasts an hour at a time and renews while the assistant uses it. Removing the connector in your assistant may not
+              end that access. Turning assistants off here blocks every assistant in this workspace while it stays off; turning it back
+              on lets back in every assistant members already allowed. Removing a member blocks their assistant while they are out of
+              the workspace. There is no way yet to disconnect one assistant on its own. Each member connects for themselves and only
+              reaches workspaces they belong to.
+            </p>
+            {isOwner ? (
+              <ActionForm action={updateMcpSettings} submitLabel="Save" successMessage="Saved." className="lg-aiform">
+                {ids}
+                <label className="lg-switch">
+                  <input name="enabled" type="checkbox" defaultChecked={workspace.mcpEnabled} className="lg-check" />
+                  <span>Allow AI assistants in this workspace</span>
+                </label>
+                <p className="lg-hint !mt-0 max-w-[60ch]">
+                  Turning this on lets members&apos; assistants read contact names, emails and notes here, and send them to their AI company.
+                </p>
+              </ActionForm>
+            ) : (
+              <p className="mt-3">
+                Assistants are {workspace.mcpEnabled ? "allowed" : "off"} in this workspace. Only an owner can change that.
+              </p>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Fragment, useId, type ReactNode } from "react";
 import { ActionForm } from "@/components/action-form";
-import type { Channel, Stage } from "@/generated/prisma/enums";
+import type { Channel, Stage, Via } from "@/generated/prisma/enums";
 import { CHANNEL_LABELS } from "@/lib/channels";
 import { when } from "@/lib/dates";
 import { STAGE_LABELS } from "@/lib/stages";
@@ -146,6 +146,7 @@ export function FactsBlock({ workspaceId, facts }: { workspaceId: string; facts:
 
 // ----- The log, as ledger entries -----
 
+// via: ASSISTANT when the person's AI assistant logged it through the MCP server.
 type OutreachData = {
   id: string;
   channel: Channel;
@@ -153,6 +154,7 @@ type OutreachData = {
   sentAt: Date;
   aiDraftId: string | null;
   gotReply: boolean;
+  via?: Via;
   sender: { name: string };
   template: { name: string } | null;
 };
@@ -183,6 +185,7 @@ export function OutreachBlock({ outreach, markReply, ids }: { outreach: Outreach
                       {o.sender.name}, {CHANNEL_LABELS[o.channel]}
                       {o.aiDraftId ? ", from an AI draft" : ""}
                       {o.template ? `, template: ${o.template.name}` : ""}
+                      {o.via === "ASSISTANT" && <span className="lg-via">via assistant</span>}
                     </p>
                     {o.note && <p className="lg-entrynote">{o.note}</p>}
                     {o.gotReply && (
@@ -212,7 +215,7 @@ export function OutreachBlock({ outreach, markReply, ids }: { outreach: Outreach
   );
 }
 
-type ChangeData = { id: string; fromStage: Stage; toStage: Stage; changedAt: Date; changedBy: { name: string } };
+type ChangeData = { id: string; fromStage: Stage; toStage: Stage; changedAt: Date; via?: Via; changedBy: { name: string } };
 
 export function HistoryBlock({ changes }: { changes: ChangeData[] }) {
   return (
@@ -230,6 +233,7 @@ export function HistoryBlock({ changes }: { changes: ChangeData[] }) {
                   <YearMargin iso={s.changedAt} />
                   <p className="lg-entrybody">
                     {when(s.changedAt)}: {s.changedBy.name} moved it from {STAGE_LABELS[s.fromStage]} to {STAGE_LABELS[s.toStage]}
+                    {s.via === "ASSISTANT" && <span className="lg-via">via assistant</span>}
                   </p>
                 </li>
                 {crosses && (

@@ -195,6 +195,7 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
         // Read only; whether the claim is still live is decided against dbNow() (lib/claims.ts).
         claimedById: true,
         claimExpiresAt: true,
+        claimedVia: true,
         claimedBy: { select: { name: true } },
       },
     });
@@ -213,6 +214,7 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
         sentAt: true,
         aiDraftId: true,
         gotReply: true,
+        via: true,
         sender: { select: { name: true } },
         template: { select: { name: true } },
       },
@@ -221,7 +223,7 @@ export function getCompanyDetail(tenant: Tenant, companyId: string) {
     });
     const stageChanges = await tx.stageChange.findMany({
       where: scope,
-      select: { id: true, fromStage: true, toStage: true, changedAt: true, changedBy: { select: { name: true } } },
+      select: { id: true, fromStage: true, toStage: true, changedAt: true, via: true, changedBy: { select: { name: true } } },
       orderBy: { changedAt: "desc" },
       take: 50,
     });

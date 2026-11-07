@@ -181,6 +181,7 @@ export default async function CompanyPage({ params }: PageProps<"/[workspaceId]/
                 state={claim}
                 holderName={company.claimedBy?.name ?? null}
                 expiresAt={company.claimExpiresAt}
+                claimedVia={company.claimedVia}
                 actions={{ claim: claimCompany, release: releaseClaim, forceRelease }}
               />
             </div>

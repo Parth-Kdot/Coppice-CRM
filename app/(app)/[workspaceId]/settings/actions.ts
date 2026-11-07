@@ -8,13 +8,14 @@ import { failure } from "@/lib/actions";
 import { requireMembership, requireOwner } from "@/lib/authz";
 import { releaseClaimsOf } from "@/lib/claims";
 import { prisma } from "@/lib/db";
-import { setAiSettings, setClaimWindow } from "@/lib/workspaces";
+import { setAiSettings, setClaimWindow, setMcpEnabled } from "@/lib/workspaces";
 import {
   aiSettingsSchema,
   cancelInvitationSchema,
   changeRoleSchema,
   claimWindowSchema,
   inviteMemberSchema,
+  mcpSettingsSchema,
   memberSchema,
   workspaceIdSchema,
   type ActionResult,
@@ -157,6 +158,21 @@ export async function updateAiSettings(_prev: ActionResult | null, form: FormDat
   try {
     const { userId } = await requireOwner(workspaceId);
     await setAiSettings(userId, workspaceId, { enabled, limit });
+  } catch (e) {
+    return failure(e);
+  }
+  revalidatePath(settingsPath(workspaceId));
+  return { ok: true, data: undefined };
+}
+
+export async function updateMcpSettings(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = mcpSettingsSchema.safeParse({ workspaceId: form.get("workspaceId"), enabled: form.get("enabled") });
+  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  const { workspaceId, enabled } = parsed.data;
+
+  try {
+    const { userId } = await requireOwner(workspaceId);
+    await setMcpEnabled(userId, workspaceId, enabled);
   } catch (e) {
     return failure(e);
   }

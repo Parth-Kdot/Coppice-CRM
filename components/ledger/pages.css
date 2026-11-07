@@ -692,6 +692,45 @@
     color: var(--moss);
   }
 
+  /* AI assistants (MCP): the privacy line, the connection steps and the server address. */
+  .lg-mcp-privacy {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 12px;
+    font-weight: 500;
+  }
+  .lg-mcp-privacy svg {
+    flex: none;
+    margin-top: 3px;
+  }
+  .lg-mcp-steps {
+    display: grid;
+    gap: 8px;
+    max-width: 66ch;
+    margin-top: 8px;
+    padding-left: 22px;
+    list-style: decimal;
+  }
+  .lg-mcp-url {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: var(--fs-2);
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+  @media (max-width: 480px) {
+    .lg-mcp-url {
+      font-size: var(--fs-1);
+    }
+  }
+
   /* The usage meter: twenty ruled cells, filled in proportion to the calls used. */
   .lg-usage {
     margin-top: 14px;
