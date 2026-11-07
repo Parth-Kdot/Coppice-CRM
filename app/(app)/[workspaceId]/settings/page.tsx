@@ -16,6 +16,7 @@ import { day } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS, WORKSPACE_NAME_MAX } from "@/lib/limits";
 import { mcpResourceUrl } from "@/lib/mcp/config";
+import { accessLabel, listConnections } from "@/lib/mcp/connections";
 import { listSources } from "@/lib/research/sources";
 import { listTemplates } from "@/lib/templates";
 import { ONLY_OWNER_MESSAGE } from "@/lib/workspaces";
@@ -31,6 +32,7 @@ import {
   updateClaimWindow,
   updateMcpSettings,
 } from "./actions";
+import { disconnectAssistant } from "./assistant-actions";
 import { addResearchSource, archiveResearchSource, renameResearchSource } from "./research-actions";
 import "@/components/ledger/pages.css";
 import "@/components/ledger/settings.css";
@@ -61,7 +63,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
 
   // Separate queries (and separate withTenant transactions) side by side, in two rounds of at most
   // four connections each, so one render never asks for more than the pool's default of five.
-  const [workspace, members, invitations] = await Promise.all([
+  const [workspace, members, invitations, connections] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
       select: { name: true, claimWindowDays: true, mcpEnabled: true },
@@ -80,6 +82,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           orderBy: { createdAt: "desc" },
         })
       : [],
+    // Your own assistants only (lib/mcp/connections.ts): its three queries run one after the other.
+    listConnections(me.userId),
   ]);
   // aiUsageDetail makes two queries of its own.
   const [ai, templates, ownerSources] = await Promise.all([aiUsageDetail(me), listTemplates(me), isOwner ? listSources(me) : null]);
@@ -312,10 +316,49 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               <li>Sign in with Google, with the same account you use for Coppice.</li>
               <li>Coppice shows what the assistant asks for. Allow it, or deny it.</li>
             </ol>
-            <p className="lg-hint mt-3 max-w-[66ch]">
-              Removing the connector in your assistant may not end its access right away; turning assistants off here blocks every one in this
-              workspace until it is turned back on.
+            <h3 className="lg-h3 mt-4" id="set-mcp-mine">
+              Your connected assistants
+            </h3>
+            <p className="lg-hint max-w-[66ch]">
+              Only you see this list. Removing the connector in your assistant may not end its access; Disconnect here ends it at once, in
+              every workspace you are in. An owner turning assistants off blocks every one in this workspace until it is turned back on.
             </p>
+            {connections.length === 0 ? (
+              <p className="mt-2">None connected.</p>
+            ) : (
+              <div className="lg-set-invites !mt-2">
+                <ShowMore initial={5} label="assistants" as="ul" listClassName="lg-invitelist" listLabel="Your connected assistants">
+                  {connections.map((c) => (
+                    <li key={c.clientId}>
+                      <div className="lg-invite-text">
+                        {/* The name is whatever the assistant registered with: cleaned, and isolated so it can't reorder the text around it. */}
+                        <p className="lg-invite-email">
+                          <bdi>{c.name}</bdi>
+                        </p>
+                        <p className="lg-hint">
+                          Returns to {c.returnsTo} · {accessLabel(c)} · allowed {day(c.allowedAt)}
+                          {c.lastRenewedAt && <> · last connected {day(c.lastRenewedAt)}</>}
+                        </p>
+                      </div>
+                      <ActionForm
+                        action={disconnectAssistant}
+                        submitLabel="Disconnect"
+                        submitAriaLabel={`Disconnect ${c.name}`}
+                        confirmMessage={`Disconnect ${c.name}? It loses access to Coppice at once, in every workspace. To use it again, connect it again.`}
+                        successMessage={`${c.name} disconnected.`}
+                        focusAfter="#set-mcp-mine"
+                        refreshOnError
+                        className="lg-invite-cancel"
+                        small
+                      >
+                        {ids}
+                        <input type="hidden" name="clientId" value={c.clientId} />
+                      </ActionForm>
+                    </li>
+                  ))}
+                </ShowMore>
+              </div>
+            )}
             {isOwner ? (
               <ActionForm
                 action={updateMcpSettings}

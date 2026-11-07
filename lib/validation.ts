@@ -629,6 +629,10 @@ export const mcpChangeStageSchema = z.object({
     .describe("Required as true for COMMITTED or DECLINED, which end the pitch and release the claim. Ask the person first."),
 });
 
+// Settings > AI assistants: Disconnect one of your own assistants (lib/mcp/connections.ts). The
+// client id comes from the row's hidden field; who it belongs to comes from the session, never the form.
+export const disconnectAssistantSchema = z.object({ workspaceId: id, clientId: id });
+
 // A space-separated scope list sent to the OAuth endpoints (authorize, consent, token). The plugin
 // checks that each name is one it allows, but not how often a name appears, and it copies the list
 // into every consent, code and token row. So a name may appear only once, and the list can't be
