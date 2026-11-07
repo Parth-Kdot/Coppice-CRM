@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { SignOutButton } from "@/components/auth-buttons";
 
@@ -80,7 +81,8 @@ export function UserMenu({ me, placement, extraItems }: { me: Me; placement: "sp
 }
 
 // Everything in the menu, without the button: used in the popover and inside the phone's More sheet.
-// `extraItems` is a slot for later additions (the onboarding round's "Replay the basics").
+// `extraItems` is the slot for the onboarding tours' rows (TourMenuItems below); following a link
+// there closes the menu or the sheet like the other rows.
 export function UserMenuPanel({
   me,
   showName = true,
@@ -105,7 +107,12 @@ export function UserMenuPanel({
       )}
       {line && <p className="lg-menu-email">{line}</p>}
       <div className="lg-menu-sect">
-        {extraItems}
+        {extraItems && (
+          // A link followed inside the slot closes the menu (Enter on a link is a click too).
+          <div className="contents" onClick={(event) => (event.target as Element).closest("a") && onClose()}>
+            {extraItems}
+          </div>
+        )}
         {showSwitch && (
           <Link href="/workspaces" className="lg-menu-item" onClick={onClose}>
             Switch workspace
@@ -114,5 +121,26 @@ export function UserMenuPanel({
         <SignOutButton className="lg-menu-item lg-menu-quiet" />
       </div>
     </div>
+  );
+}
+
+// The onboarding tours in the account menu (desktop popover and the phone's account row): replay
+// the basics, and the optional AI tour, marked "recommended" with a small dot until it is taken.
+// Each asks for its tour with ?tour= on the current page; tour-gate.tsx reads it and removes it.
+export function TourMenuItems({ aiRecommended }: { aiRecommended: boolean }) {
+  const pathname = usePathname();
+  return (
+    <>
+      <Link href={`${pathname}?tour=basics`} className="lg-menu-item" data-tour="replay-basics">
+        Replay the basics
+      </Link>
+      <Link href={`${pathname}?tour=ai`} className="lg-menu-item" data-tour="replay-ai">
+        <span>
+          AI tour
+          {aiRecommended && <span className="lg-menu-hint"> · recommended</span>}
+        </span>
+        {aiRecommended && <span className="lg-menu-dot" aria-hidden="true" />}
+      </Link>
+    </>
   );
 }

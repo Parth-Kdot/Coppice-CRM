@@ -23,7 +23,7 @@ export const loadWorkspace = cache(async (workspaceId: string) => {
     throw e;
   }
   const now = await dbNow();
-  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true, claimWindowDays: true } });
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true, claimWindowDays: true, aiEnabled: true, mcpEnabled: true } });
   const companies = await withTenant(membership, (tx) => tx.company.count({ where: { workspaceId, archivedAt: null } }));
   const memberships = await prisma.membership.findMany({
     where: { userId: user.id },

@@ -769,3 +769,18 @@
     transition: none;
   }
 }
+
+/* ---------- Onboarding round: the account menu's tour rows (TourMenuItems in user-menu.tsx) ---------- */
+@layer components {
+  .lg-menu-hint {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-menu-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--moss);
+  }
+}

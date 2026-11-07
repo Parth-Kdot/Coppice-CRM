@@ -41,6 +41,7 @@ model User {
   importSessions   ImportSession[]
   researchSources  ResearchSource[]
   companyBriefs    CompanyBrief[]
+  onboarding       OnboardingProgress[]
   // From the MCP plugin (lib/auth.ts), via the generator.
   oauthclients       OauthClient[]
   oauthrefreshtokens OauthRefreshToken[]
@@ -137,6 +138,7 @@ model Workspace {
   researchSources ResearchSource[]
   companyBriefs   CompanyBrief[]
   briefPages      CompanyBriefPage[]
+  onboarding      OnboardingProgress[]
 
   @@unique([slug])
   @@map("workspace")
@@ -875,4 +877,32 @@ model CompanyBriefPage {
   @@unique([briefId, position])
   @@index([briefId, workspaceId])
   @@index([workspaceId])
+}
+
+// How far one person has got through the onboarding tours in one workspace (components/ledger/tour.tsx).
+// No row means the basics have not started, so existing members take them once on their next visit.
+// Only that person can read or write their own row, owners included (row-level security in the
+// migration). Steps are indexes into lib/onboarding-steps.ts and only ever move forward.
+model OnboardingProgress {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  userId        String
+  // The next basics card not yet seen, so a reload or another device picks up where they left off.
+  basicsStep    Int       @default(0)
+  basicsDoneAt  DateTime? @db.Timestamptz(3)
+  // "owner" or "member": the role the basics were finished as. An officer made owner later sees
+  // only the invite card once.
+  basicsRole    String?
+  aiStep        Int       @default(0)
+  aiDoneAt      DateTime? @db.Timestamptz(3)
+  // "Later" on the offer, or the AI tour ended early. It stays in the account menu.
+  aiDismissedAt DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
 }
