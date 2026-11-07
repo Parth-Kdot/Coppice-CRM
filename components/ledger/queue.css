@@ -156,7 +156,14 @@
   .lg-firstrun-later {
     margin-top: 6px;
   }
+  .lg-firstrun-lead {
+    margin-top: 8px;
+    max-width: 60ch;
+  }
   .lg-firstrun-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     margin-top: 18px;
   }
   .lg-firstrun-steps {

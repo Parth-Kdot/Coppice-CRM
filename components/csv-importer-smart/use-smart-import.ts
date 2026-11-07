@@ -119,6 +119,7 @@ export function useSmartImport({
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [noteRetryable, setNoteRetryable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [freeText, setFreeText] = useState<number[]>([]);
   const [cycle, setCycle] = useState(actions?.options.current ?? 0);
@@ -167,6 +168,7 @@ export function useSmartImport({
     if (!res.ok) return setError(res.error);
     setFreeText(res.data.freeText);
     setNote(res.data.note);
+    setNoteRetryable(res.data.retryable ?? false);
     const changes = mappingChanges(current.mapping, res.data.mapping, current.headers);
     if (changes.length > 0) {
       const notes = current.mapping.notes;
@@ -243,6 +245,7 @@ export function useSmartImport({
     on,
     busy,
     note,
+    noteRetryable,
     error,
     freeText,
     setFreeText,

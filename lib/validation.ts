@@ -49,6 +49,7 @@ export {
   STAGES,
   TEMPLATE_LIMITS,
   WORKSPACE_NAME_MAX,
+  WORKSPACES_SHOWN,
   boardQuery,
 } from "@/lib/limits";
 export type { BoardFilters, ImportField, StageName } from "@/lib/limits";
@@ -239,7 +240,7 @@ export const logOutreachSchema = companyRefSchema.extend({
   aiDraftId: id.nullish(),
   // The template the email was based on, if one was picked ("" is "No template").
   templateId: z.string().max(64).nullish().transform((v) => v || null),
-  // P2: the log form's key for this entry, so the same submit twice logs once (lib/claims.ts).
+  // The log form's key for this entry, so the same submit twice logs once (lib/claims.ts).
   clientKey: z.string().uuid().optional(),
 });
 
@@ -357,7 +358,7 @@ export const queueFiltersSchema = z.object({
   never: flag,
   // One section showing everything instead of the first 50.
   all: z.enum(["due", "never"]).nullable().catch(null),
-  // (P1) How many rows each queue group loads: 50, 100, 150 or 200 ("Show 50 more"). Anything
+  // How many rows each queue group loads: 50, 100, 150 or 200 ("Show 50 more"). Anything
   // else is dropped, so the page falls back to the first 50.
   upto: z
     .string()
@@ -382,7 +383,7 @@ export function queueQuery(filters: QueueFilters): string {
   return query ? `?${query}` : "";
 }
 
-// (P1) The queue's Fresh leads list, loaded 20 at a time when it is opened, up to 100.
+// The queue's Fresh leads list, loaded 20 at a time when it is opened, up to 100.
 export const freshLeadsSchema = z.object({
   workspaceId: workspaceIdSchema,
   offset: z.number().int().min(0).max(80),
@@ -648,5 +649,8 @@ export const tourProgressSchema = z.object({
   workspaceId: id,
   tour: z.enum(["basics", "ai"]),
   step: z.number().int().min(0).max(20),
-  event: z.enum(["step", "done", "later"]),
-}).refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.");
+  // "hide" and "show": the basics' Hide, and Resume from the pill.
+  event: z.enum(["step", "done", "later", "hide", "show"]),
+})
+  .refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.")
+  .refine((v) => (v.event !== "hide" && v.event !== "show") || v.tour === "basics", "Only the basics can be hidden.");

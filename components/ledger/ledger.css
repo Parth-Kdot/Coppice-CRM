@@ -909,7 +909,7 @@
 }
 
 /* ==========================================================================================
-   Shared primitives (P1): Disclosure, OverflowMenu, ShowMore / MoreLink, Segmented, RowsSkeleton,
+   Shared primitives: Disclosure, OverflowMenu, ShowMore / MoreLink, Segmented, RowsSkeleton,
    and the truncation and tap-target utilities. Other packages append their own rules in a block
    commented with their package id; these class names are part of the shared API.
    ========================================================================================== */

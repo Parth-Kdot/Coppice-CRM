@@ -45,16 +45,19 @@ export function BriefPanel(props: Props) {
   const fresh = state?.ok ? state.data : null;
   // The page reloads with the newest brief after a request or an "Add to notes"; a brief this
   // request just returned is shown until then.
-  // A new brief that found nothing doesn't replace an earlier one that did: that one stays, with
-  // a line saying the new request came back empty (the server does the same on reload).
-  const freshEmpty = fresh !== null && fresh.items.length === 0 && fresh.inboxes.length === 0;
-  const initialUseful = props.initialBrief !== null && (props.initialBrief.items.length > 0 || props.initialBrief.inboxes.length > 0);
+  // A new brief with no item doesn't replace an earlier one that has items: that one stays, with
+  // a line saying what the new request found, and its team inboxes (the server does the same on reload).
+  const freshThin = fresh !== null && fresh.items.length === 0;
+  const initialUseful = props.initialBrief !== null && props.initialBrief.items.length > 0;
   const newerThanInitial = fresh !== null && (!props.initialBrief || fresh.createdAt > props.initialBrief.createdAt);
   const brief =
-    fresh && newerThanInitial && !(freshEmpty && initialUseful)
+    fresh && newerThanInitial && !(freshThin && initialUseful)
       ? fresh
       : fresh && newerThanInitial && props.initialBrief
-        ? { ...props.initialBrief, newer: { status: fresh.status, createdAt: fresh.createdAt, createdBy: fresh.createdBy } }
+        ? {
+            ...props.initialBrief,
+            newer: { status: fresh.status, createdAt: fresh.createdAt, createdBy: fresh.createdBy, inboxes: fresh.inboxes.map(({ email, url }) => ({ email, url })) },
+          }
         : props.initialBrief;
   const [picked, setPicked] = useState(() => new Set(props.sources.filter((s) => s.suggested).map((s) => s.id).slice(0, BRIEF_SOURCES_MAX)));
   const limitLeft = props.usage.limit - props.usage.used;
@@ -202,10 +205,29 @@ function BriefCard(props: CardProps) {
         </p>
       </header>
       {brief.newer && (
-        <p className="lg-hint lg-brief-note" role="note">
-          A newer brief ({when(brief.newer.createdAt)}, asked by {brief.newer.createdBy}){" "}
-          {brief.newer.status === "NO_PAGES" ? "couldn't read any of its pages" : "found nothing that checked out"}, so this earlier one is shown.
-        </p>
+        <div className="lg-hint lg-brief-note" role="note">
+          <p>
+            A newer brief ({when(brief.newer.createdAt)}, asked by {brief.newer.createdBy}){" "}
+            {brief.newer.status === "NO_PAGES"
+              ? "couldn't read any of its pages"
+              : brief.newer.inboxes.length > 0
+                ? "found only a team inbox"
+                : "found nothing that checked out"}
+            , so this earlier one is shown.
+          </p>
+          {brief.newer.inboxes.length > 0 && (
+            <ul className="lg-brief-newer-inboxes">
+              {brief.newer.inboxes.map((inbox) => (
+                <li key={`${inbox.url} ${inbox.email}`}>
+                  {inbox.email}, from{" "}
+                  <a href={inbox.url} className="lg-link" target="_blank" rel="noopener noreferrer">
+                    {shortUrl(inbox.url)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       <p className="lg-hint lg-brief-note">A suggestion, not a fact: open each page and check it. Adding an item writes one line to this company&apos;s notes.</p>
 

@@ -191,7 +191,7 @@ export function CompanyForm(props: Props) {
           )}
           <ErrorLine>{dialogError}</ErrorLine>
           <div className="mt-3">
-            <button type="submit" name="separateFrom" value={result.matches.map((m) => m.id).join(",")} disabled={pending} className="lg-btn">
+            <button type="submit" name="separateFrom" value={result.matches.map((m) => m.id).join(",")} disabled={pending} className="lg-btn lg-btn-sm">
               Separate entries: save anyway
             </button>
           </div>
@@ -224,7 +224,8 @@ export function CompanyForm(props: Props) {
 
       <div className="lg-actions">
         <button type="submit" disabled={pending} className="lg-btn lg-btn-primary">
-          {pending ? "Saving..." : props.mode === "create" ? "Add company" : "Save changes"}
+          {/* While a look-alike waits for a choice above, this button only checks the edited fields again. */}
+          {pending ? "Saving..." : result?.status === "possible-duplicates" ? "Check again" : props.mode === "create" ? "Add company" : "Save changes"}
         </button>
         {props.mode === "edit" && editor && (
           <button type="button" className="lg-btn" onClick={() => editor.close(false)}>

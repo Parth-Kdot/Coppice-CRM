@@ -304,7 +304,6 @@ export const TRUST = {
   coming: [
     { tag: "Next", title: "Reply rate per pitch template", body: "See which version of your pitch gets answers, so the next board starts from what worked." },
     { tag: "Later", title: "Pipeline Copilot", body: "A chat that answers questions about your pipeline. Anything it proposes changing waits for a person to confirm." },
-    { tag: "Later", title: "Research briefs", body: "A short background read on a company before you reach out." },
     { tag: "Later", title: "Turnover Time Capsule", body: "At the end of the term, a \"wrapped\"-style history of the year handed to the incoming board." },
   ],
   privacyTitle: "Privacy notes",

@@ -124,11 +124,24 @@ export const clamped = (max: number) =>
     .overwrite((text) => clampText(text, max))
     .max(max);
 
+// How many items keptItems dropped from each list it returned (a list it kept whole isn't here).
+const droppedFrom = new WeakMap<object, number>();
+export const droppedItems = (list: readonly unknown[]): number => droppedFrom.get(list) ?? 0;
+
 // A list whose items are checked one by one: an item that fails its own schema is dropped (not the
-// whole reply), and only the first `max` that pass are kept.
+// whole reply), and only the first `max` that pass are kept. A reply that listed items but none of
+// them passed is refused, not taken as an empty answer: "no findings" or "no facts" from a broken
+// reply would read as a real result. droppedItems() says how many were dropped for failing.
 export function keptItems<T extends z.ZodType>(item: T, max: number) {
+  const kept = (entry: unknown) => entry !== null && entry !== undefined;
   return z
     .array(item.catch(null as unknown as z.output<T>))
-    .overwrite((list) => list.filter((entry) => entry !== null && entry !== undefined).slice(0, max))
+    .refine((list) => list.length === 0 || list.some(kept), { message: "No item in the list was valid", abort: true })
+    .overwrite((list) => {
+      const passed = list.filter(kept);
+      const out = passed.slice(0, max);
+      if (passed.length < list.length) droppedFrom.set(out, list.length - passed.length);
+      return out;
+    })
     .max(max);
 }

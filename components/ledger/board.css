@@ -386,7 +386,7 @@
   /* ---------- A slip: 64 px, the whole of it a link ---------- */
   /* The link (name over due mark) fills the slip and its ::after stretches over all of it. The stage
      glyph button sits top right and the holder chip or Claim bottom right, above the link; the name
-     and the due line keep clear of them with padding, so a name only truncates when it is long. */
+     and the due line keep clear of them with padding; a long name takes two lines before it is cut. */
   .lg-slipcard {
     position: relative;
     min-height: 64px;
@@ -444,7 +444,7 @@
   }
   .lg-slip-link {
     display: grid;
-    grid-template-rows: 26px 24px;
+    grid-template-rows: minmax(26px, auto) 24px;
     row-gap: 2px;
     align-items: center;
     min-width: 0;
@@ -464,12 +464,17 @@
     outline: 2px solid var(--moss-2);
     outline-offset: 1px;
   }
+  /* The name is the point of a slip: it wraps onto a second line before it is cut (the full name is
+     the link's tooltip). */
   .lg-slip-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     min-width: 0;
     padding-right: 26px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     font-family: var(--font-display);
     font-weight: 400;
     font-size: var(--fs-3);

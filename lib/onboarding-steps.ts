@@ -2,13 +2,16 @@
 // it points at. Pure (no database, no DOM), so the card lists are tested directly
 // (tests/onboarding-steps.test.ts); components/ledger/tour.tsx draws them.
 //
-//   basicsSteps(ctx)  The mandatory basics, taken once per workspace on the first visit:
+//   basicsSteps(ctx)  The basics, taken once on the first visit (someone who finished them in another
+//                     workspace skips them; everyone else, existing members included, takes them once):
 //                     welcome, queue, claim, log with a follow-up, board, add or import, search,
 //                     (owners) invite, done. Officers get 8 cards, owners 9. An officer who finished
 //                     them and is now an owner gets only the invite card.
-//   aiSteps(ctx)      The optional AI tour offered after the basics: fact sheet, Pitch Drafter, Claim
-//                     Checker, Smart import, research briefs, AI assistants, AI usage, done. With AI
-//                     unavailable or off, the AI-only cards collapse into one card that says so.
+//   aiSteps(ctx)      The optional AI tour offered after the basics, grouped by page so it moves as
+//                     little as it can: fact sheet, Smart import, Pitch Drafter, Claim Checker, Who to
+//                     contact (one company page), AI assistants, AI usage (Settings), done. With AI
+//                     unavailable or off, the AI-only cards collapse into one card that says so. With
+//                     no company yet, the company-page cards show a drawing instead of a page.
 //
 // Each card is one short title and one sentence. `anchors` name the real control it points at, in
 // order of preference: the first one that is on the page and visible gets the highlight. An anchor
@@ -22,7 +25,7 @@ export type TourRole = "owner" | "member";
 // Where a card's control lives. "company" is a company page the tour picks (yours first).
 export type TourRoute = "queue" | "board" | "company" | "import" | "facts" | "settings";
 
-export type Illustration = "queue" | "claim" | "log" | "board" | "check";
+export type Illustration = "queue" | "claim" | "log" | "board" | "check" | "draft" | "brief";
 
 export type TourStep = {
   key: string;
@@ -34,6 +37,11 @@ export type TourStep = {
   anchors: string[];
   // Phone (760px and narrower) prefers these, then falls back to `anchors`.
   phoneAnchors?: string[];
+  // What the card says on a phone instead of `body` (there is no keyboard shortcut there).
+  phoneBody?: string;
+  // What the card says instead of `body` when the control found is this anchor (the claim banner
+  // stands in for the log form until the company is claimed).
+  anchorBody?: { anchor: string; body: string };
   illustration?: Illustration;
   // The label of the button that moves focus to the highlighted control.
   tryLabel?: string;
@@ -50,6 +58,8 @@ export type BasicsContext = {
   // The role the basics were finished as, or null if they were never finished.
   basicsRole: TourRole | null;
   claimWindowDays?: number;
+  // How many cards the AI tour has, for the done card's estimate.
+  aiCards?: number;
 };
 
 export type AiContext = {
@@ -60,6 +70,8 @@ export type AiContext = {
   aiOn: boolean;
   // An owner allowed outside AI assistants (MCP) for this workspace.
   mcpOn: boolean;
+  // The workspace has no companies yet, so there is no company page to show.
+  empty?: boolean;
 };
 
 export const ROUTE_LABELS: Record<TourRoute, string> = {
@@ -82,7 +94,7 @@ const inviteStep: TourStep = {
   anchors: ["invite", "settings-members", '[aria-labelledby="set-invites"]', '[aria-labelledby="set-members"]'],
 };
 
-export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14 }: BasicsContext): TourStep[] {
+export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14, aiCards }: BasicsContext): TourStep[] {
   // Finished as an officer, an owner now: the one card they have not seen.
   if (basicsRole === "member" && role === "owner") return [inviteStep];
 
@@ -124,6 +136,7 @@ export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14 }: B
       // An empty workspace has no company page to show yet: the drawing stands in.
       route: empty ? null : "company",
       anchors: empty ? [] : ["log-outreach", "log-followup", "company-claim"],
+      anchorBody: { anchor: "company-claim", body: "Claim it, then log your email here and pick a follow-up date. It comes back to your queue that day." },
       illustration: "log",
     },
     {
@@ -131,7 +144,8 @@ export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14 }: B
       kind: "coach",
       title: "The board",
       body: "Every company by stage. When a reply comes in, move it: drag it, or tap its stage mark.",
-      route: "board",
+      // An empty board shows nothing yet: the drawing stands in, without leaving the page.
+      route: empty ? null : "board",
       anchors: empty ? [] : ["slip-move", "board-columns"],
       illustration: "board",
     },
@@ -149,6 +163,7 @@ export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14 }: B
       kind: "coach",
       title: "Find anything",
       body: "Ctrl K or / finds any company from anywhere.",
+      phoneBody: "Tap Search to find any company from anywhere.",
       route: null,
       anchors: ["search"],
       phoneAnchors: ["search-tab"],
@@ -159,14 +174,14 @@ export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14 }: B
     key: "done",
     kind: "done",
     title: "You are set.",
-    body: "Recommended next: the AI tour, about 4 minutes.",
-    route: null,
+    body: aiCards ? `Recommended next: the AI tour, ${aiCards} short cards.` : "Recommended next: the AI tour.",
+    route: "queue",
     anchors: [],
   });
   return steps;
 }
 
-export function aiSteps({ role, aiConfigured, aiOn, mcpOn }: AiContext): TourStep[] {
+export function aiSteps({ role, aiConfigured, aiOn, mcpOn, empty = false }: AiContext): TourStep[] {
   const owner = role === "owner";
   const aiWorks = aiConfigured && aiOn;
   const steps: TourStep[] = [
@@ -175,34 +190,23 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn }: AiContext): TourSte
       kind: "coach",
       title: "The fact sheet",
       body: owner
-        ? "Drafts only state facts an owner verified. Upload your sponsorship packet, then verify each fact."
+        ? aiWorks
+          ? "Drafts only state facts an owner verified. Upload your sponsorship packet, then verify each fact."
+          : "Drafts only state facts an owner verified. Add facts by hand here; turn AI on to read a packet."
         : "Drafts only state facts an owner verified; owners upload the packet and verify each fact here.",
       route: "facts",
-      anchors: owner ? ["facts-upload", "facts-verify-all", "facts-add"] : [],
+      anchors: owner ? (aiWorks ? ["facts-upload", "facts-verify-all", "facts-add"] : ["facts-add", "facts-verify-all"]) : [],
     },
   ];
 
+  // A company-page card: on the page when there is one, otherwise a drawing and where it will be.
+  const onCompany = (step: Omit<TourStep, "kind" | "route"> & { illustration: Illustration; emptyBody: string }): TourStep => {
+    const { emptyBody, ...card } = step;
+    return empty ? { ...card, kind: "coach", route: null, anchors: [], open: undefined, body: emptyBody } : { ...card, kind: "coach", route: "company" };
+  };
+
   if (aiWorks) {
     steps.push(
-      {
-        key: "drafter",
-        kind: "coach",
-        title: "Pitch Drafter",
-        body: "Draft two emails from your verified facts. Nothing is sent from here.",
-        route: "company",
-        anchors: ["#draft-email", "ai-tools"],
-        open: "ai-tools",
-      },
-      {
-        key: "checker",
-        kind: "coach",
-        title: "Claim Checker",
-        body: "Every draft is checked; anything not backed by a verified fact is flagged.",
-        route: "company",
-        anchors: [".lg-claimcheck"],
-        open: "ai-tools",
-        illustration: "check",
-      },
       {
         key: "smart",
         kind: "coach",
@@ -211,15 +215,33 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn }: AiContext): TourSte
         route: "import",
         anchors: ["smart-switch", "import-drop"],
       },
-      {
+      onCompany({
+        key: "drafter",
+        title: "Pitch Drafter",
+        body: "Draft two emails from your verified facts. Nothing is sent from here.",
+        emptyBody: "On a company page, once companies are in: two emails drafted from your verified facts.",
+        anchors: ["#draft-email", "ai-tools"],
+        open: "ai-tools",
+        illustration: "draft",
+      }),
+      onCompany({
+        key: "checker",
+        title: "Claim Checker",
+        body: "Every draft is checked; anything not backed by a verified fact is flagged.",
+        emptyBody: "Every draft is checked; anything not backed by a verified fact is flagged.",
+        anchors: [".lg-claimcheck"],
+        open: "ai-tools",
+        illustration: "check",
+      }),
+      onCompany({
         key: "research",
-        kind: "coach",
-        title: "Research briefs",
-        body: "Ask for a brief from approved web pages; you choose what goes into notes.",
-        route: "company",
+        title: "Who to contact",
+        body: "A research brief from pages an owner approved; you choose what goes into notes.",
+        emptyBody: "On a company page, once companies are in: a research brief from pages an owner approved.",
         anchors: ["research-brief", "ai-tools"],
         open: "ai-tools",
-      },
+        illustration: "brief",
+      }),
     );
   } else if (!aiConfigured) {
     steps.push({
@@ -256,7 +278,8 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn }: AiContext): TourSte
         ? "You can connect an AI assistant to work in Coppice from chat; this section shows how."
         : "An AI assistant can work in Coppice from chat once an owner switches it on here.",
     route: "settings",
-    anchors: ["mcp", '[aria-labelledby="set-mcp"]'],
+    // Inside the collapsed section: pointing at it opens it, so the switch (or the steps) shows.
+    anchors: owner ? [".lg-mcpset", ".lg-set-mcp", "mcp"] : [".lg-set-mcp", "mcp"],
   });
 
   if (aiWorks) {
@@ -264,9 +287,9 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn }: AiContext): TourSte
       key: "usage",
       kind: "coach",
       title: "AI usage",
-      body: "Every AI call counts toward the monthly limit. A Draft click uses 2, failed calls count too.",
+      body: "Every AI call counts toward the limit for the last 30 days. A Draft click uses 2; failed calls count too.",
       route: "settings",
-      anchors: ["ai-usage", ".lg-usage", '[aria-labelledby="set-ai"]'],
+      anchors: [".lg-usage", "ai-usage"],
     });
   }
 
@@ -275,7 +298,7 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn }: AiContext): TourSte
     kind: "done",
     title: "That is the AI tour.",
     body: "Replay either tour from the account menu.",
-    route: null,
+    route: "queue",
     anchors: [],
   });
   return steps;

@@ -8,7 +8,7 @@ import { contentSecurityPolicy, createNonce, securityHeaders } from "@/lib/secur
 import { notFound, redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { APIError } from "better-auth";
-import { BUSY_MESSAGE, LAST_OWNER_MESSAGE, failure } from "@/lib/actions";
+import { BUSY_MESSAGE, LAST_OWNER_MESSAGE, SAVE_FAILED_MESSAGE, failure } from "@/lib/actions";
 import { AuthzError } from "@/lib/authz";
 import { DEFAULT_POOL_MAX, poolMax } from "@/lib/db";
 import * as limits from "@/lib/limits";
@@ -193,13 +193,28 @@ describe("failure(): what a server action returns when something goes wrong", ()
     ["P2024 (no pooled connection in time)", known("P2024")],
     ["P2028 (transaction timed out)", known("P2028")],
     ["P2034 (serialization failure)", known("P2034")],
-    ["a driver error (a NUL byte Postgres refused)", driverError({ kind: "postgres", code: "22021" })],
-    ["a driver error (numeric overflow)", driverError({ kind: "postgres", code: "22003" })],
+    ["a driver error (serialization failure)", driverError({ kind: "postgres", code: "40001" })],
+    ["a driver error (statement timeout)", driverError({ kind: "postgres", code: "57014" })],
+    ["a driver error (connection lost)", driverError({ kind: "postgres", code: "08006" })],
+    ["a driver error (too many connections)", driverError({ kind: "TooManyConnections" })],
+    ["a driver error (a write conflict, as the adapter maps it)", driverError({ kind: "TransactionWriteConflict", originalCode: "40001" })],
     ["a busy error wrapped as the cause of another", Object.assign(new Error("outer"), { cause: known("P2024") })],
-    ["a RangeError", new RangeError("Invalid time value")],
   ])("maps %s to the busy message instead of the error page", (_, error) => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(failure(error, "testAction")).toEqual({ ok: false, error: BUSY_MESSAGE });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("testAction"), error);
+    log.mockRestore();
+  });
+
+  // Trying again can't help these, so the message doesn't say to.
+  test.each([
+    ["a driver error (a NUL byte Postgres refused)", driverError({ kind: "postgres", code: "22021" })],
+    ["a driver error (numeric overflow)", driverError({ kind: "postgres", code: "22003" })],
+    ["a driver error wrapped as the cause of another", Object.assign(new Error("outer"), { cause: driverError({ kind: "postgres", code: "22003" }) })],
+    ["a RangeError", new RangeError("Invalid time value")],
+  ])("maps %s to a plain failure instead of the error page, not to busy", (_, error) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(failure(error, "testAction")).toEqual({ ok: false, error: SAVE_FAILED_MESSAGE });
     expect(log).toHaveBeenCalledWith(expect.stringContaining("testAction"), error);
     log.mockRestore();
   });

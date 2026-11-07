@@ -5,7 +5,7 @@ import { TourGate } from "@/components/ledger/tour-gate";
 import { TourMenuItems } from "@/components/ledger/user-menu";
 import { isConfigured } from "@/lib/ai/client";
 import { roleLabel } from "@/lib/authz";
-import { getProgress } from "@/lib/onboarding";
+import { basicsDoneElsewhere, complete, getProgress } from "@/lib/onboarding";
 import { basicsPending } from "@/lib/onboarding-steps";
 import { loadWorkspace } from "./page-title";
 
@@ -17,7 +17,9 @@ import { loadWorkspace } from "./page-title";
 // The onboarding tours: the person's progress is read here, after the membership check and one
 // query after another (never Promise.all inside withTenant). TourGate goes in the shell's overlay
 // slot and loads the tour only when the basics are due or a tour is asked for; the account menu
-// gets "Replay the basics" and "AI tour".
+// gets "Replay the basics" and "AI tour". Someone who finished the basics in another of their
+// workspaces is treated as having finished them here too, and that is saved here on the first
+// visit (an officer there who is an owner here sees only the invite card).
 export async function generateMetadata({ params }: LayoutProps<"/[workspaceId]">): Promise<Metadata> {
   const { workspaceId } = await params;
   const { workspace } = await loadWorkspace(workspaceId);
@@ -28,6 +30,17 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
   const { workspaceId } = await params;
   const { user, membership, workspace, workspaces, counts } = await loadWorkspace(workspaceId);
   const progress = await getProgress(membership);
+  const elsewhere =
+    progress?.basicsDoneAt || !basicsPending(progress, membership.role)
+      ? null
+      : await basicsDoneElsewhere(
+          user.id,
+          workspaces.map((w) => w.id).filter((id) => id !== workspaceId),
+        );
+  // Written down here once, so the other workspaces are only ever asked on the first visit.
+  if (elsewhere) await complete(membership, "basics", elsewhere);
+  const basicsDone = !!progress?.basicsDoneAt || elsewhere !== null;
+  const basicsRole = progress?.basicsDoneAt ? progress.basicsRole : (elsewhere ?? progress?.basicsRole ?? null);
   return (
     <WorkspaceShell
       workspaceId={workspaceId}
@@ -39,7 +52,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
         // useSearchParams (the ?tour= request) inside; the boundary keeps the rest of the page static-safe.
         <Suspense fallback={null}>
           <TourGate
-            pending={basicsPending(progress, membership.role)}
+            pending={basicsPending(basicsDone ? { basicsDoneAt: true, basicsRole } : progress, membership.role)}
             workspaceId={workspaceId}
             workspaceName={workspace.name}
             role={membership.role}
@@ -50,8 +63,9 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
             claimWindowDays={workspace.claimWindowDays}
             progress={{
               basicsStep: progress?.basicsStep ?? 0,
-              basicsDone: !!progress?.basicsDoneAt,
-              basicsRole: progress?.basicsRole ?? null,
+              basicsDone,
+              basicsRole,
+              basicsHidden: !!progress?.basicsHiddenAt,
               aiStep: progress?.aiStep ?? 0,
               aiDone: !!progress?.aiDoneAt,
               aiDismissed: !!progress?.aiDismissedAt,

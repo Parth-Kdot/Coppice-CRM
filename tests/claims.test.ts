@@ -107,7 +107,7 @@ describe("claimCompany", () => {
     const id = await company();
     await claimCompany(OWNER, id);
     expect(await claimCompany(OFFICER, id)).toEqual({ ok: false, error: expect.stringMatching(/^ownerA claimed this first\. They hold it until /) });
-    // The short date used everywhere ("Nov 21"), no clock time (P2, R1-6).
+    // The short date used everywhere ("Nov 21"), no clock time.
     expect(await claimCompany(OFFICER, id)).toEqual({ ok: false, error: expect.stringMatching(/until [A-Z][a-z]{2} \d{1,2}\.$/) });
     expect((await row(id)).claimedById).toBe("ownerA");
   });
@@ -239,7 +239,7 @@ describe("logOutreach", () => {
     expect(await historyOf(id)).toEqual([]);
   });
 
-  // Changed by the de-bloat pass (P2, finding R1-4): the page now offers the log form on your own
+  // Changed by the de-bloat pass: the page now offers the log form on your own
   // expired claim, and saving claims it again, so the log is no longer refused.
   it("your own expired claim that nobody took since: logging renews it", async () => {
     const id = await company();
@@ -269,7 +269,7 @@ describe("logOutreach", () => {
       await expireClaim(id);
       const before = await outreachCount();
       const [logged, claimed] = await Promise.all([logOutreach(OFFICER, id, await outreach()), claimCompany(OWNER, id)]);
-      // Logging renews your own expired claim (P2, R1-4), so whichever reaches the row first wins,
+      // Logging renews your own expired claim, so whichever reaches the row first wins,
       // and never both: a won log keeps the company for the officer, a won claim writes no outreach.
       expect(logged.ok !== claimed.ok).toBe(true);
       expect((await row(id)).claimedById).toBe(logged.ok ? "officerA" : "ownerA");
@@ -458,7 +458,7 @@ describe("what pages show for a claim", () => {
     expect(claimState(c, now, "officerA")).toBe(state);
   });
 
-  // The company page tells your own expired claim apart, to speak to you about it (P2, R1-4).
+  // The company page tells your own expired claim apart, to speak to you about it.
   test.for([
     [claim(null, null), "free"],
     [claim("officerA", "2026-11-01T00:00:00Z"), "mine"],

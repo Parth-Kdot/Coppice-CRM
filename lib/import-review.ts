@@ -199,7 +199,7 @@ export function revertSmartMapping(current: ImportMapping, before: ImportMapping
   return next as ImportMapping;
 }
 
-// ----- Keeping the review across a new preview (P4) -----
+// ----- Keeping the review across a new preview -----
 
 // The review's sources from a preview: exact groups, names inside names, and (when its reading
 // matches the columns) Smart import's look-alikes. The importer joins them with mergeGroups.
@@ -266,7 +266,7 @@ export function bulkAnswers(open: ReviewGroup[]): BulkAnswer[] {
   return answers;
 }
 
-// ----- One file at a time (P4) -----
+// ----- One file at a time -----
 
 // Each chosen file starts a new generation. A call made for an older generation (a preview, a
 // Smart import suggestion, a reading chunk) is answered with `stale` instead of its real answer,

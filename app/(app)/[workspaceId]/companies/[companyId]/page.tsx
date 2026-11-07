@@ -14,6 +14,7 @@ import { ChevronLeftIcon } from "@/components/ledger/icons";
 import { LogOutreachForm } from "@/components/ledger/log-form";
 import { isLongOverdue, OverdueMark } from "@/components/ledger/overdue";
 import { RouteMap } from "@/components/ledger/route-map";
+import { BackToList } from "@/components/ledger/shell";
 import { isConfigured } from "@/lib/ai/client";
 import { aiUsage, DAILY_DRAFTS_PER_PERSON, draftsToday } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
@@ -268,10 +269,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
 
   const body = (
     <article className="lg-company" data-layout={archived ? "single" : "spread"}>
-      <Link href={`/${workspaceId}`} className="lg-back">
-        <ChevronLeftIcon size={18} />
-        Queue
-      </Link>
+      <BackToList workspaceId={workspaceId} className="lg-back" icon={<ChevronLeftIcon size={18} />} />
 
       {archived && (
         <div id="archived-banner" className="lg-archivedbanner" role="status" tabIndex={-1}>

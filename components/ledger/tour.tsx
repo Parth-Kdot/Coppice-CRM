@@ -16,6 +16,7 @@ import {
   type TourRoute,
   type TourStep,
 } from "@/lib/onboarding-steps";
+import { STAGE_LABELS } from "@/lib/stages";
 import { focusSoon } from "./focus";
 import { useNotify } from "./providers";
 import { autoOpenView, isEditable, placeCard, scrollTarget } from "./tour-logic";
@@ -25,14 +26,18 @@ import "./tour.css";
 // Loaded with next/dynamic by tour-gate.tsx only when a tour is due or was asked for, so an
 // ordinary page load never downloads it.
 //
-//   Welcome    A native modal <dialog> (focus trapped, Escape ignored, no close button), shown once
-//              on the first full page load in a workspace. "Start (2 min)" goes to the queue.
+//   Welcome    A native modal <dialog> (focus trapped, Escape ignored), shown once on the first full
+//              page load in a workspace. "Start (2 min)" goes to the queue; opened on another page
+//              (a link someone shared), it stays on that page and offers "Later" as well.
 //   Coach card Every later card: a non-modal role=dialog beside the highlighted real control (a 3px
 //              moss outline, no scrim, the page stays usable). Back, Next, Hide; Escape hides it into
 //              the Resume pill (the basics) or ends it (a replay, the AI tour). Each card takes focus
-//              on its title; "Show me" hands focus to the real control. On a phone it is a bottom
-//              sheet above the tab bar and the control is scrolled into the space above it.
-//   Pill       "Basics 3 of 8 · Resume", bottom left (above the tab bar on a phone).
+//              on its title; "Show me" hands focus to the real control; Alt+T brings focus back to
+//              the card from anywhere. Next stays in one place on every card. On a phone it is a
+//              bottom sheet above the tab bar; the page gets room at its end for the sheet, so the
+//              control can always be scrolled into the space above it.
+//   Pill       "Basics 3 of 8 · Resume", bottom left (above the tab bar on a phone). Hide is saved:
+//              later page loads show only the pill until the person resumes.
 //
 // It never interrupts work: it opens by itself only on a full page load and only when no dialog
 // is open and no text field has focus; it moves to another page only when you press a tour button,
@@ -46,6 +51,8 @@ export type TourProgress = {
   aiStep: number;
   aiDone: boolean;
   aiDismissed: boolean;
+  // Hide was pressed on the basics: open as the pill, not the card.
+  basicsHidden: boolean;
 };
 
 export type TourProps = {
@@ -79,6 +86,8 @@ type Run = {
 type View = "waiting" | "card" | "pill" | "closed";
 
 const PHONE = "(max-width: 760px)";
+// Alt+T (Option+T on a Mac) moves focus back to the card, or opens it from the pill.
+const isTourKey = (event: KeyboardEvent) => event.altKey && !event.ctrlKey && !event.metaKey && event.code === "KeyT";
 const REDUCED = "(prefers-reduced-motion: reduce)";
 const matches = (query: string) => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 
@@ -92,19 +101,22 @@ function visible(el: HTMLElement): boolean {
   return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
 }
 
-// The first anchor on the page that can be seen (a phone tries its own first). One hidden only by a collapsed <details> (a
-// Settings section) is revealed by opening it.
+// The collapsed <details> an element is hidden in (not counting one whose summary holds it).
+// Checked directly: browsers can report a size for content inside a closed <details>.
+function closedAround(el: HTMLElement): HTMLDetailsElement | null {
+  const closed = el.parentElement?.closest<HTMLDetailsElement>("details:not([open])") ?? null;
+  return closed && !closed.querySelector(":scope > summary")?.contains(el) ? closed : null;
+}
+
+// The first anchor on the page that can be seen (a phone tries its own first). One hidden only by
+// collapsed <details> (a Settings section) is revealed by opening them.
 function pickAnchor(step: TourStep): HTMLElement | null {
   const anchors = matches(PHONE) && step.phoneAnchors ? [...step.phoneAnchors, ...step.anchors] : step.anchors;
   for (const anchor of anchors) {
     for (const el of document.querySelectorAll<HTMLElement>(anchorSelector(anchor))) {
       if (el.closest("[data-tour-card]")) continue;
-      if (visible(el)) return el;
-      const closed = el.parentElement?.closest<HTMLDetailsElement>("details:not([open])");
-      if (closed && !closed.querySelector(":scope > summary")?.contains(el)) {
-        closed.open = true;
-        if (visible(el)) return el;
-      }
+      for (let closed = closedAround(el), guard = 0; closed && guard < 5; closed = closedAround(el), guard++) closed.open = true;
+      if (!closedAround(el) && visible(el)) return el;
     }
   }
   return null;
@@ -162,16 +174,20 @@ export function Tour(props: TourProps) {
   const [progress, setProgress] = useState<TourProgress>(props.progress);
   const [autoStart] = useState(props.autoStart);
   const upgrade = progress.basicsDone && progress.basicsRole === "member" && role === "owner";
+  const aiList = useMemo(() => aiSteps({ role, aiConfigured, aiOn, mcpOn, empty }), [role, aiConfigured, aiOn, mcpOn, empty]);
+  const aiCards = aiList.filter((s) => s.kind === "coach").length;
   const basicsList = useMemo(
-    () => basicsSteps({ role, empty, basicsRole: progress.basicsDone ? progress.basicsRole : null, claimWindowDays }),
-    [role, empty, progress.basicsDone, progress.basicsRole, claimWindowDays],
+    () => basicsSteps({ role, empty, basicsRole: progress.basicsDone ? progress.basicsRole : null, claimWindowDays, aiCards }),
+    [role, empty, progress.basicsDone, progress.basicsRole, claimWindowDays, aiCards],
   );
-  const aiList = useMemo(() => aiSteps({ role, aiConfigured, aiOn, mcpOn }), [role, aiConfigured, aiOn, mcpOn]);
 
   const [run, setRun] = useState<Run | null>(() =>
     autoStart ? { tour: "basics", index: resumeIndex(basicsList, upgrade ? 0 : progress.basicsStep), replay: false, nav: 0 } : null,
   );
   const [view, setView] = useState<View>(autoStart ? "waiting" : "closed");
+  // The page the tour opened on by itself, when that was not the queue (a shared link): Start then
+  // stays on it, and the welcome offers Later.
+  const [deepLink] = useState(() => autoStart && pathname.slice(`/${workspaceId}`.length).replace(/\/+$/, "") !== "");
   const [handled, setHandled] = useState(0);
   const [companyId, setCompanyId] = useState<string | null | undefined>(undefined);
   const [found, setFound] = useState<{ key: string; el: HTMLElement | null } | null>(null);
@@ -195,8 +211,11 @@ export function Tour(props: TourProps) {
   const step: TourStep | null = run ? steps[index] : null;
   const stepKey = run && step ? `${run.tour}:${index}:${step.key}` : "";
   const firstCoach = steps.findIndex((s) => s.kind === "coach");
+  // A company-page card with no company to show (none open, or all held by others): it stays put.
+  const noCompany = step?.route === "company" && companyId === null;
 
   const cardRef = useRef<HTMLDivElement>(null);
+  const resumeRef = useRef<() => void>(() => {});
   const titleRef = useRef<HTMLHeadingElement>(null);
   const welcomeRef = useRef<HTMLDialogElement>(null);
   const navDone = useRef(0);
@@ -224,7 +243,7 @@ export function Tour(props: TourProps) {
   // ----- Saving -----
 
   const save = useCallback(
-    async (tour: TourName, at: number, event: "step" | "done" | "later") => {
+    async (tour: TourName, at: number, event: "step" | "done" | "later" | "hide" | "show") => {
       try {
         const result = await saveTourProgress({ workspaceId, tour, step: at, event });
         if (!result.ok) notify(result.error, "error");
@@ -237,9 +256,10 @@ export function Tour(props: TourProps) {
     [workspaceId, notify, router],
   );
 
-  const record = (tour: TourName, at: number, event: "step" | "done" | "later") => {
+  const record = (tour: TourName, at: number, event: "step" | "done" | "later" | "hide" | "show") => {
     setProgress((p) => {
       if (event === "later") return { ...p, aiDismissed: true };
+      if (event === "hide" || event === "show") return { ...p, basicsHidden: event === "hide" };
       if (tour === "basics") return { ...p, basicsStep: Math.max(p.basicsStep, at), ...(event === "done" ? { basicsDone: true, basicsRole: role } : {}) };
       return { ...p, aiStep: Math.max(p.aiStep, at), ...(event === "done" ? { aiDone: true } : {}) };
     });
@@ -256,14 +276,22 @@ export function Tour(props: TourProps) {
     if (inCard) focusSoon("#main h1");
   };
 
+  // Hide is remembered (only for the basics taken for real): later page loads show the pill.
   const hide = () => {
+    if (run?.tour === "basics" && !run.replay && !progress.basicsHidden) record("basics", index, "hide");
     setView("pill");
     focusSoon(".lg-tour-pill");
   };
 
-  const goTo = (i: number) => {
+  const resume = () => {
+    if (run?.tour === "basics" && !run.replay && progress.basicsHidden) record("basics", index, "show");
+    setView("card");
+  };
+
+  // `stay`: show the card without going to its page (the first card after a welcome on a shared link).
+  const goTo = (i: number, stay = false) => {
     if (!run) return;
-    const nav = nextNav();
+    const nav = stay ? 0 : nextNav();
     setRun({ ...run, index: i, nav, fromRequest: false });
   };
 
@@ -282,7 +310,7 @@ export function Tour(props: TourProps) {
       // the AI tour only records that it was finished.
       if (!run.replay || run.tour === "ai") record(run.tour, i, "done");
     } else if (!run.replay) record(run.tour, i, "step");
-    goTo(i);
+    goTo(i, step.kind === "welcome" && deepLink);
   };
 
   const back = () => {
@@ -320,10 +348,25 @@ export function Tour(props: TourProps) {
     const raf = requestAnimationFrame(() => {
       const editableFocused = isEditable(document.activeElement as HTMLElement | null);
       const dialogOpen = !!document.querySelector("dialog[open]");
-      setView((v) => (v === "waiting" ? autoOpenView({ editableFocused, dialogOpen }) : v));
+      setView((v) => (v === "waiting" ? (progress.basicsHidden ? "pill" : autoOpenView({ editableFocused, dialogOpen })) : v));
     });
     return () => cancelAnimationFrame(raf);
+    // Only at the first load: a Hide pressed later doesn't re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart]);
+
+  // Alt+T: from anywhere on the page, focus goes back to the card (or the pill opens it).
+  useEffect(() => {
+    if (view !== "card" && view !== "pill") return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!isTourKey(event)) return;
+      event.preventDefault();
+      if (view === "pill") resumeRef.current();
+      else focusSoon(() => document.querySelector<HTMLElement>("[data-tour-card] .lg-tour-title"));
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [view]);
 
   // The company page the tour shows, asked for once, the first time a card needs one.
   useEffect(() => {
@@ -344,13 +387,13 @@ export function Tour(props: TourProps) {
     if (view !== "card" || !run || !run.nav || !step || navDone.current === run.nav) return;
     if (step.route === "company" && companyId === undefined && !empty) return;
     navDone.current = run.nav;
-    const href = step.route && !onRoute(step.route) ? hrefOf(step.route) : null;
+    const href = step.route && !onRoute(step.route) && !noCompany ? hrefOf(step.route) : null;
     const go = href && !hasUnsavedInput() ? href : null;
     if (run.fromRequest) {
       if (go) router.replace(go, { scroll: false });
       else dropTourParam();
     } else if (go) router.push(go, { scroll: false });
-  }, [view, run, step, companyId, empty, onRoute, hrefOf, router]);
+  }, [view, run, step, companyId, empty, noCompany, onRoute, hrefOf, router]);
 
   // Find the card's control, and keep finding it as the page changes (a route arriving, a claim
   // redrawing the row). Done on the next frame, outside rendering.
@@ -413,6 +456,16 @@ export function Tour(props: TourProps) {
         phone: matches(PHONE),
       });
       card.dataset.place = at.place;
+      // The bottom sheet covers the end of the page: the page gets that much room after its end
+      // (tour.css), so a control near the bottom of a short page can still scroll above the sheet.
+      const root = document.documentElement;
+      if (at.place === "sheet") {
+        root.dataset.tourSheet = "";
+        root.style.setProperty("--lg-tour-sheet", `${Math.ceil(window.innerHeight - card.getBoundingClientRect().top)}px`);
+      } else {
+        delete root.dataset.tourSheet;
+        root.style.removeProperty("--lg-tour-sheet");
+      }
       if (at.place === "beside") {
         card.style.setProperty("left", `${Math.round(at.left)}px`);
         card.style.setProperty("top", `${Math.round(at.top)}px`);
@@ -439,6 +492,8 @@ export function Tour(props: TourProps) {
       window.removeEventListener("scroll", replace, { capture: true });
       window.removeEventListener("resize", replace);
       resize.disconnect();
+      delete document.documentElement.dataset.tourSheet;
+      document.documentElement.style.removeProperty("--lg-tour-sheet");
     };
   }, [view, step, anchor, stepKey]);
 
@@ -467,12 +522,17 @@ export function Tour(props: TourProps) {
     return () => dialog.removeEventListener("close", reopen);
   }, [welcome]);
 
+  // The Alt+T listener calls the latest resume (it reads the current card and progress).
+  useLayoutEffect(() => {
+    resumeRef.current = resume;
+  });
+
   if (!run || !step || view === "closed" || view === "waiting") return null;
 
   if (view === "pill") {
     const label = step.kind === "welcome" ? "Basics · Start" : `${run.tour === "ai" ? "AI tour" : "Basics"} ${index + 1} of ${steps.length} · Resume`;
     return (
-      <button type="button" className="lg-tour-pill" onClick={() => setView("card")}>
+      <button type="button" className="lg-tour-pill" onClick={resume} aria-keyshortcuts="Alt+T">
         {label}
       </button>
     );
@@ -488,10 +548,13 @@ export function Tour(props: TourProps) {
         data-tour-card=""
         onCancel={(event) => event.preventDefault()}
         onKeyDown={(event) => {
-          // Start is the only control: Tab stays on it rather than leaving for the browser's toolbar.
+          // Tab moves between the buttons and stays in the dialog rather than leaving for the browser's toolbar.
           if (event.key === "Tab") {
             event.preventDefault();
-            event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();
+            const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+            const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            const to = at < 0 ? 0 : (at + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length;
+            buttons[to]?.focus();
           }
         }}
       >
@@ -505,6 +568,11 @@ export function Tour(props: TourProps) {
           <button type="button" className="lg-btn lg-btn-primary" onClick={next}>
             Start (2 min)
           </button>
+          {deepLink && (
+            <button type="button" className="lg-btn lg-tour-quiet" onClick={hide}>
+              Later
+            </button>
+          )}
         </div>
       </dialog>
     );
@@ -514,6 +582,17 @@ export function Tour(props: TourProps) {
   const goHref = step.route && !here ? hrefOf(step.route) : null;
   const tourName = run.tour === "ai" ? "AI tour" : "Basics";
   const lastCoachAlone = step.kind === "coach" && index === steps.length - 1;
+  const phone = matches(PHONE);
+  const body =
+    step.kind === "done" && run.tour === "basics" && progress.aiDone
+      ? "Replay either tour from the account menu."
+      : step.anchorBody && anchor?.matches(anchorSelector(step.anchorBody.anchor))
+        ? step.anchorBody.body
+        : phone && step.phoneBody
+          ? step.phoneBody
+          : step.body;
+  // Draw the control when it can't be shown: not on this page, or no company page to go to.
+  const drawing = step.kind === "coach" && !anchor && step.illustration;
   const showMe = () => {
     if (!anchor) return;
     const target = anchor.matches(FOCUSABLE) ? anchor : anchor.querySelector<HTMLElement>(FOCUSABLE);
@@ -527,6 +606,7 @@ export function Tour(props: TourProps) {
       aria-modal="false"
       aria-labelledby={titleId}
       aria-describedby={bodyId}
+      aria-keyshortcuts="Alt+T"
       className="lg-tour-card"
       data-kind={step.kind}
       data-tour-card=""
@@ -540,15 +620,17 @@ export function Tour(props: TourProps) {
       {step.kind === "coach" && (
         <p className="lg-tour-count">
           {tourName} · {index + 1} of {steps.length}
+          {!phone && <span className="lg-tour-keys"> · Alt+T returns here</span>}
         </p>
       )}
       <h2 id={titleId} ref={titleRef} tabIndex={-1} className="lg-tour-title">
         {step.title}
       </h2>
       <p id={bodyId} className="lg-tour-body">
-        {step.kind === "done" && run.tour === "basics" && progress.aiDone ? "Replay either tour from the account menu." : step.body}
+        {body}
       </p>
-      {step.kind === "coach" && !anchor && step.illustration && <Drawing kind={step.illustration} />}
+      {drawing && <Drawing kind={step.illustration!} />}
+      {step.kind === "coach" && noCompany && <p className="lg-tour-note">You&apos;ll see this on a company page you hold or can claim.</p>}
       {step.kind === "coach" && (goHref || anchor || step.link) && (
         <p className="lg-tour-go">
           {goHref ? (
@@ -570,10 +652,17 @@ export function Tour(props: TourProps) {
       <div className="lg-tour-actions">
         {step.kind === "coach" ? (
           <>
-            {index > firstCoach && (
+            {index > firstCoach ? (
               <button type="button" className="lg-btn lg-btn-sm" onClick={back}>
                 Back
               </button>
+            ) : (
+              // Holds Back's place on the first card, so Next is in the same spot on every card.
+              !lastCoachAlone && (
+                <span className="lg-btn lg-btn-sm lg-tour-placeholder" aria-hidden="true">
+                  Back
+                </span>
+              )
             )}
             <button type="button" className="lg-btn lg-btn-sm lg-btn-primary" onClick={next}>
               {lastCoachAlone ? "Done" : "Next"}
@@ -633,7 +722,7 @@ function Drawing({ kind }: { kind: Illustration }) {
       )}
       {kind === "board" && (
         <span className="lg-tour-art-cols">
-          {["Contacted", "Replied", "Talking"].map((label) => (
+          {[STAGE_LABELS.CONTACTED, STAGE_LABELS.REPLIED, STAGE_LABELS.IN_CONVERSATION].map((label) => (
             <span key={label} className="lg-tour-art-col">
               <span className="lg-tour-art-label">{label}</span>
               <span className="lg-tour-art-slip" />
@@ -641,6 +730,28 @@ function Drawing({ kind }: { kind: Illustration }) {
             </span>
           ))}
         </span>
+      )}
+      {kind === "draft" && (
+        <span className="lg-tour-art-cols" data-two="">
+          {["Draft 1", "Draft 2"].map((label) => (
+            <span key={label} className="lg-tour-art-col">
+              <span className="lg-tour-art-label">{label}</span>
+              <span className="lg-tour-art-bar" />
+              <span className="lg-tour-art-bar" />
+            </span>
+          ))}
+        </span>
+      )}
+      {kind === "brief" && (
+        <>
+          <span className="lg-tour-art-label">Suggested doors</span>
+          {["University relations", "Community giving"].map((label) => (
+            <span key={label} className="lg-tour-art-row">
+              <span className="lg-tour-art-bar" />
+              <span className="lg-tour-art-chip">{label}</span>
+            </span>
+          ))}
+        </>
       )}
       {kind === "check" && (
         <>

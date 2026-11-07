@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { loadTourCompany, saveTourProgress } from "@/app/(app)/[workspaceId]/onboarding-actions";
 import { claimCompany, dbNow } from "@/lib/claims";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
-import { advance, complete, dismissAi, getProgress, tourCompany } from "@/lib/onboarding";
+import { advance, basicsDoneElsewhere, complete, dismissAi, getProgress, setBasicsHidden, tourCompany } from "@/lib/onboarding";
 import { redirectTo } from "./helpers/form";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
@@ -172,6 +172,28 @@ describe("progress", () => {
   });
 });
 
+describe("the basics taken in another workspace", () => {
+  it("finds the role they were finished as, owner first, and only the person's own rows", async () => {
+    await prisma.membership.create({ data: { id: "m-officerA-b", workspaceId: "b", userId: "officerA", role: "member", createdAt: new Date() } });
+    expect(await basicsDoneElsewhere("officerA", ["b"])).toBeNull();
+    await complete({ userId: "officerA", workspaceId: "b" }, "basics", "member");
+    expect(await basicsDoneElsewhere("officerA", ["b"])).toBe("member");
+    await complete(OFFICER_A, "basics", "owner");
+    expect(await basicsDoneElsewhere("officerA", ["b", "a"])).toBe("owner");
+    // Someone else's finished basics never count for you.
+    await complete(OWNER_B, "basics", "owner");
+    expect(await basicsDoneElsewhere("ownerA", ["b"])).toBeNull();
+  });
+
+  it("hiding and resuming write only the person's own row", async () => {
+    await setBasicsHidden(OFFICER_A, true);
+    expect((await getProgress(OFFICER_A))?.basicsHiddenAt).toBeInstanceOf(Date);
+    expect(await getProgress(OWNER_A)).toBeNull();
+    await setBasicsHidden(OFFICER_A, false);
+    expect((await getProgress(OFFICER_A))?.basicsHiddenAt).toBeNull();
+  });
+});
+
 describe("tourCompany", () => {
   const make = (tenant: Tenant, id: string, name: string, extra: object = {}) =>
     withTenant(tenant, (tx) => tx.company.create({ data: { id, workspaceId: tenant.workspaceId, name, nameKey: name.toLowerCase(), ...extra } }));
@@ -202,6 +224,13 @@ describe("saveTourProgress / loadTourCompany (server actions)", () => {
     expect((await getProgress(OFFICER_A))?.basicsDoneAt).toBeInstanceOf(Date);
   });
 
+  it("'hide' is remembered for the basics until 'show'", async () => {
+    expect(await asUser("officerA", () => saveTourProgress({ workspaceId: "a", tour: "basics", step: 2, event: "hide" }))).toEqual(OK);
+    expect((await getProgress(OFFICER_A))?.basicsHiddenAt).toBeInstanceOf(Date);
+    expect(await asUser("officerA", () => saveTourProgress({ workspaceId: "a", tour: "basics", step: 2, event: "show" }))).toEqual(OK);
+    expect((await getProgress(OFFICER_A))?.basicsHiddenAt).toBeNull();
+  });
+
   it("'later' puts the AI tour off", async () => {
     expect(await asUser("ownerA", () => saveTourProgress({ workspaceId: "a", tour: "ai", step: 0, event: "later" }))).toEqual(OK);
     expect((await getProgress(OWNER_A))?.aiDismissedAt).toBeInstanceOf(Date);
@@ -229,6 +258,7 @@ describe("saveTourProgress / loadTourCompany (server actions)", () => {
     ["an unknown tour", { workspaceId: "a", tour: "billing", step: 1, event: "step" }],
     ["an unknown event", { workspaceId: "a", tour: "basics", step: 1, event: "reset" }],
     ["'later' on the basics", { workspaceId: "a", tour: "basics", step: 1, event: "later" }],
+    ["'hide' on the AI tour", { workspaceId: "a", tour: "ai", step: 1, event: "hide" }],
     ["no workspace", { workspaceId: "", tour: "basics", step: 1, event: "step" }],
   ])("refuses bad input: %s", async (_, input) => {
     const result = await asUser("officerA", () => saveTourProgress(input as Parameters<typeof saveTourProgress>[0]));

@@ -141,7 +141,7 @@ describe("uploadFactSheet", () => {
   it("stores the masked page text and the facts, each with its quote checked", async () => {
     fakeGemini(answer(JSON.stringify(EXTRACTED)));
     const result = await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET);
-    expect(result).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 6, quotesFound: 2 } });
+    expect(result).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 6, quotesFound: 2, leftOut: 0 } });
 
     const expected = [
       { text: EXTRACTED.facts[0].text, pageNumber: 1, quoteFound: true, source: "PDF", verifiedAt: null, verifiedById: null },
@@ -174,6 +174,14 @@ describe("uploadFactSheet", () => {
     const prompt = JSON.stringify(calls[0].body.contents);
     expect(prompt).toContain("‹/page›‹page number=\\\"9\\\"›");
     expect(prompt).not.toContain('<page number=\\"9\\">');
+  });
+
+  it("a reply whose every fact is broken saves nothing and says so", async () => {
+    const broken = () => answer(JSON.stringify({ facts: [{ text: 5 }, { quote: "x" }] }));
+    fakeGemini(broken(), broken(), broken());
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({ ok: false, error: "The AI sent back something unusable. Try again." });
+    expect(await withTenant(OWNER, (tx) => tx.factSheet.count())).toBe(0);
+    expect(await withTenant(OWNER, (tx) => tx.aiRun.findMany({ select: { status: true, error: true } }))).toEqual([{ status: "FAILED", error: "invalid_output" }]);
   });
 
   it("is owners only", async () => {
@@ -346,7 +354,7 @@ describe("fact sheet actions", () => {
 
   it("uploads through the form", async () => {
     fakeGemini(answer(JSON.stringify(EXTRACTED)));
-    expect(await upload("ownerA")).toEqual({ ok: true, data: undefined });
+    expect(await upload("ownerA")).toEqual({ ok: true, data: { leftOut: 0 } });
     expect(await items()).toHaveLength(6);
   });
 
@@ -430,7 +438,7 @@ describe("uploadFactSheet: one wordy fact never throws the read away", () => {
 
   it("drops only the fact over 300 characters, and keeps the rest", async () => {
     fakeGemini(answer(JSON.stringify({ facts: [good, { text: `${"A very long fact. ".repeat(17)}`.slice(0, 301), quote: good.quote, page: 1 }] })));
-    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 1, quotesFound: 1 } });
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 1, quotesFound: 1, leftOut: 1 } });
     expect((await items()).map((f) => f.text)).toEqual([good.text]);
   });
 

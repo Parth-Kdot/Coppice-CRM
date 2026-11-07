@@ -377,7 +377,7 @@ describe("changeStage (lib/claims.ts)", () => {
   });
 });
 
-describe("look-alikes are capped, with a total (P2)", () => {
+describe("look-alikes are capped, with a total", () => {
   // 25 companies on one shared website (an ordinary domain; shared hosts like LinkedIn match by page, see lib/duplicates.ts), plus one with the same name as the new one.
   const crowd = async () => {
     await withTenant(A, (tx) =>
@@ -433,7 +433,7 @@ describe("look-alikes are capped, with a total (P2)", () => {
   });
 });
 
-describe("company page data (P2)", () => {
+describe("company page data", () => {
   it("counts all outreach and stage moves while loading only the latest", async () => {
     const id = saved(await createCompany(A, { name: "Busy Co", industry: "Energy" }));
     await withTenant(A, async (tx) => {

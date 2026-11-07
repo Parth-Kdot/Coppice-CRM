@@ -145,7 +145,7 @@ export default async function WorkspacesPage() {
             <Empty kind="no-workspace">
               <p className="lg-empty-title">No workspace is linked to this account yet.</p>
               <p className="lg-wsnone-email">{user.email}</p>
-              <p className="lg-sub mt-1">Ask your sponsorship chair to invite this email, or sign in with a different Google account.</p>
+              <p className="lg-sub mt-1">Ask your workspace owner to invite this email, or sign in with a different Google account.</p>
               <div className="mt-3">
                 <SignOutButton label="Use a different account" />
               </div>

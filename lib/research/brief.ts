@@ -303,9 +303,9 @@ export type BriefView = {
   items: (BriefItem & { url: string; accepted: boolean })[];
   inboxes: { id: string; email: string; url: string; accepted: boolean }[];
   pages: BriefPageView[];
-  // A newer brief that found nothing (no page read, or nothing that checked out), shown as a short
-  // notice above this one instead of hiding it.
-  newer?: { status: BriefStatus; createdAt: Date; createdBy: string } | null;
+  // A newer brief that found no item (no page read, nothing that checked out, or only a team
+  // inbox), shown as a short notice above this one, with its inboxes, instead of hiding it.
+  newer?: { status: BriefStatus; createdAt: Date; createdBy: string; inboxes: { email: string; url: string }[] } | null;
 };
 
 const SHOWN: BriefStatus[] = ["READY", "NO_PAGES"];
@@ -324,17 +324,26 @@ export async function loadBrief(tenant: Tenant, where: { id?: string; companyId:
       take: where.id ? 1 : LATEST_LOOKBACK,
     });
     if (recent.length === 0) return null;
-    // The latest brief, unless it found nothing and an earlier one did: then the earlier one, with
-    // the newer one as a notice, so one empty request never hides a useful brief from everyone.
+    // The latest brief with an item. A newer one with no item (only a team inbox, or nothing)
+    // becomes a notice above it, with its inboxes, so one thin request never hides a useful brief
+    // from everyone. With no item anywhere, the latest brief that found an inbox, else the latest.
     let brief = recent[0];
     let newer: BriefView["newer"] = null;
-    if (!where.id && !(await foundSomething(tx, tenant, recent[0]))) {
-      for (const earlier of recent.slice(1)) {
-        if (await foundSomething(tx, tenant, earlier)) {
-          brief = earlier;
-          newer = { status: recent[0].status, createdAt: recent[0].createdAt, createdBy: recent[0].createdBy.name };
-          break;
-        }
+    if (!where.id && !hasItems(recent[0])) {
+      const earlier = recent.slice(1).find(hasItems) ?? (await firstWithInbox(tx, tenant, recent));
+      if (earlier && earlier.id !== recent[0].id) {
+        brief = earlier;
+        const latestPages = await tx.companyBriefPage.findMany({
+          where: { briefId: recent[0].id, workspaceId: tenant.workspaceId, inboxes: { isEmpty: false } },
+          select: { finalUrl: true, inboxes: true },
+          orderBy: { position: "asc" },
+        });
+        newer = {
+          status: recent[0].status,
+          createdAt: recent[0].createdAt,
+          createdBy: recent[0].createdBy.name,
+          inboxes: latestPages.flatMap((p) => (p.finalUrl ? p.inboxes.map((email) => ({ email, url: p.finalUrl as string })) : [])),
+        };
       }
     }
     // Never the stored text: the page doesn't need it.
@@ -372,11 +381,20 @@ export async function loadBrief(tenant: Tenant, where: { id?: string; companyId:
   });
 }
 
-// Whether a brief has anything to show: an item, or a team inbox on a page it read.
-async function foundSomething(tx: Prisma.TransactionClient, tenant: Tenant, brief: { id: string; brief: unknown }): Promise<boolean> {
+// Whether a brief has at least one item (a team inbox alone doesn't count: see loadBrief).
+function hasItems(brief: { brief: unknown }): boolean {
   const parsed = StoredBrief.safeParse(brief.brief);
-  if (parsed.success && parsed.data.items.length > 0) return true;
-  return (await tx.companyBriefPage.count({ where: { briefId: brief.id, workspaceId: tenant.workspaceId, inboxes: { isEmpty: false } } })) > 0;
+  return parsed.success && parsed.data.items.length > 0;
+}
+
+// The first of these briefs that found a team inbox on a page it read, if any.
+async function firstWithInbox<B extends { id: string }>(tx: Prisma.TransactionClient, tenant: Tenant, briefs: B[]): Promise<B | undefined> {
+  const withInbox = await tx.companyBriefPage.findMany({
+    where: { briefId: { in: briefs.map((b) => b.id) }, workspaceId: tenant.workspaceId, inboxes: { isEmpty: false } },
+    select: { briefId: true },
+  });
+  const ids = new Set(withInbox.map((p) => p.briefId));
+  return briefs.find((b) => ids.has(b.id));
 }
 
 // The latest brief for this company that found something, whoever asked for it (see loadBrief).

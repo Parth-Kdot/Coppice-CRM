@@ -4,6 +4,7 @@ import { literal } from "@/lib/board";
 import { changeStage, claimCompany, claimState, dbNow, heldBy, logOutreach } from "@/lib/claims";
 import { getCompanyDetail } from "@/lib/companies";
 import { prisma, withTenant } from "@/lib/db";
+import { WORKSPACES_SHOWN } from "@/lib/limits";
 import { WRITE_SCOPE } from "@/lib/mcp/config";
 import { MCP_LIMITS, returnMcpCall, takeMcpCall, type McpCallKind } from "@/lib/mcp/rate-limit";
 import { getQueue, type QueueRow } from "@/lib/queue";
@@ -124,6 +125,7 @@ export async function listWorkspaces(principal: McpPrincipal): Promise<ToolResul
     where: { userId: principal.userId },
     select: { role: true, workspace: { select: { id: true, name: true, mcpEnabled: true } } },
     orderBy: { createdAt: "asc" },
+    take: WORKSPACES_SHOWN,
   });
   const open = rows.filter((r) => r.workspace.mcpEnabled);
   return ok({

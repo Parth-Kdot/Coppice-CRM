@@ -4,6 +4,7 @@ import { cache } from "react";
 import { AuthzError, checkMembership, requireUser, roleLabel, type Role } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
 import { prisma, withTenant } from "@/lib/db";
+import { WORKSPACES_SHOWN } from "@/lib/limits";
 
 // What every page of a workspace needs, read once per request (React cache): who is signed in,
 // their membership (a stranger gets the same 404 as a workspace that does not exist, and nothing
@@ -29,9 +30,11 @@ export const loadWorkspace = cache(async (workspaceId: string) => {
     where: { userId: user.id },
     select: { role: true, workspace: { select: { id: true, name: true } } },
     orderBy: { createdAt: "asc" },
-    take: 20,
+    take: WORKSPACES_SHOWN,
   });
   const workspaces: WorkspaceChoice[] = memberships.map((m) => ({ id: m.workspace.id, name: m.workspace.name, role: roleLabel(m.role as Role) }));
+  // Past the cap, the workspace being viewed is still in the switcher.
+  if (!workspaces.some((w) => w.id === workspaceId)) workspaces.push({ id: workspaceId, name: workspace.name, role: roleLabel(membership.role) });
   return { user, membership, workspace, counts: { companies }, now, workspaces };
 });
 

@@ -60,6 +60,17 @@ describe("basicsSteps", () => {
     expect(by("invite").anchors[0]).toBe("invite");
   });
 
+  it("an empty board isn't visited just to show a drawing", () => {
+    expect(basicsSteps({ role: "member", empty: true, basicsRole: null }).find((s) => s.key === "board")?.route).toBeNull();
+  });
+
+  it("says what fits: a phone taps Search, the log card speaks to the claim banner, the done card counts the AI tour", () => {
+    const steps = basicsSteps({ role: "member", empty: false, basicsRole: null, aiCards: 7 });
+    expect(steps.find((s) => s.key === "search")?.phoneBody).toBe("Tap Search to find any company from anywhere.");
+    expect(steps.find((s) => s.key === "log")?.anchorBody).toMatchObject({ anchor: "company-claim", body: expect.stringMatching(/^Claim it, then log/) });
+    expect(steps.at(-1)?.body).toBe("Recommended next: the AI tour, 7 short cards.");
+  });
+
   test.each([1, 14, 60])("the claim card says how long a claim lasts (%i)", (days) => {
     const claim = basicsSteps({ role: "member", empty: false, basicsRole: null, claimWindowDays: days }).find((s) => s.key === "claim")!;
     expect(claim.body).toContain(`A claim lasts ${days} ${days === 1 ? "day" : "days"}.`);
@@ -76,8 +87,8 @@ describe("basicsSteps", () => {
 
 describe("aiSteps", () => {
   test.each<[string, AiContext, string[]]>([
-    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "drafter", "checker", "smart", "research", "mcp", "usage", "done"]],
-    ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "drafter", "checker", "smart", "research", "mcp", "usage", "done"]],
+    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
+    ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
     ["AI off for the workspace", { role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
     ["AI not set up on the server", { role: "owner", aiConfigured: false, aiOn: true, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
     ["AI not set up, officer", { role: "member", aiConfigured: false, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
@@ -124,6 +135,35 @@ describe("aiSteps", () => {
   it("the company-page cards open the AI tools first", () => {
     const steps = aiSteps({ role: "member", aiConfigured: true, aiOn: true, mcpOn: false });
     for (const key of ["drafter", "checker", "research"]) expect(steps.find((s) => s.key === key)?.open).toBe("ai-tools");
+  });
+
+  it("grouped by page: each page is visited once, and the tour ends back on the queue", () => {
+    const routes = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false }).map((s) => s.route);
+    expect(routes).toEqual(["facts", "import", "company", "company", "company", "settings", "settings", "queue"]);
+    expect(basicsSteps({ role: "owner", empty: false, basicsRole: null }).at(-1)?.route).toBe("queue");
+  });
+
+  it("with no company yet, the company-page cards draw what they will show and stay put", () => {
+    const steps = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false, empty: true });
+    for (const key of ["drafter", "checker", "research"]) {
+      const card = steps.find((s) => s.key === key)!;
+      expect(card).toMatchObject({ route: null, anchors: [], open: undefined });
+      expect(card.illustration).toBeDefined();
+    }
+    expect(steps.find((s) => s.key === "drafter")?.body).toMatch(/once companies are in/);
+  });
+
+  it("with AI off, the owner's fact sheet card says to add facts by hand, not to upload a packet", () => {
+    const off = aiSteps({ role: "owner", aiConfigured: true, aiOn: false, mcpOn: false })[0];
+    expect(off.body).toMatch(/Add facts by hand here; turn AI on to read a packet/);
+    expect(off.anchors[0]).toBe("facts-add");
+  });
+
+  it("the assistants and usage cards point inside their sections, so the section opens", () => {
+    const owner = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false });
+    expect(owner.find((s) => s.key === "mcp")?.anchors[0]).toBe(".lg-mcpset");
+    expect(owner.find((s) => s.key === "usage")?.anchors[0]).toBe(".lg-usage");
+    expect(owner.find((s) => s.key === "usage")?.body).toMatch(/last 30 days/);
   });
 });
 

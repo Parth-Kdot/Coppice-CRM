@@ -8,6 +8,7 @@ import { SHOOTS_THREE, Stool } from "@/components/ledger/stool";
 import { ConsentButtons } from "@/components/oauth-consent";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { WORKSPACES_SHOWN } from "@/lib/limits";
 import { SCOPE_LABELS } from "@/lib/mcp/config";
 import { safeClientName } from "@/lib/mcp/oauth-limits";
 import "@/components/ledger/ledger.css";
@@ -79,6 +80,7 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
         where: { userId: session.user.id, workspace: { mcpEnabled: true } },
         select: { workspace: { select: { id: true, name: true } } },
         orderBy: { createdAt: "asc" },
+        take: WORKSPACES_SHOWN,
       })
     : [];
 

@@ -21,6 +21,10 @@ function Quill({ label }: { label: string }) {
   );
 }
 
+// Facts the AI listed that couldn't be kept (over the length limit, or missing their quote or page).
+const leftOutLine = (n: number) =>
+  `${n === 1 ? "1 fact" : `${n} facts`} from the packet couldn't be kept (too long or incomplete). Add ${n === 1 ? "it" : "them"} by hand if you need ${n === 1 ? "it" : "them"}.`;
+
 // The packet upload: pick a PDF, then "Upload and read". The server reads the PDF and asks the AI for
 // its facts, which usually takes under a minute, so the button and a written line say that it is working.
 export function PacketUpload({
@@ -28,13 +32,15 @@ export function PacketUpload({
   action,
 }: {
   workspaceId: string;
-  action: (prev: ActionResult | null, form: FormData) => Promise<ActionResult>;
+  action: (prev: ActionResult<{ leftOut: number }> | null, form: FormData) => Promise<ActionResult<{ leftOut: number }>>;
 }) {
   const id = useId();
   const notify = useNotify();
-  const [state, formAction, pending] = useActionState(async (prev: ActionResult | null, form: FormData) => {
+  const [state, formAction, pending] = useActionState(async (prev: ActionResult<{ leftOut: number }> | null, form: FormData) => {
     const result = await action(prev, form);
-    if (result.ok) notify("Packet read. Check the facts below.");
+    // The page re-renders once the facts are saved (the first upload's form moves under "Upload
+    // another packet"), so the note lives in the message as well as under the button.
+    if (result.ok) notify(`Packet read. Check the facts below.${result.data.leftOut > 0 ? ` ${leftOutLine(result.data.leftOut)}` : ""}`);
     return result;
   }, null);
   // The chosen name belongs to the result it was chosen before: once the server answers, it clears.
@@ -94,6 +100,7 @@ export function PacketUpload({
             Done. Check the facts below.
           </p>
         )}
+        {state?.ok && !pending && state.data.leftOut > 0 && <p className="lg-muted mt-1">{leftOutLine(state.data.leftOut)}</p>}
         {problem && !pending && <ErrorLine>{problem}</ErrorLine>}
         {state && !state.ok && !pending && !problem && <ErrorLine>{state.error}</ErrorLine>}
       </div>

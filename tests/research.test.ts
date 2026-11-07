@@ -748,6 +748,24 @@ describe("requestBrief: names and masked contacts are dropped in code", () => {
     expect(brief.inboxes.map((i) => i.email)).toEqual(["campus@acme.org"]);
   });
 
+  it("a reading whose every passage is broken fails the brief, never a READY brief with nothing", async () => {
+    const broken = () => answer(JSON.stringify({ passages: [{ page: "one", door: 5 }, { quote: null }] }));
+    fakeGemini(broken(), broken(), broken());
+    expect((await ask(OWNER, [careersId])).ok).toBe(false);
+    expect(await withTenant(OWNER, (tx) => tx.companyBrief.findMany({ select: { status: true } }))).toEqual([{ status: "FAILED" }]);
+    expect(await latestBrief(OWNER, companyId)).toBeNull();
+  });
+
+  it("a writing reply whose every item is broken fails the brief", async () => {
+    const [read] = GOOD_RUN();
+    const broken = () => answer(JSON.stringify({ items: [{ door: 5, title: null }, { passage: "x" }] }));
+    fakeGemini(read, broken(), broken(), broken());
+    expect((await ask(OWNER, [careersId, givingId])).ok).toBe(false);
+    const logged = await withTenant(OWNER, (tx) => tx.aiRun.findMany({ where: { feature: "RESEARCH_BRIEF" }, select: { status: true, error: true } }));
+    expect(logged).toEqual([{ status: "FAILED", error: "invalid_output" }]);
+    expect(await withTenant(OWNER, (tx) => tx.companyBrief.findMany({ select: { status: true } }))).toEqual([{ status: "FAILED" }]);
+  });
+
   it("a blocked reading says so for pages, not a note", async () => {
     fakeGemini(reply({ promptFeedback: { blockReason: "SAFETY" } }));
     expect(await ask(OWNER, [careersId])).toEqual({ ok: false, error: "The AI declined to read these pages. Try other pages." });
@@ -784,11 +802,30 @@ describe("latestBrief: an empty brief never hides a useful one", () => {
     expect(empty.status).toBe("NO_PAGES");
     const shown = await latestBrief(OWNER, companyId);
     expect(shown?.id).toBe(useful.id);
-    expect(shown?.newer).toEqual({ status: "NO_PAGES", createdAt: empty.createdAt, createdBy: "officerA" });
+    expect(shown?.newer).toEqual({ status: "NO_PAGES", createdAt: empty.createdAt, createdBy: "officerA", inboxes: [] });
     // A newer brief that finds something replaces it, with no notice.
     fakeGemini(...GOOD_RUN());
     const again = ok(await ask(OWNER, [careersId, givingId]));
     expect(await latestBrief(OWNER, companyId)).toMatchObject({ id: again.id, newer: null });
+  });
+
+  it("a newer brief with only a team inbox doesn't replace an earlier one with items: it is the notice, with its inbox", async () => {
+    fakeGemini(...GOOD_RUN());
+    const useful = ok(await ask(OWNER, [careersId, givingId]));
+    expect(useful.items.length).toBeGreaterThan(0);
+    // The careers page still lists its team inbox, but nothing on it checks out this time.
+    fakeGemini(passages({ page: 1, door: "OTHER", quote: "Acme sponsors every student group at Purdue." }));
+    const thin = ok(await ask(OFFICER, [careersId]));
+    expect(thin).toMatchObject({ status: "READY", items: [] });
+    expect(thin.inboxes.length).toBeGreaterThan(0);
+    const shown = await latestBrief(OWNER, companyId);
+    expect(shown?.id).toBe(useful.id);
+    expect(shown?.newer).toEqual({
+      status: "READY",
+      createdAt: thin.createdAt,
+      createdBy: "officerA",
+      inboxes: thin.inboxes.map(({ email, url }) => ({ email, url })),
+    });
   });
 
   it("with only empty briefs, the latest one is shown as it is", async () => {

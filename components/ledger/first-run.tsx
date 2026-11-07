@@ -7,7 +7,7 @@ import { CheckIcon } from "./icons";
 //   Owner: three numbered steps that tick from real data: import a spreadsheet (the main button),
 //   or add one company, then invite officers (ticks once a second member or a pending invitation
 //   exists).
-//   Officer: one plain sentence and "Add a company".
+//   Officer: the same two ways in (anyone can add companies), without the invite step.
 // The onboarding tour starts here (data-tour firstrun, firstrun-import, firstrun-add, firstrun-invite).
 
 type Step = { n: number; title: string; body: string; href: string; action: string; done: boolean; primary?: boolean; tour: string };
@@ -20,11 +20,15 @@ export function FirstRun({ workspaceId, owner, invited }: { workspaceId: string;
     return (
       <section className="lg-firstrun" data-tour="firstrun" aria-labelledby="firstrun-title">
         <h1 id="firstrun-title" className="lg-h1 lg-firstrun-title" tabIndex={-1}>
-          Your chair hasn&rsquo;t added companies yet.
+          No companies yet
         </h1>
+        <p className="lg-firstrun-lead">Anyone on the team can add them: import the sponsor spreadsheet, or add one company.</p>
         {later}
         <p className="lg-firstrun-actions">
-          <Link href={`${base}/companies/new`} className="lg-btn" data-tour="firstrun-add">
+          <Link href={`${base}/import`} className="lg-btn" data-tour="firstrun-import">
+            Import a spreadsheet
+          </Link>
+          <Link href={`${base}/companies/new`} className="lg-btn lg-btn-primary" data-tour="firstrun-add">
             Add a company
           </Link>
         </p>

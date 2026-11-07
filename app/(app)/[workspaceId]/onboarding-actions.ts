@@ -2,7 +2,7 @@
 
 import { AuthzError, requireMembership } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
-import { advance, complete, dismissAi, tourCompany } from "@/lib/onboarding";
+import { advance, complete, dismissAi, setBasicsHidden, tourCompany } from "@/lib/onboarding";
 import { tourProgressSchema, workspaceIdSchema, type ActionResult } from "@/lib/validation";
 
 // The onboarding tours' two server calls (components/ledger/tour.tsx). Membership is checked first;
@@ -10,11 +10,17 @@ import { tourProgressSchema, workspaceIdSchema, type ActionResult } from "@/lib/
 // progress row. Neither call re-renders the page: the tour keeps its own state, so a save never
 // disturbs what the person is doing.
 //
-//   saveTourProgress  A card was passed, the last card was reached, or the AI tour was put off.
+//   saveTourProgress  A card was passed, the last card was reached, the AI tour was put off, or
+//                     the basics were hidden into the pill or resumed from it.
 //                     The role recorded with the finished basics is the server's, never the client's.
 //   loadTourCompany   Which company page the tour shows for the "log outreach" and AI cards.
 
-export async function saveTourProgress(input: { workspaceId: string; tour: "basics" | "ai"; step: number; event: "step" | "done" | "later" }): Promise<ActionResult> {
+export async function saveTourProgress(input: {
+  workspaceId: string;
+  tour: "basics" | "ai";
+  step: number;
+  event: "step" | "done" | "later" | "hide" | "show";
+}): Promise<ActionResult> {
   const parsed = tourProgressSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Could not save your place in the tour." };
 
@@ -31,7 +37,8 @@ export async function saveTourProgress(input: { workspaceId: string; tour: "basi
   else if (event === "done") {
     await advance(member, tour, step);
     await complete(member, tour, member.role);
-  } else await dismissAi(member);
+  } else if (event === "later") await dismissAi(member);
+  else await setBasicsHidden(member, event === "hide");
   return { ok: true, data: undefined };
 }
 

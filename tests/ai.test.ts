@@ -4,7 +4,7 @@ import { z } from "zod";
 import { updateAiSettings } from "@/app/(app)/[workspaceId]/settings/actions";
 import { generate, ROUTES } from "@/lib/ai/client";
 import { AI_ERROR_MESSAGES, aiUsage, DAILY_DRAFTS_PER_PERSON, draftsToday, isRetryableAiError, releaseAi, reserveAi, runAi } from "@/lib/ai/run";
-import { clamped, clampText, keptItems, toGeminiSchema } from "@/lib/ai/schema";
+import { clamped, clampText, droppedItems, keptItems, toGeminiSchema } from "@/lib/ai/schema";
 import { dbNow } from "@/lib/claims";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { form, redirectTo } from "./helpers/form";
@@ -528,6 +528,18 @@ describe("schemas that repair a reply instead of throwing it away", () => {
     // What the model is sent still names the limits (Gemini drops the ones it doesn't take).
     expect(JSON.stringify(z.toJSONSchema(schema, { io: "input" }))).toContain('"maxItems":2');
     expect(toGeminiSchema(schema)).toMatchObject({ properties: { list: { type: "array", maxItems: 2 } } });
+    expect(droppedItems(parsed.list)).toBe(1);
+  });
+
+  it("refuses a list whose every item is broken, so a broken reply never reads as an empty answer", () => {
+    const schema = z.object({ list: keptItems(z.object({ n: z.number() }), 5) });
+    expect(schema.safeParse({ list: [{ n: "one" }, { m: 2 }] }).success).toBe(false);
+    expect(schema.safeParse({ list: [null] }).success).toBe(false);
+    // A list that is really empty is still an answer.
+    const empty = schema.parse({ list: [] });
+    expect(empty.list).toEqual([]);
+    expect(droppedItems(empty.list)).toBe(0);
+    expect(droppedItems(schema.parse({ list: [{ n: 1 }] }).list)).toBe(0);
   });
 });
 

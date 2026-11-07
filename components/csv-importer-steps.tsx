@@ -67,6 +67,23 @@ export function ColumnsLine({ view }: { view: ImportPreview }) {
   );
 }
 
+// The columns no field uses: they are not imported, and saying so beats dropping them silently (a
+// "Stage" or "Last contacted" column, say). `read`: columns Smart import is reading anyway.
+export function UnusedColumns({ view, read = [], smartOffered }: { view: ImportPreview; read?: number[]; smartOffered: boolean }) {
+  const used = new Set(IMPORT_FIELDS.map((f) => view.mapping[f]).filter((c) => c !== null));
+  const unused = view.headers.map((_, i) => i).filter((i) => !used.has(i) && !read.includes(i));
+  if (unused.length === 0) return null;
+  const names = unused.map((i) => `"${columnName(view.headers, i)}"`).join(", ");
+  return (
+    <p className="lg-hint lg-unusedcols" role="note">
+      Not imported: {names}.{" "}
+      {smartOffered
+        ? "Smart import below can read stages, dates and notes out of columns like these."
+        : "Choose one of them as Notes under Change to keep what it says."}
+    </p>
+  );
+}
+
 // The full grid: which column fills each field. A column already in use says which field it fills,
 // so choosing it (a swap) is no surprise. A change asks the importer for a new preview.
 export function ColumnsGrid({ view, disabled, onChange }: { view: ImportPreview; disabled: boolean; onChange: (field: ImportField, column: number | null) => void }) {

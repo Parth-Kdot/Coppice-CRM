@@ -3,6 +3,7 @@
 import { z } from "zod";
 import type { Stage } from "@/generated/prisma/enums";
 import { AuthzError, requireMembership } from "@/lib/authz";
+import { literal } from "@/lib/board";
 import { withTenant } from "@/lib/db";
 import { workspaceIdSchema, type ActionResult } from "@/lib/validation";
 
@@ -28,9 +29,6 @@ export type FoundCompany = {
 };
 
 const querySchema = z.string().trim().min(1).max(100);
-
-// Postgres treats % and _ in a LIKE pattern as wildcards; a search for "100%" means the text.
-const literal = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 const LIMIT = 8;
 

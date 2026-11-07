@@ -15,15 +15,17 @@ import {
   type ActionResult,
 } from "@/lib/validation";
 
-// The fact sheet is the chair's: every action is owner only (checked here and again in lib/facts).
+// The fact sheet is the owners': every action is owner only (checked here and again in lib/facts).
 
 const factsPath = (workspaceId: string) => `/${workspaceId}/facts`;
 
-export async function uploadFactSheet(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+// `leftOut`: how many facts the AI listed that couldn't be kept, so the owner can add them by hand.
+export async function uploadFactSheet(_prev: ActionResult<{ leftOut: number }> | null, form: FormData): Promise<ActionResult<{ leftOut: number }>> {
   const parsed = workspaceIdSchema.safeParse(form.get("workspaceId"));
   if (!parsed.success) return { ok: false, error: "Workspace not found." };
   const workspaceId = parsed.data;
 
+  let leftOut = 0;
   try {
     const owner = await requireOwner(workspaceId);
     const file = form.get("file");
@@ -32,11 +34,12 @@ export async function uploadFactSheet(_prev: ActionResult | null, form: FormData
     if (problem) return { ok: false, error: problem };
     const result = await facts.uploadFactSheet(owner, file.name, new Uint8Array(await file.arrayBuffer()));
     if (!result.ok) return result;
+    leftOut = result.data.leftOut;
   } catch (e) {
     return failure(e);
   }
   revalidatePath(factsPath(workspaceId));
-  return { ok: true, data: undefined };
+  return { ok: true, data: { leftOut } };
 }
 
 export async function setFactVerified(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {

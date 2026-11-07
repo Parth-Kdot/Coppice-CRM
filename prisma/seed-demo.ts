@@ -1,5 +1,6 @@
 import { claimCompany, dbNow, dbToday } from "@/lib/claims";
 import { prisma, withTenant } from "@/lib/db";
+import { aiSteps, basicsSteps } from "@/lib/onboarding-steps";
 import { DEMO_WORKSPACE_ID, PEOPLE, TEMPLATES, emailOf } from "./seed-data";
 import { buildRows, type DemoRows } from "./seed-rows";
 
@@ -97,7 +98,11 @@ async function writeDemo(rows: DemoRows) {
 // real person and still gets the tour.
 async function markToursDone(now: Date) {
   for (const [index, person] of PEOPLE.entries()) {
-    const done = { basicsStep: 8, basicsDoneAt: now, basicsRole: person.role, aiStep: 7, aiDoneAt: now };
+    // The saved step is the done card's index, taken from the card lists so it never drifts.
+    const role = person.role === "owner" ? "owner" : "member";
+    const basicsStep = basicsSteps({ role, empty: false, basicsRole: null }).length - 1;
+    const aiStep = aiSteps({ role, aiConfigured: true, aiOn: true, mcpOn: false }).length - 1;
+    const done = { basicsStep, basicsDoneAt: now, basicsRole: person.role, aiStep, aiDoneAt: now };
     await withTenant(actor(index), (tx) =>
       tx.onboardingProgress.upsert({
         where: { workspaceId_userId: { workspaceId: DEMO_WORKSPACE_ID, userId: person.id } },

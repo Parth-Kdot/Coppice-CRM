@@ -22,8 +22,7 @@ import "./board.css";
 
 // The board. It fits the viewport: five ruled columns side by side (the last one holds Committed over
 // Declined), each scrolling on its own and showing 50 slips, then "Show 50 more" up to 200. Each
-// column head shows its glyph, a short name ("Talking"; the full name in its title and for screen
-// readers) and its count; pressing one shows only that stage (press it again to clear). Slips move
+// column head shows its glyph, the stage's name and its count; pressing one shows only that stage (press it again to clear). Slips move
 // three ways: drag one onto another stage, its stage glyph button (the slip's menu: Move to, Claim,
 // Release), or m while it has focus. All three call the real stage action; a refusal is written in
 // the slip's margin, and an officer never gets stage choices on a slip someone else holds (the menu
@@ -34,22 +33,15 @@ import "./board.css";
 // Above the board: the title and count, search, the industry filter (only with 10 or more
 // companies), the More menu (look-alikes, archived, template stats, keyboard shortcuts) and Add
 // company. On a phone a sticky strip of stages jumps between columns. An empty workspace shows only
-// the way in: Import and Add company.
+// the way in: Import and Add a company.
 
 export type BoardColumnData = { stage: Stage; count: number; shown: number; moreHref: string; cards: BoardCardData[] };
 
 const GROUPS: readonly (readonly Stage[])[] = [["NOT_CONTACTED"], ["CONTACTED"], ["REPLIED"], ["IN_CONVERSATION"], ["COMMITTED", "DECLINED"]];
 
-// What a column head prints; the full stage name is in its title and read out.
-export const SHORT_LABELS: Record<Stage, string> = {
-  NOT_CONTACTED: "To contact",
-  CONTACTED: "Contacted",
-  REPLIED: "Replied",
-  IN_CONVERSATION: "Talking",
-  COMMITTED: "Committed",
-  DECLINED: "Declined",
-};
-const groupLabel = (group: readonly Stage[]) => (group.length > 1 ? "Closed" : SHORT_LABELS[group[0]]);
+// A column head prints the stage's own name (the same one the company page, the Move to menu and
+// search use); in a narrow column it wraps onto two lines instead of being shortened.
+const groupLabel = (group: readonly Stage[]) => (group.length > 1 ? "Closed" : STAGE_LABELS[group[0]]);
 
 const FILTER_FROM = 10;
 
@@ -386,7 +378,6 @@ export function BoardView(props: Props) {
     const rail = only !== null && only !== col.stage;
     const focused = only === col.stage;
     const label = STAGE_LABELS[col.stage];
-    const short = SHORT_LABELS[col.stage];
     const unit = col.count === 1 ? "company" : "companies";
     return (
       <div key={col.stage} className="lg-bstage" data-drop-stage={col.stage} data-state={rail ? "rail" : only ? "focus" : undefined}>
@@ -406,10 +397,7 @@ export function BoardView(props: Props) {
             <span className="lg-st-dot">
               <StageGlyph stage={col.stage} size={16} />
             </span>
-            <span className="lg-st-name" aria-hidden="true">
-              {short}
-            </span>
-            <span className="lg-sr">{label}</span>
+            <span className="lg-st-name">{label}</span>
             <span className="lg-st-n">
               <Count value={col.count} />
               <span className="lg-sr"> {unit}</span>
@@ -474,13 +462,13 @@ export function BoardView(props: Props) {
           {(!empty || archivedCount > 0) && (
             <span className="lg-bmore" data-badge={duplicateCount > 0 || undefined}>
               <OverflowMenu label={moreLabel} items={moreItems} data-tour="board-more" />
-              {duplicateCount > 0 && <span className="lg-bmore-badge" aria-hidden="true" />}
+              {duplicateCount > 0 && <span className="lg-bmore-badge" aria-hidden="true" title={`${duplicateLabel} possible duplicates to review, under More`} />}
             </span>
           )}
           {!empty && (
-            <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary lg-btop-add" aria-label="Add company">
+            <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary lg-btop-add" aria-label="Add a company">
               <PlusIcon size={16} />
-              <span className="lg-btop-addword">Add company</span>
+              <span className="lg-btop-addword">Add a company</span>
             </Link>
           )}
         </div>
@@ -497,7 +485,7 @@ export function BoardView(props: Props) {
             </Link>
             <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary">
               <PlusIcon size={16} />
-              Add company
+              Add a company
             </Link>
           </p>
         </Empty>

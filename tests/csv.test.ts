@@ -406,7 +406,7 @@ describe("import actions", () => {
   });
 });
 
-describe("reading files in other encodings (P4)", () => {
+describe("reading files in other encodings", () => {
   const nameOnly: ImportMapping = { name: 0, industry: 1, website: null, notes: 2, contactName: null, contactEmail: null };
   const bytesFile = (bytes: Uint8Array<ArrayBuffer>, name = "sheet.csv") => new File([bytes], name, { type: "text/csv" });
   const formOf = (file: File, extra: Record<string, string> = {}) => {
@@ -469,7 +469,7 @@ describe("reading files in other encodings (P4)", () => {
   });
 });
 
-describe("contacts never sink a company (P4)", () => {
+describe("contacts never sink a company", () => {
   const twoColumns: ImportMapping = { name: 0, industry: null, website: null, notes: null, contactName: null, contactEmail: 1 };
   test.for([
     ["an email and no name", "Orbit Labs,hello@orbitlabs.com", { name: "hello", email: "hello@orbitlabs.com", title: null }, ['Contact named "hello" from their email.']],
@@ -492,7 +492,7 @@ describe("contacts never sink a company (P4)", () => {
   });
 });
 
-describe("look-alikes imported anyway are remembered as a star, not every pair (P4)", () => {
+describe("look-alikes imported anyway are remembered as a star, not every pair", () => {
   const siteOnly: ImportMapping = { name: 0, industry: null, website: 1, notes: null, contactName: null, contactEmail: null };
   const pairs = () => withTenant(OWNER, (tx) => tx.companyPairDecision.count());
 
@@ -520,7 +520,7 @@ describe("look-alikes imported anyway are remembered as a star, not every pair (
   });
 });
 
-describe("two imports of the same file at once (P4)", () => {
+describe("two imports of the same file at once", () => {
   it("imports it once: the second waits, then sees the first's companies and refuses", async () => {
     const text = `Company,Website\n${Array.from({ length: 200 }, (_, i) => `Twice ${i},twice${i}.com`).join("\n")}\n`;
     const siteOnly: ImportMapping = { name: 0, industry: null, website: 1, notes: null, contactName: null, contactEmail: null };

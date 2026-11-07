@@ -116,18 +116,27 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
           />
         </PageHead>
 
+        {/* Nothing due: with fresh leads waiting (a sheet just imported, say) that is where to start,
+            so they open below; "All caught up" is only said when there is nothing left to pick. */}
         {total === 0 && (
           <Empty kind="queue-due">
-            <p className="lg-empty-title">All caught up.</p>
-            <p>
-              {home.freshCount > 0 ? (
-                <a href="#fresh" className="lg-link">
-                  Pick a fresh lead
-                </a>
-              ) : (
-                "Log outreach with a follow-up date and it comes back here when it's due."
-              )}
-            </p>
+            {home.freshCount > 0 ? (
+              <>
+                <p className="lg-empty-title">Nothing due yet.</p>
+                <p>
+                  Start with a{" "}
+                  <a href="#fresh" className="lg-link">
+                    fresh lead
+                  </a>{" "}
+                  below: claim it, email them, and log it.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="lg-empty-title">All caught up.</p>
+                <p>Log outreach with a follow-up date and it comes back here when it&apos;s due.</p>
+              </>
+            )}
           </Empty>
         )}
 
@@ -169,7 +178,7 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
           </HeldByOthers>
         )}
 
-        {home.freshCount > 0 && <FreshLeads workspaceId={workspaceId} count={home.freshCount} defaultOpen={filters.never} windowDays={windowDays} />}
+        {home.freshCount > 0 && <FreshLeads workspaceId={workspaceId} count={home.freshCount} defaultOpen={filters.never || total === 0} windowDays={windowDays} />}
       </div>
     </QueueProvider>
   );

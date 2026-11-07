@@ -1250,6 +1250,15 @@ describe("plain messages, and Continue only when it can help", () => {
     const suggestion = ok(await as("ownerA", () => suggestColumns(null, formOf({ workspaceId: "a", file: file(SHEET) }))));
     expect(suggestion.note).toBe(SUGGESTIONS_UNAVAILABLE);
     expect(suggestion.note).not.toMatch(/note\b|rewording/);
+    // A blocked request fails the same way again, so Try again isn't offered.
+    expect(suggestion.retryable).toBe(false);
+  });
+
+  it("column suggestions that time out on every model can be tried again", async () => {
+    await turnOn();
+    fakeGemini(...Array.from({ length: 3 }, () => apiError(503, "Unavailable", "UNAVAILABLE")));
+    const suggestion = ok(await as("ownerA", () => suggestColumns(null, formOf({ workspaceId: "a", file: file(SHEET) }))));
+    expect(suggestion).toMatchObject({ note: SUGGESTIONS_UNAVAILABLE, retryable: true });
   });
 
   it("column suggestions try Flash-Lite, then 3.6 Flash after a 429, and take the answer", async () => {
@@ -1394,6 +1403,20 @@ describe("column suggestions checked against the sheet", () => {
   it("won't clear a column headed plainly as the website or email", () => {
     const { mapping } = cleanSuggestion(headers, { ...base, website: null, contactEmail: null }, rows);
     expect(mapping).toMatchObject({ website: 2, contactEmail: 3 });
+  });
+
+  it("won't clear a plainly headed industry, notes, name or contact column, or give it to another field", () => {
+    const { mapping } = cleanSuggestion(["Company", "Industry", "Website", "Email", "Notes", "Contact name", "Status"], {
+      ...base,
+      name: null,
+      industry: null,
+      notes: 1,
+      contactName: 42,
+      freeText: [6],
+    }, rows);
+    expect(mapping).toMatchObject({ name: 0, industry: 1, notes: 4, contactName: 5 });
+    // A usable column of its own still replaces the plain one for that field.
+    expect(cleanSuggestion(["Company", "Notes", "Status"], { ...base, industry: null, website: null, contactEmail: null, notes: 2, freeText: [2] }).mapping.notes).toBe(2);
   });
 
   it("takes a website column the code missed when its cells are web addresses", () => {

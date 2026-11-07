@@ -900,6 +900,8 @@ model OnboardingProgress {
   aiDoneAt      DateTime? @db.Timestamptz(3)
   // "Later" on the offer, or the AI tour ended early. It stays in the account menu.
   aiDismissedAt DateTime? @db.Timestamptz(3)
+  // "Hide" on the basics: later page loads show only the Resume pill. Cleared on Resume.
+  basicsHiddenAt DateTime? @db.Timestamptz(3)
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
 

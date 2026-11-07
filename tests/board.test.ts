@@ -185,7 +185,7 @@ describe("board URL filters", () => {
 
   it("drops anything malformed instead of failing, and an empty board URL has no query", () => {
     const filters = parse({ q: "x".repeat(101), industry: "y".repeat(81), show: "COMMITTED,WON", all: "WON", archived: "yes", dupes: "yes" });
-    // (P5, R2-17) Search text that is too long is cut to the limit, not dropped, so a shared link
+    // Search text that is too long is cut to the limit, not dropped, so a shared link
     // still searches; everything else malformed is dropped as before.
     expect(filters).toEqual({ ...NONE, q: "x".repeat(100), industry: "y".repeat(80) });
     expect(parse({})).toEqual(NONE);
@@ -216,7 +216,7 @@ describe("dates are shown in Purdue's time zone", () => {
   });
 });
 
-// ----- Paging, the just-moved slip, and the look-alike count (de-bloat pass, P3) -----
+// ----- Paging, the just-moved slip, and the look-alike count (de-bloat pass) -----
 
 const page = (changes: Partial<BoardPaging>): BoardPaging => ({ ...NO_PAGING, ...changes });
 const many = (n: number, extra: Partial<Seed> = {}): Seed[] =>

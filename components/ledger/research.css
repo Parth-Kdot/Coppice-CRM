@@ -35,6 +35,12 @@
     margin: 8px 0 4px;
     max-width: 70ch;
   }
+  .lg-brief-newer-inboxes {
+    margin: 4px 0 0;
+    padding-left: 1.2em;
+    list-style: disc;
+    overflow-wrap: anywhere;
+  }
   .lg-brief-warn {
     display: flex;
     gap: 8px;

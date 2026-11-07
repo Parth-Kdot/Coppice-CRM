@@ -228,7 +228,8 @@
   }
 
   /* ---------- The page ---------- */
-  .lg-company > .lg-back {
+  .lg-company > .lg-back,
+  .lg-sheetwrap > .lg-back {
     margin-bottom: 12px;
   }
   .lg-back {
@@ -855,8 +856,11 @@
   .lg-aitools {
     padding: 4px 0;
   }
+  /* The AI tools sit in the right-hand column on a wide screen, so the panels inside are laid out by
+     the width they get (container queries below), not by the window's width. */
   .lg-aitools > .lg-disc-body {
     padding-left: 0;
+    container: aitools / inline-size;
   }
   .lg-tpldisc {
     margin-top: -4px;
@@ -1140,6 +1144,22 @@
     }
     .lg-letters {
       grid-template-columns: 1fr;
+    }
+  }
+  /* In a narrow column: one letter under the other, the form in one column, and each finding's
+     label above its text, so the quote and its reason always have the card's full width. */
+  @container aitools (max-width: 760px) {
+    .lg-draftpanel {
+      padding: 18px 0 8px;
+    }
+    .lg-draftform,
+    .lg-letters {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @container aitools (max-width: 520px) {
+    .lg-findings li {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
   @media (max-width: 359px) {

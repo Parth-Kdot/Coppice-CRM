@@ -12,9 +12,6 @@ import "./stats.css";
 // and for screen readers) and the standing. On a phone a row shows the name, the rate and the bar,
 // and "Details" opens the counts.
 
-export const pct = formatPct;
-export const rangeText = formatRange;
-
 // The likely range on a 0 to 100% rule: a bar from low to high and a tick at the rate. Drawn with SVG
 // attributes, not inline styles, so the strict style policy allows it.
 function RangeBar({ stat }: { stat: Rated }) {

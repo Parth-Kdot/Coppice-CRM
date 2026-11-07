@@ -256,7 +256,8 @@ export function DraftPanel(props: Props) {
             </ErrorLine>
           </div>
         )}
-        {state && !state.ok && (
+        {/* A refusal for the limit a line above already states isn't said twice. */}
+        {state && !state.ok && !(limitReached && /AI calls for the last/.test(state.error)) && !(dailyReached && /drafts in the last 24 hours/.test(state.error)) && (
           <div className="lg-draftlimit">
             <ErrorLine>{state.error}</ErrorLine>
           </div>

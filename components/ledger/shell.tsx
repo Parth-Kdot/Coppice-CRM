@@ -37,11 +37,12 @@ function screenOf(pathname: string, workspaceId: string): Screen {
 
 const LIST_KEY = "lg-list-tab";
 type ListTab = "queue" | "board";
+// A company page opened straight from a link (nothing stored) belongs to the queue, the home page.
 const readListTab = (): ListTab => {
   try {
-    return window.sessionStorage.getItem(LIST_KEY) === "queue" ? "queue" : "board";
+    return window.sessionStorage.getItem(LIST_KEY) === "board" ? "board" : "queue";
   } catch {
-    return "board";
+    return "queue";
   }
 };
 const subscribeNothing = () => () => undefined;
@@ -52,10 +53,22 @@ function useListTab(screen: Screen): ListTab {
     try {
       window.sessionStorage.setItem(LIST_KEY, screen);
     } catch {
-      // Storage blocked: company pages light Board.
+      // Storage blocked: company pages light Queue.
     }
   }, [screen]);
-  return useSyncExternalStore(subscribeNothing, readListTab, () => "board");
+  return useSyncExternalStore(subscribeNothing, readListTab, () => "queue");
+}
+
+// The company page's way back: to the list the spine lights (the one you came from), so the two
+// always agree.
+export function BackToList({ workspaceId, className, icon }: { workspaceId: string; className?: string; icon?: ReactNode }) {
+  const tab = useSyncExternalStore(subscribeNothing, readListTab, () => "queue" as ListTab);
+  return (
+    <Link href={tab === "board" ? `/${workspaceId}/board` : `/${workspaceId}`} className={className}>
+      {icon}
+      {tab === "board" ? "Board" : "Queue"}
+    </Link>
+  );
 }
 
 type Tab = { key: string; label: string; path: string; icon: ReactNode; tour: string };

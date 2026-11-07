@@ -208,7 +208,7 @@ describe("queue URL filters", () => {
   });
 });
 
-// ----- The home screen's groups (P1) -----
+// ----- The home screen's groups -----
 
 // Counts every query a withTenant transaction runs (the set_config line included), so the queue's
 // round trips can be pinned. Calls straight through to the real database.

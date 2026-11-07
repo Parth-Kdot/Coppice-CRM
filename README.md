@@ -22,6 +22,10 @@ The name comes from coppicing, the old forestry practice of cutting a tree back 
 
 **Claim checker.** Every draft is checked for numbers no verified fact supports, claims of past history with the company and outside links. An optional AI pass reads the draft against the verified facts too.
 
+**Research briefs.** On a company page, "Who to contact" asks for a short brief on the company's official ways in: university relations, campus recruiting, giving programs. It reads only web pages an Owner approved in Settings, every line quotes the page it came from and links to it, and nothing reaches the company until someone adds a specific line to its notes. AI must be on for the workspace, and each person can ask for 10 briefs a day.
+
+**Getting started.** The first time someone opens a workspace, a short basics tour points at the real controls: the queue, claiming, logging a follow-up, the board, adding companies and search (and, for Owners, inviting officers). An optional AI tour covers the fact sheet, Smart import, the drafter and checker, research briefs and AI assistants. Either can be replayed from the account menu.
+
 **Sending and logging.** Coppice never sends email. Drafts open in your own Gmail, Outlook or mail app. Logging the outreach renews your claim and sets the next follow-up.
 
 **AI assistants (MCP).** Officers and owners can connect their own AI assistant (any assistant that supports remote MCP servers with OAuth) at `https://<your site>/api/mcp`. The assistant can list workspaces, search companies, read a company with its contacts and history, see the follow-up queue and your claims, and, if you allow changes, claim, log outreach and move stages as you, under the same claim rules as the app. Each owner turns it on per workspace in Settings (off by default). Sign-in is Google, and every new assistant gets a consent page that names it and what it asks for. Whatever an assistant reads, including contact names, emails and notes, goes to the company behind it. Its changes are marked "via assistant" in the history. Removing the connector in the assistant may not end its access. Turning assistants off blocks every assistant in that workspace while it stays off, and turning it back on lets back in every assistant members already allowed. Removing a member blocks their assistant while they are out of the workspace. There is no per-assistant disconnect yet.
@@ -76,4 +80,4 @@ npm test                      # needs the local Postgres running
 
 ## Status
 
-The core workflow works end to end: import, claims, the queue and board, the fact sheet, drafts, the claim checker and logging outreach. Next up are reply rates for each pitch template, research briefs on a company before outreach, a pipeline assistant that only acts after you approve, and a turnover summary for each incoming board. Members can also connect their own AI assistant through the MCP server.
+The core workflow works end to end: import (with Smart import for messy notes), claims, the queue and board, the fact sheet, drafts, the claim checker, logging outreach, reply rates for each pitch template, and research briefs from approved pages. Members can also connect their own AI assistant through the MCP server. Next up are a pipeline assistant that only acts after you approve, and a turnover summary for each incoming board.

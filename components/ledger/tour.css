@@ -69,6 +69,15 @@
     font-size: var(--fs-1);
     margin-bottom: 2px;
   }
+  .lg-tour-note {
+    margin-top: 8px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  /* Holds Back's place on the first card so Next never moves under the pointer. */
+  .lg-tour-placeholder {
+    visibility: hidden;
+  }
   /* The title takes focus so each card is announced; it is not a control, so no focus ring. */
   .lg-tour-title {
     font-family: var(--font-display);
@@ -188,6 +197,9 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
   }
+  .lg-tour-art-cols[data-two] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .lg-tour-art-col {
     display: grid;
     gap: 4px;
@@ -205,6 +217,12 @@
   }
 
   /* ---------- Phone: the card is a sheet docked above the tab bar ---------- */
+  /* Room after the page's end while the sheet is open (tour.tsx sets the sheet's height). */
+  :root[data-tour-sheet] #main::after {
+    content: "";
+    display: block;
+    height: var(--lg-tour-sheet, 0px);
+  }
   @media (max-width: 760px) {
     .lg-tour-card,
     .lg-tour-card[data-place] {

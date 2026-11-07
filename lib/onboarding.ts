@@ -15,6 +15,10 @@ import type { TourName, TourRole } from "@/lib/onboarding-steps";
 //   complete(tenant, tour, role)   Marks a tour finished. The finish time is written once; the
 //                                  basics also record the role they were finished as.
 //   dismissAi(tenant)              "Later" on the AI offer, or the AI tour ended early.
+//   setBasicsHidden(tenant, on)    "Hide" on the basics (later loads show only the pill), or Resume.
+//   basicsDoneElsewhere(user, ids) The role the basics were finished as in another of the
+//                                  person's workspaces ("owner" if any), or null: someone who took
+//                                  them once doesn't take them again in every workspace.
 //   tourCompany(tenant, now)       A company page the tour can show: one you hold, else an open one
 //                                  nobody else holds, else null.
 
@@ -25,9 +29,10 @@ export type Progress = {
   aiStep: number;
   aiDoneAt: Date | null;
   aiDismissedAt: Date | null;
+  basicsHiddenAt: Date | null;
 };
 
-const SELECT = { basicsStep: true, basicsDoneAt: true, basicsRole: true, aiStep: true, aiDoneAt: true, aiDismissedAt: true } as const;
+const SELECT = { basicsStep: true, basicsDoneAt: true, basicsRole: true, aiStep: true, aiDoneAt: true, aiDismissedAt: true, basicsHiddenAt: true } as const;
 
 export const MAX_STEP = 20;
 
@@ -81,6 +86,29 @@ export async function dismissAi(tenant: Tenant): Promise<void> {
     await ensureRow(tx, tenant);
     await tx.onboardingProgress.updateMany({ where: { workspaceId: tenant.workspaceId, userId: tenant.userId, aiDismissedAt: null }, data: { aiDismissedAt: now } });
   });
+}
+
+export async function setBasicsHidden(tenant: Tenant, hidden: boolean): Promise<void> {
+  await withTenant(tenant, async (tx) => {
+    await ensureRow(tx, tenant);
+    await tx.onboardingProgress.updateMany({ where: { workspaceId: tenant.workspaceId, userId: tenant.userId }, data: { basicsHiddenAt: hidden ? new Date() : null } });
+  });
+}
+
+// Row-level security only shows a person their row in the workspace a transaction is for, so each
+// of their other workspaces is asked in turn (at most `workspaceIds.length`, the switcher's list).
+// Only called while the basics are due in this workspace, so an ordinary page load never runs it.
+export async function basicsDoneElsewhere(userId: string, workspaceIds: string[]): Promise<TourRole | null> {
+  let found: TourRole | null = null;
+  for (const workspaceId of workspaceIds) {
+    const row = await withTenant({ userId, workspaceId }, (tx) =>
+      tx.onboardingProgress.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, select: { basicsDoneAt: true, basicsRole: true } }),
+    );
+    if (!row?.basicsDoneAt) continue;
+    if (row.basicsRole === "owner") return "owner";
+    found = "member";
+  }
+  return found;
 }
 
 export async function tourCompany(tenant: Tenant, now: Date): Promise<string | null> {

@@ -352,8 +352,8 @@ async function readIndustries(tx: Tx, tenant: Tenant): Promise<string[]> {
 
 export type DuplicatePair = { a: DuplicateMatch; b: DuplicateMatch; matchedOn: MatchReason[] };
 
-// ----- Look-alike pairs on the board (P3 owns this block: listPossibleDuplicatePairs,
-// listDuplicateReview, countPossibleDuplicates and DUPLICATE_PAIR_LIMIT) -----
+// ----- Look-alike pairs on the board: listPossibleDuplicatePairs, listDuplicateReview,
+// countPossibleDuplicates and DUPLICATE_PAIR_LIMIT -----
 
 // Look-alike pairs already in the workspace (from imports, edits or simultaneous creates), for the
 // "Possible duplicates" box. Pairs a person marked separate are left out. Capped so a workspace

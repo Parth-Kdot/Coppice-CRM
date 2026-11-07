@@ -455,7 +455,7 @@ describe("the board's Possible duplicates box", () => {
   });
 });
 
-describe("de-bloat pass (P2): the server stays the backstop", () => {
+describe("de-bloat pass: the server stays the backstop", () => {
   const ref = (companyId: string) => form({ workspaceId: "a", companyId });
 
   it("an officer can't move or archive a company someone else holds, even with the buttons hidden", async () => {

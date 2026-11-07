@@ -60,7 +60,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
         <PageHead title="Fact sheet" sub="Only verified facts here can appear in AI drafts." />
         <section className="lg-factsec" aria-labelledby="facts-verified-h">
           <h2 id="facts-verified-h" className="lg-factsec-h">
-            {verified.length === 0 ? "No verified facts yet. Your chair adds them here." : `${plural(verified.length, "verified fact", "verified facts")} the drafter can use`}
+            {verified.length === 0 ? "No verified facts yet. An owner adds them here." : `${plural(verified.length, "verified fact", "verified facts")} the drafter can use`}
           </h2>
           {verified.length > 0 && (
             <ul className="lg-facts-list">

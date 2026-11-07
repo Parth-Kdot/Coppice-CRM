@@ -31,7 +31,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
         <h1 className="lg-auth-title">Coppice</h1>
         <p className="lg-auth-sub">Your team&apos;s shared outreach book. Sign in with Google to open it.</p>
         <GoogleSignInButton next={next} />
-        <p className="lg-auth-who">Officers: your chair invites your Google email first.</p>
+        <p className="lg-auth-who">Officers: your workspace owner invites your Google email first.</p>
         <p className="lg-auth-back">
           <Link href="/" className="lg-link">
             Back to the home page

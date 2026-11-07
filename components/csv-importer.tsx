@@ -6,7 +6,7 @@ import { fileProblem } from "@/app/(app)/[workspaceId]/import/read-file";
 import { DuplicateGroups, groupHeadingId } from "@/components/csv-importer-duplicates";
 import { ImportDone, type Done } from "@/components/csv-importer-result";
 import { SampleRows } from "@/components/csv-importer-sample";
-import { ColumnsGrid, ColumnsLine, Entry, RowProblems, RowWarnings, swapColumn } from "@/components/csv-importer-steps";
+import { ColumnsGrid, ColumnsLine, Entry, RowProblems, RowWarnings, swapColumn, UnusedColumns } from "@/components/csv-importer-steps";
 import { ImportSummary } from "@/components/csv-importer-summary";
 import { SmartColumns } from "@/components/csv-importer-smart/columns";
 import { SmartReview } from "@/components/csv-importer-smart/review";
@@ -323,6 +323,9 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
               </>
             )}
           </p>
+          {smart && !(pending && file) && (
+            <p className="lg-hint lg-dropzone-hint">Messy notes or a status column? Smart import can read them once you choose a file.</p>
+          )}
           <ErrorLine>{pickError ?? previewError?.text}</ErrorLine>
           {previewError?.retry && file && (
             <button type="button" className="lg-btn lg-btn-sm" onClick={() => review(file, null, false)}>
@@ -408,6 +411,7 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
               {gridOpen ? "Done" : "Change"}
             </button>
           </p>
+          <UnusedColumns view={view} read={smartState.on ? smartState.freeText : []} smartOffered={Boolean(smart && guardedSmart)} />
           {view.nameAssumed && gridOpen && <p className="lg-hint">No header looked like a company name, so the first free column was used. Check it.</p>}
           <div id={`${id}-grid`} hidden={!gridOpen}>
             <ColumnsGrid

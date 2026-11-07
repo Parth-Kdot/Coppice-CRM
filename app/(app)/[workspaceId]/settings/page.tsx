@@ -59,9 +59,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   const me = await requireMembershipOr404(workspaceId);
   const isOwner = me.role === "owner";
 
-  // Separate queries (and separate withTenant transactions) side by side; none of them shares a
-  // transaction, so none of them waits on another.
-  const [workspace, members, invitations, ai, templates, ownerSources] = await Promise.all([
+  // Separate queries (and separate withTenant transactions) side by side, in two rounds of at most
+  // four connections each, so one render never asks for more than the pool's default of five.
+  const [workspace, members, invitations] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
       select: { name: true, claimWindowDays: true, mcpEnabled: true },
@@ -80,10 +80,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           orderBy: { createdAt: "desc" },
         })
       : [],
-    aiUsageDetail(me),
-    listTemplates(me),
-    isOwner ? listSources(me) : null,
   ]);
+  // aiUsageDetail makes two queries of its own.
+  const [ai, templates, ownerSources] = await Promise.all([aiUsageDetail(me), listTemplates(me), isOwner ? listSources(me) : null]);
   const state = aiState(ai.enabled);
   const aiOn = state === "on";
   // Research pages: owners always manage them; officers see them only while the feature is on.
@@ -189,8 +188,10 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
             <p className="lg-hint mt-2">Claims already taken keep the expiry they were given.</p>
           </Disclosure>
         ) : (
+          // Laid out like the rows around it (a title, then its value), without the chevron.
           <p className="lg-set-line" data-tour="settings-claim-window">
-            {claimLine}.
+            <span className="lg-set-line-title">Claim window</span>
+            <span className="lg-disc-count">{claimLine}</span>
           </p>
         )}
 
@@ -233,9 +234,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out. A
               template you base a draft on is sent too, masked the same way, so keep names out of templates.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
-              addresses and phone numbers masked (7 or more digits written in groups with spaces, dashes, dots, slashes or brackets, and 10 or more in one
-              run, in any script&apos;s digits, fullwidth ones included; a date, or a run of dates and years, standing on its own is left alone), plus the
-              company&apos;s name and website; never your notes or contacts.
+              addresses and phone numbers masked, plus the company&apos;s name and website; never your notes or contacts.
             </p>
             <p className="max-w-[66ch]">
               Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers only when they are plain spreadsheet words (like
@@ -292,8 +291,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
         <Disclosure summary="AI assistants (MCP)" count={workspace.mcpEnabled ? "On" : "Off"} data-tour="mcp" id="mcp">
           <div className="lg-set-mcp">
             <p className="max-w-[66ch]">
-              Members can connect their own AI assistant, any assistant that supports remote MCP servers, to Coppice. It can read this workspace and, if the member allows it, claim companies, log outreach and move stages as them,
-              under the same rules as the app. What it does is marked &quot;via assistant&quot; in a company&apos;s history.
+              Members can connect their own AI assistant (any that supports remote MCP servers) to read this workspace and, if they allow it,
+              claim companies, log outreach and move stages as them, marked &quot;via assistant&quot; in a company&apos;s history.
             </p>
             <p className="lg-mcp-privacy max-w-[66ch]">
               <WarningIcon size={16} />
@@ -312,11 +311,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               <li>Coppice shows what the assistant asks for. Allow it, or deny it.</li>
             </ol>
             <p className="lg-hint mt-3 max-w-[66ch]">
-              Access lasts an hour at a time and renews while the assistant uses it. Removing the connector in your assistant may not
-              end that access. Turning assistants off here blocks every assistant in this workspace while it stays off; turning it back
-              on lets back in every assistant members already allowed. Removing a member blocks their assistant while they are out of
-              the workspace. There is no way yet to disconnect one assistant on its own. Each member connects for themselves and only
-              reaches workspaces they belong to.
+              Removing the connector in your assistant may not end its access right away; turning assistants off here blocks every one in this
+              workspace until it is turned back on.
             </p>
             {isOwner ? (
               <ActionForm
@@ -332,9 +328,6 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                   <input name="enabled" type="checkbox" defaultChecked={workspace.mcpEnabled} className="lg-check" />
                   <span>Allow AI assistants in this workspace</span>
                 </label>
-                <p className="lg-hint !mt-0 max-w-[60ch]">
-                  Turning this on lets members&apos; assistants read contact names, emails and notes here, and send them to their AI company.
-                </p>
               </ActionForm>
             ) : (
               <p className="mt-3">

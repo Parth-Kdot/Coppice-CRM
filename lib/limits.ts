@@ -7,6 +7,10 @@
 // ----- Workspaces and settings -----
 
 export const WORKSPACE_NAME_MAX = 80;
+// How many of a person's workspaces a list shows (the header's switcher, the assistant consent page
+// and the assistants' list_workspaces), oldest membership first. The switcher always adds the
+// workspace being viewed if it is past the cap.
+export const WORKSPACES_SHOWN = 20;
 export const CLAIM_WINDOW_MIN_DAYS = 1;
 export const CLAIM_WINDOW_MAX_DAYS = 60;
 // AI calls allowed per 30 days across a workspace. 0 pauses AI without switching it off.

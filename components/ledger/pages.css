@@ -954,7 +954,7 @@
   .lg-groups-done:focus-visible {
     outline-offset: 3px;
   }
-  /* ---------- P4: import (drop zone, one-line steps, notes, one group at a time, result) ---------- */
+  /* ---------- import (drop zone, one-line steps, notes, one group at a time, result) ---------- */
   .lg-dropzone {
     display: grid;
     justify-items: center;
@@ -1121,7 +1121,7 @@
     margin-top: 20px;
   }
 
-  /* ---------- P4: fact sheet (one row per fact, one action, the rest in its menu) ---------- */
+  /* ---------- fact sheet (one row per fact, one action, the rest in its menu) ---------- */
   .lg-facts-list {
     list-style: none;
   }
@@ -1323,7 +1323,7 @@
       min-height: 44px;
     }
   }
-  /* P4: under 640 px the import drops its step margin, and the bar is one line. */
+  /* Under 640 px the import drops its step margin, and the bar is one line. */
   @media (max-width: 640px) {
     .lg-impsteps {
       padding: 0 14px;

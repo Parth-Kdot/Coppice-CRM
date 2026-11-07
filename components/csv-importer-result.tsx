@@ -20,10 +20,11 @@ const shownName = (n: Named, repeated: ReadonlySet<string>) => (repeated.has(n.n
 
 // The names behind a tally. A name that appears more than once in the file gets its row number, so
 // "Brightwater Media" imported and "Brightwater Media" skipped don't read as a contradiction.
+// The count is the tally above, so the fold only offers the names.
 function NameList({ title, names, repeated }: { title: string; names: Named[]; repeated: ReadonlySet<string> }) {
   if (names.length === 0) return null;
   return (
-    <Disclosure variant="inline" summary={title} count={names.length}>
+    <Disclosure variant="inline" summary={`See which were ${title.toLowerCase()}`}>
       <ShowMore initial={20} label="names" as="ul" listClassName="lg-resultlist">
         {names.map((n) => (
           <li key={n.row} className="lg-wrap-any">

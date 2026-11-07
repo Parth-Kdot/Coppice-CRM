@@ -164,6 +164,16 @@ describe("the AI check", () => {
     expect(check.ai[0].reason.length).toBeLessThanOrEqual(200);
   });
 
+  it("a reply whose every issue is broken is an error, never a clean result", async () => {
+    const broken = () => answer(JSON.stringify({ issues: [{ email: "one", quote: 5, problem: null }, { email: "two" }] }));
+    fakeGemini(broken(), broken(), broken());
+    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    expect(check.ai).toEqual([]);
+    expect(check.error).toBe("The AI sent back something unusable. Try again.");
+    const logged = await withTenant(OWNER, (tx) => tx.aiRun.findMany({ where: { feature: "CLAIM_CHECK" }, select: { status: true, error: true } }));
+    expect(logged).toEqual([{ status: "FAILED", error: "invalid_output" }]);
+  });
+
   it("a 500 on Flash-Lite moves on to 3.6 Flash for Check again", async () => {
     fakeGemini(apiError(500, "Internal", "INTERNAL"), issues({ email: 1, quote: "{{orgName}} has 900 members", problem: "No member count." }));
     const [check] = await aiCheck(OWNER, [draft], NAMES);

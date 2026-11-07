@@ -1,5 +1,5 @@
 /* ==========================================================================================
-   Ledger, Settings (P5): Members open at the top, then one collapsed line per section. Plain
+   Ledger, Settings: Members open at the top, then one collapsed line per section. Plain
    CSS in a file, so the strict style-src policy allows it. The older margin-and-rows rules for
    Settings stay in pages.css (the research pages section still draws itself with them).
    ========================================================================================== */
@@ -146,11 +146,19 @@
   /* The officer's claim-window sentence sits where the owner's section would. */
   .lg-set-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 0 8px;
     min-height: 44px;
     padding-left: 24px;
     border-top: 1px solid var(--rule);
     color: var(--ink-2);
+  }
+  .lg-set-line-title {
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.2;
   }
   .lg-set-note {
     max-width: 66ch;

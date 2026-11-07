@@ -113,9 +113,11 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
           {smart.note && (
             <div className="lg-smart-mapnote" role="status">
               <p>{smart.note}</p>
-              <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={() => smart.turn(true, view)}>
-                Try again
-              </button>
+              {smart.noteRetryable && (
+                <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={() => smart.turn(true, view)}>
+                  Try again
+                </button>
+              )}
             </div>
           )}
           <FreeTextColumns smart={smart} view={view} />
