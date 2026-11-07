@@ -172,7 +172,9 @@ describe("board URL filters", () => {
 
   it("drops anything malformed instead of failing, and an empty board URL has no query", () => {
     const filters = parse({ q: "x".repeat(101), industry: "y".repeat(81), show: "COMMITTED,WON", all: "WON", archived: "yes", dupes: "yes" });
-    expect(filters).toEqual(NONE);
+    // (P5, R2-17) Search text that is too long is cut to the limit, not dropped, so a shared link
+    // still searches; everything else malformed is dropped as before.
+    expect(filters).toEqual({ ...NONE, q: "x".repeat(100), industry: "y".repeat(80) });
     expect(parse({})).toEqual(NONE);
     expect(boardQuery(NONE)).toBe("");
   });

@@ -5,7 +5,7 @@ import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportPreview } from "@/lib/csv";
 import type { SmartStart } from "@/lib/smart-import";
-import { SMART_MAX_ROWS } from "@/lib/validation";
+import { SMART_MAX_ROWS } from "@/lib/limits";
 import { readingMatches, type SmartActions, type SmartState } from "./use-smart-import";
 import "@/components/ledger/smart-import.css";
 

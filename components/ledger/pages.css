@@ -634,10 +634,11 @@
     cursor: pointer;
     transition: background-color var(--dur-fast) ease;
   }
-  .lg-stepper-btn:hover:not(:disabled) {
+  .lg-stepper-btn:hover:not(:disabled, [aria-disabled="true"]) {
     background: var(--paper-2);
   }
-  .lg-stepper-btn:disabled {
+  .lg-stepper-btn:disabled,
+  .lg-stepper-btn[aria-disabled="true"] {
     color: var(--ink-2);
     opacity: 0.45;
     cursor: default;

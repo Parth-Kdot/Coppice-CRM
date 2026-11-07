@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useActionState, useId, useMemo, useState, type ReactNode } from "react";
-import "@/components/ledger/zod-jitless";
 import { AiDraftIcon, CheckIcon, CopyLinkIcon, ExternalIcon, WarningIcon } from "@/components/ledger/icons";
 import { ChipGroup, type ChipOption } from "@/components/ledger/chips";
 import { LogOutreachForm } from "@/components/ledger/log-form";
@@ -14,7 +13,8 @@ import { checkRules, type Finding, type FindingKind, type RuleContext } from "@/
 import { composeLinks } from "@/lib/compose-links";
 import type { DraftView } from "@/lib/drafts";
 import type { TemplateOption } from "@/lib/templates";
-import { DRAFT_NOTE_MAX, type ActionResult } from "@/lib/validation";
+import { DRAFT_NOTE_MAX } from "@/lib/limits";
+import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 
 type Contact = { id: string; name: string; title: string | null; email: string | null };

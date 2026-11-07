@@ -76,27 +76,43 @@
     margin-top: 8px;
     font-size: var(--fs-2);
   }
+  .lg-auth-who {
+    max-width: 44ch;
+    font-size: var(--fs-2);
+    color: var(--ink-2);
+  }
+  /* Phones: a small picture on top (about 140 px), the way in straight under it, the button the
+     full width, so "Sign in with Google" is on screen without scrolling. */
   @media (max-width: 860px) {
     .lg-auth {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
     }
     .lg-auth-art {
-      gap: 12px;
-      padding: 28px 24px 24px;
+      gap: 0;
+      padding: 16px 16px 12px;
       border-right: 0;
       border-bottom: 1px solid var(--edge);
     }
     .lg-auth-stool {
-      width: 150px;
+      width: auto;
+      height: 108px;
     }
     .lg-auth-line {
       display: none;
     }
     .lg-auth-main {
-      padding: 32px 20px 48px;
+      align-content: start;
+      justify-items: stretch;
+      gap: 12px;
+      padding: 24px 16px 40px;
     }
     .lg-auth-title {
       font-size: var(--fs-5);
+    }
+    .lg-auth-main .lg-google {
+      width: 100%;
+      justify-content: center;
     }
   }
 
@@ -138,88 +154,79 @@
     margin-top: 6px;
   }
 
-  /* Each workspace is a bound volume on a shelf. */
-  .lg-shelf {
+  /* Each workspace is a card: an initials thumbnail, the full name (wrapping), the role, Open. */
+  .lg-wscards {
     list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 22px 30px;
-    margin-top: 28px;
-    padding: 0 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    gap: 12px;
+    margin-top: 22px;
+    padding: 0;
   }
-  .lg-volume {
-    width: 176px;
-  }
-  .lg-vspine {
-    position: relative;
+  .lg-wscard {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    width: 96px;
-    height: 300px;
-    margin: 0 auto;
-    padding: 14px 0 12px;
-    border: 1px solid #1d3320;
-    border-radius: 2px;
+    gap: 14px;
+    min-height: 72px;
+    height: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    text-decoration: none;
+    transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  }
+  .lg-wscard:hover {
+    border-color: var(--moss);
+    background: var(--paper);
+  }
+  .lg-wscard:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 2px;
+  }
+  .lg-wsinit {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 3px;
     background: var(--moss);
     color: var(--paper);
-    text-decoration: none;
-    transition: transform var(--dur-fast) var(--ease-out);
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    letter-spacing: 0.02em;
   }
-  .lg-volume[data-tone="1"] .lg-vspine {
+  .lg-wscards > li:nth-child(3n + 2) .lg-wsinit {
     background: var(--ink);
-    border-color: #000;
   }
-  .lg-volume[data-tone="2"] .lg-vspine {
+  .lg-wscards > li:nth-child(3n + 3) .lg-wsinit {
     background: #3a5d3c;
   }
-  .lg-vspine:hover {
-    transform: translateY(-4px);
-  }
-  .lg-vband {
-    display: block;
-    width: calc(100% - 18px);
-    height: 5px;
-    border-top: 1px solid rgb(246 241 230 / 0.55);
-    border-bottom: 1px solid rgb(246 241 230 / 0.55);
-  }
-  .lg-vtitle {
+  .lg-wscard-text {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    max-height: 190px;
-    padding: 8px 0;
-    overflow: hidden;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    font-family: var(--font-display);
-    font-weight: 400;
-    font-size: var(--fs-3);
-    line-height: 1.2;
-    text-align: center;
+    display: grid;
+    gap: 2px;
+    min-width: 0;
   }
-  .lg-vyear {
-    margin-top: 6px;
+  .lg-wscard-name {
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .lg-wscard-role {
+    color: var(--ink-2);
     font-size: var(--fs-1);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--paper);
   }
-  .lg-shelfedge {
-    height: 2px;
-    margin-top: -1px;
-    background: var(--ink-2);
-  }
-  .lg-vcap {
-    margin-top: 14px;
-    text-align: center;
+  .lg-wscard-open {
+    flex: none;
+    color: var(--moss);
     font-size: var(--fs-2);
-  }
-  .lg-vname {
-    font-weight: 600;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
   }
   .lg-wssect {
     max-width: 660px;
@@ -238,23 +245,53 @@
     padding: 12px 0;
     border-bottom: 1px solid var(--rule);
   }
+  .lg-invites-text {
+    min-width: 0;
+  }
   .lg-createform {
     max-width: 520px;
     margin-top: 12px;
   }
+  .lg-createrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .lg-createfield {
+    display: block;
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+  .lg-wsfirst {
+    margin-top: 10px;
+  }
+  .lg-wssect .lg-disc[data-variant="inline"] > .lg-disc-body {
+    padding-left: 20px;
+  }
+  /* No workspace yet: the message wraps inside the page, and the email (one long word) sits on
+     its own line in body type, broken anywhere if it must be. */
+  .lg-wsnone .lg-empty {
+    align-items: flex-start;
+  }
+  .lg-wsnone .lg-empty > div {
+    min-width: 0;
+  }
+  .lg-wsnone-email {
+    margin-top: 4px;
+    color: var(--ink);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
   @media (max-width: 640px) {
-    .lg-shelf {
-      justify-content: center;
-      padding: 0;
-    }
-    .lg-vspine {
-      height: 240px;
-    }
-    .lg-volume {
-      width: 150px;
-    }
     .lg-wsme-name {
       display: none;
+    }
+    .lg-invites li {
+      flex-wrap: wrap;
+    }
+    .lg-wsnone .lg-empty {
+      padding: 20px 0;
     }
   }
 }
