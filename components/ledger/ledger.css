@@ -218,9 +218,7 @@
   .lg-num,
   .lg-od,
   .lg-chipbody,
-  .lg-status,
   .lg-h1-count,
-  .lg-total-n,
   .lg-qtime {
     font-variant-numeric: tabular-nums;
   }
@@ -513,6 +511,10 @@
   }
   .lg-od svg {
     flex: none;
+  }
+  /* The compact "9d late" (OverdueMark short): hidden unless a tight layout swaps it in. */
+  .lg-od-short {
+    display: none;
   }
   .lg-od[data-level="upcoming"] {
     color: var(--ink-2);

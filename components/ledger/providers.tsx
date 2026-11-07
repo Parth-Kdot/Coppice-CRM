@@ -16,12 +16,12 @@ type Notify = (text: string, tone?: "ok" | "error") => void;
 const NoteContext = createContext<Notify>(() => undefined);
 export const useNotify = (): Notify => useContext(NoteContext);
 
-// The workspace shell has a lane for notes in its footer, so a note sits in the page's own margin
-// and never lies over the rows. Screens without a footer (the workspace list) get a fixed lane at
-// the bottom left instead.
+// The workspace shell has its own lane for notes, fixed at the foot of the page column and empty
+// when idle (above the tab bar on a phone). Screens without the shell (the workspace list) get a
+// fixed lane at the bottom left instead.
 const NoteLaneContext = createContext<(el: HTMLElement | null) => void>(() => undefined);
 export const useNoteLane = () => useContext(NoteLaneContext);
-// A modal sheet (the board's look-alikes) covers the footer and makes it inert, so while one is
+// A modal sheet (the board's look-alikes) makes the rest of the page inert, so while one is
 // open it offers a lane of its own and notes are written there instead, where they can be seen and
 // are read aloud.
 const SheetNoteLaneContext = createContext<(el: HTMLElement | null) => void>(() => undefined);

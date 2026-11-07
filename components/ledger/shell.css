@@ -81,6 +81,25 @@
   .lg-tab:focus-visible {
     outline-offset: 3px;
   }
+  .lg-tab,
+  .lg-tabbar-item {
+    position: relative;
+  }
+  /* While a tab's page is on the way: a thin bar along its foot that breathes (static under reduced motion). */
+  .lg-tab-pend {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 3px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0;
+  }
+  .lg-tab-pend[data-pending] {
+    opacity: 0.7;
+    animation: lg-skel-pulse 700ms ease-in-out infinite alternate;
+  }
   .lg-spine-user {
     position: relative;
     display: flex;
@@ -164,6 +183,11 @@
   .lg-menu-item:hover {
     background: var(--paper-2);
   }
+  /* Sign out: quiet words, never the filled default. */
+  .lg-menu-quiet {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
 
   /* ---------- The page ---------- */
   .lg-pagecol {
@@ -181,40 +205,86 @@
   .lg-head-line {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 16px;
-    padding-bottom: 8px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
   }
-  .lg-book {
+
+  /* ---------- The workspace switcher (workspace-switcher.tsx) ---------- */
+  .lg-wswrap {
     min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: flex;
+  }
+  .lg-wsswitch {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 40px;
+    padding: 0 8px 0 4px;
+    margin-left: -4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink);
     font-family: var(--font-display);
     font-size: var(--fs-3);
     font-weight: 400;
-    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
   }
-  .lg-book a {
-    color: inherit;
-    text-decoration: none;
+  .lg-wsswitch:hover,
+  .lg-wsswitch[aria-expanded="true"] {
+    border-color: var(--edge);
+    background: var(--sheet);
   }
-  .lg-book a:focus-visible {
-    outline-offset: -2px;
+  .lg-wsswitch-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .lg-book a:hover {
-    text-decoration: underline;
-    text-underline-offset: 4px;
-    text-decoration-thickness: 1px;
-  }
-  .lg-book-volume {
-    font-weight: 400;
-    color: var(--ink-2);
-  }
-  .lg-pagename {
+  .lg-wsswitch-chev {
     flex: none;
     color: var(--ink-2);
   }
+  .lg-wscard {
+    min-width: 240px;
+  }
+  .lg-wscard ul {
+    list-style: none;
+  }
+  .lg-wscard-head {
+    padding: 6px 14px 4px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-wscard-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .lg-wscard-tick {
+    flex: none;
+    display: inline-flex;
+    width: 16px;
+    color: var(--moss);
+  }
+  .lg-wscard-role {
+    padding-left: 22px;
+  }
+  .lg-wscard-item[aria-current="page"] {
+    font-weight: 600;
+  }
+  .lg-wscard-all {
+    margin-top: 4px;
+    border-top: 1px solid var(--rule);
+  }
+
   .lg-main {
     flex: 1;
     min-width: 0;
@@ -225,38 +295,21 @@
     max-width: 1100px;
   }
 
-  /* ---------- The footer: the lane for margin notes, then the status line ---------- */
-  .lg-foot {
-    position: sticky;
-    bottom: 0;
-    z-index: 30;
-  }
+  /* ---------- The lane for margin notes: fixed at the foot of the page column, empty when idle ---------- */
   .lg-notes-lane {
+    position: fixed;
+    z-index: 60;
+    left: calc(var(--spine-w) + 36px);
+    bottom: 20px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
-    padding: 0 32px 0 36px;
-    background: var(--paper);
+    width: min(360px, calc(100vw - var(--spine-w) - 56px));
+    pointer-events: none;
   }
-  .lg-notes-lane:not(:empty) {
-    padding-top: 10px;
-    padding-bottom: 10px;
-    border-top: 1px solid var(--rule);
-  }
-  .lg-status {
-    display: flex;
-    align-items: center;
-    gap: 0.7em;
-    height: 30px;
-    padding: 0 32px 0 36px;
-    border-top: 1px solid var(--rule);
-    background: var(--paper-2);
-    color: var(--ink-2);
-    font-size: var(--fs-1);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
+  .lg-notes-lane > * {
+    pointer-events: auto;
   }
 
   .lg-pagehead {
@@ -403,6 +456,11 @@
   .lg-pal-close:hover {
     background: var(--paper-2);
   }
+  .lg-pal-cancel {
+    flex: none;
+    min-height: 44px;
+    padding: 0 4px;
+  }
   .lg-pal-list {
     flex: 1;
     min-height: 0;
@@ -531,8 +589,62 @@
     color: var(--moss);
     font-weight: 600;
   }
-  .lg-more-user {
-    margin-top: 16px;
+  /* The account, one compact row at the top of the More sheet that opens to Switch and Sign out. */
+  .lg-acct {
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-acct-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    padding: 6px 0;
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .lg-acct-initials {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--paper);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-acct-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .lg-acct-name {
+    font-weight: 600;
+  }
+  .lg-acct-ws {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-acct-chev {
+    flex: none;
+    color: var(--ink-2);
+    transition: transform var(--dur-fast) ease;
+  }
+  .lg-acct-row[aria-expanded="true"] .lg-acct-chev {
+    transform: rotate(180deg);
+  }
+  .lg-acct-panel {
+    padding: 0 0 12px 48px;
+  }
+  .lg-acct-panel .lg-menu-sect {
+    margin-top: 6px;
+    padding-top: 6px;
   }
 
   /* ---------- Phone: the spine gives way to a bottom tab bar ---------- */
@@ -579,53 +691,49 @@
     .lg-tabbar-item .lg-tab-label {
       font-size: var(--fs-1);
     }
+    .lg-tabbar-item .lg-tab-pend {
+      bottom: 4px;
+    }
     /* The selected tab is the moss fill here too. */
     .lg-tabbar-item[aria-current="page"] {
       color: var(--paper);
       background: var(--moss);
     }
-    .lg-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 14px;
-      background: var(--paper-2);
-      border-bottom: 1px solid var(--edge);
+    /* One header for both layouts: on a phone it is the sticky top bar. */
+    .lg-head {
       position: sticky;
       top: 0;
       z-index: 50;
+      padding: 0;
+    }
+    .lg-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: var(--paper-2);
+      border-bottom: 1px solid var(--edge);
     }
     .lg-bar-mark {
       color: var(--moss);
       flex: none;
+      display: inline-flex;
+      padding: 5px;
     }
-    .lg-bar-title {
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-family: var(--font-display);
-      font-weight: 400;
-    }
-    .lg-head {
-      padding: 12px 16px 0;
-    }
-    .lg-head .lg-book,
-    .lg-searchbar {
+    .lg-head-line {
       display: none;
+    }
+    .lg-wsswitch-bar {
+      min-height: 44px;
+      font-size: var(--fs-2);
     }
     .lg-main {
       padding: 16px 16px calc(88px + env(safe-area-inset-bottom));
     }
-    .lg-status {
-      display: none;
-    }
-    .lg-foot {
-      bottom: calc(60px + env(safe-area-inset-bottom));
-    }
     .lg-notes-lane {
-      padding: 0 12px;
+      left: 12px;
+      bottom: calc(72px + env(safe-area-inset-bottom));
+      width: calc(100vw - 24px);
     }
     /* The palette fills the screen. */
     .lg-pal {
@@ -646,12 +754,18 @@
   }
 }
 
-/* A control reached by keyboard scrolls into view above the sticky footer line, not under it. */
-html {
-  scroll-padding-bottom: 56px;
-}
+/* On a phone, a control reached by keyboard scrolls into view clear of the sticky top bar and the tab bar. */
 @media (max-width: 760px) {
   html {
-    scroll-padding-bottom: 130px;
+    scroll-padding-top: 64px;
+    scroll-padding-bottom: 80px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-tab-pend[data-pending] {
+    animation: none;
+  }
+  .lg-acct-chev {
+    transition: none;
   }
 }

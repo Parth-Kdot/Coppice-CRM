@@ -60,6 +60,7 @@ export function OverdueMark({
   dueOn,
   size = 16,
   iconOnly = false,
+  short = false,
   className = "",
 }: {
   days: number;
@@ -67,14 +68,22 @@ export function OverdueMark({
   size?: number;
   // The glass alone, for tight places that print the words elsewhere (the words stay in a title and for screen readers).
   iconOnly?: boolean;
+  // Also print shortDue ("9d late") in .lg-od-short. A layout that is tight shows it and makes the
+  // full words (.lg-od-text) screen-reader only with CSS; the short form itself is never read aloud.
+  short?: boolean;
   className?: string;
 }) {
   const level = overdueLevel(days);
   const text = overdueText(days, dueOn);
   return (
-    <span className={`lg-od ${className}`} data-level={level} title={iconOnly ? text : undefined}>
+    <span className={`lg-od ${className}`} data-level={level} title={iconOnly || short ? text : undefined}>
       <HourglassIcon sand={FILL[level]} size={size} />
       {iconOnly ? <span className="lg-sr">{text}</span> : <span className="lg-od-text">{text}</span>}
+      {short && !iconOnly && (
+        <span className="lg-od-short" aria-hidden="true">
+          {shortDue(days)}
+        </span>
+      )}
     </span>
   );
 }

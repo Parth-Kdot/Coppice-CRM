@@ -1,12 +1,17 @@
-import { afterAll, beforeEach, describe, expect, it, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import type { Stage } from "@/generated/prisma/enums";
 import { dbNow } from "@/lib/claims";
 import { daysBetween, overdueLabel } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { nameKey } from "@/lib/duplicates";
-import { getQueue, QUEUE_SIZE, type Queue } from "@/lib/queue";
+import { loadFreshLeads } from "@/app/(app)/[workspaceId]/queue-actions";
+import { clampUpto, FRESH_CAP, FRESH_PAGE, getFreshLeads, getQueue, getQueueHome, NOTE_CHARS, QUEUE_CAP, QUEUE_SIZE, type Queue } from "@/lib/queue";
 import { queueFiltersSchema, queueQuery, type QueueFilters } from "@/lib/validation";
+import { asUser } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
+
+// loadFreshLeads is a real server action; only Next.js's request APIs are swapped.
+vi.mock("next/headers", () => import("./helpers/next-request"));
 
 // Real database as app_user, so row-level security applies to every queue read.
 const OWNER: Tenant = { userId: "ownerA", workspaceId: "a" };
@@ -200,5 +205,185 @@ describe("queue URL filters", () => {
 
   it("drops anything malformed", () => {
     expect(parse({ mine: "yes", never: "0", all: "everything" })).toEqual(NONE);
+  });
+});
+
+// ----- The home screen's groups (P1) -----
+
+// Counts every query a withTenant transaction runs (the set_config line included), so the queue's
+// round trips can be pinned. Calls straight through to the real database.
+function countQueries() {
+  let count = 0;
+  const original = prisma.$transaction.bind(prisma) as (...args: unknown[]) => Promise<unknown>;
+  const counted = <T extends object>(target: T): T =>
+    new Proxy(target, {
+      get(obj, key) {
+        const value = Reflect.get(obj, key);
+        if (typeof value === "function")
+          return (...args: unknown[]) => {
+            count++;
+            return value.apply(obj, args);
+          };
+        if (value && typeof value === "object" && typeof key === "string" && !key.startsWith("_")) return counted(value);
+        return value;
+      },
+    });
+  const spy = vi.spyOn(prisma, "$transaction").mockImplementation(((run: (tx: object) => Promise<unknown>, options: unknown) =>
+    original((tx: object) => run(counted(tx)), options)) as never);
+  return { count: () => count, restore: () => spy.mockRestore() };
+}
+
+const home = async (tenant: Tenant, upto?: number) => getQueueHome(tenant, { upto, now: await dbNow() });
+
+describe("home groups: yours, up for grabs, held by others, fresh leads", () => {
+  it("splits due companies by who holds them; an expired claim (anyone's) is up for grabs", async () => {
+    await seed(OWNER, [
+      { name: "Mine", followUpDays: -2, holder: "officerA" },
+      { name: "Mine, expired", followUpDays: -2, holder: "officerA", claimDays: -1 },
+      { name: "Owner's", followUpDays: -2, holder: "ownerA" },
+      { name: "Owner's, expired", followUpDays: -2, holder: "ownerA", claimDays: -1 },
+      { name: "Free", followUpDays: -1 },
+      { name: "Not due, mine", followUpDays: 3, holder: "officerA" },
+      { name: "Fresh, mine", stage: "NOT_CONTACTED", holder: "officerA" },
+      { name: "Fresh, owner's", stage: "NOT_CONTACTED", holder: "ownerA" },
+      { name: "Fresh", stage: "NOT_CONTACTED" },
+      { name: "Won", followUpDays: -2, stage: "COMMITTED", holder: "officerA" },
+      { name: "Gone", followUpDays: -2, archived: true },
+    ]);
+    const officer = await home(OFFICER);
+    expect(names(officer.yours.rows)).toEqual(["Mine"]);
+    expect(names(officer.grabs.rows)).toEqual(["Mine, expired", "Owner's, expired", "Free"]);
+    expect(names(officer.heldByOthers.rows)).toEqual(["Owner's"]);
+    expect([officer.yours.count, officer.grabs.count, officer.heldByOthers.count]).toEqual([1, 3, 1]);
+    // Fresh leads count yours and free ones, never someone else's.
+    expect(officer.freshCount).toBe(2);
+    // Held, open, and not due (no date counts): "Not due, mine" and "Fresh, mine".
+    expect(officer.yoursNotDue).toBe(2);
+
+    // The same data from the owner's side: the groups follow the viewer, the total does not.
+    const owner = await home(OWNER);
+    expect(names(owner.yours.rows)).toEqual(["Owner's"]);
+    expect(names(owner.heldByOthers.rows)).toEqual(["Mine"]);
+    expect(owner.yours.count + owner.grabs.count + owner.heldByOthers.count).toBe(5);
+    expect(owner.freshCount).toBe(2);
+  });
+
+  it("with no claims at all, everything due is up for grabs and the other groups are empty", async () => {
+    await seed(OWNER, [
+      { name: "Late", followUpDays: -3 },
+      { name: "Today", followUpDays: -0.01 },
+    ]);
+    const queue = await home(OFFICER);
+    expect(queue).toMatchObject({ yours: { rows: [], count: 0 }, heldByOthers: { rows: [], count: 0 }, freshCount: 0, yoursNotDue: 0 });
+    expect(names(queue.grabs.rows)).toEqual(["Late", "Today"]);
+  });
+
+  it("loads 50 per group by default and pages by 50 up to 200, never more", async () => {
+    await seed(OWNER, Array.from({ length: 230 }, (_, i) => ({ name: `Late ${String(i).padStart(3, "0")}`, followUpDays: -1 - i / 1000 })));
+    const first = await home(OWNER);
+    expect(first.grabs.rows).toHaveLength(50);
+    expect(first.grabs.count).toBe(230);
+    expect((await home(OWNER, 100)).grabs.rows).toHaveLength(100);
+    expect((await home(OWNER, 200)).grabs.rows).toHaveLength(QUEUE_CAP);
+    expect((await home(OWNER, 5000)).grabs.rows).toHaveLength(QUEUE_CAP);
+    expect([clampUpto(undefined), clampUpto(null), clampUpto(0), clampUpto(75), clampUpto(150), clampUpto(9999)]).toEqual([50, 50, 50, 100, 150, 200]);
+  });
+
+  test.each([
+    ["100", 100],
+    ["200", 200],
+    ["50", 50],
+    ["75", undefined],
+    ["250", undefined],
+    ["0", undefined],
+    ["1e2", undefined],
+    ["abc", undefined],
+    [null, undefined],
+  ])("?upto=%s reads as %s", (upto, expected) => {
+    expect(queueFiltersSchema.parse({ mine: null, never: null, all: null, upto }).upto).toBe(expected);
+  });
+
+  it("writes upto back into the address", () => {
+    expect(queueQuery({ ...NONE, upto: 150 })).toBe("?upto=150");
+  });
+
+  it("reads each row's latest note through one row per company, trimmed for the one-line view", async () => {
+    const [acme] = await seed(OWNER, [{ name: "Acme", followUpDays: -2 }]);
+    const now = (await dbNow()).getTime();
+    await withTenant(OWNER, (tx) =>
+      tx.outreach.createMany({
+        data: Array.from({ length: 60 }, (_, i) => ({
+          workspaceId: "a",
+          companyId: acme,
+          senderId: "ownerA",
+          note: i === 59 ? "Newest ".repeat(100) : `Older note ${i}`,
+          sentAt: new Date(now - (60 - i) * DAY),
+        })),
+      }),
+    );
+    const [row] = (await home(OWNER)).grabs.rows;
+    expect(row.lastNote?.startsWith("Newest Newest")).toBe(true);
+    expect(row.lastNote?.length).toBeLessThanOrEqual(NOTE_CHARS);
+    expect(row.lastNote?.endsWith("…")).toBe(true);
+  });
+
+  it("runs a fixed number of queries, one at a time: 6 for a small queue", async () => {
+    await seed(OWNER, [
+      { name: "Mine", followUpDays: -1, holder: "ownerA" },
+      { name: "Free", followUpDays: -1 },
+      { name: "Theirs", followUpDays: -1, holder: "officerA" },
+    ]);
+    const now = await dbNow();
+    const small = countQueries();
+    try {
+      await getQueueHome(OWNER, { now });
+      // set_config, then rows for yours, grabs and held by others, the fresh count, the not-due count.
+      expect(small.count()).toBe(6);
+    } finally {
+      small.restore();
+    }
+  });
+
+  it("asks for a group's count only when its page came back full: 9 queries at most", async () => {
+    await seed(OWNER, Array.from({ length: 180 }, (_, i) => ({ name: `Bulk ${i}`, followUpDays: -2, holder: i % 3 === 0 ? "ownerA" : i % 3 === 1 ? "officerA" : undefined })));
+    const now = await dbNow();
+    const full = countQueries();
+    try {
+      const queue = await getQueueHome(OWNER, { now });
+      // Each full page also asks for its count.
+      expect(full.count()).toBe(9);
+      expect([queue.yours.count, queue.grabs.count, queue.heldByOthers.count]).toEqual([60, 60, 60]);
+    } finally {
+      full.restore();
+    }
+  });
+});
+
+describe("fresh leads, loaded when the list is opened", () => {
+  it("pages newest first, 20 at a time, never past 100, without leads someone else holds", async () => {
+    await seed(OWNER, [
+      ...Array.from({ length: 130 }, (_, i) => ({ name: `Lead ${String(i).padStart(3, "0")}`, stage: "NOT_CONTACTED" as const })),
+      { name: "Held by owner", stage: "NOT_CONTACTED" as const, holder: "ownerA" },
+    ]);
+    const first = await getFreshLeads(OFFICER, 0);
+    expect(first.rows).toHaveLength(FRESH_PAGE);
+    expect(first.more).toBe(true);
+    expect(first.rows[0].name).toBe("Lead 129");
+    expect(names(first.rows)).not.toContain("Held by owner");
+    const last = await getFreshLeads(OFFICER, FRESH_CAP - FRESH_PAGE);
+    expect(last.rows).toHaveLength(FRESH_PAGE);
+    expect(last.more).toBe(false);
+    // An offset past the cap is held at the last page.
+    expect(names((await getFreshLeads(OFFICER, 500)).rows)).toEqual(names(last.rows));
+  });
+
+  it("the action checks membership first and validates its input", async () => {
+    await seed(OWNER, [{ name: "Lead", stage: "NOT_CONTACTED" }]);
+    const ok = await asUser("officerA", () => loadFreshLeads("a", 0));
+    expect(ok).toMatchObject({ ok: true, data: { more: false, rows: [{ name: "Lead", industry: null, claim: { state: "free" } }] } });
+    expect(await asUser("ownerB", () => loadFreshLeads("a", 0))).toEqual({ ok: false, error: "Workspace not found." });
+    expect(await asUser("officerA", () => loadFreshLeads("a", 81))).toMatchObject({ ok: false });
+    expect(await asUser("officerA", () => loadFreshLeads("a", -1))).toMatchObject({ ok: false });
+    expect(await asUser("officerA", () => loadFreshLeads("a", 1.5))).toMatchObject({ ok: false });
   });
 });

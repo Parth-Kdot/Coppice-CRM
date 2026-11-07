@@ -1,19 +1,22 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, useState, type ReactNode } from "react";
-import { BoardIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon, UserIcon } from "./icons";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { BoardIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
 import { LogoMark } from "./logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { useNoteLane } from "./providers";
-import { UserMenu, UserMenuPanel, type Me } from "./user-menu";
+import { initialsOf, UserMenu, UserMenuPanel, type Me } from "./user-menu";
+import { WorkspaceSwitcher, type WorkspaceChoice } from "./workspace-switcher";
 import "./shell.css";
 
-// The shell every signed-in workspace page sits in: a spine with labelled tabs, the book-title
-// header with the search that opens the palette, the page, and a status line. On a phone the spine
-// gives way to a bottom tab bar. The board serves as the companies view, so a company's own page
-// keeps the Board tab lit.
+// The shell every signed-in workspace page sits in: a spine with five labelled tabs (Queue, Board,
+// Import, Facts, Settings) and the account button, one header (the workspace name as a switcher, and
+// the search that opens the palette), and the page. Feedback is written in a fixed lane at the
+// bottom that is empty when idle. On a phone the spine gives way to a bottom bar: Queue, Board,
+// Search, + Add (a small sheet: Add a company, Import) and More (Facts, Template stats, Settings and
+// the account). A company page lights the list tab you came from (queue or board).
 
 type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "settings";
 
@@ -30,166 +33,282 @@ function screenOf(pathname: string, workspaceId: string): Screen {
   return "queue";
 }
 
-const PAGE_NAMES: Record<Screen, string> = {
-  queue: "Queue",
-  board: "Board",
-  company: "Company",
-  newCompany: "Add a company",
-  import: "Import",
-  facts: "Fact sheet",
-  stats: "Template stats",
-  settings: "Settings",
-};
+// ----- The list tab a company page lights: the one you came from (sessionStorage, per tab) -----
 
-type Tab = { key: string; label: string; path: string; icon: ReactNode; active: Screen[] };
+const LIST_KEY = "lg-list-tab";
+type ListTab = "queue" | "board";
+const readListTab = (): ListTab => {
+  try {
+    return window.sessionStorage.getItem(LIST_KEY) === "queue" ? "queue" : "board";
+  } catch {
+    return "board";
+  }
+};
+const subscribeNothing = () => () => undefined;
+
+function useListTab(screen: Screen): ListTab {
+  useEffect(() => {
+    if (screen !== "queue" && screen !== "board") return;
+    try {
+      window.sessionStorage.setItem(LIST_KEY, screen);
+    } catch {
+      // Storage blocked: company pages light Board.
+    }
+  }, [screen]);
+  return useSyncExternalStore(subscribeNothing, readListTab, () => "board");
+}
+
+type Tab = { key: string; label: string; path: string; icon: ReactNode; tour: string };
 
 const TABS: Tab[] = [
-  { key: "queue", label: "Queue", path: "", icon: <QueueIcon />, active: ["queue"] },
-  { key: "board", label: "Board", path: "/board", icon: <BoardIcon />, active: ["board", "company", "newCompany"] },
-  { key: "import", label: "Import", path: "/import", icon: <ImportIcon />, active: ["import"] },
-  { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, active: ["facts"] },
-  { key: "stats", label: "Stats", path: "/stats", icon: <StatsIcon />, active: ["stats"] },
-  { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, active: ["settings"] },
+  { key: "queue", label: "Queue", path: "", icon: <QueueIcon />, tour: "nav-queue" },
+  { key: "board", label: "Board", path: "/board", icon: <BoardIcon />, tour: "nav-board" },
+  { key: "import", label: "Import", path: "/import", icon: <ImportIcon />, tour: "nav-import" },
+  { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, tour: "nav-facts" },
+  { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, tour: "nav-settings" },
 ];
 
-export type ShellStats = { companies: number; due: number };
+function litTab(screen: Screen, listTab: ListTab): string | null {
+  if (screen === "company") return listTab;
+  if (screen === "queue" || screen === "board" || screen === "import" || screen === "facts" || screen === "settings") return screen;
+  return null;
+}
 
-// The status line under the content, from the numbers the layout loaded.
-function StatusLine({ stats, claimWindowDays, roleLabel }: { stats: ShellStats; claimWindowDays: number; roleLabel: string }) {
-  const setLane = useNoteLane();
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+// A tab dims and pulses while its page is on the way (useLinkStatus), so a slow click is never silent.
+function TabPending() {
+  const { pending } = useLinkStatus();
+  return <span className="lg-tab-pend" data-pending={pending || undefined} aria-hidden="true" />;
+}
+
+// ----- After a route change, focus goes to the new page's heading -----
+
+// Waits for the page's h1 (a loading skeleton may come first), unless the person has moved focus
+// on meanwhile. Skipped on the first load. When the address has a hash ("#log-outreach") that
+// part of the page takes focus instead (the browser has already scrolled to it).
+function useFocusHeadingOnRouteChange(pathname: string) {
+  // The path last handled: the first load (and React's development double run of effects) is not a change.
+  const seen = useRef(pathname);
+  useEffect(() => {
+    if (seen.current === pathname) return;
+    seen.current = pathname;
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    const start = document.activeElement;
+    let frames = 0;
+    let raf = 0;
+    const attempt = () => {
+      const active = document.activeElement;
+      if (active && active !== start && active !== document.body) return;
+      const target = (hash && document.getElementById(hash)) || document.querySelector<HTMLElement>("#main h1");
+      if (target) {
+        if (!target.hasAttribute("tabindex") && !target.matches("a[href], button, input, select, textarea, summary")) target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+        return;
+      }
+      // About three seconds at 60 frames a second, then the main region itself.
+      if (++frames < 180) raf = requestAnimationFrame(attempt);
+      else document.getElementById("main")?.focus({ preventScroll: true });
+    };
+    raf = requestAnimationFrame(attempt);
+    return () => cancelAnimationFrame(raf);
+  }, [pathname]);
+}
+
+// ----- Phone: a bottom sheet (the + Add sheet and the More sheet) -----
+
+function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   return (
-    <footer className="lg-foot" aria-label="Workspace status">
-      <div className="lg-notes-lane" ref={setLane} aria-live="polite" aria-atomic="false" />
-      <p className="lg-status">
-        <span>{plural(stats.companies, "company", "companies")}</span>
-        <span aria-hidden="true">&middot;</span>
-        <span>{stats.due} due</span>
-        <span aria-hidden="true">&middot;</span>
-        <span>claim window {plural(claimWindowDays, "day", "days")}</span>
-        <span aria-hidden="true">&middot;</span>
-        <span>{roleLabel} view</span>
-      </p>
-    </footer>
+    <dialog
+      className="lg-more-sheet"
+      aria-label={label}
+      ref={(el) => {
+        if (el && !el.open) el.showModal();
+      }}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="lg-more-body">
+        <div className="lg-more-head">
+          <h2 className="lg-h3">{label}</h2>
+          <button type="button" className="lg-btn lg-btn-sm" onClick={onClose} aria-label="Close this sheet">
+            <CloseIcon size={16} />
+            Close
+          </button>
+        </div>
+        {children}
+      </div>
+    </dialog>
   );
 }
 
-// On a phone the spine gives way to a bottom tab bar: Queue, Board, Search, Facts and More. Search
-// opens the palette full screen. More opens a sheet with Import, Add a company, Stats, Settings and the account.
-function PhoneTabs({ workspaceId, screen, me }: { workspaceId: string; screen: Screen; me: Me }) {
+type SheetLink = { key: string; label: string; path: string; icon: ReactNode; screens: Screen[] };
+
+function PhoneTabs({ workspaceId, workspaceName, screen, listTab, me, accountItems }: { workspaceId: string; workspaceName: string; screen: Screen; listTab: ListTab; me: Me; accountItems?: ReactNode }) {
   const { open } = usePalette();
-  const [more, setMore] = useState(false);
+  const [sheet, setSheet] = useState<"add" | "more" | null>(null);
+  const [account, setAccount] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   const href = (path: string) => `/${workspaceId}${path}`;
-  const link = (key: string) => {
-    const tab = TABS.find((t) => t.key === key) as Tab;
-    return (
-      <li>
-        <Link href={href(tab.path)} className="lg-tabbar-item" aria-current={tab.active.includes(screen) ? "page" : undefined}>
-          {tab.icon}
-          <span className="lg-tab-label">{tab.label}</span>
-        </Link>
-      </li>
-    );
-  };
-  const moreLinks = [
-    { key: "import", label: "Import", path: "/import", icon: <ImportIcon />, active: ["import"] as Screen[] },
-    { key: "new", label: "Add a company", path: "/companies/new", icon: <PlusIcon />, active: ["newCompany"] as Screen[] },
-    { key: "stats", label: "Template stats", path: "/stats", icon: <StatsIcon />, active: ["stats"] as Screen[] },
-    { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, active: ["settings"] as Screen[] },
+  const lit = litTab(screen, listTab);
+
+  const addLinks: SheetLink[] = [
+    { key: "new", label: "Add a company", path: "/companies/new", icon: <PlusIcon />, screens: ["newCompany"] },
+    { key: "import", label: "Import a spreadsheet", path: "/import", icon: <ImportIcon />, screens: ["import"] },
   ];
-  const moreActive = moreLinks.some((l) => l.active.includes(screen));
-  const closeMore = () => {
-    setMore(false);
-    requestAnimationFrame(() => moreButton.current?.focus());
+  const moreLinks: SheetLink[] = [
+    { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, screens: ["facts"] },
+    { key: "stats", label: "Template stats", path: "/stats", icon: <StatsIcon />, screens: ["stats"] },
+    { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, screens: ["settings"] },
+  ];
+  const addActive = addLinks.some((l) => l.screens.includes(screen));
+  const moreActive = moreLinks.some((l) => l.screens.includes(screen));
+
+  const close = () => {
+    const back = sheet === "add" ? addButton.current : moreButton.current;
+    setSheet(null);
+    setAccount(false);
+    requestAnimationFrame(() => back?.focus());
   };
+  // A link was followed: the sheet goes, and focus moves with the new page (the shell's h1 focus).
+  const leave = () => {
+    setSheet(null);
+    setAccount(false);
+  };
+
+  const tabLink = (tab: Tab) => (
+    <li>
+      <Link href={href(tab.path)} className="lg-tabbar-item" aria-current={lit === tab.key ? "page" : undefined} data-tour={tab.tour}>
+        {tab.icon}
+        <span className="lg-tab-label">{tab.label}</span>
+        <TabPending />
+      </Link>
+    </li>
+  );
+  const sheetLinks = (links: SheetLink[]) => (
+    <ul className="lg-more-links">
+      {links.map((l) => (
+        <li key={l.key}>
+          <Link href={href(l.path)} className="lg-more-link" aria-current={l.screens.includes(screen) ? "page" : undefined} onClick={leave}>
+            {l.icon}
+            <span>{l.label}</span>
+            <ChevronRightIcon size={18} />
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+
   return (
     <>
       <nav className="lg-tabbar" aria-label="Workspace, phone">
         <ul>
-          {link("queue")}
-          {link("board")}
+          {tabLink(TABS[0])}
+          {tabLink(TABS[1])}
           <li>
-            <button type="button" className="lg-tabbar-item" onClick={open} aria-haspopup="dialog">
+            <button type="button" className="lg-tabbar-item" onClick={open} aria-haspopup="dialog" data-tour="search-tab">
               <SearchIcon />
               <span className="lg-tab-label">Search</span>
             </button>
           </li>
-          {link("facts")}
+          <li>
+            <button
+              ref={addButton}
+              type="button"
+              className="lg-tabbar-item"
+              aria-haspopup="dialog"
+              aria-expanded={sheet === "add"}
+              aria-current={addActive ? "page" : undefined}
+              data-tour="tab-add"
+              onClick={() => setSheet("add")}
+            >
+              <PlusIcon />
+              <span className="lg-tab-label">Add</span>
+            </button>
+          </li>
           <li>
             <button
               ref={moreButton}
               type="button"
               className="lg-tabbar-item"
               aria-haspopup="dialog"
-              aria-expanded={more}
+              aria-expanded={sheet === "more"}
               aria-current={moreActive ? "page" : undefined}
-              onClick={() => setMore(true)}
+              onClick={() => setSheet("more")}
             >
-              <UserIcon />
+              <MoreIcon />
               <span className="lg-tab-label">More</span>
             </button>
           </li>
         </ul>
       </nav>
-      {more && (
-        <dialog
-          className="lg-more-sheet"
-          aria-label="More"
-          ref={(el) => {
-            if (el && !el.open) el.showModal();
-          }}
-          onCancel={(event) => {
-            event.preventDefault();
-            closeMore();
-          }}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) closeMore();
-          }}
-        >
-          <div className="lg-more-body">
-            <div className="lg-more-head">
-              <h2 className="lg-h3">More</h2>
-              <button type="button" className="lg-btn lg-btn-sm" onClick={closeMore} aria-label="Close this sheet">
-                <CloseIcon size={16} />
-                Close
-              </button>
-            </div>
-            <ul className="lg-more-links">
-              {moreLinks.map((l) => (
-                <li key={l.key}>
-                  <Link href={href(l.path)} className="lg-more-link" aria-current={l.active.includes(screen) ? "page" : undefined} onClick={() => setMore(false)}>
-                    {l.icon}
-                    <span>{l.label}</span>
-                    <ChevronRightIcon size={18} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <div className="lg-more-user">
-              <UserMenuPanel me={me} onClose={() => setMore(false)} />
+      {sheet === "add" && (
+        <Sheet label="Add" onClose={close}>
+          {sheetLinks(addLinks)}
+        </Sheet>
+      )}
+      {sheet === "more" && (
+        <Sheet label="More" onClose={close}>
+          <div className="lg-acct">
+            <button
+              type="button"
+              className="lg-acct-row"
+              aria-expanded={account}
+              aria-controls="lg-acct-panel"
+              data-tour="account-menu"
+              onClick={() => setAccount((v) => !v)}
+            >
+              <span className="lg-acct-initials" aria-hidden="true">
+                {initialsOf(me.name)}
+              </span>
+              <span className="lg-acct-text">
+                <span className="lg-acct-name lg-trunc">{me.name}</span>
+                <span className="lg-acct-ws lg-trunc">{workspaceName}</span>
+              </span>
+              <ChevronDownIcon size={18} className="lg-acct-chev" />
+              <span className="lg-sr">, account</span>
+            </button>
+            <div id="lg-acct-panel" className="lg-acct-panel" hidden={!account}>
+              <UserMenuPanel me={me} showName={false} onClose={leave} extraItems={accountItems} />
             </div>
           </div>
-        </dialog>
+          {sheetLinks(moreLinks)}
+        </Sheet>
       )}
     </>
   );
 }
 
+// The lane margin notes are written in: fixed at the bottom of the page column, empty when idle.
+function NoteLane() {
+  const setLane = useNoteLane();
+  return <div className="lg-notes-lane" ref={setLane} aria-live="polite" aria-atomic="false" />;
+}
+
 export type ShellProps = {
   workspaceId: string;
   workspaceName: string;
-  // "2026-27": the board year the book is for.
-  volume: string;
-  claimWindowDays: number;
-  stats: ShellStats;
+  // The person's workspaces, for the header's switcher (at most 20).
+  workspaces: WorkspaceChoice[];
   me: Me;
+  // Reserved for the onboarding round: drawn after the shell, inside the palette's provider.
+  overlay?: ReactNode;
+  // Reserved: extra rows in the account menu and the phone's account row ("Replay the basics").
+  accountItems?: ReactNode;
   children: ReactNode;
 };
 
-export function WorkspaceShell({ workspaceId, workspaceName, volume, claimWindowDays, stats, me, children }: ShellProps) {
-  const screen = screenOf(usePathname(), workspaceId);
+export function WorkspaceShell({ workspaceId, workspaceName, workspaces, me, overlay, accountItems, children }: ShellProps) {
+  const pathname = usePathname();
+  const screen = screenOf(pathname, workspaceId);
+  const listTab = useListTab(screen);
+  const lit = litTab(screen, listTab);
   const queueHref = `/${workspaceId}`;
+  useFocusHeadingOnRouteChange(pathname);
 
   return (
     <PaletteProvider workspaceId={workspaceId}>
@@ -207,47 +326,41 @@ export function WorkspaceShell({ workspaceId, workspaceName, volume, claimWindow
           <ul className="lg-tabs">
             {TABS.map((tab) => (
               <li key={tab.key}>
-                <Link href={`/${workspaceId}${tab.path}`} className="lg-tab" aria-current={tab.active.includes(screen) ? "page" : undefined}>
+                <Link href={`/${workspaceId}${tab.path}`} className="lg-tab" aria-current={lit === tab.key ? "page" : undefined} data-tour={tab.tour}>
                   {tab.icon}
                   <span className="lg-tab-label">{tab.label}</span>
+                  <TabPending />
                 </Link>
               </li>
             ))}
           </ul>
-          <UserMenu me={me} placement="spine" />
+          <UserMenu me={me} placement="spine" extraItems={accountItems} />
         </nav>
 
-        <PhoneTabs workspaceId={workspaceId} screen={screen} me={me} />
+        <PhoneTabs workspaceId={workspaceId} workspaceName={workspaceName} screen={screen} listTab={listTab} me={me} accountItems={accountItems} />
 
         <div className="lg-pagecol">
-          <div className="lg-bar">
-            <Link href={queueHref} className="lg-bar-mark" aria-label="Coppice, back to the queue">
-              <LogoMark size={34} />
-            </Link>
-            <p className="lg-bar-title">{workspaceName}</p>
-          </div>
-
           <header className="lg-head">
+            <div className="lg-bar">
+              <Link href={queueHref} className="lg-bar-mark" aria-label="Coppice, back to the queue">
+                <LogoMark size={34} />
+              </Link>
+              <WorkspaceSwitcher current={workspaceId} name={workspaceName} workspaces={workspaces} variant="bar" />
+            </div>
             <div className="lg-head-line">
-              <p className="lg-book">
-                <Link href="/workspaces" title="Switch workspace">
-                  {workspaceName}
-                </Link>
-                , <span className="lg-book-volume">Volume {volume}</span>
-              </p>
-              <p className="lg-pagename lg-sc">{PAGE_NAMES[screen]}</p>
+              <WorkspaceSwitcher current={workspaceId} name={workspaceName} workspaces={workspaces} />
               <SearchBar />
             </div>
-            <div className="lg-double-rule" />
           </header>
 
           <main id="main" tabIndex={-1} className="lg-main">
             {children}
           </main>
 
-          <StatusLine stats={stats} claimWindowDays={claimWindowDays} roleLabel={me.roleLabel ?? "Officer"} />
+          <NoteLane />
         </div>
       </div>
+      {overlay}
     </PaletteProvider>
   );
 }

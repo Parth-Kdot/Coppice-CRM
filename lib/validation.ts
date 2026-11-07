@@ -271,6 +271,16 @@ export const queueFiltersSchema = z.object({
   never: flag,
   // One section showing everything instead of the first 50.
   all: z.enum(["due", "never"]).nullable().catch(null),
+  // (P1) How many rows each queue group loads: 50, 100, 150 or 200 ("Show 50 more"). Anything
+  // else is dropped, so the page falls back to the first 50.
+  upto: z
+    .string()
+    .nullish()
+    .transform((v) => {
+      const n = v && /^\d{2,3}$/.test(v) ? Number(v) : NaN;
+      return n >= 50 && n <= 200 && n % 50 === 0 ? n : undefined;
+    })
+    .optional(),
 });
 
 export type QueueFilters = z.infer<typeof queueFiltersSchema>;
@@ -281,9 +291,16 @@ export function queueQuery(filters: QueueFilters): string {
   if (filters.mine) params.set("mine", "1");
   if (filters.never) params.set("never", "1");
   if (filters.all) params.set("all", filters.all);
+  if (filters.upto) params.set("upto", String(filters.upto));
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+// (P1) The queue's Fresh leads list, loaded 20 at a time when it is opened, up to 100.
+export const freshLeadsSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  offset: z.number().int().min(0).max(80),
+});
 
 // ----- CSV import (Milestone 4) -----
 

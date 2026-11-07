@@ -1,58 +1,27 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { cache } from "react";
-import { boardYear } from "@/components/ledger/board-year";
 import { WorkspaceShell } from "@/components/ledger/shell";
-import { AuthzError, checkMembership, requireUser, roleLabel } from "@/lib/authz";
-import { dbNow } from "@/lib/claims";
-import { prisma, withTenant } from "@/lib/db";
-import { TERMINAL_STAGES } from "@/lib/stages";
+import { roleLabel } from "@/lib/authz";
+import { loadWorkspace } from "./page-title";
 
-// The frame around every page of a workspace: spine, book-title header, status line. It reads who
-// is signed in and checks they belong here (a stranger gets the same 404 as a workspace that does
-// not exist), then loads the few numbers the status line prints. "Due" is the queue's own
-// definition: open companies whose follow-up date has arrived.
-const load = cache(async (workspaceId: string) => {
-  const user = await requireUser();
-  let membership;
-  try {
-    membership = await checkMembership(user.id, workspaceId);
-  } catch (e) {
-    if (e instanceof AuthzError) notFound();
-    throw e;
-  }
-  const now = await dbNow();
-  const [workspace, counts] = await Promise.all([
-    prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true, claimWindowDays: true } }),
-    withTenant(membership, async (tx) => {
-      const active = { workspaceId, archivedAt: null };
-      const [companies, due] = await Promise.all([
-        tx.company.count({ where: active }),
-        tx.company.count({ where: { ...active, stage: { notIn: TERMINAL_STAGES }, nextFollowUpAt: { lte: now } } }),
-      ]);
-      return { companies, due };
-    }),
-  ]);
-  return { user, membership, workspace, counts, now };
-});
-
+// The frame around every page of a workspace: spine, header with the workspace switcher and the
+// search, and the page. loadWorkspace reads who is signed in and checks they belong here (a
+// stranger gets the same 404 as a workspace that does not exist); it is cached for the request,
+// so the queue page reuses the same clock and counts instead of reading them again.
 export async function generateMetadata({ params }: LayoutProps<"/[workspaceId]">): Promise<Metadata> {
   const { workspaceId } = await params;
-  const { workspace } = await load(workspaceId);
+  const { workspace } = await loadWorkspace(workspaceId);
   return { title: workspace.name };
 }
 
 export default async function WorkspaceLayout({ children, params }: LayoutProps<"/[workspaceId]">) {
   const { workspaceId } = await params;
-  const { user, membership, workspace, counts, now } = await load(workspaceId);
+  const { user, membership, workspace, workspaces } = await loadWorkspace(workspaceId);
   return (
     <WorkspaceShell
       workspaceId={workspaceId}
       workspaceName={workspace.name}
-      volume={boardYear(now).long}
-      claimWindowDays={workspace.claimWindowDays}
-      stats={counts}
-      me={{ name: user.name, email: user.email, roleLabel: roleLabel(membership.role) }}
+      workspaces={workspaces}
+      me={{ name: user.name, email: user.email, roleLabel: roleLabel(membership.role), claimWindowDays: workspace.claimWindowDays }}
     >
       {children}
     </WorkspaceShell>

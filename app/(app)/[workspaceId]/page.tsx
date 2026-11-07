@@ -1,165 +1,176 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/ledger/icons";
-import { QueueRow, type QueueRowData } from "@/components/ledger/queue-row";
-import { Count, Empty, PageHead } from "@/components/ledger/shared";
-import { requireMembershipOr404, roleLabel } from "@/lib/authz";
-import { claimState, heldBy } from "@/lib/claims";
+import { FirstRun } from "@/components/ledger/first-run";
+import { PlusIcon } from "@/components/ledger/icons";
+import { OverflowMenu } from "@/components/ledger/overflow-menu";
+import { FreshLeads, HeldByOthers, QueueProvider, QueueRow, type QueueRowData, type RowVariant } from "@/components/ledger/queue-row";
+import { Empty, PageHead } from "@/components/ledger/shared";
+import { MoreLink, ShowMore } from "@/components/ledger/show-more";
+import { claimState } from "@/lib/claims";
 import { daysBetween, day } from "@/lib/dates";
-import { withTenant } from "@/lib/db";
-import { getQueue, type QueueRow as QueueRecord } from "@/lib/queue";
-import { TERMINAL_STAGES } from "@/lib/stages";
-import { queueFiltersSchema, queueQuery, type QueueFilters } from "@/lib/validation";
-import { pageTitle } from "./page-title";
+import { prisma } from "@/lib/db";
+import { clampUpto, getQueueHome, QUEUE_STEP, type QueueGroup, type QueueRow as QueueRecord } from "@/lib/queue";
+import { queueFiltersSchema, queueQuery } from "@/lib/validation";
+import { loadWorkspace, pageTitle } from "./page-title";
 
 export async function generateMetadata({ params }: PageProps<"/[workspaceId]">): Promise<Metadata> {
   const { workspaceId } = await params;
   return pageTitle(workspaceId, "Queue");
 }
 
-// Workspace home: the follow-up queue. Due companies, most overdue first, then a collapsed list of
-// fresh leads. Everything is decided on the server from the URL, like the board. The totals line
-// above the table counts all due companies and the ones you hold, whatever the filter shows.
+// Rows each group shows before "Show all".
+const FIRST = 10;
+
+// Workspace home: the follow-up queue. Due companies in groups, so a newcomer sees at once what is
+// theirs to do: Yours (due, held by you), Up for grabs (due, nobody holds them), then two collapsed
+// lists, Held by others and Fresh leads. Each group shows 10, then the rest of the 50 it loaded,
+// then "Show 50 more" (?upto=) up to 200. A workspace with no companies gets the first-run panel.
+// The clock, the membership and the company count come from the layout's cached loadWorkspace.
 export default async function QueuePage({ params, searchParams }: PageProps<"/[workspaceId]">) {
   const { workspaceId } = await params;
-  const membership = await requireMembershipOr404(workspaceId);
-  const { userId } = membership;
+  const { membership, workspace, counts, now } = await loadWorkspace(workspaceId);
+  const base = `/${workspaceId}`;
+
+  if (counts.companies === 0) {
+    const owner = membership.role === "owner";
+    // Step 3 ticks once someone else is in, or an invitation is waiting. Only asked for an owner.
+    const invited = owner
+      ? (await prisma.membership.count({ where: { workspaceId } })) > 1 ||
+        (await prisma.invitation.count({ where: { workspaceId, status: "pending", expiresAt: { gt: now } } })) > 0
+      : false;
+    return (
+      <div className="lg-queue">
+        <FirstRun workspaceId={workspaceId} owner={owner} invited={invited} />
+      </div>
+    );
+  }
 
   const raw = await searchParams;
   const first = (key: string) => [raw[key]].flat()[0] ?? null;
-  const filters = queueFiltersSchema.parse({ mine: first("mine"), never: first("never"), all: first("all") });
+  // mine / never / all are still read so old links load; only `never` means something now (it opens Fresh leads).
+  const filters = queueFiltersSchema.parse({ mine: first("mine"), never: first("never"), all: first("all"), upto: first("upto") });
+  const upto = clampUpto(filters.upto);
 
-  const queue = await getQueue({ userId, workspaceId }, filters);
+  const home = await getQueueHome(membership, { upto, now });
+  const total = home.yours.count + home.grabs.count + home.heldByOthers.count;
+  const windowDays = workspace.claimWindowDays;
 
-  // The two totals the filter would hide: every due company, and the due ones you hold. Same
-  // definition of "due" as the queue itself (open stage, follow-up date reached).
-  const totals = await withTenant({ userId, workspaceId }, async (tx) => {
-    const due = { workspaceId, archivedAt: null, stage: { notIn: TERMINAL_STAGES }, nextFollowUpAt: { lte: queue.now } };
-    const all = await tx.company.count({ where: due });
-    const mine = await tx.company.count({ where: { ...due, ...heldBy(userId, queue.now) } });
-    const oldest = await tx.company.findFirst({ where: due, orderBy: { nextFollowUpAt: "asc" }, select: { nextFollowUpAt: true } });
-    return { all, mine, oldest: oldest?.nextFollowUpAt ?? null };
+  const toRow = (row: QueueRecord): QueueRowData => ({
+    id: row.id,
+    name: row.name,
+    days: row.nextFollowUpAt ? daysBetween(row.nextFollowUpAt, now) : null,
+    dueOn: row.nextFollowUpAt ? day(row.nextFollowUpAt) : null,
+    note: row.lastNote,
+    claim: {
+      state: claimState(row, now, membership.userId),
+      holderName: row.claimedBy?.name ?? null,
+      until: row.claimExpiresAt ? day(row.claimExpiresAt) : null,
+    },
   });
 
-  const href = (changes: Partial<QueueFilters>) => `/${workspaceId}${queueQuery({ ...filters, ...changes })}`;
-
-  const toRow = (row: QueueRecord): QueueRowData => {
-    const state = claimState(row, queue.now, userId);
-    return {
-      id: row.id,
-      name: row.name,
-      days: row.nextFollowUpAt ? daysBetween(row.nextFollowUpAt, queue.now) : null,
-      dueOn: row.nextFollowUpAt ? day(row.nextFollowUpAt) : null,
-      note: row.lastNote,
-      claim: {
-        state,
-        holderName: row.claimedBy?.name ?? null,
-        until: row.claimExpiresAt ? day(row.claimExpiresAt) : null,
-      },
-    };
+  const moreHref = `${base}${queueQuery({ mine: false, never: false, all: null, upto: Math.min(upto + QUEUE_STEP, 200) })}`;
+  const group = (g: QueueGroup, variant: RowVariant, label: string) => {
+    const hidden = g.rows.length - FIRST;
+    return (
+      <ShowMore
+        as="ul"
+        listClassName="lg-qlist"
+        listLabel={label}
+        initial={FIRST}
+        label="follow-ups"
+        moreText={g.count > g.rows.length ? `Show ${hidden} more` : undefined}
+        after={<MoreLink href={moreHref} shown={g.rows.length} total={g.count} step={QUEUE_STEP} cap={200} />}
+      >
+        {g.rows.map((row) => (
+          <QueueRow key={row.id} workspaceId={workspaceId} row={toRow(row)} variant={variant} windowDays={windowDays} />
+        ))}
+      </ShowMore>
+    );
   };
 
-  // The longest wait is the oldest follow-up date among all due companies, so the Held by you filter does not change it.
-  const longest = totals.oldest ? Math.max(0, daysBetween(totals.oldest, queue.now)) : 0;
-
-  const title = filters.mine ? "Yours, due" : "Follow-ups due";
+  const notDueLine =
+    home.yoursNotDue > 0 ? (
+      <p className="lg-muted lg-qhint">
+        {home.yours.count > 0 ? "You also hold" : "You hold"} {home.yoursNotDue} {home.yoursNotDue === 1 ? "company that isn't" : "companies that aren't"} due yet.{" "}
+        <Link href={`${base}/board`} className="lg-link">
+          See the board
+        </Link>
+      </p>
+    ) : null;
 
   return (
-    <div className="lg-queue">
-      <PageHead title={title} count={queue.dueCount} sub={`You are an ${roleLabel(membership.role).toLowerCase()} here.`}>
-        <Link href={`/${workspaceId}/import`} className="lg-btn">
-          Import
-        </Link>
-        <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary">
-          <PlusIcon size={16} />
-          Add company
-        </Link>
-      </PageHead>
+    <QueueProvider>
+      <div className="lg-queue">
+        <PageHead title="Follow-ups due" count={total > 0 ? total : undefined}>
+          <OverflowMenu
+            label="Add companies"
+            buttonText="Add"
+            icon={<PlusIcon size={16} />}
+            caret
+            align="right"
+            data-tour="add-menu"
+            items={[
+              { key: "new", label: "Add a company", href: `${base}/companies/new` },
+              { key: "import", label: "Import a spreadsheet", href: `${base}/import` },
+            ]}
+          />
+        </PageHead>
 
-      <nav className="lg-totals" aria-label="Queue totals">
-        <Link href={href({ mine: false, all: null })} className="lg-total" aria-current={!filters.mine ? "true" : undefined}>
-          <span className="lg-tag">All due</span>
-          <span className="lg-total-n">
-            <Count value={totals.all} />
-          </span>
-        </Link>
-        <Link href={href({ mine: true, all: null })} className="lg-total" aria-current={filters.mine ? "true" : undefined}>
-          <span className="lg-tag">Held by you</span>
-          <span className="lg-total-n">
-            <Count value={totals.mine} />
-          </span>
-        </Link>
-        <Link href={href({ never: true, all: null }) + "#never-title"} aria-current={filters.never ? "true" : undefined} className="lg-total">
-          <span className="lg-tag">Never contacted</span>
-          <span className="lg-total-n">
-            <Count value={queue.neverCount} />
-          </span>
-        </Link>
-        <div className="lg-total">
-          <span className="lg-tag">Longest wait</span>
-          <span className="lg-total-n" data-rust={longest >= 7 || undefined}>
-            <Count value={longest} /> <span className="lg-total-unit">{longest === 1 ? "day" : "days"}</span>
-          </span>
-        </div>
-      </nav>
-
-      <div className="lg-qtable">
-        <div className="lg-qhead lg-sc" aria-hidden="true">
-          <span>When</span>
-          <span>Company</span>
-          <span className="lg-qnote">Last note</span>
-          <span>Claim</span>
-          <span />
-        </div>
-
-        {queue.due.length === 0 ? (
-          <Empty kind={filters.mine ? "queue-mine" : "queue-due"}>
-            <p className="lg-empty-title">{filters.mine ? "Nothing of yours is due." : "Nothing is due."}</p>
-            <p>{filters.mine ? "Claim a company from All due and it shows here." : "Log outreach with a follow-up date and it comes back here when it's due."}</p>
-          </Empty>
-        ) : (
-          <ul className="lg-qlist" aria-label={title}>
-            {queue.due.map((row) => (
-              <QueueRow key={row.id} workspaceId={workspaceId} row={toRow(row)} />
-            ))}
-          </ul>
-        )}
-        {queue.due.length < queue.dueCount && (
-          <p className="lg-more">
-            <Link href={href({ all: "due" })} scroll={false} className="lg-link">
-              Show all {queue.dueCount}
-            </Link>
-          </p>
-        )}
-
-        <section className="lg-never" aria-labelledby="never-title">
-          <h2 id="never-title" className="lg-never-title">
-            <Link href={href({ never: !filters.never, all: null })} scroll={false} aria-expanded={filters.never} className="lg-never-toggle">
-              {filters.never ? <ChevronDownIcon size={18} /> : <ChevronRightIcon size={18} />}
-              <span className="lg-h2">Never contacted</span>
-              <span className="lg-never-count">
-                <Count value={queue.neverCount} />
-              </span>
-            </Link>
-          </h2>
-          {queue.never && (
-            <>
-              <ul className="lg-qlist" aria-label="Never contacted">
-                {queue.never.map((row) => (
-                  <QueueRow key={row.id} workspaceId={workspaceId} row={toRow(row)} />
-                ))}
-              </ul>
-              {queue.never.length < queue.neverCount && (
-                <p className="lg-more">
-                  <Link href={href({ never: true, all: "never" })} scroll={false} className="lg-link">
-                    Show all {queue.neverCount}
-                  </Link>
-                </p>
+        {total === 0 && (
+          <Empty kind="queue-due">
+            <p className="lg-empty-title">All caught up.</p>
+            <p>
+              {home.freshCount > 0 ? (
+                <a href="#fresh" className="lg-link">
+                  Pick a fresh lead
+                </a>
+              ) : (
+                "Log outreach with a follow-up date and it comes back here when it's due."
               )}
-            </>
+            </p>
+          </Empty>
+        )}
+
+        <div className="lg-qtable" data-tour="queue-list">
+          {(home.yours.count > 0 || home.yoursNotDue > 0) && (
+            <section id="yours" className="lg-qgroup" aria-labelledby="yours-title" tabIndex={-1}>
+              <h2 id="yours-title" className="lg-qgroup-title">
+                Yours {home.yours.count > 0 && <span className="lg-qgroup-n">{home.yours.count.toLocaleString("en-US")}</span>}
+              </h2>
+              {home.yours.count > 0 && group(home.yours, "yours", "Yours")}
+              {notDueLine}
+            </section>
           )}
-        </section>
+          {home.grabs.count > 0 && (
+            <section id="grabs" className="lg-qgroup" aria-labelledby="grabs-title">
+              <h2 id="grabs-title" className="lg-qgroup-title">
+                Up for grabs <span className="lg-qgroup-n">{home.grabs.count.toLocaleString("en-US")}</span>
+              </h2>
+              {group(home.grabs, "grabs", "Up for grabs")}
+            </section>
+          )}
+        </div>
+
+        {home.heldByOthers.count > 0 && (
+          <HeldByOthers count={home.heldByOthers.count} ids={home.heldByOthers.rows.map((r) => r.id)}>
+            <ul className="lg-qlist" aria-label="Held by others">
+              {home.heldByOthers.rows.map((row) => (
+                <QueueRow key={row.id} workspaceId={workspaceId} row={toRow(row)} variant="held" />
+              ))}
+            </ul>
+            {home.heldByOthers.count > home.heldByOthers.rows.length && (
+              <p className="lg-morelink lg-muted">
+                Showing {home.heldByOthers.rows.length} of {home.heldByOthers.count.toLocaleString("en-US")}.{" "}
+                <Link href={`${base}/board`} className="lg-link">
+                  See the board
+                </Link>
+              </p>
+            )}
+          </HeldByOthers>
+        )}
+
+        {home.freshCount > 0 && <FreshLeads workspaceId={workspaceId} count={home.freshCount} defaultOpen={filters.never} windowDays={windowDays} />}
       </div>
-    </div>
+    </QueueProvider>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import type { ActionResult } from "@/lib/validation";
 import { useFocusAfterCommit } from "./focus";
-import { MoreIcon } from "./icons";
+import { ChevronDownIcon, MoreIcon } from "./icons";
 import { menuIndex, popoverPortal, usePopover, type MenuKey } from "./popover";
 import { useConfirm, useNotify } from "./providers";
 
@@ -33,7 +33,8 @@ import { useConfirm, useNotify } from "./providers";
 // button away. role=menu / menuitem; positioning is usePopover (popover.ts).
 //
 // The button shows MoreIcon alone unless `buttonText` is given; `label` is its accessible name, so
-// when there is visible text, start `label` with it ("More actions for Acme" for "More").
+// when there is visible text, start `label` with it ("More actions for Acme" for "More"). `icon`
+// replaces MoreIcon (the queue's "+ Add" menu passes PlusIcon) and `caret` adds a small chevron.
 
 type ActionFields = {
   action: (prev: ActionResult | null, f: FormData) => Promise<ActionResult>;
@@ -50,12 +51,16 @@ export function OverflowMenu({
   items,
   align = "right",
   buttonText,
+  icon,
+  caret = false,
   "data-tour": dataTour,
 }: {
   label: string;
   items: OverflowItem[];
   align?: "left" | "right";
   buttonText?: string;
+  icon?: ReactNode;
+  caret?: boolean;
   "data-tour"?: string;
 }) {
   const id = useId();
@@ -169,8 +174,9 @@ export function OverflowMenu({
           }
         }}
       >
-        <MoreIcon size={18} />
+        {icon ?? <MoreIcon size={18} />}
         {buttonText && <span>{buttonText}</span>}
+        {caret && <ChevronDownIcon size={14} />}
         {pending && <span className="lg-sr">Working...</span>}
       </button>
       {open &&

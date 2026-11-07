@@ -14,6 +14,9 @@ import { focusSoon } from "./focus";
 //     Inside a list, pass as="ul" | "ol" (and listClassName): ShowMore then draws the list itself and
 //     puts the button after it, so the markup stays valid. Without `as` it renders the children as
 //     they are, followed by the button in a <div>.
+//     Optional: `moreText` replaces the button's words (the queue says "Show 40 more" when the
+//     server holds more than was loaded); `after` (usually a MoreLink) is drawn only once nothing is
+//     hidden, so "Show all" and "Show 50 more" never sit side by side. `listLabel` names the list.
 //
 //   <MoreLink href="?upto=100" shown={50} total={362} />
 //     Asks the server for the next page through the URL: "Show 50 more (312 left)", "Loading..."
@@ -40,6 +43,9 @@ export function ShowMore({
   focusOnExpand = true,
   as,
   listClassName,
+  listLabel,
+  moreText,
+  after,
 }: {
   initial: number;
   label: string;
@@ -47,6 +53,9 @@ export function ShowMore({
   focusOnExpand?: boolean;
   as?: "ul" | "ol";
   listClassName?: string;
+  listLabel?: string;
+  moreText?: string;
+  after?: ReactNode;
 }) {
   const items = Children.toArray(children);
   const [expanded, setExpanded] = useState(false);
@@ -87,15 +96,17 @@ export function ShowMore({
             setExpanded(true);
           }}
         >
-          {showAllLabel(items.length, label)}
+          {moreText ?? showAllLabel(items.length, label)}
         </button>
       </div>
-    ) : null;
+    ) : (
+      (after ?? null)
+    );
 
   if (as === "ol")
     return (
       <>
-        <ol ref={list} className={listClassName}>
+        <ol ref={list} className={listClassName} aria-label={listLabel}>
           {visible}
         </ol>
         {button}
@@ -104,7 +115,7 @@ export function ShowMore({
   if (as === "ul")
     return (
       <>
-        <ul ref={list} className={listClassName}>
+        <ul ref={list} className={listClassName} aria-label={listLabel}>
           {visible}
         </ul>
         {button}
