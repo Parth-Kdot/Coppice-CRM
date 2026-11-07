@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, useTransition, type ReactNode } fro
 import { unarchiveCompany } from "@/app/(app)/[workspaceId]/companies/actions";
 import { ActionForm } from "@/components/action-form";
 import { focusSoon } from "./focus";
+import { removeAway } from "./motion-kit";
 import { CloseIcon, SearchIcon } from "./icons";
 import { useSheetNoteLane } from "./providers";
 import { MoreLink } from "./show-more";
@@ -74,8 +75,9 @@ export function BoardSheet({ title, count, closeHref, children }: { title: strin
 }
 
 // The Archived sheet's list: a filter box once there are more than 20, Unarchive on each row, and
-// "Show 50 more" at the foot. After an unarchive the row leaves and focus moves to the next row's
-// name (or the one above, or the sheet's heading), so it never falls to <body>.
+// "Show 50 more" at the foot. After an unarchive the row slides away (the motion kit's removeAway)
+// and focus moves to the next row's name (or the one above, or the sheet's heading), so it never
+// falls to <body>.
 export const ARCHIVED_FILTER_FROM = 20;
 
 type ArchivedProps = {
@@ -153,6 +155,7 @@ export function ArchivedList({ workspaceId, companies, total, matching, query, m
                 small
                 successMessage={`Unarchived ${company.name}.`}
                 focusAfter={after(i)}
+                onSuccess={() => removeAway(document.getElementById(rowId(company.id))?.closest("li"), { focus: after(i)() })}
               >
                 <input type="hidden" name="workspaceId" value={workspaceId} />
                 <input type="hidden" name="companyId" value={company.id} />

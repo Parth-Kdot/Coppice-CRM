@@ -178,6 +178,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               submitLabel="Save"
               submitAriaLabel="Save claim window"
               successMessage="Saved."
+              savedNote
               className="lg-setrow lg-claimform"
               focusAfter=".lg-claimform button[type=submit]"
             >
@@ -253,6 +254,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               submitLabel="Save"
               submitAriaLabel="Save AI settings"
               successMessage="Saved."
+              savedNote
               className="lg-aiform lg-aiset"
               focusAfter=".lg-aiset button[type=submit]"
             >
@@ -343,6 +345,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               action={renameWorkspace}
               submitLabel="Rename"
               successMessage="Workspace renamed."
+              savedNote
               className="lg-setrow lg-renameform"
               focusAfter=".lg-renameform button[type=submit]"
             >

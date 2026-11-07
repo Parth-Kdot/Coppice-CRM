@@ -14,7 +14,8 @@ import { useNotify } from "./providers";
 // A board slip, 64 px tall, and the whole of it is the link to the company (a stretched link; the
 // two buttons sit above it). First line: the name and the stage glyph button, which opens the slip's
 // menu (Move to, Claim, Release). Second line: the compact due mark ("9d late", the full words in
-// the title and for screen readers) and who holds it ("You" or initials). A free slip shows Claim
+// the title and for screen readers), or the industry in italics when no follow-up is set, and who
+// holds it ("You" or initials). A free slip shows Claim
 // only while hovered or focused; on a touch screen Claim lives in the menu. A refusal, from a claim
 // or a move, is written in the slip's own margin.
 //
@@ -26,6 +27,8 @@ import { useNotify } from "./providers";
 export type BoardCardData = {
   id: string;
   name: string;
+  // Shown in the second line when no follow-up is set, so a fresh slip still says what it is.
+  industry: string | null;
   stage: Stage;
   days: number | null;
   dueOn: string | null;
@@ -90,6 +93,11 @@ export const Slip = memo(function Slip({ workspaceId, card, flashing, menuOpen, 
               />
               <span aria-hidden="true">{due.short}</span>
               <span className="lg-sr">, {due.full}</span>
+            </span>
+          )}
+          {!due && card.industry && (
+            <span className="lg-slip-ind" title={card.industry}>
+              {card.industry}
             </span>
           )}
           {card.justMoved && (

@@ -11,6 +11,7 @@ import type { BoardFilters } from "@/lib/validation";
 import { useBoardDrag } from "./board-drag";
 import { Slip, type BoardCardData } from "./board-slip";
 import { focusSoon } from "./focus";
+import { completeStamp, prefersReducedMotion, preloadMotion, restore, sendTo } from "./motion-kit";
 import { CloseIcon, ImportIcon, PlusIcon, StageGlyph } from "./icons";
 import { MoveMenu, type MoveMenuAction } from "./move-menu";
 import { OverflowMenu, type OverflowItem } from "./overflow-menu";
@@ -28,7 +29,8 @@ import "./board.css";
 // the slip's margin, and an officer never gets stage choices on a slip someone else holds (the menu
 // says who holds it; the server still checks). A move into a reply stage then asks which outreach
 // got the reply (ReplyPrompt). A slip just moved stays in sight in its new column even when it sorts
-// past the 50 shown, marked "Just moved", until the next full load.
+// past the 50 shown, marked "Just moved", until the next full load. Motion only marks the move
+// itself (the slip flies to its column and settles with a stamp, components/ledger/motion-kit.ts).
 //
 // Above the board: the title and count, search, the industry filter (only with 10 or more
 // companies), the More menu (look-alikes, archived, template stats, keyboard shortcuts) and Add
@@ -48,7 +50,8 @@ const FILTER_FROM = 10;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 type Menu = { id: string; anchor: HTMLButtonElement };
-type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boolean };
+// A move on its way: `flew` when the slip flew there (menu, keyboard) rather than being dropped.
+type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boolean; flew: boolean };
 
 type Props = {
   workspaceId: string;
@@ -73,6 +76,8 @@ function rove(link: HTMLElement) {
   const list = link.closest("ul");
   list?.querySelectorAll<HTMLElement>(SLIP_LINK).forEach((el) => el.setAttribute("tabindex", el === link ? "0" : "-1"));
 }
+const slipOf = (id: string) => document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(id)}"]`);
+
 function settleRoving(root: HTMLElement | null) {
   root?.querySelectorAll("ul.lg-slips").forEach((list) => {
     const links = [...list.querySelectorAll<HTMLElement>(SLIP_LINK)];
@@ -109,6 +114,16 @@ export function BoardView(props: Props) {
   // Slips moved here that the server's page of 50 doesn't include: drawn at the top of their new
   // column until the next full load (or until the server's page has them).
   const [pins, setPins] = useState<ReadonlyMap<string, BoardCardData>>(new Map());
+  // Moves the server's page hasn't caught up with yet, by id, with the stage each left: their pin
+  // wins over where the server's page has them. One leaves the map once the server's page no longer
+  // lists it in its old column (the fresh board after the action), or when the move is refused.
+  const [moving, setMoving] = useState<ReadonlyMap<string, Stage>>(new Map());
+  const caughtUp = [...moving].filter(([id, from]) => !columns.some((c) => c.stage === from && c.cards.some((card) => card.id === id)));
+  if (caughtUp.length > 0) {
+    const next = new Map(moving);
+    for (const [id] of caughtUp) next.delete(id);
+    setMoving(next);
+  }
   const [shortcuts, setShortcuts] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const landing = useRef<Landing | null>(null);
@@ -126,14 +141,24 @@ export function BoardView(props: Props) {
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, []);
 
-  // The columns as drawn: the server's cards, plus any pinned slip the server's page left out.
+  // The columns as drawn. A slip moved here is pinned at the top of its new column until the next
+  // full load (or a new search), with the server's fresh data once its page has it, so it never
+  // jumps away from where the person watched it land. While a move is unanswered its pin wins over
+  // the server's page; once answered, if the server has it somewhere else, the server wins.
   const shown = useMemo(() => {
-    const onServer = new Set(columns.flatMap((c) => c.cards.map((card) => card.id)));
-    return columns.map((col) => {
-      const extra = [...pins.values()].filter((card) => card.stage === col.stage && !onServer.has(card.id));
-      return extra.length > 0 ? { ...col, cards: [...extra, ...col.cards] } : col;
-    });
-  }, [columns, pins]);
+    const server = new Map(columns.flatMap((c) => c.cards.map((card) => [card.id, card] as const)));
+    const top = new Map<string, BoardCardData>();
+    for (const pin of pins.values()) {
+      const there = server.get(pin.id);
+      if (moving.has(pin.id) || !there) top.set(pin.id, pin);
+      else if (there.stage === pin.stage) top.set(pin.id, { ...there, justMoved: true });
+    }
+    if (top.size === 0 && moving.size === 0) return columns;
+    return columns.map((col) => ({
+      ...col,
+      cards: [...[...top.values()].filter((card) => card.stage === col.stage), ...col.cards.filter((card) => !top.has(card.id) && !moving.has(card.id))],
+    }));
+  }, [columns, pins, moving]);
   const byStage = useMemo(() => new Map(shown.map((c) => [c.stage, c] as const)), [shown]);
   const latest = useRef({ shown, isOwner });
   useEffect(() => {
@@ -166,10 +191,13 @@ export function BoardView(props: Props) {
   );
 
   // Moving a slip calls the real stage action with the same form fields as the stage form. Committed
-  // and Declined ask first, because they close the pitch and release any claim. The slip is pinned
-  // in its new column first, drawn there once the server's page no longer has it in the old one, so
-  // it can't vanish when it sorts past the 50 shown. Then it glides from where it was.
-  const requestMove = async (id: string, to: Stage, from: DOMRect, focus: boolean) => {
+  // and Declined ask first, because they close the pitch and release any claim. From the menu or the
+  // keyboard the slip flies to its new column's head (the motion kit's sendTo) while the server
+  // works; a dropped slip is already where the person let go. Either way it is then drawn in its new
+  // column at once (optimistically, until the server answers) and settles there with a stamp. It
+  // stays pinned at the top of that column, so it can't vanish when it sorts past the 50 shown. A
+  // refusal puts it back where it was and writes the reason in its margin.
+  const requestMove = async (id: string, to: Stage, from: DOMRect, focus: boolean, dropped = false) => {
     const card = cardOf(id);
     if (!card || card.stage === to) return;
     clearSlipError(id);
@@ -189,24 +217,38 @@ export function BoardView(props: Props) {
     form.set("stage", to);
     const closes = TERMINAL_STAGES.includes(to);
     const previousPin = pins.get(id);
-    setPins((current) =>
-      new Map(current).set(id, {
-        ...card,
-        stage: to,
-        closed: closes,
-        justMoved: true,
-        claim: closes ? { state: "free", holderName: null, until: null } : card.claim,
-      }),
-    );
-    landing.current = { id, from: card.stage, to, rect: from, focus };
+    const slip = slipOf(id);
+    const flying = dropped ? Promise.resolve() : sendTo(slip, document.querySelector(`[data-stage-head="${to}"]`), { collapse: "height" });
+    landing.current = { id, from: card.stage, to, rect: from, focus, flew: !dropped };
+    // Drawn in the new column as soon as the flight ends (a drop: right away), without waiting on
+    // the server. An urgent update, outside the transition below, so it paints at once.
+    const moved = flying.then(() => {
+      setPins((current) =>
+        new Map(current).set(id, {
+          ...card,
+          stage: to,
+          closed: closes,
+          justMoved: true,
+          claim: closes ? { state: "free", holderName: null, until: null } : card.claim,
+        }),
+      );
+      setMoving((current) => new Map(current).set(id, card.stage));
+    });
     startTransition(async () => {
-      const result = await moveStage(null, form);
+      // Waits for the flight too, so a refusal never lands before the slip it puts back.
+      const [result] = await Promise.all([moveStage(null, form), moved]);
       if (result.ok) {
         flash(id);
         notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`);
         if (result.data?.replyChoices) setReplyAsk({ id, name: card.name, choices: result.data.replyChoices });
       } else {
         if (landing.current?.id === id) landing.current = null;
+        restore(slip);
+        setMoving((current) => {
+          const next = new Map(current);
+          next.delete(id);
+          return next;
+        });
         setPins((current) => {
           const next = new Map(current);
           if (previousPin) next.set(id, previousPin);
@@ -214,6 +256,7 @@ export function BoardView(props: Props) {
           return next;
         });
         setSlipErrors((current) => ({ ...current, [id]: result.error }));
+        if (focus) focusSoon(() => slipOf(id)?.querySelector<HTMLElement>(SLIP_LINK) ?? null);
       }
     });
   };
@@ -222,19 +265,19 @@ export function BoardView(props: Props) {
     moveRef.current = requestMove;
   });
 
-  const drag = useBoardDrag({ scroller, onDrop: (id, to, from) => void moveRef.current(id, to, from, false) });
+  const drag = useBoardDrag({ scroller, onDrop: (id, to, from) => void moveRef.current(id, to, from, false, true) });
 
-  // After the data reloads, the moved slip slides from its old box to its new one and, when the move
-  // came from the keyboard, takes focus. If it can't be found (a search hides it now), focus goes
-  // to its new column's head, never to <body>.
+  // Once the moved slip is drawn in its new column it settles there with a stamp and, when the move
+  // came from the keyboard, takes focus. A dropped slip first glides from where it was let go. If it
+  // can't be found (a search hides it now), focus goes to its new column's head, never to <body>.
   useLayoutEffect(() => {
     settleRoving(scroller.current);
     const land = landing.current;
     if (!land) return;
     const el = document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(land.id)}"]`);
-    if (el && el.dataset.stage !== land.to) return; // still in the old column: the server hasn't answered
+    if (el && el.dataset.stage !== land.to) return; // still in the old column: in flight
     if (!el) {
-      // Waiting while the server's page still lists it in its old column.
+      // Waiting while the old column still lists it.
       const stale = latest.current.shown.some((c) => c.stage === land.from && c.cards.some((card) => card.id === land.id));
       if (stale) return;
       landing.current = null;
@@ -248,15 +291,27 @@ export function BoardView(props: Props) {
       rove(link);
       link.focus({ preventScroll: true });
     }
-    if (reducedMotion() || typeof el.animate !== "function") return;
+    if (land.flew || reducedMotion() || typeof el.animate !== "function") {
+      void completeStamp(el);
+      return;
+    }
     const to = el.getBoundingClientRect();
-    el.animate([{ transform: `translate(${land.rect.left - to.left}px, ${land.rect.top - to.top}px)` }, { transform: "translate(0, 0)" }], {
+    const glide = el.animate([{ transform: `translate(${land.rect.left - to.left}px, ${land.rect.top - to.top}px)` }, { transform: "translate(0, 0)" }], {
       duration: 180,
       easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
     });
+    glide.finished.then(
+      () => void completeStamp(el),
+      () => undefined,
+    );
   }, [shown, only]);
 
-  const openMenu = useCallback((id: string, anchor: HTMLButtonElement) => setMenu((current) => (current?.id === id ? null : { id, anchor })), []);
+  // Opening a slip's menu usually means a move is next: start loading the motion kit's engine
+  // (never under reduced motion, where no move plays).
+  const openMenu = useCallback((id: string, anchor: HTMLButtonElement) => {
+    if (!prefersReducedMotion()) preloadMotion();
+    setMenu((current) => (current?.id === id ? null : { id, anchor }));
+  }, []);
   // Escape hands focus back to the slip itself (its link is the column's tab stop), not to the glyph
   // button, which is out of the tab order.
   const closeMenu = useCallback((restore: boolean, anchor: HTMLButtonElement) => {
@@ -270,7 +325,6 @@ export function BoardView(props: Props) {
   }, []);
   const menuCard = menu ? shown.flatMap((c) => c.cards).find((card) => card.id === menu.id) : undefined;
 
-  const slipOf = (id: string) => document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(id)}"]`);
   const claim = (id: string) => slipOf(id)?.querySelector<HTMLFormElement>("form[data-claim-form]")?.requestSubmit();
   const release = (card: BoardCardData) => {
     const form = new FormData();

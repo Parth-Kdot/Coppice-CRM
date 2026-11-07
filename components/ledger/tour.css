@@ -69,6 +69,49 @@
     font-size: var(--fs-1);
     margin-bottom: 2px;
   }
+  /* The pips: a row of short rules across the top of the card, one per card, moss once finished,
+     outlined for the card in hand. */
+  .lg-tour-pips {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 8px;
+  }
+  .lg-tour-pips > span {
+    display: block;
+    flex: 1 1 0;
+    max-width: 32px;
+    height: 4px;
+    border: 1px solid var(--edge);
+    border-radius: 1px;
+    background: var(--paper-2);
+  }
+  .lg-tour-pips > span[data-state="done"] {
+    border-color: var(--moss);
+    background: var(--moss);
+  }
+  .lg-tour-pips > span[data-state="now"] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  /* The last card: a round moss seal beside the title, celebrated when the tour is finished. */
+  .lg-tour-donehead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .lg-tour-seal {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1.5px solid var(--moss);
+    border-radius: 50%;
+    outline: 1px solid var(--moss);
+    outline-offset: 2px;
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
   .lg-tour-note {
     margin-top: 8px;
     color: var(--ink-2);

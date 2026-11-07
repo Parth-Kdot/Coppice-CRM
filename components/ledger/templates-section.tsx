@@ -4,6 +4,7 @@ import { archiveTemplate, createTemplate, unarchiveTemplate, updateTemplate } fr
 import { Disclosure, LazyDisclosure } from "@/components/ledger/disclosure";
 import { ShowMore } from "@/components/ledger/show-more";
 import type { TemplateRow } from "@/lib/templates";
+import { StampOnNew } from "./stamp-on-new";
 import { TemplateInputs } from "./template-inputs";
 import "./templates.css";
 import "./settings.css";
@@ -14,7 +15,8 @@ import "./settings.css";
 // "Add a template" at the end, and the archived ones in their own "Archived" disclosure with
 // Unarchive. Officers read the rows. There is no delete: a template that was used keeps its
 // history in the stats, so archiving is how one is retired. The page loads the rows
-// (listTemplates) alongside its other queries and passes them in.
+// (listTemplates) alongside its other queries and passes them in. A template just added or brought
+// back lands with a stamp, and archiving one stamps the "Archived" line (StampOnNew).
 
 // Rows shown before "Show all N templates".
 const TEMPLATES_SHOWN = 10;
@@ -29,7 +31,7 @@ export function TemplatesSection({ isOwner, workspaceId, templates }: { isOwner:
   const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
 
   const row = (t: TemplateRow) => (
-    <li key={t.id} className="lg-tplrow" data-archived={t.archivedAt !== null || undefined}>
+    <li key={t.id} className="lg-tplrow" data-archived={t.archivedAt !== null || undefined} data-stamp-id={t.id}>
       <Disclosure variant="inline" className="lg-tplrow-disc" summary={<span className="lg-tplname">{t.name}</span>} count={usedLine(t.uses)}>
         {/* The whole text, unclipped (settings.css), so nothing needs scrolling inside a box. */}
         <p className="lg-tpltext">{t.body}</p>
@@ -50,6 +52,7 @@ export function TemplatesSection({ isOwner, workspaceId, templates }: { isOwner:
                     submitLabel="Save template"
                     submitAriaLabel={`Save ${t.name}`}
                     successMessage="Template saved."
+                    savedNote
                     className={`lg-editform lg-tpledit-${t.id}`}
                     focusAfter={`.lg-tpledit-${t.id} button[type=submit]`}
                     small
@@ -99,9 +102,11 @@ export function TemplatesSection({ isOwner, workspaceId, templates }: { isOwner:
       {active.length === 0 ? (
         <p className="lg-muted">No templates yet. Add one for the emails officers send again and again.</p>
       ) : (
-        <ShowMore initial={TEMPLATES_SHOWN} label="templates" as="ul" listClassName="lg-tplrows">
-          {active.map(row)}
-        </ShowMore>
+        <StampOnNew ids={active.map((t) => t.id)}>
+          <ShowMore initial={TEMPLATES_SHOWN} label="templates" as="ul" listClassName="lg-tplrows">
+            {active.map(row)}
+          </ShowMore>
+        </StampOnNew>
       )}
       {active.length > 0 && (
         <p className="lg-set-note">
@@ -119,13 +124,16 @@ export function TemplatesSection({ isOwner, workspaceId, templates }: { isOwner:
           </ActionForm>
         </LazyDisclosure>
       )}
-      {archived.length > 0 && (
-        <Disclosure variant="inline" summary="Archived" count={archived.length} className="lg-tplarch">
-          <ShowMore initial={TEMPLATES_SHOWN} label="archived templates" as="ul" listClassName="lg-tplrows">
-            {archived.map(row)}
-          </ShowMore>
-        </Disclosure>
-      )}
+      {/* Archiving one stamps the "Archived" line it folded into. */}
+      <StampOnNew ids={archived.map((t) => t.id)} target=".lg-tplarch > summary">
+        {archived.length > 0 && (
+          <Disclosure variant="inline" summary="Archived" count={archived.length} className="lg-tplarch">
+            <ShowMore initial={TEMPLATES_SHOWN} label="archived templates" as="ul" listClassName="lg-tplrows">
+              {archived.map(row)}
+            </ShowMore>
+          </Disclosure>
+        )}
+      </StampOnNew>
     </Disclosure>
   );
 }

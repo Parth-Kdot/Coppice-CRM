@@ -1,10 +1,12 @@
 "use client";
 
-import { createContext, useActionState, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useActionState, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ErrorLine } from "@/components/ledger/shared";
 import { useConfirm, useNotify } from "@/components/ledger/providers";
 import { focusSoon, type FocusTarget } from "@/components/ledger/focus";
+import { Tick } from "@/components/ledger/marks";
+import { completeStamp } from "@/components/ledger/motion-kit";
 import type { ActionResult } from "@/lib/validation";
 
 // Runs a server action from a form with one submit button. A refusal is written under the form,
@@ -18,6 +20,9 @@ import type { ActionResult } from "@/lib/validation";
 //   refreshOnError   router.refresh() after a refusal, for stale-state refusals ("already held").
 //   submitClassName  extra classes on the submit button, after the lg-btn ones.
 //   submitDataTour   data-tour on the submit button, for the onboarding tour.
+//   savedNote        write the success message beside the button (a settings Save) instead of as a
+//                    margin note, with a tick, stamped by the motion kit when it lands; it clears
+//                    as soon as the form is edited again.
 //
 // ActionFormPending / useActionFormPending(): children read whether the action is in flight, so a
 // keyboard shortcut (log-form's Ctrl+Enter) can refuse to requestSubmit() while it is.
@@ -39,13 +44,16 @@ type Props = {
   small?: boolean;
   // Layout of the form's row; the default wraps the button and any message under the fields.
   className?: string;
-  // Runs after the action succeeds, for clearing state React's own form reset doesn't reach.
-  onSuccess?: () => void;
+  // Runs after the action succeeds, for clearing state React's own form reset doesn't reach. If it
+  // returns a promise (a row leaving with the motion kit's removeAway), the server's fresh render
+  // waits for it, so the row isn't pulled out from under its own exit.
+  onSuccess?: () => void | Promise<void>;
   focusAfter?: string | (() => HTMLElement | null);
   submitAriaLabel?: string;
   refreshOnError?: boolean;
   submitClassName?: string;
   submitDataTour?: string;
+  savedNote?: boolean;
   children?: ReactNode;
 };
 
@@ -63,6 +71,7 @@ export function ActionForm({
   refreshOnError = false,
   submitClassName,
   submitDataTour,
+  savedNote = false,
   children,
 }: Props) {
   const notify = useNotify();
@@ -75,12 +84,15 @@ export function ActionForm({
   // focusAfter waits for the render that carries the result (and the server's fresh page), or for
   // this form's unmount when that render removes it.
   const focusNext = useRef<FocusTarget>(null);
+  // The inline "Saved" note belongs to this success: shown until the form is edited or sent again.
+  const [savedFor, setSavedFor] = useState<ActionResult | null>(null);
   // The margin note is written when the action returns, not from an effect, so it still appears
   // when the form that sent it is gone by then (a fact that moved to the other list, a deleted row).
   const [state, formAction, pending] = useActionState(async (prev: ActionResult | null, data: FormData) => {
     const result = await action(prev, data);
-    if (result.ok && successMessage) notify(successMessage);
-    if (result.ok) onSuccess?.();
+    if (result.ok && successMessage && !savedNote) notify(successMessage);
+    if (savedNote) setSavedFor(result.ok ? result : null);
+    if (result.ok) await onSuccess?.();
     if (result.ok && latest.current.focusAfter) focusNext.current = latest.current.focusAfter;
     if (!result.ok && latest.current.refreshOnError) router.refresh();
     return result;
@@ -96,6 +108,12 @@ export function ActionForm({
     },
     [],
   );
+  const savedRef = useRef<HTMLSpanElement>(null);
+  const showSaved = savedNote && !!successMessage && savedFor !== null && savedFor === state;
+  useEffect(() => {
+    if (!showSaved) return;
+    void completeStamp(savedRef.current, { mark: savedRef.current?.querySelector("svg") });
+  }, [showSaved, state]);
   const confirm = useConfirm();
   const form = useRef<HTMLFormElement>(null);
   // Set once the person has said yes, so the submit that follows goes straight through.
@@ -119,6 +137,7 @@ export function ActionForm({
           form.current?.requestSubmit(submitter);
         });
       }}
+      onInput={showSaved ? () => setSavedFor(null) : undefined}
       className={className}
     >
       <ActionFormPending value={pending}>{children}</ActionFormPending>
@@ -131,6 +150,17 @@ export function ActionForm({
       >
         {pending ? "Working..." : submitLabel}
       </button>
+      {savedNote && (
+        // Always in the page, so the note is announced when it is written into it.
+        <span className="lg-saved-slot" role="status">
+          {showSaved && !pending && (
+            <span className="lg-saved" ref={savedRef}>
+              <Tick size={16} auto={false} className="lg-tick-draw" />
+              {successMessage}
+            </span>
+          )}
+        </span>
+      )}
       {state && !state.ok && (
         <div className="w-full">
           <ErrorLine>{state.error}</ErrorLine>
