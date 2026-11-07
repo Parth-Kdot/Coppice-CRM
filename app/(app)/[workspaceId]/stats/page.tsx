@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Disclosure } from "@/components/ledger/disclosure";
+import { OverflowMenu } from "@/components/ledger/overflow-menu";
+import { Segmented } from "@/components/ledger/segmented";
 import { PageHead } from "@/components/ledger/shared";
-import { CompareTable, pct, rangeText, RULES_NOTE, SplitSwitch, TemplatesTable } from "@/components/ledger/stats-blocks";
+import { CompareTable, RULES_NOTE, TemplatesTable } from "@/components/ledger/stats-blocks";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { workspaceStats } from "@/lib/stats";
-import { MIN_SENDS, type Rated, type TemplateLine } from "@/lib/stats-math";
+import { formatCount, formatPct, formatRange, MIN_SENDS, type ActiveVerdict, type Rated, type TemplateLine } from "@/lib/stats-math";
 import { statsFiltersSchema } from "@/lib/validation";
 import "@/components/ledger/pages.css";
 import "@/components/ledger/stats.css";
@@ -17,21 +19,24 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/sta
 
 // Template stats, for every member (owner decision). One screen answers "which template works best,
 // and which worst?" without reading more into small numbers than they hold: every rate has its likely
-// range, thin or young samples say "not enough data yet", and best or worst is named only when the
-// ranges allow it (the rules are in lib/stats-math.ts and in the note at the foot of the page).
+// range, thin or young samples say "too few yet", and best or worst is named only when the ranges
+// allow it, among the templates people can still use (the rules are in lib/stats-math.ts and behind
+// "How to read this"). Everything past the verdict and the table sits one click away. A workspace
+// with no outreach yet gets one sentence and nothing else.
 
-const sentence = (stat: Rated) => `${pct(stat.rate ?? 0)} of ${stat.counted} counted sends got a reply (likely ${rangeText(stat.interval ?? { low: 0, high: 0 })})`;
+const sentence = (stat: Rated) =>
+  `${formatPct(stat.rate ?? 0)} of ${formatCount(stat.counted)} counted sends got a reply (likely ${formatRange(stat.interval ?? { low: 0, high: 0 })})`;
 
-function Verdict({ templates, best, worst, rated }: { templates: TemplateLine[]; best: string | null; worst: string | null; rated: number }) {
+function Verdict({ templates, verdict }: { templates: TemplateLine[]; verdict: ActiveVerdict }) {
   const find = (key: string | null) => templates.find((t) => t.key === key);
-  const b = find(best);
-  const w = find(worst);
-  const named = (label: string, line: TemplateLine) => (
+  const b = find(verdict.best);
+  const w = find(verdict.worst);
+  const { rated } = verdict;
+  const named = (label: "Best" | "Worst", line: TemplateLine) => (
     <p className="lg-verdict-line">
       <span className={`lg-badge ${label === "Best" ? "lg-best" : "lg-worst"}`}>{label}</span>
       <span>
-        <strong>{line.name}</strong>
-        {line.archived && " (archived)"}: {sentence(line.stat)}.
+        <strong>{line.name}</strong>: {sentence(line.stat)}.
       </span>
     </p>
   );
@@ -39,20 +44,17 @@ function Verdict({ templates, best, worst, rated }: { templates: TemplateLine[];
   if (rated < 2) {
     why =
       rated === 0
-        ? `Not enough data yet to name a best or worst: no template has ${MIN_SENDS} counted sends.`
-        : `Not enough data yet to name a best or worst: only one template has ${MIN_SENDS} counted sends.`;
+        ? `Too few sends yet to name a best or worst: no template in use has ${MIN_SENDS} counted sends.`
+        : `Too few sends yet to name a best or worst: only one template in use has ${MIN_SENDS} counted sends.`;
   } else if (!b && !w) {
-    why = "No clear best or worst yet: the likely ranges of the rated templates overlap, so the data can't tell them apart.";
+    why = "No clear best or worst yet: the likely ranges overlap, so the data can't tell the templates apart.";
   }
   return (
-    <section className="lg-panel lg-verdict" aria-labelledby="stats-verdict">
+    <section className="lg-panel lg-verdict" aria-labelledby="stats-verdict" data-tour="stats-verdict">
       <div className="lg-panel-head">
         <h2 id="stats-verdict" className="lg-panel-title">
           Best and worst
         </h2>
-        <span className="lg-panel-count">
-          {rated} of {templates.length} {templates.length === 1 ? "template" : "templates"} rated
-        </span>
       </div>
       <div className="lg-panel-body">
         {b && named("Best", b)}
@@ -60,6 +62,11 @@ function Verdict({ templates, best, worst, rated }: { templates: TemplateLine[];
         {rated >= 2 && b && !w && <p className="lg-muted">No clear worst: the others&apos; ranges overlap.</p>}
         {rated >= 2 && w && !b && <p className="lg-muted">No clear best: the others&apos; ranges overlap.</p>}
         {why && <p>{why}</p>}
+        {verdict.retiredBetter && (
+          <p className="lg-hint">
+            A retired template did better: {verdict.retiredBetter.name} ({formatPct(verdict.retiredBetter.rate)}).
+          </p>
+        )}
       </div>
     </section>
   );
@@ -67,7 +74,7 @@ function Verdict({ templates, best, worst, rated }: { templates: TemplateLine[];
 
 export default async function StatsPage({ params, searchParams }: PageProps<"/[workspaceId]/stats">) {
   const { workspaceId } = await params;
-  const { userId } = await requireMembershipOr404(workspaceId);
+  const { userId, role } = await requireMembershipOr404(workspaceId);
 
   // A repeated URL param (?by=a&by=b) arrives as an array; use the first.
   const raw = await searchParams;
@@ -76,124 +83,115 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
   const stats = await workspaceStats({ userId, workspaceId }, split);
   const base = `/${workspaceId}/stats`;
   const { ai, hand, lead } = stats.authorship;
+  const sent = stats.templates.reduce((sum, t) => sum + t.stat.sent, stats.noTemplate.stat.sent);
+
+  const more =
+    role === "owner" ? (
+      <OverflowMenu
+        label="More actions for template stats"
+        items={[{ key: "manage", label: "Manage templates", href: `/${workspaceId}/settings#templates` }]}
+      />
+    ) : undefined;
+
+  if (sent === 0) {
+    return (
+      <div className="lg-page-stats">
+        <PageHead title="Template stats">{more}</PageHead>
+        <p className="lg-stats-empty">Stats appear after about {MIN_SENDS} emails are logged with a template.</p>
+      </div>
+    );
+  }
+
+  const authorship =
+    lead === "ai"
+      ? "AI-drafted emails get replies more often than hand-written ones."
+      : lead === "hand"
+        ? "Hand-written emails get replies more often than AI-drafted ones."
+        : ai.status === "rated" && hand.status === "rated"
+          ? "AI-drafted and hand-written emails: no clear difference yet."
+          : "AI-drafted and hand-written emails: too few sends yet to compare.";
+  const { gaps } = stats;
+  const gapParts = [
+    gaps.repliedUnmarked > 0 && `${formatCount(gaps.repliedUnmarked)} replied ${gaps.repliedUnmarked === 1 ? "company has" : "companies have"} no reply marked`,
+    gaps.noTemplate > 0 && `${formatCount(gaps.noTemplate)} ${gaps.noTemplate === 1 ? "send has" : "sends have"} no template`,
+    gaps.maturing > 0 && `${formatCount(gaps.maturing)} still maturing`,
+  ].filter(Boolean);
 
   return (
     <div className="lg-page-stats">
-      <PageHead title="Template stats" sub="Which templates get replies, from outreach logged in Coppice.">
-        <Link href={`/${workspaceId}/settings`} className="lg-btn">
-          Manage templates
-        </Link>
-      </PageHead>
+      <PageHead title="Template stats">{more}</PageHead>
+      <Disclosure variant="inline" summary="How to read this" className="lg-stats-how">
+        <ul className="lg-rules">
+          {RULES_NOTE.map((rule) => (
+            <li key={rule}>{rule}</li>
+          ))}
+        </ul>
+      </Disclosure>
 
-      <Verdict templates={stats.templates} best={stats.verdict.best} worst={stats.verdict.worst} rated={stats.verdict.rated} />
+      <Verdict templates={stats.templates} verdict={stats.activeVerdict} />
 
       <section className="lg-panel" aria-labelledby="stats-templates">
         <div className="lg-panel-head">
           <h2 id="stats-templates" className="lg-panel-title">
             Templates
           </h2>
-          <SplitSwitch base={base} current={split} />
+          <Segmented
+            label="Split each template"
+            value={split}
+            options={[
+              { value: "none", label: "All", href: base },
+              { value: "industry", label: "By industry", href: `${base}?by=industry` },
+              { value: "touch", label: "By touch", href: `${base}?by=touch` },
+            ]}
+          />
         </div>
         <div className="lg-panel-body">
-          {stats.templates.length === 0 && stats.noTemplate.stat.sent === 0 ? (
-            <p className="lg-muted">
-              No templates or outreach yet. Owners add templates in{" "}
-              <Link href={`/${workspaceId}/settings`} className="lg-link">
-                Settings
-              </Link>
-              .
-            </p>
-          ) : (
-            <TemplatesTable lines={stats.templates} noTemplate={stats.noTemplate} best={stats.verdict.best} worst={stats.verdict.worst} />
-          )}
-          {split === "industry" && <p className="lg-hint mt-2">Each template is split by the industry of the companies it went to.</p>}
-          {split === "touch" && <p className="lg-hint mt-2">Each template is split by whether it was the 1st, 2nd, or 3rd-or-later outreach to that company.</p>}
+          <TemplatesTable
+            lines={stats.templates}
+            noTemplate={stats.noTemplate}
+            best={stats.activeVerdict.best}
+            worst={stats.activeVerdict.worst}
+            split={split}
+          />
+          {split === "touch" && <p className="lg-hint mt-2">Split by whether it was the 1st, 2nd, or 3rd-or-later outreach to that company.</p>}
         </div>
       </section>
 
-      <div className="lg-statgrid">
-        <section className="lg-panel" aria-labelledby="stats-ai">
-          <div className="lg-panel-head">
-            <h2 id="stats-ai" className="lg-panel-title">
-              AI-drafted and hand-written emails
-            </h2>
-          </div>
-          <p className="lg-panel-note">Emails only, since an AI draft is always an email.</p>
-          <div className="lg-panel-body">
-            <CompareTable
-              first="Email"
-              rows={[
-                { label: "From an AI draft", stat: ai, standing: lead === "ai" ? "best" : null },
-                { label: "Written by hand", stat: hand, standing: lead === "hand" ? "best" : null },
-              ]}
-            />
-            <p className="mt-3">
-              {lead === "ai"
-                ? "AI-drafted emails get replies more often: their whole range sits above the hand-written range."
-                : lead === "hand"
-                  ? "Hand-written emails get replies more often: their whole range sits above the AI-drafted range."
-                  : ai.status === "rated" && hand.status === "rated"
-                    ? "No clear difference yet: the two ranges overlap."
-                    : `Not enough data yet to compare: each side needs ${MIN_SENDS} counted sends.`}
-            </p>
-          </div>
-        </section>
+      {ai.sent + hand.sent > 0 && (
+        <Disclosure summary={authorship} className="lg-stats-more">
+          <p className="lg-hint">Emails only, since an AI draft is always an email.</p>
+          <CompareTable
+            first="Email"
+            rows={[
+              { label: "From an AI draft", stat: ai, standing: lead === "ai" ? "best" : null },
+              { label: "Written by hand", stat: hand, standing: lead === "hand" ? "best" : null },
+            ]}
+          />
+        </Disclosure>
+      )}
 
-        <section className="lg-panel" aria-labelledby="stats-touch">
-          <div className="lg-panel-head">
-            <h2 id="stats-touch" className="lg-panel-title">
-              By touch
-            </h2>
-          </div>
-          <p className="lg-panel-note">Every outreach, by whether it was the 1st, 2nd, or 3rd-or-later to that company.</p>
-          <div className="lg-panel-body">
-            <CompareTable first="Touch" rows={stats.byTouch.map((p) => ({ label: p.label, stat: p.stat }))} />
-          </div>
-        </section>
-      </div>
-
-      <section className="lg-panel" aria-labelledby="stats-gaps">
-        <div className="lg-panel-head">
-          <h2 id="stats-gaps" className="lg-panel-title">
-            Gaps in the data
-          </h2>
-        </div>
-        <div className="lg-panel-body">
+      {gapParts.length > 0 && (
+        <Disclosure summary={`Gaps in the data: ${gapParts.join(", ")}`} className="lg-stats-more">
           <dl className="lg-tally lg-gaps">
             <div>
               <dt>Outreach with no template</dt>
-              <dd>{stats.gaps.noTemplate}</dd>
+              <dd>{formatCount(gaps.noTemplate)}</dd>
             </div>
             <div>
               <dt>Replied companies with no reply marked</dt>
-              <dd data-tone={stats.gaps.repliedUnmarked > 0 ? "bad" : undefined}>{stats.gaps.repliedUnmarked}</dd>
+              <dd data-tone={gaps.repliedUnmarked > 0 ? "bad" : undefined}>{formatCount(gaps.repliedUnmarked)}</dd>
             </div>
             <div>
               <dt>Sends still maturing</dt>
-              <dd>{stats.gaps.maturing}</dd>
+              <dd>{formatCount(gaps.maturing)}</dd>
             </div>
           </dl>
           <p className="lg-hint mt-2">
             A replied company with no reply marked counts as a miss for every template it got. Open it and press &ldquo;This got the reply&rdquo; on the right
-            entry, or log the outreach first if none is logged.
+            entry.
           </p>
-        </div>
-      </section>
-
-      <section className="lg-panel" aria-labelledby="stats-rules">
-        <div className="lg-panel-head">
-          <h2 id="stats-rules" className="lg-panel-title">
-            How to read this
-          </h2>
-        </div>
-        <div className="lg-panel-body">
-          <ul className="lg-rules">
-            {RULES_NOTE.map((rule) => (
-              <li key={rule}>{rule}</li>
-            ))}
-          </ul>
-        </div>
-      </section>
+        </Disclosure>
+      )}
     </div>
   );
 }

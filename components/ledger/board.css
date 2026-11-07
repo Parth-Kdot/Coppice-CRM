@@ -54,12 +54,12 @@
     font-size: 2rem;
   }
 
-  /* ---------- The title and the toolbar: one wrapping line ---------- */
+  /* ---------- The title and the toolbar: one line that never reflows ---------- */
   .lg-btop {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 8px 10px;
+    min-width: 0;
     margin-bottom: 10px;
   }
   .lg-btop-title {
@@ -68,8 +68,8 @@
   }
   .lg-bsearch {
     position: relative;
-    flex: 0 1 240px;
-    min-width: 180px;
+    flex: 0 1 260px;
+    min-width: 140px;
   }
   .lg-bsearch svg {
     position: absolute;
@@ -82,41 +82,40 @@
     min-height: 40px;
     padding-left: 36px;
   }
-  .lg-bindustry {
-    flex: 0 1 190px;
-    min-width: 150px;
-  }
-  .lg-bindustry .lg-select {
-    min-height: 40px;
-  }
-  .lg-toggle {
-    display: inline-flex;
-    align-items: center;
-    min-height: 40px;
-    padding: 0 12px;
-    border: 1px solid var(--edge);
-    border-radius: 3px;
-    background: var(--sheet);
-    color: var(--ink);
-    font-size: var(--fs-2);
-    text-decoration: none;
-    transition: background-color var(--dur-fast) ease;
-  }
-  .lg-toggle:hover {
-    background: var(--paper-2);
-  }
-  .lg-fchip {
-    display: inline-flex;
+  .lg-bfilter {
+    display: flex;
+    flex: 0 1 auto;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+  }
+  .lg-bfilter .lg-lmenu {
+    min-width: 0;
+  }
+  .lg-bfilter .lg-lmenu-btn {
+    max-width: 220px;
+  }
+  .lg-bfilter .lg-lmenu-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-bfilter .lg-lmenu-list {
+    max-height: min(60vh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .lg-fchip {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
     min-height: 40px;
-    padding: 0 12px;
     border: 1px solid var(--edge);
     border-radius: 3px;
     background: var(--sheet);
     color: var(--ink);
-    font-size: var(--fs-1);
-    font-weight: 500;
     cursor: pointer;
   }
   .lg-fchip:hover {
@@ -124,30 +123,43 @@
   }
   .lg-btools-end {
     display: flex;
+    flex: none;
     align-items: center;
     gap: 8px;
     margin-left: auto;
   }
-  .lg-btop .lg-toggle {
-    gap: 6px;
+  /* The More button carries a small moss dot when there are look-alikes to review. */
+  .lg-bmore {
+    position: relative;
+    display: inline-flex;
   }
-  .lg-btop .lg-toggle[aria-expanded="true"] {
+  .lg-bmore .lg-omenu-btn {
+    min-height: 40px;
+  }
+  .lg-bmore-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--paper);
+    border-radius: 50%;
     background: var(--moss);
-    border-color: var(--moss);
-    color: var(--paper);
-  }
-  .lg-btop-status:empty {
-    display: none;
-  }
-  .lg-btop .lg-loading {
-    min-width: 0;
+    pointer-events: none;
   }
   .lg-btop-add {
     min-height: 40px;
   }
-  .lg-bhint {
-    margin: -2px 0 8px;
-    font-size: var(--fs-1);
+  /* While a search loads, the board it is about to replace fades a little. */
+  .lg-board:has(.lg-bsearch[aria-busy="true"]) .lg-bd {
+    opacity: 0.6;
+    transition: opacity var(--dur-fast) ease 120ms;
+  }
+  .lg-empty-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
   }
 
   /* ---------- The ruled columns ---------- */
@@ -241,6 +253,14 @@
     font-size: var(--fs-1);
     font-weight: 600;
   }
+  /* The picked stage: a small cross after the count says a second press shows every stage again. */
+  .lg-st-clear {
+    order: 5;
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    color: var(--ink-2);
+  }
   /* The line of the strip, between the name and the count. */
   .lg-st::after {
     content: "";
@@ -298,13 +318,25 @@
   .lg-colmore {
     padding: 0 14px 14px;
   }
-  .lg-dropline {
+  .lg-colmore:empty {
+    display: none;
+  }
+  .lg-colmore .lg-morelink {
+    margin-top: 2px;
+  }
+  /* The column under a dragged slip: a ruled drop line naming it (set by board-drag.ts, no re-render). */
+  .lg-bstage[data-over] .lg-slips::before {
+    content: "Move to " attr(data-drop-label);
     display: flex;
     align-items: center;
     min-height: 26px;
     border-top: 2px solid var(--moss);
     color: var(--moss);
+    font-size: var(--fs-1);
     font-weight: 600;
+  }
+  .lg-bd[data-dragging] .lg-colempty {
+    display: none;
   }
 
   /* ---------- One stage picked in the strip ---------- */
@@ -351,12 +383,12 @@
     font-size: var(--fs-1);
   }
 
-  /* ---------- A slip: 64 px ---------- */
+  /* ---------- A slip: 64 px, the whole of it a link ---------- */
+  /* The link (name over due mark) fills the slip and its ::after stretches over all of it. The stage
+     glyph button sits top right and the holder chip or Claim bottom right, above the link; the name
+     and the due line keep clear of them with padding, so a name only truncates when it is long. */
   .lg-slipcard {
     position: relative;
-    display: grid;
-    grid-template-rows: 26px 24px;
-    row-gap: 2px;
     min-height: 64px;
     padding: 6px 8px 6px 12px;
     container: slip / inline-size;
@@ -376,7 +408,11 @@
   .lg-slipcard.lg-settle {
     animation-name: lg-settle-sheet;
   }
-  .lg-slipcard[data-stage="DECLINED"] .lg-slip-name a {
+  /* Held by someone else, for an officer: it can't be dragged. */
+  .lg-slipcard[data-locked] {
+    cursor: not-allowed;
+  }
+  .lg-slipcard[data-stage="DECLINED"] .lg-slip-name {
     color: var(--ink-2);
   }
   /* The slip it was lifted from stays behind as a dashed outline. */
@@ -406,15 +442,31 @@
     user-select: none;
     -webkit-user-select: none;
   }
-  .lg-slip-main {
-    display: flex;
+  .lg-slip-link {
+    display: grid;
+    grid-template-rows: 26px 24px;
+    row-gap: 2px;
     align-items: center;
-    gap: 6px;
     min-width: 0;
+    color: var(--ink);
+    text-decoration: none;
+    cursor: inherit;
+  }
+  .lg-slip-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .lg-slip-link:focus-visible {
+    outline: none;
+  }
+  .lg-slip-link:focus-visible::after {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 1px;
   }
   .lg-slip-name {
-    flex: 1;
     min-width: 0;
+    padding-right: 26px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -423,23 +475,46 @@
     font-size: var(--fs-3);
     line-height: 1.2;
   }
-  .lg-slip-name a {
-    color: var(--ink);
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .lg-slip-name a:hover {
+  .lg-slipcard:hover .lg-slip-name,
+  .lg-slip-link:focus-visible .lg-slip-name {
     text-decoration: underline;
     text-decoration-color: var(--moss);
     text-underline-offset: 3px;
   }
-  .lg-slip-move {
-    display: inline-grid;
+  .lg-slip-due {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding-right: 62px;
+    overflow: hidden;
+    font-size: var(--fs-1);
+    white-space: nowrap;
+  }
+  .lg-slip-due .lg-od {
+    gap: 4px;
+    font-size: var(--fs-1);
+  }
+  .lg-slip-moved {
     flex: none;
+    padding: 0 5px;
+    border: 1px solid var(--moss);
+    border-radius: 2px;
+    background: var(--moss-wash);
+    color: var(--moss);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .lg-slip-move {
+    position: absolute;
+    z-index: 1;
+    top: 6px;
+    right: 4px;
+    display: inline-grid;
     place-items: center;
     width: 28px;
     height: 28px;
-    margin-right: -4px;
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
@@ -451,66 +526,50 @@
     border-color: var(--edge);
     background: var(--paper-2);
   }
-  .lg-slip-sub {
+  .lg-slip-claim {
+    position: absolute;
+    z-index: 1;
+    top: 34px;
+    right: 8px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    min-width: 0;
   }
-  .lg-slip-due {
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--fs-1);
+  .lg-slip-claim:empty {
+    display: none;
   }
-  .lg-slip-due .lg-od {
-    max-width: 100%;
-    font-size: var(--fs-1);
-  }
-  .lg-slip-due .lg-od-text,
-  .lg-slip-none {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .lg-slip-none {
-    display: block;
-  }
-  .lg-slip-claim {
-    flex: none;
+  .lg-slip-claim .lg-claimchip {
+    padding: 0;
   }
   .lg-slip-claim .lg-chipbody {
-    min-height: 26px;
+    min-height: 24px;
     padding: 0 8px;
     font-size: var(--fs-1);
-    cursor: pointer;
   }
   .lg-slip-claim .lg-chip-mine {
     padding-left: 20px;
-    cursor: default;
   }
-  .lg-slip-claim .lg-chip-theirs {
-    cursor: default;
+  /* Claim shows on a free slip only while it is hovered or focused; on a touch screen it lives in
+     the slip's menu instead. */
+  @media (hover: hover) and (pointer: fine) {
+    .lg-slip-claim form {
+      visibility: hidden;
+    }
+    .lg-slipcard:hover .lg-slip-claim form,
+    .lg-slipcard:focus-within .lg-slip-claim form {
+      visibility: visible;
+    }
   }
-  .lg-claimico {
-    display: none;
-  }
-  .lg-slip-note {
-    grid-column: 1 / -1;
-    margin: 6px 0 0;
-    font-size: var(--fs-1);
-  }
-  /* In a narrow column the Claim button keeps its bookmark and drops its word. */
-  @container slip (max-width: 178px) {
-    .lg-claimword {
+  @media (pointer: coarse) {
+    .lg-slip-claim form {
       display: none;
     }
-    .lg-claimico {
-      display: block;
-    }
-    .lg-slip-claim .lg-chip-free {
-      padding: 0 4px;
-    }
+  }
+  .lg-slip-note {
+    position: relative;
+    z-index: 1;
+    margin: 6px 0 0;
+    font-size: var(--fs-1);
+    cursor: auto;
   }
 
   /* ---------- The Move to menu ---------- */
@@ -532,6 +591,7 @@
   }
   .lg-movemenu-item {
     display: flex;
+    border: 0;
     align-items: center;
     gap: 10px;
     width: 100%;
@@ -558,6 +618,21 @@
   .lg-movemenu-here {
     margin-left: auto;
     color: var(--moss);
+  }
+  /* Claim and Release, below a rule. */
+  .lg-movemenu-act {
+    padding-left: 40px;
+  }
+  .lg-movemenu-item:not(.lg-movemenu-act) + .lg-movemenu-act {
+    margin-top: 4px;
+    border-top: 1px solid var(--rule);
+  }
+  /* The one line an officer sees on a slip someone else holds. */
+  .lg-movemenu-reason {
+    min-height: 44px;
+    padding-block: 8px;
+    line-height: 1.3;
+    cursor: not-allowed;
   }
 
   /* ---------- Sheets: look-alikes and archived ---------- */
@@ -671,7 +746,6 @@
   }
   .lg-pair .lg-actions .lg-btn {
     max-width: 100%;
-    padding-block: 7px;
     white-space: normal;
     text-align: left;
     overflow-wrap: anywhere;
@@ -686,7 +760,6 @@
   }
   .lg-archived > li {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px 14px;
@@ -694,12 +767,81 @@
     padding: 4px 0;
     border-bottom: 1px solid var(--rule);
   }
+  .lg-archived-name {
+    display: grid;
+    min-width: 0;
+  }
+  .lg-archived > li > form {
+    flex: none;
+  }
+  .lg-archived-filter {
+    max-width: 320px;
+    margin-top: 8px;
+  }
+  .lg-pair-site {
+    margin-left: 4px;
+  }
+  .lg-pair-site::before {
+    content: "(";
+  }
+  .lg-pair-site::after {
+    content: ")";
+  }
+  .lg-pair-choose {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 10px 12px 12px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  .lg-pair-choose legend {
+    padding: 0 4px;
+  }
+  .lg-pair-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    cursor: pointer;
+  }
+  .lg-pair-opt .lg-check {
+    flex: none;
+  }
+
+  /* ---------- Keyboard shortcuts (from the More menu) ---------- */
+  .lg-bkeys-body {
+    display: grid;
+    gap: 10px;
+    padding: 20px;
+  }
+  .lg-bkeys-list > div {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-bkeys-list kbd {
+    padding: 1px 6px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--paper-2);
+    font-family: var(--font-mono, monospace);
+    font-size: var(--fs-1);
+  }
+  .lg-bkeys-acts {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  /* ---------- The phone's stage strip (hidden on wider screens) ---------- */
+  .lg-bstrip {
+    display: none;
+  }
 
   /* ---------- Narrow desktop ---------- */
   @media (max-width: 1100px) {
-    .lg-bhint {
-      display: none;
-    }
     .lg-main:has(.lg-board) {
       padding-right: 20px;
     }
@@ -709,18 +851,9 @@
     .lg-bcol[data-split] {
       min-width: 184px;
     }
-    .lg-btop .lg-toggle svg {
-      display: none;
-    }
-    /* Names and dates wrap here, so the two rows grow with them instead of overlapping. */
-    .lg-slipcard {
-      grid-template-rows: auto auto;
-    }
-    .lg-slip-due .lg-od-text,
-    .lg-slip-none {
-      white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
+    /* Names wrap to two lines here, so the rows grow with them instead of overlapping. */
+    .lg-slip-link {
+      grid-template-rows: auto 24px;
     }
     .lg-slip-name {
       white-space: normal;
@@ -730,6 +863,14 @@
     }
     .lg-st-dot {
       display: none;
+    }
+    .lg-btop-addword {
+      display: none;
+    }
+    .lg-btop-add {
+      width: 40px;
+      padding: 0;
+      justify-content: center;
     }
   }
   /* A station strip in a narrow column: smaller dot, the name wraps onto two lines instead of being cut. */
@@ -774,7 +915,7 @@
     }
   }
 
-  /* ---------- Phone: an intentionally scrollable strip of columns with snap ---------- */
+  /* ---------- Phone: the toolbar on two lines, a sticky stage strip, one column at a time ---------- */
   @media (max-width: 760px) {
     .lg-main:has(.lg-board) {
       padding: 10px 0 calc(66px + env(safe-area-inset-bottom));
@@ -785,53 +926,130 @@
       margin-right: 16px;
     }
     .lg-btop {
+      flex-wrap: wrap;
       gap: 8px;
     }
+    /* First line: the title and a compact "+". Second: search, the filter and the More button. */
     .lg-btop-title {
       order: 0;
+      flex: 1 0 auto;
       margin-right: 0;
       font-size: 1.6rem;
     }
+    .lg-btools-end {
+      display: contents;
+    }
     .lg-btop-add {
       order: 1;
-      margin-left: auto;
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+      justify-content: center;
+    }
+    .lg-btop-addword {
+      display: none;
     }
     .lg-bsearch {
       order: 2;
-      flex: 1 1 150px;
-      min-width: 150px;
+      flex: 1 1 110px;
+      min-width: 0;
     }
-    .lg-bindustry {
+    .lg-bsearch .lg-input {
+      min-height: 44px;
+    }
+    .lg-bfilter {
       order: 3;
-      flex: 1 1 150px;
     }
-    .lg-fchip {
-      order: 3;
+    .lg-bfilter .lg-lmenu-btn {
+      max-width: 112px;
+      min-height: 44px;
     }
-    .lg-btop-status {
+    .lg-bfilter .lg-lmenu-list {
+      position: fixed;
+      top: auto;
+      left: 16px;
+      right: 16px;
+      min-width: 0;
+      width: auto;
+    }
+    .lg-bmore {
+      order: 4;
+    }
+    .lg-bmore .lg-omenu-btn {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    /* The strip names the column in view and its count, so a column's own head is left out, except
+       in the split Committed and Declined column, where it tells the halves apart. */
+    .lg-bcol:not([data-split]) > .lg-bstage > .lg-st-h {
       display: none;
     }
-    .lg-btools-end {
-      order: 4;
-      margin-left: 0;
-      width: 100%;
+    .lg-board[data-empty] .lg-btop {
+      flex-wrap: nowrap;
     }
-    .lg-btools-end .lg-toggle {
-      flex: 1 1 0;
-      justify-content: center;
-      padding: 0 8px;
+    .lg-bstrip {
+      display: flex;
+      flex: none;
+      gap: 6px;
+      margin-bottom: 8px;
+      padding: 0 16px 2px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      scroll-padding-inline: 16px;
+    }
+    .lg-bstrip::-webkit-scrollbar {
+      display: none;
+    }
+    .lg-bstrip-btn {
+      display: inline-flex;
+      flex: none;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 0 12px;
+      border: 1px solid var(--edge);
+      border-radius: 3px;
+      background: var(--sheet);
+      color: var(--ink);
       font-size: var(--fs-1);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
     }
+    .lg-bstrip-btn[aria-current="true"] {
+      border-color: var(--moss);
+      background: var(--moss);
+      color: var(--paper);
+    }
+    .lg-bstrip-n {
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+    }
+    /* A slip on a phone: the whole of it opens the company; the chip and a 44 px menu button sit at
+       the right across both rows. */
     .lg-slipcard {
-      grid-template-rows: 30px 30px;
       min-height: 72px;
     }
-    .lg-slip-move {
-      width: 36px;
-      height: 36px;
+    .lg-slip-link {
+      grid-template-rows: 30px 28px;
     }
-    .lg-slip-claim .lg-chipbody {
-      min-height: 32px;
+    .lg-slip-name {
+      padding-right: 46px;
+    }
+    .lg-slip-due {
+      padding-right: 100px;
+    }
+    .lg-slip-move {
+      top: 50%;
+      right: 2px;
+      width: 44px;
+      height: 44px;
+      transform: translateY(-50%);
+    }
+    .lg-slip-claim {
+      top: 50%;
+      right: 50px;
+      transform: translateY(-50%);
     }
     .lg-bd {
       scroll-snap-type: x mandatory;
@@ -840,12 +1058,12 @@
     }
     .lg-bcol,
     .lg-bcol[data-split] {
-      flex: 0 0 82%;
+      flex: 0 0 86%;
       min-width: 0;
       scroll-snap-align: start;
     }
     .lg-bd[data-focus] .lg-bcol:not([data-rail]) {
-      flex: 0 0 82%;
+      flex: 0 0 86%;
       min-width: 0;
     }
     .lg-bd[data-focus] .lg-bcol[data-rail] {
@@ -857,18 +1075,29 @@
       width: 100vw;
       height: auto;
       max-height: 88dvh;
+      padding: 16px 16px calc(28px + env(safe-area-inset-bottom));
       border-left: 0;
       border-top: 1px solid var(--edge);
       border-radius: 0;
-      padding-bottom: calc(28px + env(safe-area-inset-bottom));
       animation: lg-sheet-up 240ms var(--ease-out) both;
+    }
+    .lg-bsheet-notes {
+      margin: 0 -16px -28px;
+      padding: 0 16px;
+    }
+    .lg-archived-filter {
+      max-width: none;
     }
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .lg-bsheet,
-  .lg-movemenu {
+  .lg-movemenu,
+  .lg-slipcard.lg-settle {
     animation: none !important;
+  }
+  .lg-board:has(.lg-bsearch[aria-busy="true"]) .lg-bd {
+    transition: none;
   }
 }

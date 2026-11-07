@@ -137,7 +137,11 @@ export type Scorecard = {
   templates: TemplateLine[];
   // Outreach logged without a template, kept apart: it is not a template and is never ranked.
   noTemplate: TemplateLine;
+  // Best and worst among every template, archived ones included (history).
   verdict: Verdict<string>;
+  // Best and worst among the templates people can still use, which is what the page names; and a
+  // retired template that did better than all of them, noted underneath.
+  activeVerdict: ActiveVerdict;
   // Emails only (an AI draft is always an email, so other channels would not compare like for like).
   authorship: { ai: Rated; hand: Rated; lead: "ai" | "hand" | null };
   byTouch: Part[];
@@ -173,6 +177,47 @@ function partsOf(rows: readonly OutreachRow[], split: Split, touches: Map<string
     parts.sort((a, b) => (a.label === NO_INDUSTRY ? 1 : b.label === NO_INDUSTRY ? -1 : a.label.localeCompare(b.label)));
   }
   return parts;
+}
+
+export type ActiveVerdict = Verdict<string> & { retiredBetter: { key: string; name: string; rate: number } | null };
+
+// Best and worst among active templates only. An archived template can't be picked any more, so it
+// is never named best or worst; if a rated one beat every active rated template, it is returned as
+// retiredBetter ("A retired template did better: Fall pitch (49%)").
+export function activeVerdict(templates: readonly TemplateLine[]): ActiveVerdict {
+  const active = templates.filter((t) => !t.archived);
+  const v = verdict(active.map((t) => ({ key: t.key, stat: t.stat })));
+  const rated = (t: TemplateLine) => t.stat.status === "rated" && t.stat.rate !== null;
+  const topActive = Math.max(-1, ...active.filter(rated).map((t) => t.stat.rate as number));
+  const retired = templates
+    .filter((t) => t.archived && rated(t) && (t.stat.rate as number) > topActive)
+    .sort((a, b) => (b.stat.rate as number) - (a.stat.rate as number))[0];
+  return { ...v, retiredBetter: retired && topActive >= 0 ? { key: retired.key, name: retired.name, rate: retired.stat.rate as number } : null };
+}
+
+// ----- Formatting, shared by the page and its tests -----
+
+const COUNT = new Intl.NumberFormat("en-US");
+// "4,440".
+export const formatCount = (n: number) => COUNT.format(n);
+
+// "49%". A value above 0 that would round to 0% or 1% reads "<1%", so a tiny but real rate (or the
+// top of a range) never looks like a certain zero; exactly 0 stays "0%".
+export function formatPct(x: number): string {
+  if (x > 0 && x < 0.01) return "<1%";
+  if (x < 1 && x > 0.99) return ">99%";
+  return `${Math.round(x * 100)}%`;
+}
+
+// "12% to 31%".
+export const formatRange = (i: Interval) => `${formatPct(i.low)} to ${formatPct(i.high)}`;
+
+// The industries worth showing under a template: the `n` with the most counted sends, then ordered
+// by reply rate (highest first; no rate yet last). The rest stay one click away.
+export function topParts(parts: readonly Part[], n = 5): { top: Part[]; rest: Part[] } {
+  const bySends = [...parts].sort((a, b) => b.stat.counted - a.stat.counted || b.stat.sent - a.stat.sent || a.label.localeCompare(b.label));
+  const byRate = (list: Part[]) => list.sort((a, b) => (b.stat.rate ?? -1) - (a.stat.rate ?? -1) || a.label.localeCompare(b.label));
+  return { top: byRate(bySends.slice(0, n)), rest: byRate(bySends.slice(n)) };
 }
 
 export function scorecard(input: ScorecardInput, split: Split = "none", min = MIN_SENDS): Scorecard {
@@ -211,6 +256,7 @@ export function scorecard(input: ScorecardInput, split: Split = "none", min = MI
     templates,
     noTemplate: line(NO_TEMPLATE, "No template", false),
     verdict: verdict(templates.map((t) => ({ key: t.key, stat: t.stat }))),
+    activeVerdict: activeVerdict(templates),
     authorship: { ai, hand, lead: authorVerdict.best },
     byTouch: partsOf(rows, "touch", touches, now, min),
     gaps: {
