@@ -11,13 +11,15 @@ import { useNotify } from "./providers";
 import { ErrorLine } from "./shared";
 import { ShowMore } from "./show-more";
 import { focusSoon } from "./focus";
+import { completeStamp } from "./motion-kit";
 import "./templates.css";
 
 // "Which outreach got the reply?": asked once a company moves into Replied, In conversation or
 // Committed from an earlier stage. The person picks the entry that got the answer and template stats
 // count it, or skips. A plain dialog over the page: Escape or Skip closes it and nothing is saved.
 // The newest 5 entries show (older ones one click away), each with one line of its note (the whole
-// note once picked). With a single entry it is picked already and the button says so.
+// note once picked). With a single entry it is picked already and the button says so. Once marked,
+// the picked entry is stamped (a press, a moss ring, the check settling onto it) and the dialog closes.
 
 const NEWEST = 5;
 
@@ -56,6 +58,8 @@ export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDo
     const result = await markReply(prev, form);
     if (result.ok) {
       notify("Marked as the reply.");
+      const chosen = dialog.current?.querySelector<HTMLElement>(".lg-replyopt:has(input:checked)");
+      await completeStamp(chosen, { mark: chosen?.querySelector(".lg-replyopt-stamp") });
       dialog.current?.close();
       onDone();
     }
@@ -100,6 +104,10 @@ export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDo
             {choices.map((c, i) => (
               <label key={c.id} className="lg-replyopt">
                 <input type="radio" name="outreachId" value={c.id} checked={picked === c.id} onChange={() => setPicked(c.id)} className="lg-check" />
+                {/* The check that settles onto the entry once it is marked (hidden until then). */}
+                <span className="lg-replyopt-stamp" aria-hidden="true">
+                  <CheckIcon size={16} />
+                </span>
                 <span className="lg-replyopt-text">
                   <span className="lg-replyopt-when">
                     <span>

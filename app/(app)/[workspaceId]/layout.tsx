@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { boardYear } from "@/components/ledger/board-year";
 import { WorkspaceShell } from "@/components/ledger/shell";
 import { TourGate } from "@/components/ledger/tour-gate";
 import { TourMenuItems } from "@/components/ledger/user-menu";
@@ -28,7 +29,7 @@ export async function generateMetadata({ params }: LayoutProps<"/[workspaceId]">
 
 export default async function WorkspaceLayout({ children, params }: LayoutProps<"/[workspaceId]">) {
   const { workspaceId } = await params;
-  const { user, membership, workspace, workspaces, counts } = await loadWorkspace(workspaceId);
+  const { user, membership, workspace, workspaces, counts, now } = await loadWorkspace(workspaceId);
   const progress = await getProgress(membership);
   const elsewhere =
     progress?.basicsDoneAt || !basicsPending(progress, membership.role)
@@ -46,6 +47,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
       workspaceId={workspaceId}
       workspaceName={workspace.name}
       workspaces={workspaces}
+      volume={boardYear(now).long}
       me={{ name: user.name, email: user.email, roleLabel: roleLabel(membership.role), claimWindowDays: workspace.claimWindowDays }}
       accountItems={<TourMenuItems aiRecommended={!progress?.aiDoneAt} />}
       overlay={

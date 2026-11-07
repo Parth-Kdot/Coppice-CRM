@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import "@/components/ledger/zod-jitless";
 import { ActionForm, useActionFormPending } from "@/components/action-form";
 import { CHANNEL_LABELS, CHANNELS } from "@/lib/channels";
@@ -12,6 +12,7 @@ import { ChipGroup, type ChipOption } from "./chips";
 import { CopyLinkIcon } from "./icons";
 import { CalendarPopover } from "./date-popover";
 import { Disclosure } from "./disclosure";
+import { completeStamp } from "./motion-kit";
 import { formatYmd } from "./ymd";
 import "./company.css";
 import "./templates.css";
@@ -58,10 +59,45 @@ type Props = {
   label?: string;
   // The workspace's templates that are not archived (lib/templates.ts activeTemplates).
   templates?: TemplateOption[];
+  // The finish moment. After a save the Log button is stamped. `settleInto` (a selector for the
+  // list the new entry is drawn in, e.g. "#outreach .lg-entries") stamps that entry too once the
+  // fresh render brings it, so the eye follows the entry into the log. `onLogged` runs before the
+  // fresh render is committed and is awaited: the queue uses it to send its row away first.
+  settleInto?: string;
+  onLogged?: () => Promise<void> | void;
 };
 
-export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraftId, initialNote = "", compact = false, label = "Log outreach", templates = [] }: Props) {
+export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraftId, initialNote = "", compact = false, label = "Log outreach", templates = [], settleInto, onLogged }: Props) {
   const id = useId();
+  const wrap = useRef<HTMLDivElement>(null);
+  // The server action, with the finish moment around it. Nothing waits on the stamp: it plays while
+  // the fresh page arrives. Only onLogged (a row leaving) is awaited, and it always resolves.
+  const logAndStamp = useCallback(
+    async (prev: ActionResult | null, form: FormData): Promise<ActionResult> => {
+      const seen = settleInto ? new Set(Array.from(document.querySelectorAll<HTMLElement>(`${settleInto} [data-entry-id]`), (el) => el.dataset.entryId)) : null;
+      const result = await action(prev, form);
+      if (!result.ok) return result;
+      void completeStamp(wrap.current?.querySelector('button[type="submit"]'));
+      if (seen && settleInto) {
+        settleWhenDrawn(settleInto, seen);
+      }
+      if (onLogged) await onLogged();
+      else {
+        // The button was disabled while saving, which drops focus to <body>: give it back.
+        let frames = 0;
+        const give = () => {
+          const button = wrap.current?.querySelector<HTMLButtonElement>('button[type="submit"]');
+          const lost = !document.activeElement || document.activeElement === document.body;
+          if (!lost || !button) return;
+          if (!button.disabled) return button.focus({ preventScroll: true });
+          if (++frames < 60) requestAnimationFrame(give);
+        };
+        requestAnimationFrame(give);
+      }
+      return result;
+    },
+    [action, settleInto, onLogged],
+  );
   const followPick = useRef<HTMLInputElement | null>(null);
   const [channel, setChannel] = useState<Channel>("EMAIL");
   const [followMode, setFollowMode] = useState<FollowMode>("7");
@@ -119,9 +155,9 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
   ];
 
   return (
-    <div className="lg-logwrap" onFocusCapture={ensureKey} onPointerDownCapture={ensureKey}>
+    <div ref={wrap} className="lg-logwrap" onFocusCapture={ensureKey} onPointerDownCapture={ensureKey}>
       <ActionForm
-        action={action}
+        action={logAndStamp}
         submitLabel={label}
         primary
         successMessage="Logged."
@@ -182,6 +218,18 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       </ActionForm>
     </div>
   );
+}
+
+// The new entry, once the fresh render draws it at the top of the list: it settles in with the same
+// stamp, a beat after the button's. Looks for about a second, then gives up quietly.
+function settleWhenDrawn(list: string, seen: Set<string | undefined>) {
+  let frames = 0;
+  const look = () => {
+    const entry = Array.from(document.querySelectorAll<HTMLElement>(`${list} [data-entry-id]`)).find((el) => !seen.has(el.dataset.entryId));
+    if (entry) return void completeStamp(entry);
+    if (++frames < 60) requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
 }
 
 // The note, with Ctrl/Cmd+Enter to save. The shortcut is refused while a save is in flight (the

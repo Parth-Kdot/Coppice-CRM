@@ -3,22 +3,26 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useActionState, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { claimCompany } from "@/app/(app)/[workspaceId]/companies/actions";
+import { claimCompany, logOutreach } from "@/app/(app)/[workspaceId]/companies/actions";
 import { loadFreshLeads, type FreshRow } from "@/app/(app)/[workspaceId]/queue-actions";
 import type { ActionResult } from "@/lib/validation";
 import { ClaimChip, type ClaimView } from "./claim-chip";
 import { Disclosure } from "./disclosure";
 import { focusSoon } from "./focus";
 import { ChevronRightIcon, WarningIcon } from "./icons";
+import { LogOutreachForm } from "./log-form";
+import { completeStamp, removeAway, restore } from "./motion-kit";
 import { isLongOverdue, OverdueMark } from "./overdue";
 import { useNotify } from "./providers";
 import "./queue.css";
 
 // One queue row, a single ruled line: how late, the company, the latest note (wide screens only)
 // and exactly one thing to do in the same right-hand slot:
-//   yours    "Log outreach" (a row you hold needs no chip; when the claim ends is in the tooltip)
-//   grabs    "Claim", which becomes "Log outreach" in the same slot once it is yours, with focus
-//            moved to it so a keyboard user carries straight on
+//   yours    "Log outreach", which opens the short log form under the row (channel, follow-up,
+//            note). Once it is saved the button is stamped and the row slides off the queue: it is
+//            done until its follow-up comes round. When the claim ends is in the tooltip.
+//   grabs    "Claim", which becomes "Log outreach" in the same slot once it is yours (stamped, so the
+//            eye finds it), with focus moved to it so a keyboard user carries straight on
 //   held     the holder's chip, read only ("Priya N."); the claim's end is in its tooltip
 //   fresh    a never-contacted lead: name, industry and Claim
 // A refusal (someone claimed first) is written under the row and the page is refreshed, so the row
@@ -50,10 +54,12 @@ type Refusals = {
   wantFocus: (id: string) => void;
   // True once, for the row asked for.
   takeFocus: (id: string) => boolean;
+  // Today in West Lafayette ("2026-11-07"), from the database, for the rows' log form.
+  today: string | null;
 };
-const RefusalContext = createContext<Refusals>({ get: () => undefined, set: () => undefined, any: () => false, wantFocus: () => undefined, takeFocus: () => false });
+const RefusalContext = createContext<Refusals>({ get: () => undefined, set: () => undefined, any: () => false, wantFocus: () => undefined, takeFocus: () => false, today: null });
 
-export function QueueProvider({ children }: { children: ReactNode }) {
+export function QueueProvider({ today = null, children }: { today?: string | null; children: ReactNode }) {
   const [map, setMap] = useState<Record<string, string>>({});
   const focusLog = useRef<string | null>(null);
   const wantFocus = useCallback((id: string) => {
@@ -72,7 +78,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
-  const api = useMemo<Refusals>(() => ({ get: (id) => map[id], set, any: (ids) => ids.some((id) => id in map), wantFocus, takeFocus }), [map, set, wantFocus, takeFocus]);
+  const api = useMemo<Refusals>(() => ({ get: (id) => map[id], set, any: (ids) => ids.some((id) => id in map), wantFocus, takeFocus, today }), [map, set, wantFocus, takeFocus, today]);
   return <RefusalContext value={api}>{children}</RefusalContext>;
 }
 
@@ -125,7 +131,32 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
   const claimedHere = state?.ok === true;
   const mine = variant === "yours" || claimedHere || row.claim.state === "mine";
   const until = row.claim.until;
-  const logLink = useRef<HTMLAnchorElement>(null);
+  const logLink = useRef<HTMLButtonElement>(null);
+  const rowEl = useRef<HTMLLIElement>(null);
+  const [logging, setLogging] = useState(false);
+  const panelId = `qlog-${row.id}`;
+  const canLogHere = refusals.today !== null;
+
+  // After a save: the row slides off the queue (it isn't due any more) before the fresh queue is
+  // drawn without it. Focus goes to the next row's button, or to the group's heading. A follow-up
+  // set for today keeps the row due: the fresh render then brings it straight back.
+  const leave = useCallback(async () => {
+    const li = rowEl.current;
+    if (!li) return;
+    const heading = li.closest("section")?.querySelector<HTMLElement>("h2") ?? null;
+    const next = li.nextElementSibling?.querySelector<HTMLElement>(".lg-qact a, .lg-qact button") ?? heading;
+    if (next === heading && heading && !heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+    // The Log button was disabled while saving, which drops focus to <body>: move it on now.
+    const active = document.activeElement;
+    if (!active || active === document.body || li.contains(active)) next?.focus({ preventScroll: true });
+    await removeAway(li);
+    window.setTimeout(() => {
+      if (li.isConnected && li.closest("ul")) restore(li);
+      // The fresh queue may have dropped the whole group: focus goes to the page's heading then.
+      const active = document.activeElement;
+      if (!active || active === document.body) focusSoon(() => (heading?.isConnected ? heading : document.querySelector<HTMLElement>("#main h1")));
+    }, 400);
+  }, []);
 
   // Focus moves to "Log outreach" when this row is the one just claimed, unless the person has
   // already moved on (focus is somewhere other than <body> or this row).
@@ -133,6 +164,8 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
   useEffect(() => {
     const link = logLink.current;
     if (!mine || !link || !takeFocus(row.id)) return;
+    // The claim is done: the new button is stamped wherever focus is.
+    void completeStamp(link);
     const active = document.activeElement;
     const item = link.closest("li");
     if (active && active !== document.body && !item?.contains(active)) return;
@@ -145,16 +178,34 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
   }, [mine, row.id, takeFocus, wantFocus]);
 
   let action: ReactNode;
-  if (mine) {
+  if (mine && canLogHere) {
     action = (
-      <Link
+      <button
         ref={logLink}
-        href={`${href}#log-outreach`}
+        type="button"
         className="lg-btn lg-btn-sm lg-qlog"
         data-log-for={row.id}
         data-tour="queue-log"
+        aria-expanded={logging}
+        aria-controls={panelId}
         title={until && !claimedHere ? `Yours until ${until}` : undefined}
+        onClick={() => {
+          const open = !logging;
+          setLogging(open);
+          if (open) focusSoon(`#${panelId} input[name="channel"]:checked`);
+        }}
       >
+        Log outreach
+        <span className="lg-sr">
+          {" "}
+          for {row.name}
+          {until && !claimedHere ? `, yours until ${until}` : ""}
+        </span>
+      </button>
+    );
+  } else if (mine) {
+    action = (
+      <Link href={`${href}#log-outreach`} className="lg-btn lg-btn-sm lg-qlog" data-log-for={row.id} title={until && !claimedHere ? `Yours until ${until}` : undefined}>
         Log outreach
         <span className="lg-sr">
           {" "}
@@ -184,8 +235,10 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
 
   return (
     <li
+      ref={rowEl}
       className="lg-qrow lg-rule-row"
       data-variant={variant}
+      data-logging={logging || undefined}
       data-od={isLongOverdue(row.days) ? "long" : undefined}
       data-mine={mine || undefined}
     >
@@ -210,6 +263,22 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
         )}
         <span className="lg-qact">{action}</span>
       </div>
+
+      {mine && logging && refusals.today && (
+        <div id={panelId} className="lg-qlogpanel" role="group" aria-label={`Log outreach for ${row.name}`}>
+          <LogOutreachForm workspaceId={workspaceId} companyId={row.id} action={logOutreach} today={refusals.today} compact onLogged={leave} />
+          <button
+            type="button"
+            className="lg-btn lg-btn-quiet lg-btn-sm lg-qlog-close"
+            onClick={() => {
+              setLogging(false);
+              focusSoon(() => logLink.current);
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
 
       {refused && (
         <RefusalNote

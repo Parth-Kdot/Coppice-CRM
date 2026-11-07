@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { FirstRun } from "@/components/ledger/first-run";
 import { PlusIcon } from "@/components/ledger/icons";
+import { Ribbon } from "@/components/ledger/marks";
 import { OverflowMenu } from "@/components/ledger/overflow-menu";
 import { FreshLeads, HeldByOthers, QueueProvider, QueueRow, type QueueRowData, type RowVariant } from "@/components/ledger/queue-row";
 import { Empty, PageHead } from "@/components/ledger/shared";
 import { MoreLink, ShowMore } from "@/components/ledger/show-more";
-import { claimState } from "@/lib/claims";
+import { claimState, dbToday } from "@/lib/claims";
 import { daysBetween, day } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { clampUpto, getQueueHome, QUEUE_STEP, type QueueGroup, type QueueRow as QueueRecord } from "@/lib/queue";
@@ -52,6 +53,8 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
   const upto = clampUpto(filters.upto);
 
   const home = await getQueueHome(membership, { upto, now });
+  // For the rows' own log form ("Log outreach" opens it under the row).
+  const today = await dbToday();
   const total = home.yours.count + home.grabs.count + home.heldByOthers.count;
   const windowDays = workspace.claimWindowDays;
 
@@ -99,7 +102,7 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
     ) : null;
 
   return (
-    <QueueProvider>
+    <QueueProvider today={today}>
       <div className="lg-queue">
         <PageHead title="Follow-ups due" count={total > 0 ? total : undefined}>
           <OverflowMenu
@@ -144,6 +147,8 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
           {(home.yours.count > 0 || home.yoursNotDue > 0) && (
             <section id="yours" className="lg-qgroup" aria-labelledby="yours-title" tabIndex={-1}>
               <h2 id="yours-title" className="lg-qgroup-title">
+                {/* Your place in the book: the gilt ribbon hangs from the Yours rule. */}
+                <Ribbon size="md" className="lg-qribbon" />
                 Yours {home.yours.count > 0 && <span className="lg-qgroup-n">{home.yours.count.toLocaleString("en-US")}</span>}
               </h2>
               {home.yours.count > 0 && group(home.yours, "yours", "Yours")}

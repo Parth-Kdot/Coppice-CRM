@@ -8,9 +8,10 @@
     outline: none;
   }
   .lg-qgroup + .lg-qgroup {
-    margin-top: 28px;
+    margin-top: 22px;
   }
   .lg-qgroup-title {
+    position: relative;
     display: flex;
     align-items: baseline;
     gap: 8px;
@@ -26,12 +27,29 @@
     font-size: var(--fs-3);
     font-variant-numeric: tabular-nums;
   }
+  /* The gilt ribbon hangs from the Yours rule, in the rows' left margin. */
+  .lg-qribbon {
+    top: calc(100% + 2px);
+    left: 1px;
+  }
   .lg-qhint {
-    margin-top: 10px;
+    margin-top: 8px;
     font-size: var(--fs-2);
   }
+  #yours .lg-qhint {
+    padding-left: 22px;
+  }
+  .lg-queue .lg-pagehead {
+    margin-bottom: 8px;
+  }
   .lg-qsection {
-    margin-top: 36px;
+    margin-top: 22px;
+  }
+  .lg-qsection + .lg-qsection {
+    margin-top: 6px;
+  }
+  .lg-qsection > .lg-disc-body {
+    padding-bottom: 8px;
   }
   .lg-qsection .lg-qlist {
     border-top: 1px solid var(--rule);
@@ -64,8 +82,28 @@
     position: relative;
     border-bottom: 1px solid var(--rule);
   }
-  .lg-qrow:hover {
+  .lg-qrow:hover,
+  .lg-qrow[data-logging] {
     background: rgb(239 231 214 / 0.55);
+  }
+  /* "Log outreach" on a row of yours: the short log form, under the row. */
+  .lg-qlogpanel {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px 16px;
+    padding: 4px 14px 14px 192px;
+  }
+  .lg-qlogpanel > .lg-logwrap {
+    flex: 1 1 420px;
+    min-width: 0;
+    max-width: 640px;
+  }
+  .lg-qlog-close {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
   }
   .lg-qtime {
     min-width: 0;
@@ -218,6 +256,9 @@
     .lg-qnote {
       display: none;
     }
+    .lg-qlogpanel {
+      padding-left: 124px;
+    }
     .lg-qtime .lg-od-text {
       position: absolute;
       width: 1px;
@@ -281,6 +322,22 @@
     }
     .lg-rownote {
       margin-inline: 4px;
+    }
+    .lg-qlogpanel {
+      padding: 2px 4px 12px;
+    }
+    /* Rows start at the edge here: the ribbon hangs at the other end of the rule. */
+    .lg-qribbon {
+      left: auto;
+      right: 10px;
+    }
+    #yours .lg-qhint {
+      padding-left: 0;
+      padding-right: 24px;
+    }
+    .lg-qlog-close {
+      right: 4px;
+      bottom: 12px;
     }
     .lg-firstrun-step {
       grid-template-columns: 32px minmax(0, 1fr);

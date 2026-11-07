@@ -88,7 +88,7 @@ function hostOf(href: string): string | null {
 
 // The company page answers one question: what do I do next with this company? In reading order
 // (which is also the keyboard order): the header (name, ⋯, one line of facts, the notes), the route
-// map with "Move to", the claim strip, the log card, the AI tools, the outreach, the contacts and the
+// map with "Move to", the claim ticket, the log card, the AI tools, the outreach, the contacts and the
 // history. On a wide screen the first and the last two sit on the left page and the claim, log, AI
 // tools and outreach on the right (company.css grid areas). Officers never see a control the server
 // would refuse: on someone else's claim the stage is read-only and there is no archive or AI. An
@@ -291,7 +291,8 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
         </div>
       )}
 
-      <div className="lg-cogrid">
+      {/* Keyed by archived: archiving slides this sheet away, and the archived page is a new one. */}
+      <div className="lg-cogrid" key={archived ? "archived" : "live"}>
         <div className="lg-co-head">{header}</div>
         <div className="lg-co-route">
           <RouteMap stage={company.stage} stageChanges={company.stageChanges} hasOutreach={company.outreachTotal > 0} />
@@ -314,7 +315,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
             {canLog && (
               // The queue's "Log outreach" links jump here (and LogHashFocus readies the form).
               <Block id="log-outreach" title="Log outreach" data-tour="log-outreach" className="lg-logcard">
-                <LogOutreachForm workspaceId={workspaceId} companyId={company.id} action={logOutreach} today={today} templates={templates} />
+                <LogOutreachForm workspaceId={workspaceId} companyId={company.id} action={logOutreach} today={today} templates={templates} settleInto="#outreach .lg-entries" />
                 <LogHashFocus />
               </Block>
             )}

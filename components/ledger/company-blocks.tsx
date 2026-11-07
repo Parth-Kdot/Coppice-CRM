@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { EditDetailsContext } from "@/components/company-form";
@@ -10,8 +10,11 @@ import type { LookAlike, ReplyChoice } from "@/lib/companies";
 import { STAGE_LABELS } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import { Disclosure, LazyDisclosure, useLazyDisclosure } from "./disclosure";
+import { boardYear } from "./board-year";
 import { focusSoon } from "./focus";
 import { CopyLinkIcon, ExternalIcon } from "./icons";
+import { TurnoverRule } from "./marks";
+import { completeStamp, removeAway, restore } from "./motion-kit";
 import { OverflowMenu, type OverflowItem } from "./overflow-menu";
 import { useNotify } from "./providers";
 import { ReplyPrompt } from "./reply-prompt";
@@ -103,11 +106,28 @@ export function Clamp({ text, className = "" }: { text: string; className?: stri
   );
 }
 
-// ----- The claim strip's Claim button -----
+// ----- The claim ticket's buttons -----
 
-// Claim it / Claim again. On success the log card appears under the strip and its checked channel
-// chip takes focus. A refusal (someone was quicker) is a toast naming the winner, the page re-renders
-// with them in the strip, and focus moves to the strip, never to <body>.
+// Runs `run` on the element `find` returns once the server's fresh render has drawn it: looks again
+// on each frame for about a second, then gives up quietly. For a finish moment that plays on what
+// the action brought (the new ticket, the new outreach entry), never on a page load.
+export function whenDrawn<T extends Element>(find: () => T | null | undefined, run: (el: T) => void): void {
+  if (typeof window === "undefined") return;
+  let frames = 0;
+  const look = () => {
+    const el = find();
+    if (el && el.isConnected) return run(el);
+    if (++frames < 60) requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
+}
+
+const TICKET = '[data-tour="company-claim"]';
+
+// Claim it / Claim again. On success the new ticket is stamped (a press, a moss ring) and the gilt
+// ribbon settles onto its stub; the log card appears under it and its checked channel chip takes
+// focus. A refusal (someone was quicker) is a toast naming the winner, the page re-renders with them
+// on the ticket, and focus moves to the ticket, never to <body>.
 export function ClaimButton({ action, workspaceId, companyId, companyName, label }: { action: Action; workspaceId: string; companyId: string; companyName: string; label: string }) {
   const [pending, startTransition] = useTransition();
   const notify = useNotify();
@@ -125,17 +145,76 @@ export function ClaimButton({ action, workspaceId, companyId, companyName, label
           const result = await action(null, form);
           if (result.ok) {
             notify(`Claimed ${companyName}.`);
+            whenDrawn(
+              () => document.querySelector<HTMLElement>(`${TICKET}[data-kind="mine"]`),
+              (ticket) => void completeStamp(ticket, { mark: ticket.querySelector(".lg-ticket-ribbon") }),
+            );
             startTransition(() => focusSoon('#log-outreach input[name="channel"]:checked'));
           } else {
             notify(result.error, "error");
             router.refresh();
-            startTransition(() => focusSoon('[data-tour="company-claim"]'));
+            startTransition(() => focusSoon(TICKET));
           }
         })
       }
     >
       {pending ? "Working..." : label}
     </button>
+  );
+}
+
+// Release (your own claim) and Force release (an owner, on someone else's). Once confirmed, the
+// ticket's body tears off along the perforation and slides away while the server releases it; the
+// stub stays for the moment it takes the fresh, free ticket to arrive. A refusal puts the body back.
+// Focus goes to the new ticket's Claim button.
+export function TicketRelease({
+  action,
+  workspaceId,
+  companyId,
+  submitLabel,
+  ariaLabel,
+  confirmMessage,
+  successMessage,
+}: {
+  action: Action;
+  workspaceId: string;
+  companyId: string;
+  submitLabel: string;
+  ariaLabel?: string;
+  confirmMessage: string;
+  successMessage: string;
+}) {
+  const tear = useCallback<Action>(
+    async (prev, form) => {
+      const ticket = document.querySelector<HTMLElement>(TICKET);
+      const body = ticket?.querySelector<HTMLElement>(".lg-ticket-body");
+      const leaving = removeAway(body, { direction: "right", distance: 28, collapse: false, focus: ticket });
+      try {
+        const result = await action(prev, form);
+        if (!result.ok) restore(body);
+        else await leaving;
+        return result;
+      } catch (error) {
+        restore(body);
+        throw error;
+      }
+    },
+    [action],
+  );
+  return (
+    <ActionForm
+      action={tear}
+      submitLabel={submitLabel}
+      small
+      submitAriaLabel={ariaLabel}
+      confirmMessage={confirmMessage}
+      successMessage={successMessage}
+      focusAfter={`${TICKET} button`}
+      className="lg-ticket-form"
+    >
+      <input type="hidden" name="workspaceId" value={workspaceId} />
+      <input type="hidden" name="companyId" value={companyId} />
+    </ActionForm>
   );
 }
 
@@ -180,6 +259,26 @@ export function CompanyHeader({
 }) {
   const [editing, setEditing] = useState(false);
   const stage = useStageMove();
+  // Archive, once confirmed: the company's sheet slides away while the server archives it, and the
+  // archived page takes its place. A refusal brings the sheet back.
+  const archiveAction = menu?.archive;
+  const archive = useCallback<Action>(
+    async (prev, form) => {
+      if (!archiveAction) return { ok: false, error: "Archive is not available here." };
+      const sheet = document.querySelector<HTMLElement>(".lg-company .lg-cogrid");
+      const leaving = removeAway(sheet, { direction: "left", distance: 24, collapse: false, focus: document.querySelector<HTMLElement>(".lg-company .lg-back") });
+      try {
+        const result = await archiveAction(prev, form);
+        if (!result.ok) restore(sheet);
+        else await leaving;
+        return result;
+      } catch (error) {
+        restore(sheet);
+        throw error;
+      }
+    },
+    [archiveAction],
+  );
   const fields: Record<string, string> = menu ? { workspaceId: menu.workspaceId, companyId: menu.companyId } : {};
   const items: OverflowItem[] = [];
   if (menu?.canEdit) {
@@ -216,13 +315,13 @@ export function CompanyHeader({
       });
     }
   }
-  if (menu?.canControl && menu.archive) {
+  if (menu?.canControl && archive) {
     items.push({
       key: "archive",
       label: "Archive",
       hint: "Hide it from the board and queue",
       danger: true,
-      action: menu.archive,
+      action: archive,
       fields,
       confirmMessage: `Archive ${name}? It leaves the board and queue. Its history is kept and you can unarchive it.`,
       successMessage: `${name} archived.`,
@@ -465,19 +564,32 @@ export type OutreachData = {
   template: { name: string } | null;
 };
 
-function OutreachEntry({ o, label }: { o: OutreachData; label: string }) {
+// Where one board's entries end and an older board's begin: the double rule, drawn at the top of
+// the first older entry (newest first, so the board above it has ended).
+function turnoverBefore(at: Date, newer: Date | undefined): ReactNode {
+  if (!newer || boardYear(newer).start === boardYear(at).start) return null;
+  return <TurnoverRule endsYear={boardYear(at).long} />;
+}
+
+// One ledger line: the date in the margin, then who, how and the note.
+function OutreachEntry({ o, label, turnover }: { o: OutreachData; label: string; turnover: ReactNode }) {
   const by = [o.sender.name, CHANNEL_LABELS[o.channel], o.aiDraftId ? "from an AI draft" : null, o.template ? `template: ${o.template.name}` : null].filter(Boolean).join(" · ");
   return (
-    <li className="lg-entry">
-      <p className="lg-entryhead">
-        <time dateTime={o.sentAt.toISOString()}>{label}</time>
-        {o.gotReply && <span className="lg-badge lg-replied">Got the reply</span>}
-      </p>
-      <p className="lg-entryby lg-wrap-any">
-        {by}
-        {o.via === "ASSISTANT" && <span className="lg-via">via assistant</span>}
-      </p>
-      {o.note && <Clamp text={o.note} className="lg-entrynote" />}
+    <li className="lg-entry" data-entry-id={o.id}>
+      {turnover}
+      <div className="lg-entryline">
+        <time className="lg-entrydate" dateTime={o.sentAt.toISOString()}>
+          {label}
+        </time>
+        <div className="lg-entrybody">
+          <p className="lg-entryby lg-wrap-any">
+            {o.gotReply && <span className="lg-badge lg-replied">Got the reply</span>}
+            {by}
+            {o.via === "ASSISTANT" && <span className="lg-via">via assistant</span>}
+          </p>
+          {o.note && <Clamp text={o.note} className="lg-entrynote" />}
+        </div>
+      </div>
     </li>
   );
 }
@@ -528,8 +640,8 @@ export function OutreachList({ outreach, total, thisYear, olderHref, older = fal
   return (
     <>
       <ShowMore initial={5} label="outreach entries" as="ol" listClassName="lg-entries">
-        {outreach.map((o) => (
-          <OutreachEntry key={o.id} o={o} label={dateLabel(o.sentAt, thisYear, shared.has(dayKey(o.sentAt)))} />
+        {outreach.map((o, i) => (
+          <OutreachEntry key={o.id} o={o} label={dateLabel(o.sentAt, thisYear, shared.has(dayKey(o.sentAt)))} turnover={turnoverBefore(o.sentAt, outreach[i - 1]?.sentAt)} />
         ))}
       </ShowMore>
       {(total > outreach.length || older) && (
@@ -597,13 +709,18 @@ function StageMoves({ changes, total, thisYear, olderHref, older }: { changes: C
   return (
     <>
       <ShowMore initial={10} label="stage moves" as="ol" listClassName="lg-entries lg-history">
-        {changes.map((s) => (
+        {changes.map((s, i) => (
           <li key={s.id} className="lg-entry">
-            <p className="lg-entrybody">
-              <time dateTime={s.changedAt.toISOString()}>{dateLabel(s.changedAt, thisYear, shared.has(dayKey(s.changedAt)))}</time>: {s.changedBy.name} moved it from{" "}
-              {STAGE_LABELS[s.fromStage]} to {STAGE_LABELS[s.toStage]}
-              {s.via === "ASSISTANT" && <span className="lg-via">via assistant</span>}
-            </p>
+            {turnoverBefore(s.changedAt, changes[i - 1]?.changedAt)}
+            <div className="lg-entryline">
+              <time className="lg-entrydate" dateTime={s.changedAt.toISOString()}>
+                {dateLabel(s.changedAt, thisYear, shared.has(dayKey(s.changedAt)))}
+              </time>
+              <p className="lg-entrybody">
+                {s.changedBy.name} moved it from {STAGE_LABELS[s.fromStage]} to {STAGE_LABELS[s.toStage]}
+                {s.via === "ASSISTANT" && <span className="lg-via">via assistant</span>}
+              </p>
+            </div>
           </li>
         ))}
       </ShowMore>

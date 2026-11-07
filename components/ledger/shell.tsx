@@ -309,6 +309,8 @@ export type ShellProps = {
   workspaceName: string;
   // The person's workspaces, for the header's switcher (at most 20).
   workspaces: WorkspaceChoice[];
+  // "2026-27": the board year the book is for, printed after the workspace name like a volume.
+  volume?: string;
   me: Me;
   // Reserved for the onboarding round: drawn after the shell, inside the palette's provider.
   overlay?: ReactNode;
@@ -317,7 +319,7 @@ export type ShellProps = {
   children: ReactNode;
 };
 
-export function WorkspaceShell({ workspaceId, workspaceName, workspaces, me, overlay, accountItems, children }: ShellProps) {
+export function WorkspaceShell({ workspaceId, workspaceName, workspaces, volume, me, overlay, accountItems, children }: ShellProps) {
   const pathname = usePathname();
   const screen = screenOf(pathname, workspaceId);
   const listTab = useListTab(screen);
@@ -363,7 +365,10 @@ export function WorkspaceShell({ workspaceId, workspaceName, workspaces, me, ove
               <WorkspaceSwitcher current={workspaceId} name={workspaceName} workspaces={workspaces} variant="bar" />
             </div>
             <div className="lg-head-line">
-              <WorkspaceSwitcher current={workspaceId} name={workspaceName} workspaces={workspaces} />
+              <div className="lg-book">
+                <WorkspaceSwitcher current={workspaceId} name={workspaceName} workspaces={workspaces} />
+                {volume && <span className="lg-book-volume">Volume {volume}</span>}
+              </div>
               <SearchBar />
             </div>
           </header>

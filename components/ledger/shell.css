@@ -200,15 +200,31 @@
     display: none;
   }
   .lg-head {
-    padding: 14px 32px 0 36px;
+    padding: 12px 32px 0 36px;
   }
+  /* The book's title line: the workspace, its volume (the board year), the search, and the double
+     rule a ledger page opens under. */
   .lg-head-line {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--rule);
+    padding-bottom: 13px;
+    background: linear-gradient(var(--ink-2) 0 1px, transparent 1px 4px, var(--ink-2) 4px 5px) left bottom / 100% 5px no-repeat;
+  }
+  .lg-book {
+    display: flex;
+    align-items: baseline;
+    gap: 2px 10px;
+    min-width: 0;
+  }
+  .lg-book-volume {
+    flex: none;
+    color: var(--ink-2);
+    font-family: var(--font-display);
+    font-size: var(--fs-2);
+    font-style: italic;
+    white-space: nowrap;
   }
 
   /* ---------- The workspace switcher (workspace-switcher.tsx) ---------- */
@@ -288,7 +304,7 @@
   .lg-main {
     flex: 1;
     min-width: 0;
-    padding: 22px 32px 72px 36px;
+    padding: 14px 32px 56px 36px;
     outline: none;
   }
   .lg-main-narrow {
@@ -728,7 +744,7 @@
       font-size: var(--fs-2);
     }
     .lg-main {
-      padding: 16px 16px calc(88px + env(safe-area-inset-bottom));
+      padding: 12px 16px calc(84px + env(safe-area-inset-bottom));
     }
     .lg-notes-lane {
       left: 12px;

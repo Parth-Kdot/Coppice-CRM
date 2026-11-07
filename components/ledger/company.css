@@ -1,7 +1,7 @@
 /* ==========================================================================================
    Ledger, the company page and the new company page. The page is in reading order (header, route
-   map and Move to, claim strip, log card, AI tools, outreach, contacts, history); on a wide screen a
-   grid puts the header, route, contacts and history on the left page and the claim strip, log card,
+   map and Move to, claim ticket, log card, AI tools, outreach, contacts, history); on a wide screen a
+   grid puts the header, route, contacts and history on the left page and the claim ticket, log card,
    AI tools and outreach on the right (grid-template-areas, never `order`, so the keyboard reads it
    in the order it is drawn). An archived company is one column. Plain CSS in a file, so the strict
    style-src policy allows it. Motion is 120 to 220 ms and off under reduced motion.
@@ -102,7 +102,7 @@
   /* ---------- The fast log form ---------- */
   .lg-logform {
     display: grid;
-    gap: 14px;
+    gap: 12px;
   }
   .lg-logform-compact {
     gap: 12px;
@@ -230,7 +230,7 @@
   /* ---------- The page ---------- */
   .lg-company > .lg-back,
   .lg-sheetwrap > .lg-back {
-    margin-bottom: 12px;
+    margin-bottom: 4px;
   }
   .lg-back {
     display: inline-flex;
@@ -252,8 +252,11 @@
   .lg-cogrid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    padding: 6px 30px 26px;
+    padding: 4px 26px 18px;
     border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-cogrid .lg-turnover-label {
     background: var(--sheet);
   }
   .lg-cogrid > * {
@@ -285,18 +288,18 @@
     }
     .lg-company[data-layout="spread"] .lg-co-side {
       grid-area: side;
-      padding: 18px 30px 26px;
+      padding: 16px 26px 20px;
       border-left: 1px solid var(--edge);
     }
     .lg-company[data-layout="spread"] .lg-co-head,
     .lg-company[data-layout="spread"] .lg-co-route,
     .lg-company[data-layout="spread"] .lg-co-contacts,
     .lg-company[data-layout="spread"] .lg-co-history {
-      padding-left: 30px;
-      padding-right: 30px;
+      padding-left: 26px;
+      padding-right: 26px;
     }
     .lg-company[data-layout="spread"] .lg-co-history {
-      padding-bottom: 26px;
+      padding-bottom: 20px;
     }
   }
   .lg-company[data-layout="single"] .lg-cogrid {
@@ -304,11 +307,11 @@
   }
   .lg-block {
     position: relative;
-    padding: 18px 0 22px;
+    padding: 14px 0 16px;
     border-top: 1px solid var(--rule);
   }
   .lg-co-side > .lg-block:first-child,
-  .lg-co-side > .lg-strip + .lg-block {
+  .lg-co-side > .lg-ticket + .lg-block {
     border-top: 0;
   }
   /* Anchors (#log-outreach, #outreach, #history) land below the phone's sticky top bar. */
@@ -324,7 +327,7 @@
     display: flex;
     align-items: baseline;
     gap: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     font-family: var(--font-display);
     font-weight: 400;
     font-size: var(--fs-4);
@@ -352,7 +355,7 @@
   /* ---------- The header: name, ⋯, one line of facts, the notes ---------- */
   .lg-cohead {
     min-width: 0;
-    margin: 14px 0 6px;
+    margin: 12px 0 4px;
   }
   .lg-cotitle {
     display: flex;
@@ -418,13 +421,17 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
-    padding-bottom: 16px;
+    gap: 8px;
+    padding-bottom: 12px;
   }
   .lg-co-route > .lg-route {
     align-self: stretch;
     min-width: 0;
     margin-bottom: 0;
+  }
+  /* No "Move to" under it (a closed company): the next block's rule closes the map instead. */
+  .lg-co-route > .lg-route:last-child {
+    border-bottom: 0;
   }
   .lg-moveto {
     gap: 6px;
@@ -598,40 +605,142 @@
     white-space: nowrap;
   }
 
-  /* ---------- The claim strip: one line, who holds it and the one button that fits ---------- */
-  .lg-strip {
+  /* ---------- The claim ticket: a paper ticket with a perforated stub ---------- */
+  /* The stub and the body are two pieces of the same ticket, each with its own paper and edge, so
+     releasing can tear the body off along the perforation (the stub's dashed right edge) and leave
+     the stub behind for a moment. A half circle is cut out at each end of the perforation. Yours is
+     a moss ticket with the gilt ribbon hanging from the stub. */
+  .lg-ticket {
+    --stub: 70px;
+    --t-paper: var(--paper-2);
+    --t-edge: var(--edge);
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--stub) minmax(0, 1fr);
+    margin: 2px 0 6px;
+    outline: none;
+  }
+  .lg-ticket:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: 3px;
+  }
+  .lg-ticket[data-kind="mine"] {
+    --t-paper: var(--moss-wash);
+    --t-edge: var(--moss);
+  }
+  .lg-ticket[data-kind="theirs"] {
+    --t-edge: var(--ink-2);
+  }
+  .lg-ticket-stub,
+  .lg-ticket-body {
+    min-width: 0;
+    background: var(--t-paper);
+    border: 1px solid var(--t-edge);
+  }
+  .lg-ticket-stub {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-height: 84px;
+    padding: 10px 4px 12px;
+    overflow: hidden;
+    border-right: 2px dashed var(--t-edge);
+    border-radius: 3px 0 0 3px;
+    color: var(--ink-2);
+  }
+  .lg-ticket[data-kind="mine"] .lg-ticket-stub {
+    color: var(--moss);
+  }
+  .lg-ticket-ribbon {
+    top: -1px;
+    left: 14px;
+  }
+  .lg-ticket-icon {
+    flex: none;
+  }
+  .lg-ticket-word {
+    font-size: var(--fs-1);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lg-ticket-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 16px 12px 18px;
+    border-left: 0;
+    border-radius: 0 3px 3px 0;
+  }
+  /* The perforation's notches: half circles of the page's own paper, edged like the ticket. */
+  .lg-ticket::before,
+  .lg-ticket::after {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    left: calc(var(--stub) - 8px);
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--t-edge);
+    border-radius: 999px;
+    background: var(--sheet);
+    pointer-events: none;
+  }
+  .lg-ticket::before {
+    top: -7px;
+    clip-path: inset(50% 0 0 0);
+  }
+  .lg-ticket::after {
+    bottom: -7px;
+    clip-path: inset(0 0 50% 0);
+  }
+  .lg-ticket-eyebrow {
+    color: var(--ink-2);
+    outline: none;
+  }
+  .lg-ticket-main {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: 8px 14px;
-    padding: 10px 14px;
-    border: 1px solid var(--edge);
-    border-left-width: 3px;
-    background: var(--paper-2);
   }
-  .lg-strip:focus {
-    outline: 2px solid var(--moss-2);
-    outline-offset: 2px;
-  }
-  .lg-strip[data-kind="mine"] {
-    border-left-color: var(--moss);
-  }
-  .lg-strip[data-kind="theirs"] {
-    border-left-color: var(--ink-2);
-  }
-  .lg-strip-text {
-    flex: 1 1 140px;
+  .lg-ticket-text {
+    flex: 1 1 200px;
     min-width: 0;
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.25;
     overflow-wrap: anywhere;
   }
-  .lg-strip-form {
+  .lg-ticket[data-kind="mine"] .lg-ticket-text {
+    color: var(--moss);
+  }
+  .lg-ticket-text .lg-via {
+    vertical-align: 3px;
+  }
+  .lg-ticket-form {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
   }
-  .lg-strip + .lg-block {
-    margin-top: 8px;
+  .lg-ticket-hint {
+    margin-top: 4px;
+  }
+  .lg-ticket + .lg-block {
+    margin-top: 4px;
+  }
+  /* The archived banner's form. */
+  .lg-strip-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
   }
 
   /* ---------- Contacts ---------- */
@@ -748,35 +857,46 @@
   }
   .lg-entry {
     min-width: 0;
-    padding: 10px 0;
     border-bottom: 1px solid var(--rule);
   }
   .lg-entries > .lg-entry:last-child {
     border-bottom: 0;
   }
+  /* A ledger line: the date in the margin, ruled off from the entry. */
+  .lg-entryline {
+    display: grid;
+    grid-template-columns: 4.6rem minmax(0, 1fr);
+    column-gap: 12px;
+    padding: 8px 0;
+  }
+  .lg-entrydate {
+    padding-top: 1px;
+    border-right: 1px solid var(--rule);
+    font-size: var(--fs-2);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+  }
   .lg-entrybody {
     min-width: 0;
-    flex: 1;
   }
-  .lg-entryhead {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 10px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    font-size: var(--fs-2);
+  .lg-entry .lg-turnover {
+    margin: 2px 0 0;
   }
   .lg-markreply {
-    margin: -2px 0 6px;
+    margin: -2px 0 4px;
     font-size: var(--fs-2);
   }
   .lg-entryby {
     color: var(--ink-2);
     font-size: var(--fs-2);
   }
+  .lg-entryby .lg-badge {
+    margin-right: 8px;
+    vertical-align: 1px;
+  }
   .lg-entrynote {
-    margin-top: 4px;
+    margin-top: 2px;
   }
   .lg-history .lg-entrybody {
     font-size: var(--fs-2);
@@ -847,7 +967,7 @@
     max-width: 760px;
   }
   .lg-newform {
-    padding: 22px 26px 26px;
+    padding: 18px 22px 20px;
     border: 1px solid var(--edge);
     background: var(--sheet);
   }
@@ -1176,6 +1296,29 @@
     .lg-cogrid {
       padding-left: 16px;
       padding-right: 16px;
+    }
+    .lg-ticket {
+      --stub: 58px;
+    }
+    .lg-ticket-stub {
+      min-height: 76px;
+    }
+    .lg-ticket-ribbon {
+      left: 10px;
+    }
+    .lg-ticket-word {
+      letter-spacing: 0.04em;
+    }
+    .lg-ticket-body {
+      padding: 9px 12px 11px 14px;
+    }
+    .lg-ticket-text {
+      flex-basis: 100%;
+      font-size: var(--fs-3);
+    }
+    .lg-entryline {
+      grid-template-columns: 3.9rem minmax(0, 1fr);
+      column-gap: 10px;
     }
     .lg-row2,
     .lg-row3 {
