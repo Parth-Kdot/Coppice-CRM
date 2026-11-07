@@ -481,10 +481,10 @@ describe("de-bloat pass (P2): the server stays the backstop", () => {
   it("'Separate entries' with more than 20 look-alikes saves (it used to fail on the 20-id limit)", async () => {
     await withTenant(A, (tx) =>
       tx.company.createMany({
-        data: Array.from({ length: 30 }, (_, i) => ({ workspaceId: "a", name: `Person ${i}`, website: `linkedin.com/in/p${i}`, nameKey: `person ${i}`, domainKey: "linkedin.com" })),
+        data: Array.from({ length: 30 }, (_, i) => ({ workspaceId: "a", name: `Person ${i}`, website: `jobs.example.com/p${i}`, nameKey: `person ${i}`, domainKey: "jobs.example.com" })),
       }),
     );
-    const fields = { workspaceId: "a", name: "Recruiting", website: "linkedin.com/in/new", industry: "", notes: "" };
+    const fields = { workspaceId: "a", name: "Recruiting", website: "jobs.example.com/new", industry: "", notes: "" };
     const first = await asUser("ownerA", () => createCompany(null, form(fields)));
     if (!first.ok || first.data.status !== "possible-duplicates") throw new Error("expected look-alikes");
     expect(first.data.matches).toHaveLength(20);

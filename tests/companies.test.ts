@@ -378,7 +378,7 @@ describe("changeStage (lib/claims.ts)", () => {
 });
 
 describe("look-alikes are capped, with a total (P2)", () => {
-  // 25 companies on one shared website, plus one with the same name as the new one.
+  // 25 companies on one shared website (an ordinary domain; shared hosts like LinkedIn match by page, see lib/duplicates.ts), plus one with the same name as the new one.
   const crowd = async () => {
     await withTenant(A, (tx) =>
       tx.company.createMany({
@@ -386,9 +386,9 @@ describe("look-alikes are capped, with a total (P2)", () => {
           id: `site-${String(i).padStart(2, "0")}`,
           workspaceId: "a",
           name: `Person ${i}`,
-          website: `linkedin.com/in/p${i}`,
+          website: `jobs.example.com/p${i}`,
           nameKey: `person ${i}`,
-          domainKey: "linkedin.com",
+          domainKey: "jobs.example.com",
         })),
       }),
     );
@@ -397,7 +397,7 @@ describe("look-alikes are capped, with a total (P2)", () => {
 
   it("lists at most 20, same name first, and counts them all", async () => {
     const sameName = await crowd();
-    const result = await createCompany(A, { name: "Recruiter Desk, Inc.", website: "https://linkedin.com/in/someone" });
+    const result = await createCompany(A, { name: "Recruiter Desk, Inc.", website: "https://jobs.example.com/someone" });
     if (result.status !== "possible-duplicates") throw new Error("expected look-alikes");
     expect(result.matches).toHaveLength(MATCH_LIMIT);
     expect(result.total).toBe(26);
@@ -407,17 +407,17 @@ describe("look-alikes are capped, with a total (P2)", () => {
 
   it("'Separate entries' for the 20 listed covers the rest too: saved, with a decision for every match", async () => {
     await crowd();
-    const first = await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" });
+    const first = await createCompany(A, { name: "Recruiter Desk", website: "jobs.example.com/someone" });
     if (first.status !== "possible-duplicates") throw new Error("expected look-alikes");
-    const id = saved(await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" }, first.matches.map((m) => m.id)));
+    const id = saved(await createCompany(A, { name: "Recruiter Desk", website: "jobs.example.com/someone" }, first.matches.map((m) => m.id)));
     expect(await withTenant(A, (tx) => tx.companyPairDecision.count({ where: { OR: [{ companyAId: id }, { companyBId: id }] } }))).toBe(26);
   });
 
   it("acknowledging only some of the listed ones still asks about the rest, counting what is left", async () => {
     await crowd();
-    const first = await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" });
+    const first = await createCompany(A, { name: "Recruiter Desk", website: "jobs.example.com/someone" });
     if (first.status !== "possible-duplicates") throw new Error("expected look-alikes");
-    const again = await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" }, first.matches.slice(0, 5).map((m) => m.id));
+    const again = await createCompany(A, { name: "Recruiter Desk", website: "jobs.example.com/someone" }, first.matches.slice(0, 5).map((m) => m.id));
     expect(again).toMatchObject({ status: "possible-duplicates", total: 21 });
     expect(await withTenant(A, (tx) => tx.companyPairDecision.count())).toBe(0);
   });
@@ -426,7 +426,7 @@ describe("look-alikes are capped, with a total (P2)", () => {
     await crowd();
     const mine = saved(await createCompany(A, { name: "Other Name" }));
     await markSeparate(A, mine, "site-00");
-    const result = await updateCompany(A, mine, edit({ name: "Other Name" }, { website: "linkedin.com/in/x" }));
+    const result = await updateCompany(A, mine, edit({ name: "Other Name" }, { website: "jobs.example.com/x" }));
     expect(result).toMatchObject({ ok: true, data: { status: "possible-duplicates", total: 24 } });
     if (!result.ok || result.data.status !== "possible-duplicates") throw new Error("expected look-alikes");
     expect(result.data.matches.map((m) => m.id)).not.toContain("site-00");
