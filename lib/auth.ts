@@ -38,7 +38,9 @@ const workspaces = organization({
   invitationExpiresIn: 60 * 60 * 24 * 7,
   cancelPendingInvitationsOnReInvite: true,
   requireEmailVerificationOnInvitation: true,
-  // A workspace holds the org's whole history, so it is never deleted from the app.
+  // Better Auth's own delete stays off: it removes the memberships before the workspace, which the
+  // keep-an-owner trigger refuses. An owner deletes a workspace from Settings through
+  // lib/workspaces.ts (deleteWorkspace), which deletes the workspace row and lets everything cascade.
   disableOrganizationDeletion: true,
   // Better Auth calls these "organization" and "member"; we call them Workspace and
   // Membership, with workspaceId everywhere, to match the rest of the schema.
@@ -112,6 +114,11 @@ const oauthClientAdminPaths = [
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
+  // The session is also kept in a signed cookie for five minutes, so most page loads read it without
+  // two database round trips (session, then user). Membership is still checked against the database
+  // on every request (lib/authz.ts), so removing someone from a workspace takes effect at once;
+  // only signing out on another device can take up to five minutes to reach this one.
+  session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
   socialProviders: {
     google: {
       clientId: requireEnv("GOOGLE_CLIENT_ID"),

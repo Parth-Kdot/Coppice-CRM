@@ -17,7 +17,9 @@ function GoogleMark() {
   );
 }
 
-export function GoogleSignInButton({ className = "" }: { className?: string }) {
+// `next` is where Google sends you back to: a path on this site, already checked by the page
+// (safeNextPath). Better Auth checks it again against the app's own origin.
+export function GoogleSignInButton({ className = "", next = "/workspaces" }: { className?: string; next?: string }) {
   const [going, setGoing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +27,7 @@ export function GoogleSignInButton({ className = "" }: { className?: string }) {
     setGoing(true);
     setError(null);
     try {
-      const result = await authClient.signIn.social({ provider: "google", callbackURL: "/workspaces" });
+      const result = await authClient.signIn.social({ provider: "google", callbackURL: next });
       // On success the browser is already on its way to Google; only a refusal comes back here.
       if (result?.error) {
         setError("Google sign-in could not start. Try again in a moment.");

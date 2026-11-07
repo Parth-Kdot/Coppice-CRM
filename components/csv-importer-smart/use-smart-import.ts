@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { ImportResult } from "@/lib/csv";
 import { mappingChanges, revertSmartMapping } from "@/lib/import-review";
 import type { ColumnSuggestion, RowProposal, SmartChunk, SmartChunkResult, SmartOptions, SmartStart } from "@/lib/smart-import";
-import { SMART_STAGES, type ActionResult, type ImportMapping, type SmartDecision } from "@/lib/validation";
+import { SMART_STAGES } from "@/lib/limits";
+import type { ActionResult, ImportMapping, SmartDecision } from "@/lib/validation";
 
 // Smart import, the optional half of the CSV importer (components/csv-importer.tsx). The AI only
 // proposes: every reading shows the cell text it came from, and the person keeps, edits or drops

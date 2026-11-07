@@ -1,11 +1,30 @@
 import { NextRequest } from "next/server";
-import { afterAll, beforeEach, describe, expect, it, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import nextConfig from "@/next.config";
 import { config as proxyConfig, proxy } from "@/proxy";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { contentSecurityPolicy, createNonce, securityHeaders } from "@/lib/security-headers";
-import { inviteMemberSchema, memberSchema } from "@/lib/validation";
+import { notFound, redirect } from "next/navigation";
+import { Prisma } from "@/generated/prisma/client";
+import { APIError } from "better-auth";
+import { BUSY_MESSAGE, LAST_OWNER_MESSAGE, failure } from "@/lib/actions";
+import { AuthzError } from "@/lib/authz";
+import { DEFAULT_POOL_MAX, poolMax } from "@/lib/db";
+import * as limits from "@/lib/limits";
+import {
+  aiSettingsSchema,
+  boardFiltersSchema,
+  claimWindowSchema,
+  companyFieldsSchema,
+  contactFieldsSchema,
+  createCompanySchema,
+  createWorkspaceSchema,
+  inviteMemberSchema,
+  logOutreachSchema,
+  memberSchema,
+  templateFieldsSchema,
+} from "@/lib/validation";
 import { resetAndSeed } from "./helpers/seed";
 
 const directives = (policy: string) => Object.fromEntries(policy.split("; ").map((d) => [d.split(" ")[0], d]));
@@ -162,5 +181,152 @@ describe("input size caps", () => {
     ["a 255-character email is rejected", `${"a".repeat(64)}@${"b".repeat(186)}.com`, false],
   ] as const)("%s", ([, email, ok]) => {
     expect(inviteMemberSchema.safeParse({ workspaceId: "a", email, role: "member" }).success).toBe(ok);
+  });
+});
+
+describe("failure(): what a server action returns when something goes wrong", () => {
+  const known = (code: string) => new Prisma.PrismaClientKnownRequestError(`Prisma said ${code}`, { code, clientVersion: "7.10.1" });
+  // What the pg driver adapter throws for a Postgres error Prisma has no code for.
+  const driverError = (cause: Record<string, unknown>) => Object.assign(new Error("db said no"), { name: "DriverAdapterError", cause });
+
+  test.each([
+    ["P2024 (no pooled connection in time)", known("P2024")],
+    ["P2028 (transaction timed out)", known("P2028")],
+    ["P2034 (serialization failure)", known("P2034")],
+    ["a driver error (a NUL byte Postgres refused)", driverError({ kind: "postgres", code: "22021" })],
+    ["a driver error (numeric overflow)", driverError({ kind: "postgres", code: "22003" })],
+    ["a busy error wrapped as the cause of another", Object.assign(new Error("outer"), { cause: known("P2024") })],
+    ["a RangeError", new RangeError("Invalid time value")],
+  ])("maps %s to the busy message instead of the error page", (_, error) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(failure(error, "testAction")).toEqual({ ok: false, error: BUSY_MESSAGE });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("testAction"), error);
+    log.mockRestore();
+  });
+
+  it("keeps the expected refusals as they were", () => {
+    expect(failure(new AuthzError("Only the workspace owner can do that."))).toEqual({ ok: false, error: "Only the workspace owner can do that." });
+    expect(failure(new APIError("BAD_REQUEST", { message: "You are not a member of this organization" }))).toEqual({
+      ok: false,
+      error: "You are not a member of this workspace",
+    });
+    expect(failure(new Error(`raise: ${LAST_OWNER_MESSAGE}`))).toEqual({ ok: false, error: LAST_OWNER_MESSAGE });
+    // The trigger's message arriving inside a driver error is still the last-owner message, not "busy".
+    expect(failure(driverError({ message: LAST_OWNER_MESSAGE }))).toEqual({ ok: false, error: LAST_OWNER_MESSAGE });
+  });
+
+  it("rethrows redirect() and notFound(), so Next can carry them out", () => {
+    const thrown = (run: () => never) => {
+      try {
+        run();
+      } catch (e) {
+        return e;
+      }
+    };
+    const toRedirect = thrown(() => redirect("/workspaces"));
+    const toNotFound = thrown(() => notFound());
+    expect(() => failure(toRedirect)).toThrow();
+    expect(() => failure(toRedirect)).toThrow(expect.objectContaining({ digest: expect.stringContaining("/workspaces") }));
+    expect(() => failure(toNotFound)).toThrow(expect.objectContaining({ digest: expect.stringContaining("404") }));
+  });
+
+  test.each([
+    ["a plain bug", new TypeError("x is undefined")],
+    ["a unique-constraint error (a real conflict, not busy)", known("P2002")],
+  ])("still rethrows %s", (_, error) => {
+    expect(() => failure(error)).toThrow(error);
+  });
+});
+
+describe("the database pool size (lib/db.ts)", () => {
+  it("defaults to a small pool per instance", () => {
+    expect(poolMax({})).toBe(DEFAULT_POOL_MAX);
+    expect(DEFAULT_POOL_MAX).toBe(5);
+  });
+
+  test.for([
+    ["1", 1],
+    ["12", 12],
+    [" 20 ", 20],
+  ] as const)("DATABASE_POOL_MAX=%j gives %i", ([raw, n]) => {
+    expect(poolMax({ DATABASE_POOL_MAX: raw })).toBe(n);
+  });
+
+  test.for(["0", "51", "2.5", "lots"])("refuses DATABASE_POOL_MAX=%j at startup", (raw) => {
+    expect(() => poolMax({ DATABASE_POOL_MAX: raw })).toThrow("DATABASE_POOL_MAX");
+  });
+});
+
+describe("readable validation messages", () => {
+  const message = (result: { success: boolean; error?: { issues: { message: string }[] } }) => result.error?.issues[0].message;
+
+  it("a claim window of letters asks for a number of days", () => {
+    expect(message(claimWindowSchema.safeParse({ workspaceId: "a", days: "abc" }))).toBe("Enter a number of days.");
+  });
+
+  it("an AI limit of letters asks for a number", () => {
+    expect(message(aiSettingsSchema.safeParse({ workspaceId: "a", enabled: "on", limit: "abc" }))).toBe("Enter a number.");
+  });
+
+  it("an 81-character workspace name says how long it may be", () => {
+    expect(message(createWorkspaceSchema.safeParse({ name: "x".repeat(81) }))).toBe("Keep the name to 80 characters or fewer.");
+    expect(createWorkspaceSchema.safeParse({ name: "x".repeat(80) }).success).toBe(true);
+  });
+
+  it("more than 20 look-alikes kept apart reads as a sentence", () => {
+    const ids = Array.from({ length: 21 }, (_, i) => `c${i}`).join(",");
+    expect(message(createCompanySchema.safeParse({ workspaceId: "a", name: "Acme", industry: null, website: null, notes: null, separateFrom: ids }))).toBe(
+      "Too many look-alikes to keep apart at once; save again.",
+    );
+  });
+
+  const NUL = "This text has a character Coppice can't save.";
+  test.each([
+    ["a company name", () => companyFieldsSchema.safeParse({ name: "Ac\u0000me", industry: null, website: null, notes: null })],
+    ["company notes", () => companyFieldsSchema.safeParse({ name: "Acme", industry: null, website: null, notes: "a\u0000b" })],
+    ["an industry", () => companyFieldsSchema.safeParse({ name: "Acme", industry: "Te\u0000ch", website: null, notes: null })],
+    ["a contact name", () => contactFieldsSchema.safeParse({ name: "Sam\u0000", email: null, title: null })],
+    ["a template body", () => templateFieldsSchema.safeParse({ name: "Intro", body: "Hi\u0000" })],
+    ["a workspace name", () => createWorkspaceSchema.safeParse({ name: "Org\u0000A" })],
+    [
+      "an outreach note",
+      () => logOutreachSchema.safeParse({ workspaceId: "a", companyId: "c", channel: "EMAIL", note: "hi\u0000", followUpOn: "2026-12-01" }),
+    ],
+  ])("refuses a NUL character in %s, before it reaches Postgres", (_, parse) => {
+    expect(message(parse())).toBe(NUL);
+  });
+});
+
+describe("board URL search text", () => {
+  it("cuts a search longer than 100 characters instead of dropping it", () => {
+    const long = "acme ".repeat(40);
+    const filters = boardFiltersSchema.parse({ q: long, industry: null, show: null, all: null, archived: null, dupes: null });
+    expect(filters.q).toBe(long.trim().slice(0, 100).trim());
+    expect(filters.q.length).toBeLessThanOrEqual(100);
+  });
+
+  it("cuts a long industry the same way", () => {
+    const filters = boardFiltersSchema.parse({ q: null, industry: "x".repeat(500), show: null, all: null, archived: null, dupes: null });
+    expect(filters.industry).toBe("x".repeat(limits.COMPANY_LIMITS.industry));
+  });
+
+  it("still drops something that isn't text", () => {
+    const filters = boardFiltersSchema.parse({ q: ["a", "b"], industry: 5, show: null, all: null, archived: null, dupes: null });
+    expect(filters).toMatchObject({ q: "", industry: "" });
+  });
+});
+
+describe("lib/limits.ts stays free of zod and Prisma (it is bundled into the browser)", () => {
+  it("imports nothing at all", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("lib/limits.ts", "utf8");
+    expect(source).not.toMatch(/^\s*import\s/m);
+  });
+
+  it("matches what lib/validation re-exports", async () => {
+    const validation = await import("@/lib/validation");
+    for (const [name, value] of Object.entries(limits)) {
+      expect(validation[name as keyof typeof validation], name).toBe(value);
+    }
   });
 });

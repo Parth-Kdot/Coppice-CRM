@@ -30,8 +30,24 @@ export function connectionConfig(env: Record<string, string | undefined> = proce
   return { connectionString, ssl: { ca, rejectUnauthorized: true } };
 }
 
+// How many connections one server instance may hold at once. pg's own default is 10; on Vercel
+// every instance has its own pool, and Supabase's transaction pooler shares a fixed number of
+// connections between all of them, so each instance keeps to 5 unless DATABASE_POOL_MAX says
+// otherwise (a whole number from 1 to 50). A request that finds the pool full waits for a free
+// connection (withTenant's maxWait) rather than failing at once.
+export const DEFAULT_POOL_MAX = 5;
+export function poolMax(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.DATABASE_POOL_MAX?.trim();
+  if (!raw) return DEFAULT_POOL_MAX;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 50) {
+    throw new Error("DATABASE_POOL_MAX must be a whole number from 1 to 50.");
+  }
+  return n;
+}
+
 function createPrismaClient(): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg(connectionConfig()) });
+  return new PrismaClient({ adapter: new PrismaPg({ ...connectionConfig(), max: poolMax() }) });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

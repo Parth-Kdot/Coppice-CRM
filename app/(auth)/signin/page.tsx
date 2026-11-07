@@ -5,14 +5,18 @@ import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "@/components/auth-buttons";
 import { SHOOTS_THREE, Stool } from "@/components/ledger/stool";
 import { auth } from "@/lib/auth";
+import { safeNextPath } from "@/lib/validation";
 import "@/components/ledger/ledger.css";
 import "@/components/ledger/auth.css";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function SignInPage() {
+// ?next= is the page someone opened while signed out (lib/authz.ts requireUser): a path on this
+// site only, checked again here, and handed to Google as the place to come back to.
+export default async function SignInPage({ searchParams }: PageProps<"/signin">) {
+  const next = safeNextPath((await searchParams).next) ?? "/workspaces";
   const session = await auth.api.getSession({ headers: await headers() });
-  if (session) redirect("/workspaces");
+  if (session) redirect(next);
 
   return (
     <div className="lg-auth">
@@ -26,7 +30,8 @@ export default async function SignInPage() {
       <main id="main" tabIndex={-1} className="lg-auth-main lg-page-enter">
         <h1 className="lg-auth-title">Coppice</h1>
         <p className="lg-auth-sub">Your team&apos;s shared outreach book. Sign in with Google to open it.</p>
-        <GoogleSignInButton />
+        <GoogleSignInButton next={next} />
+        <p className="lg-auth-who">Officers: your chair invites your Google email first.</p>
         <p className="lg-auth-back">
           <Link href="/" className="lg-link">
             Back to the home page
