@@ -29,7 +29,7 @@ import { PAST_YEARS } from "./shared";
 export { cellShape, cleanSuggestion, sampleSheet, shownColumns, suggestColumns, type ColumnSuggestion } from "./columns";
 export { checkRowsRead, findDoNotContact, quoteInCell, type Quote, type RowProposal, type RowsReadOutput } from "./check";
 export { runSmartImport } from "./commit";
-export { boardYearOf, parseDateText, resolveDate, yearLabel } from "./dates";
+export { boardYearOf, futureHint, parseDateText, resolveDate, yearLabel } from "./dates";
 export { type LookalikeGroup } from "./lookalikes";
 export { readSmartChunk, type SmartChunk, type SmartChunkResult } from "./read";
 export { startSmartRead, type SmartStart } from "./start";

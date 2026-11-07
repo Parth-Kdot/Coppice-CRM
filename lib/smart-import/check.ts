@@ -2,7 +2,7 @@ import { z } from "zod";
 import { matchKey } from "@/lib/ai/text";
 import { addDays } from "@/lib/dates";
 import { contactFieldsSchema, SMART_NOTE_MAX } from "@/lib/validation";
-import { boardYearOf, longDay, parseDateText, resolveDate, yearLabel } from "./dates";
+import { boardYearOf, longDay, parseDateText, placeFollowUp, placeLastContacted, resolveDate, yearLabel, type Placed } from "./dates";
 
 // What Smart import accepts from the AI's reading of free-text cells (lib/smart-import/). The
 // model is never trusted: every quote must really be in the cell it names (spacing and smart quotes
@@ -73,6 +73,8 @@ export type RowProposal = {
   doNotContact: Quote | null;
   // How many of the AI's items were dropped by a check, and why.
   dropped: string[];
+  // A last-contacted date was moved a year earlier, or dropped, because it would be in the future.
+  future?: boolean;
 };
 
 const STAGE_OF = { contacted: "CONTACTED", replied: "REPLIED", in_conversation: "IN_CONVERSATION" } as const;
@@ -93,7 +95,8 @@ function checkQuote(proposal: RowProposal, cells: ReadRow["cells"], item: { cell
   return { column: cell.column, header: cell.header, quote };
 }
 
-// A date read from its quote by code and placed in the sheet's board year.
+// A date read from its quote by code and placed in the sheet's board year (a past year's sheet,
+// whose dates are only noted).
 function dateFrom(proposal: RowProposal, q: Quote | null, what: string, cycleStart: number, opts: { after?: string; needDay: boolean }): Dated {
   if (!q) return null;
   const parts = parseDateText(q.quote);
@@ -105,18 +108,55 @@ function dateFrom(proposal: RowProposal, q: Quote | null, what: string, cycleSta
   return { date, quote: q };
 }
 
-// The last-contacted and follow-up dates, each dropped when out of range for this year's sheet:
-// a contact must be in the last two years and not in the future, a follow-up within a year of today.
-function checkDates(proposal: RowProposal, last: Quote | null, follow: Quote | null, { cycleStart, today, pastYear }: Context): [Dated, Dated] {
-  let lastOn = dateFrom(proposal, last, "Last contacted", cycleStart, { needDay: true });
-  if (lastOn && !pastYear && (lastOn.date > today || lastOn.date < addDays(today, -730))) {
-    proposal.dropped.push(`Last contacted: ${longDay(lastOn.date)} isn't in the last two years`);
-    lastOn = null;
+// The text of a drop that placement reported, naming the real reason.
+function placeDropped(proposal: RowProposal, what: string, q: Quote, placed: Placed | null, window: string): Dated {
+  if (placed === null) {
+    proposal.dropped.push(`${what}: "${q.quote}" isn't one clear date`);
+    return null;
   }
-  let followOn = dateFrom(proposal, follow, "Follow-up", cycleStart, { after: lastOn?.date, needDay: false });
-  if (followOn && !pastYear && (followOn.date < addDays(today, -365) || followOn.date > addDays(today, 365))) {
-    proposal.dropped.push(`Follow-up: ${longDay(followOn.date)} isn't within a year of today`);
-    followOn = null;
+  if (!("drop" in placed)) return { date: placed.date, quote: q };
+  const shown = placed.date ? longDay(placed.date) : null;
+  proposal.dropped.push(
+    placed.drop === "no-day"
+      ? `${what}: "${q.quote}" isn't a real day in ${placed.year}`
+      : placed.drop === "future"
+        ? `${what}: ${shown} would be in the future`
+        : `${what}: ${shown} ${window}`,
+  );
+  return null;
+}
+
+// The last-contacted and follow-up dates for a sheet from the current board year. A written year is
+// never changed. A last-contacted date without one goes in the board year, or the year before when
+// it would otherwise be in the future (it must be in the last two years and not in the future). A
+// follow-up without a year is the next such date on or after today, within a year of today.
+function checkDates(proposal: RowProposal, last: Quote | null, follow: Quote | null, { cycleStart, today, pastYear }: Context): [Dated, Dated] {
+  if (pastYear) {
+    // A past board year's dates are only noted, so they are placed in that year and not range checked.
+    const lastOn = dateFrom(proposal, last, "Last contacted", cycleStart, { needDay: true });
+    return [lastOn, dateFrom(proposal, follow, "Follow-up", cycleStart, { after: lastOn?.date, needDay: false })];
+  }
+  let lastOn: Dated = null;
+  if (last) {
+    const parts = parseDateText(last.quote);
+    const placed = parts && placeLastContacted(parts, cycleStart, today);
+    lastOn = placeDropped(proposal, "Last contacted", last, placed, "isn't in the last two years");
+    if (placed && ("drop" in placed ? placed.drop === "future" : placed.moved)) proposal.future = true;
+    if (lastOn && (lastOn.date > today || lastOn.date < addDays(today, -730))) {
+      // A written year is checked as written.
+      proposal.dropped.push(`Last contacted: ${longDay(lastOn.date)} ${lastOn.date > today ? "would be in the future" : "isn't in the last two years"}`);
+      if (lastOn.date > today) proposal.future = true;
+      lastOn = null;
+    }
+  }
+  let followOn: Dated = null;
+  if (follow) {
+    const parts = parseDateText(follow.quote);
+    followOn = placeDropped(proposal, "Follow-up", follow, parts && placeFollowUp(parts, cycleStart, today, lastOn?.date), "isn't within a year of today");
+    if (followOn && (followOn.date < addDays(today, -365) || followOn.date > addDays(today, 365))) {
+      proposal.dropped.push(`Follow-up: ${longDay(followOn.date)} isn't within a year of today`);
+      followOn = null;
+    }
   }
   return [lastOn, followOn];
 }

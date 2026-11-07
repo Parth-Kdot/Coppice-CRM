@@ -21,6 +21,7 @@ import {
   parseDateText,
   quoteInCell,
   resolveDate,
+  futureHint,
   sampleSheet,
   shownColumns,
   smartOptions,
@@ -248,16 +249,15 @@ describe("checkRowsRead (the AI's reading, checked)", () => {
     ]);
   });
 
-  it("drops a last-contacted date in the future and a follow-up more than a year out", () => {
+  it("drops a written last-contacted date in the future and a follow-up more than a year out", () => {
     const [p] = checkRowsRead(
-      [{ row: 2, cells: [{ column: 4, header: "Notes", text: "emailed 3/2, follow up 1/1/2029" }] }],
-      read([{ row: 2, status: null, lastContacted: { cell: 4, quote: "emailed 3/2" }, followUp: { cell: 4, quote: "follow up 1/1/2029" }, contact: null }]),
+      [{ row: 2, cells: [{ column: 4, header: "Notes", text: "emailed 3/2/2027, follow up 1/1/2029" }] }],
+      read([{ row: 2, status: null, lastContacted: { cell: 4, quote: "emailed 3/2/2027" }, followUp: { cell: 4, quote: "follow up 1/1/2029" }, contact: null }]),
       opts,
     );
-    // 3/2 in the 2026-27 sheet is 2027-03-02, after today.
     expect(p.lastContactedOn).toBeNull();
     expect(p.followUpOn).toBeNull();
-    expect(p.dropped).toEqual(["Last contacted: Mar 2, 2027 isn't in the last two years", "Follow-up: Jan 1, 2029 isn't within a year of today"]);
+    expect(p.dropped).toEqual(["Last contacted: Mar 2, 2027 would be in the future", "Follow-up: Jan 1, 2029 isn't within a year of today"]);
   });
 
   it("treats injected instructions as data: Committed never becomes a stage", () => {
@@ -295,6 +295,167 @@ describe("checkRowsRead (the AI's reading, checked)", () => {
     );
     expect(p.contact).toBeNull();
     expect(p.dropped).toEqual(["Contact: this row already has one"]);
+  });
+});
+
+describe("year-less dates in a current-year sheet (sheet 2026-27, today 2026-11-07)", () => {
+  const today = "2026-11-07";
+  const cell = (text: string) => [{ row: 2, cells: [{ column: 4, header: "Notes", text }] }];
+  const readOne = (text: string, last: string | null, follow: string | null, o: { cycleStart?: number; today?: string } = {}) =>
+    checkRowsRead(
+      cell(text),
+      { rows: [{ row: 2, status: null, lastContacted: last ? { cell: 4, quote: last } : null, followUp: follow ? { cell: 4, quote: follow } : null, contact: null }] } as RowsReadOutput,
+      { cycleStart: o.cycleStart ?? 2026, today: o.today ?? today, hasContact: new Set() },
+    )[0];
+
+  test.for([
+    ["a spring date was last spring, not the future", "emailed 3/2", "2026-03-02"],
+    ["a fall date stays in the sheet's first year", "emailed 9/14", "2026-09-14"],
+    ["today itself is not the future", "emailed 11/7", "2026-11-07"],
+    ["tomorrow moves back a year", "emailed 11/8", "2025-11-08"],
+    ["the day before today stays", "emailed 11/6", "2026-11-06"],
+    ["a December date moves back a year", "emailed 12/1", "2025-12-01"],
+    ["a June date (end of the board year) was last June", "emailed 6/30", "2026-06-30"],
+    ["a July date (start of the board year) was last July", "emailed 7/1", "2026-07-01"],
+    ["a written year is never changed", "emailed 3/2/2026", "2026-03-02"],
+    ["a written two-digit year is never changed", "emailed 11/20/25", "2025-11-20"],
+    ["an ISO date is never changed", "emailed 2026-03-02", "2026-03-02"],
+    ["a written year just inside two years", "emailed 11/8/2024", "2024-11-08"],
+  ] as const)("last contacted: %s", ([, text, expected]) => {
+    const p = readOne(text, text, null);
+    expect(p.lastContactedOn?.date).toBe(expected);
+    expect(p.dropped).toEqual([]);
+  });
+
+  test.for([
+    ["a follow-up in the board year's autumn", "follow up 11/20", "2026-11-20"],
+    ["today itself is on or after today", "follow up 11/7", "2026-11-07"],
+    ["yesterday moves to next year", "follow up 11/6", "2027-11-06"],
+    ["a month only means the 1st, next August", "reach out in Aug", "2027-08-01"],
+    ["a month only that is already here: November 1st has passed", "reach out in Nov", "2027-11-01"],
+    ["a spring day in the sheet's second year is kept", "follow up 3/15", "2027-03-15"],
+    ["a month in the board year's first year, still ahead", "reach out in Dec", "2026-12-01"],
+    ["a written year is never changed", "follow up Aug 2026", "2026-08-01"],
+    ["a written year, with a day", "follow up 8/15/2027", "2027-08-15"],
+  ] as const)("follow-up: %s", ([, text, expected]) => {
+    const p = readOne(text, null, text);
+    expect(p.followUpOn?.date).toBe(expected);
+    expect(p.dropped).toEqual([]);
+  });
+
+  it("flags a moved last-contacted date for the hint, and keeps ones that did not move out of it", () => {
+    expect(readOne("emailed 3/2", "emailed 3/2", null).future).toBe(true);
+    expect(readOne("emailed 9/14", "emailed 9/14", null).future).toBeUndefined();
+    expect(readOne("emailed 3/2/2026", "emailed 3/2/2026", null).future).toBeUndefined();
+  });
+
+  it("reads the owner's whole row: emailed 3/2, reach out in Aug", () => {
+    const p = readOne("emailed 3/2, reach out in Aug", "emailed 3/2", "reach out in Aug");
+    expect([p.lastContactedOn?.date, p.followUpOn?.date]).toEqual(["2026-03-02", "2027-08-01"]);
+  });
+
+  test.for([
+    ["a written future year", "emailed 3/2/2027", "Last contacted: Mar 2, 2027 would be in the future"],
+    ["a written year over two years ago", "emailed 3/2/2024", "Last contacted: Mar 2, 2024 isn't in the last two years"],
+    ["a day with no year at all", "emailed in Aug", '"emailed in Aug" isn\'t one clear date'],
+  ] as const)("last-contacted drop message for %s", ([, text, message]) => {
+    const p = readOne(text, text, null);
+    expect(p.lastContactedOn).toBeNull();
+    expect(p.dropped).toEqual([message.startsWith("Last") ? message : `Last contacted: ${message}`]);
+  });
+
+  test.for([
+    ["a written year more than a year ahead", "follow up 1/1/2029", "Follow-up: Jan 1, 2029 isn't within a year of today"],
+    ["a written year more than a year ago", "follow up 5/1/2025", "Follow-up: May 1, 2025 isn't within a year of today"],
+  ] as const)("follow-up drop message for %s", ([, text, message]) => {
+    const p = readOne(text, null, text);
+    expect(p.followUpOn).toBeNull();
+    expect(p.dropped).toEqual([message]);
+  });
+
+  it("never changes an explicit year, even when it is far from the sheet", () => {
+    const p = readOne("emailed 1/5/2025, follow up 2/1/2027", "emailed 1/5/2025", "follow up 2/1/2027");
+    expect([p.lastContactedOn?.date, p.followUpOn?.date]).toEqual(["2025-01-05", "2027-02-01"]);
+  });
+});
+
+describe("year boundaries, Feb 29 and the two-year window", () => {
+  const readDates = (last: string | null, follow: string | null, cycleStart: number, today: string) =>
+    checkRowsRead(
+      [{ row: 2, cells: [{ column: 4, header: "Notes", text: `${last ?? ""} | ${follow ?? ""}` }] }],
+      { rows: [{ row: 2, status: null, lastContacted: last ? { cell: 4, quote: last } : null, followUp: follow ? { cell: 4, quote: follow } : null, contact: null }] } as RowsReadOutput,
+      { cycleStart, today, hasContact: new Set() },
+    )[0];
+
+  test.for([
+    ["Jan 1 early in a board year moves to last January", "1/1", 2026, "2026-07-02", "2026-01-01"],
+    ["Dec 31 at the board year's start moves back", "12/31", 2026, "2026-07-02", "2025-12-31"],
+    ["Jul 1 on the first day of the board year is today", "7/1", 2026, "2026-07-01", "2026-07-01"],
+    ["Jun 30 on the last day of the board year is today", "6/30", 2025, "2026-06-30", "2026-06-30"],
+    ["Feb 29 in a leap spring that has passed", "2/29", 2027, "2028-03-05", "2028-02-29"],
+    ["Mar 1 right after a leap day", "3/1", 2027, "2028-03-05", "2028-03-01"],
+  ] as const)("last contacted: %s", ([, text, cycleStart, today, expected]) => {
+    expect(readDates(text, null, cycleStart, today).lastContactedOn?.date).toBe(expected);
+  });
+
+  test.for([
+    ["Feb 29 that would be in the future has no earlier leap day", "2/29", 2027, "2027-10-01", 'Last contacted: Feb 29, 2028 would be in the future'],
+    ["Feb 29 in a board year with no leap day", "2/29", 2026, "2026-11-07", 'Last contacted: "2/29" isn\'t a real day in 2027'],
+  ] as const)("last contacted drop: %s", ([, text, cycleStart, today, message]) => {
+    const p = readDates(text, null, cycleStart, today);
+    expect(p.lastContactedOn).toBeNull();
+    expect(p.dropped).toEqual([message]);
+  });
+
+  test.for([
+    ["Feb 29 follow-up with no leap day within a year has no date", "2/29", 2027, "2028-03-05", null],
+    ["a follow-up Jan 1 after Dec: next year", "1/1", 2026, "2026-12-20", "2027-01-01"],
+    ["a follow-up Jun 30 in the board year's last day is today", "6/30", 2026, "2027-06-30", "2027-06-30"],
+    ["a follow-up just under a year away, after the leap day has passed", "reach out in Mar", 2027, "2028-03-02", "2029-03-01"],
+  ] as const)("follow-up: %s", ([, text, cycleStart, today, expected]) => {
+    const p = readDates(null, text, cycleStart, today);
+    expect(p.followUpOn?.date ?? null).toBe(expected);
+  });
+
+  it("drops a follow-up whose next date is more than a year from today, with the real reason", () => {
+    // Sheet 2027-28, today 2028-03-05: Feb 29 passed, the next one is 2032.
+    const p = readDates(null, "2/29", 2027, "2028-03-05");
+    expect(p.followUpOn).toBeNull();
+    expect(p.dropped).toHaveLength(1);
+    expect(p.dropped[0]).toMatch(/^Follow-up: /);
+  });
+});
+
+describe("a past board year's sheet (2025-26)", () => {
+  const today = "2026-11-07";
+  const row = [{ row: 2, cells: [{ column: 4, header: "Notes", text: "emailed 3/2, reach out in Aug" }] }];
+  const answer = { rows: [{ row: 2, status: null, lastContacted: { cell: 4, quote: "emailed 3/2" }, followUp: { cell: 4, quote: "reach out in Aug" }, contact: null }] } as RowsReadOutput;
+
+  it("places dates in that year, notes them, sets no dates and gives no hint", () => {
+    const [p] = checkRowsRead(row, answer, { cycleStart: 2025, today, hasContact: new Set() });
+    expect(p).toMatchObject({ lastContactedOn: null, followUpOn: null, dropped: [] });
+    expect(p.future).toBeUndefined();
+    expect(p.note?.text).toBe("From the 2025-26 sheet: last contacted Mar 2, 2026; follow-up was Aug 1, 2026.");
+  });
+});
+
+describe("the review's hint for a sheet from the wrong year", () => {
+  test.for([
+    ["none", [], null],
+    ["two", [true, true, undefined], null],
+    ["three", [true, true, true], "Several dates would be in the future for 2026-27. Is the sheet from 2025-26?"],
+    ["many among others", [true, undefined, true, true, true, undefined], "Several dates would be in the future for 2026-27. Is the sheet from 2025-26?"],
+  ] as const)("%s flagged rows", ([, flags, expected]) => {
+    expect(futureHint(flags.map((future) => ({ future })), 2026)).toBe(expected);
+  });
+
+  it("is produced by checking a sheet whose spring dates are all moved", () => {
+    const texts = ["emailed 2/3", "emailed 3/2", "emailed 4/9", "emailed 9/14"];
+    const shown = texts.map((text, i) => ({ row: i + 2, cells: [{ column: 4, header: "Notes", text }] }));
+    const read = { rows: texts.map((text, i) => ({ row: i + 2, status: null, lastContacted: { cell: 4, quote: text }, followUp: null, contact: null })) } as RowsReadOutput;
+    const ps = checkRowsRead(shown, read, { cycleStart: 2026, today: "2026-11-07", hasContact: new Set() });
+    expect(ps.map((p) => p.lastContactedOn?.date)).toEqual(["2026-02-03", "2026-03-02", "2026-04-09", "2026-09-14"]);
+    expect(futureHint(ps, 2026)).toBe("Several dates would be in the future for 2026-27. Is the sheet from 2025-26?");
   });
 });
 
@@ -738,6 +899,15 @@ describe("Smart import, end to end", () => {
     expect(await commit(started.sessionId, p, [decide(2, { followUpOn: tooLate }), decide(5, { dncAccepted: true })])).toEqual({
       ok: false,
       error: "Row 2: pick a follow-up date within a year of today.",
+    });
+  });
+
+  it("refuses an edited last-contacted date in the future, and says so", async () => {
+    const { started } = await readAll();
+    const p = await preview();
+    expect(await commit(started.sessionId, p, [decide(2, { lastContactedOn: addDays(today, 3) }), decide(5, { dncAccepted: true })])).toEqual({
+      ok: false,
+      error: "Row 2: a last-contacted date can't be in the future.",
     });
   });
 

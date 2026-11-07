@@ -6,6 +6,7 @@ import { WarningIcon } from "@/components/ledger/icons";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import type { ImportPreview } from "@/lib/csv";
 import type { Quote, RowProposal, SmartStart } from "@/lib/smart-import";
+import { futureHint } from "@/lib/smart-import/dates";
 import { STAGE_LABELS } from "@/lib/stages";
 import { SMART_NOTE_MAX, SMART_STAGES } from "@/lib/validation";
 import { hasReading, readingMatches, type RowEdits, type SmartState } from "./use-smart-import";
@@ -200,7 +201,7 @@ export function SmartReview({ smart, view }: { smart: SmartState; view: ImportPr
       <p className="lg-hint mb-3">
         {rows.length === 0 ? "Nothing to review yet." : `${rows.length} ${rows.length === 1 ? "row has" : "rows have"} something to review. Every reading starts as Keep and is applied when you import: drop or change any that are wrong.`}
         {nothing > 0 && ` ${nothing} ${nothing === 1 ? "row" : "rows"} said nothing Coppice could check.`}
-        {dropped > 0 && ` ${dropped} ${dropped === 1 ? "reading was" : "readings were"} dropped because the quote or date didn't check out.`} Coppice never imports
+        {dropped > 0 && ` ${dropped} ${dropped === 1 ? "reading was" : "readings were"} dropped because the quote or date didn't check out.`} {futureHint(smart.proposals, session.cycleStart)} Coppice never imports
         Committed or Declined, and never logs outreach or claims a company.
       </p>
       {rows.map((row) => {

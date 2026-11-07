@@ -24,9 +24,8 @@ function checkDecision(r: CheckedRow, decision: SmartDecision | undefined, propo
   // A field can only be kept if the AI proposed it for this row.
   if ((decision.stage && !proposal?.stage) || (decision.lastContactedOn && !proposal?.lastContactedOn) || (decision.followUpOn && !proposal?.followUpOn)) return REVIEW_AGAIN;
   if ((decision.contact && (!proposal?.contact || r.contact)) || (decision.note && !proposal?.note)) return REVIEW_AGAIN;
-  if (decision.lastContactedOn && (decision.lastContactedOn > today || decision.lastContactedOn < addDays(today, -730))) {
-    return `Row ${r.row}: pick a last-contacted date in the last two years.`;
-  }
+  if (decision.lastContactedOn && decision.lastContactedOn > today) return `Row ${r.row}: a last-contacted date can't be in the future.`;
+  if (decision.lastContactedOn && decision.lastContactedOn < addDays(today, -730)) return `Row ${r.row}: pick a last-contacted date in the last two years.`;
   if (decision.followUpOn && (decision.followUpOn < addDays(today, -365) || decision.followUpOn > addDays(today, 365))) {
     return `Row ${r.row}: pick a follow-up date within a year of today.`;
   }
