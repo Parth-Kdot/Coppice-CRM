@@ -45,18 +45,24 @@ function principalFrom(extra: Extra): McpPrincipal {
 const rpcError = (status: number, code: number, message: string) => Response.json({ jsonrpc: "2.0", error: { code, message }, id: null }, { status });
 const unauthorized = () => rpcError(401, -32001, "This token can't be used with Coppice.");
 
-// A grant that was revoked: a 401 with the same WWW-Authenticate challenge the plugin sends for a
-// missing token (built by the plugin's own helper), so the assistant asks the person to connect
-// again instead of failing for the rest of the hour.
+// A grant that was revoked: a 401 with the challenge the plugin sends for a missing token (built by
+// the plugin's own helper: resource_metadata and scope), plus RFC 6750's error="invalid_token", so
+// the assistant knows the token it sent is dead and asks the person to connect again instead of
+// failing for the rest of the hour. The grant check has already deleted the grant's leftover
+// refresh tokens (lib/mcp/grant.ts), so the assistant's refresh gets invalid_grant and its SDK
+// goes on to a fresh sign-in.
 const CHALLENGE_SCOPES = [READ_SCOPE, WRITE_SCOPE];
+const REVOKED_MESSAGE = "This connection to Coppice was revoked. Connect your assistant again.";
 function revoked(): Response {
-  const challenge = createResourceServerChallenge(
-    new APIError("UNAUTHORIZED", { message: "This connection to Coppice was revoked. Connect your assistant again." }),
-    mcpResourceUrl(),
-    { challengeScopes: CHALLENGE_SCOPES },
-  );
+  const challenge = createResourceServerChallenge(new APIError("UNAUTHORIZED", { message: REVOKED_MESSAGE }), mcpResourceUrl(), {
+    challengeScopes: CHALLENGE_SCOPES,
+  });
   if (!challenge) return unauthorized();
   const headers = new Headers(challenge.headers);
+  const bearer = headers.get("WWW-Authenticate");
+  if (bearer?.startsWith("Bearer ")) {
+    headers.set("WWW-Authenticate", `Bearer error="invalid_token", error_description="${REVOKED_MESSAGE}", ${bearer.slice("Bearer ".length)}`);
+  }
   headers.set("Content-Type", "application/json");
   return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message: challenge.message }, id: null }), { status: 401, headers });
 }

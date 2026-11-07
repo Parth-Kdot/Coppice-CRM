@@ -119,6 +119,12 @@ export type CheckedRow = {
 const UNREADABLE = "\uFFFD";
 export const UNREADABLE_ROW = "This row has characters Coppice can't read. In Excel use Save As, CSV UTF-8.";
 
+const namedFromEmailWarning = (name: string) => `Contact named "${name}" from their email.`;
+// Whether a row's contact is only a stand-in made from its email (no name cell), so a real name
+// found elsewhere (Smart import's reading of the notes) may take its place.
+export const namedFromEmail = (row: Pick<CheckedRow, "contact" | "warnings">) =>
+  Boolean(row.contact?.email) && row.warnings.includes(namedFromEmailWarning(row.contact?.name ?? ""));
+
 // The contact a row brings, if any, and what was left out. A company is never refused over its
 // contact: with an email and no name, the name is the email's first part ("hello" for
 // hello@orbit.com); a bad email is left out (with the name kept, when there is one).
@@ -133,7 +139,7 @@ function checkContact(nameCell: string, emailCell: string): { contact: ContactFi
   let contactName = name;
   if (!contactName && goodEmail) {
     contactName = goodEmail.split("@")[0];
-    warnings.push(`Contact named "${contactName}" from their email.`);
+    warnings.push(namedFromEmailWarning(contactName));
   }
   if (!contactName) return { contact: null, warnings };
   const parsed = contactFieldsSchema.safeParse({ name: contactName, email: goodEmail, title: null });
@@ -384,7 +390,9 @@ export async function runImport(
     );
     await inChunks(
       toImport.flatMap((r) => {
-        const contact = r.contact ?? extra(r.row)?.contact;
+        // Smart import's contact is only ever set for a row with none, or with a stand-in named from
+        // the email, and it carries that email (lib/smart-import/commit.ts).
+        const contact = extra(r.row)?.contact ?? r.contact;
         return contact ? [{ workspaceId: tenant.workspaceId, companyId: idOf.get(r.row) as string, ...contact }] : [];
       }),
       (data) => tx.contact.createMany({ data }),

@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { jwt } from "better-auth/plugins/jwt";
@@ -7,6 +7,7 @@ import { organization } from "better-auth/plugins/organization";
 import { mcp } from "@better-auth/mcp";
 import { prisma } from "@/lib/db";
 import { MCP_SCOPES, mcpResourceUrl } from "@/lib/mcp/config";
+import { endGrantsWithoutConsent } from "@/lib/mcp/connections";
 import { SCOPE_CHECKED_PATHS, registrationProblem, scopeProblem } from "@/lib/mcp/oauth-limits";
 
 // Option B (owner decision 2026-10-21): only emails listed in WORKSPACE_CREATOR_EMAILS
@@ -140,6 +141,15 @@ export const auth = betterAuth({
         const problem = scopeProblem(ctx.query, ctx.body);
         if (problem) throw new APIError("BAD_REQUEST", { error: "invalid_scope", error_description: problem });
       }
+    }),
+    // The plugin's delete-consent removes only the consent row, and its token endpoint would go on
+    // refreshing that client's tokens. Afterwards, every token the signed-in person holds for a
+    // client they no longer have a consent for is deleted (lib/mcp/connections.ts), so the next
+    // refresh gets invalid_grant and the assistant asks the person to connect again.
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/oauth2/delete-consent") return;
+      const session = await getSessionFromCtx(ctx).catch(() => null);
+      if (session) await endGrantsWithoutConsent(session.user.id);
     }),
   },
   // Limits requests to /api/auth/* per IP: 3 sign-in attempts per 10 seconds, 100 requests per

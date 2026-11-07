@@ -129,11 +129,11 @@ describe("generate (the Gemini client)", () => {
     expect(result).toEqual({
       ok: true,
       data: GOOD,
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       usage: { promptTokens: 120, outputTokens: 40, thinkingTokens: 15 },
     });
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toContain("models/gemini-3.8-flash:generateContent");
+    expect(calls[0].url).toContain("models/gemini-3.6-flash:generateContent");
     const config = calls[0].body;
     expect(config).toMatchObject({
       contents: [{ role: "user", parts: [{ text: "Draft one." }] }],
@@ -157,13 +157,13 @@ describe("generate (the Gemini client)", () => {
       Object.entries(ROUTES).map(([f, r]) => [f, r.provider === "groq" ? [r.model] : [r.model, r.fallback.model, r.lastResort?.model]]),
     );
     expect(models).toEqual({
-      FACT_EXTRACTION: ["gemini-3.8-flash", "gemini-3.6-flash", undefined],
-      DRAFT: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"],
+      FACT_EXTRACTION: ["gemini-3.6-flash", "gemini-3.8-flash", undefined],
+      DRAFT: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"],
       CLAIM_CHECK: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
       IMPORT_MAPPING: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
       IMPORT_LOOKALIKES: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
       IMPORT_ROWS: ["openai/gpt-oss-120b"],
-      RESEARCH_READ: ["gemini-3.8-flash", "gemini-3.6-flash", undefined],
+      RESEARCH_READ: ["gemini-3.6-flash", "gemini-3.8-flash", undefined],
       RESEARCH_BRIEF: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
     });
     fakeGemini(answer(JSON.stringify(GOOD)));
@@ -182,7 +182,7 @@ describe("generate (the Gemini client)", () => {
     ["a blocked prompt", reply({ promptFeedback: { blockReason: "SAFETY" } }), "blocked"],
   ] as const)("reports %s as %s", async ([, response, error]) => {
     fakeGemini(response);
-    expect(await generate(request)).toMatchObject({ ok: false, error, model: "gemini-3.8-flash" });
+    expect(await generate(request)).toMatchObject({ ok: false, error, model: "gemini-3.6-flash" });
   });
 
   // No candidate at all (and no blocked prompt) is the service failing, not a refusal: it moves on
@@ -193,10 +193,10 @@ describe("generate (the Gemini client)", () => {
     ["an OTHER stop", () => answer("", "OTHER")],
   ] as const)("treats %s as unavailable and moves on to the next model", async ([, response]) => {
     fakeGemini(response(), answer(JSON.stringify(GOOD)));
-    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
+    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.8-flash" });
     // Fact extraction has two models; a 200 with nothing in it isn't retried on the same model.
     fakeGemini(response(), response());
-    expect(await generate({ ...request, feature: "FACT_EXTRACTION" })).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.6-flash" });
+    expect(await generate({ ...request, feature: "FACT_EXTRACTION" })).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.8-flash" });
     expect(calls).toHaveLength(2);
   });
 
@@ -216,10 +216,64 @@ describe("generate (the Gemini client)", () => {
 
   it("goes straight to the fallback model when the main one is overloaded, and says which answered", async () => {
     fakeGemini(busy(), answer(JSON.stringify(GOOD)));
-    expect(await generate(request)).toMatchObject({ ok: true, data: GOOD, model: "gemini-3.6-flash" });
-    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.6-flash"]);
+    expect(await generate(request)).toMatchObject({ ok: true, data: GOOD, model: "gemini-3.8-flash" });
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.6-flash", "gemini-3.8-flash"]);
     // The fallback gets the same request, thinking level included.
     expect(calls[1].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
+  });
+
+  // Recorded on 2026-11-07 with the owner's free key: 3.8 Flash answered 503 "high demand" in 3 s on
+  // every call while 3.6 Flash answered. The overload moves on at once, never waiting out the first
+  // try's timer (20 s for drafting), and the result says which model failed first and how.
+  const highDemand = () => apiError(503, "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.", "UNAVAILABLE");
+  it("an overloaded model's 503 moves to the next model at once, and the failed try is reported", async () => {
+    fakeGemini(highDemand(), answer(JSON.stringify(GOOD)));
+    const started = performance.now();
+    const result = await generate(request);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(result).toMatchObject({ ok: true, model: "gemini-3.8-flash", fellBack: [{ model: "gemini-3.6-flash", error: "unavailable" }] });
+    expect(calls).toHaveLength(2);
+    // A call the main model answers has no failed tries.
+    fakeGemini(answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).not.toHaveProperty("fellBack");
+  });
+
+  it("3.6 Flash goes first for drafting, extraction and research reading, at the thinking levels they were proven at", () => {
+    const levels = (feature: "DRAFT" | "FACT_EXTRACTION" | "RESEARCH_READ") => {
+      const r = ROUTES[feature];
+      if (r.provider === "groq") throw new Error("not Gemini");
+      return [r, r.fallback, r.lastResort].filter(Boolean).map((m) => [m?.model, m?.thinkingLevel]);
+    };
+    expect(levels("DRAFT")).toEqual([
+      ["gemini-3.6-flash", "LOW"],
+      ["gemini-3.8-flash", "LOW"],
+      // Flash-Lite drafting stays at LOW thinking: at its default it skipped the placeholders.
+      ["gemini-3.5-flash-lite", "LOW"],
+    ]);
+    expect(levels("FACT_EXTRACTION")).toEqual([
+      ["gemini-3.6-flash", "MEDIUM"],
+      ["gemini-3.8-flash", "MEDIUM"],
+    ]);
+    expect(levels("RESEARCH_READ")).toEqual([
+      ["gemini-3.6-flash", "MEDIUM"],
+      ["gemini-3.8-flash", "MEDIUM"],
+    ]);
+    // A hanging 3.8 in the middle of drafting's line gets a short try of its own.
+    const draft = ROUTES.DRAFT;
+    expect(draft.provider === "groq" ? null : draft.fallback.tryMs).toBeLessThanOrEqual(15_000);
+  });
+
+  it("drafting with both Flash models overloaded reports both failed tries before Flash-Lite answered", async () => {
+    fakeGemini(highDemand(), highDemand(), answer(JSON.stringify(GOOD)));
+    expect(await generate(request)).toMatchObject({
+      ok: true,
+      model: "gemini-3.5-flash-lite",
+      fellBack: [
+        { model: "gemini-3.6-flash", error: "unavailable" },
+        { model: "gemini-3.8-flash", error: "unavailable" },
+      ],
+    });
+    expect(calls.map((c) => c.body.generationConfig)).toMatchObject([1, 2, 3].map(() => ({ thinkingConfig: { thinkingLevel: "LOW" } })));
   });
 
   // Fact extraction has no last resort, so its fallback is the last in line and gets the retry.
@@ -228,19 +282,19 @@ describe("generate (the Gemini client)", () => {
 
   it("retries the last model in line once, then gives up", async () => {
     fakeGemini(busy(), busy(), busy());
-    expect(await generate(extraction)).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.6-flash" });
+    expect(await generate(extraction)).toMatchObject({ ok: false, error: "unavailable", model: "gemini-3.8-flash" });
     expect(calls).toHaveLength(3);
   });
 
   it("moves to the next model on a rate limit, since free-tier quotas are per model", async () => {
     fakeGemini(limited(), answer(JSON.stringify(GOOD)));
-    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
+    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.8-flash" });
   });
 
   it("drafts with Flash-Lite when both Flash models fail, thinking at a low level", async () => {
     fakeGemini(busy(), limited(), answer(JSON.stringify(GOOD)));
     expect(await generate(request)).toMatchObject({ ok: true, data: GOOD, model: "gemini-3.5-flash-lite" });
-    expect(modelsCalled()).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    expect(modelsCalled()).toEqual(["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]);
     expect(calls[2].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
   });
 
@@ -248,7 +302,7 @@ describe("generate (the Gemini client)", () => {
     const internal = () => apiError(500, "Internal", "INTERNAL");
     fakeGemini(internal(), internal(), internal(), answer(JSON.stringify(GOOD)));
     expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.5-flash-lite" });
-    expect(modelsCalled()).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash-lite"]);
+    expect(modelsCalled()).toEqual(["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash-lite"]);
   });
 
   // A slow attempt is cut off (AbortError); a slow main model goes to the fallback.
@@ -256,12 +310,12 @@ describe("generate (the Gemini client)", () => {
 
   it("falls back when the main model is too slow", async () => {
     fakeGemini(aborted(), answer(JSON.stringify(GOOD)));
-    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
+    expect(await generate(request)).toMatchObject({ ok: true, model: "gemini-3.8-flash" });
   });
 
   it("reports a timeout when the fallback is too slow as well", async () => {
     fakeGemini(aborted(), aborted(), aborted());
-    expect(await generate(extraction)).toMatchObject({ ok: false, error: "timeout", model: "gemini-3.6-flash" });
+    expect(await generate(extraction)).toMatchObject({ ok: false, error: "timeout", model: "gemini-3.8-flash" });
     expect(calls).toHaveLength(3);
   });
 
@@ -276,7 +330,7 @@ describe("generate (the Gemini client)", () => {
   it("never calls out without a key", async () => {
     delete process.env.GEMINI_API_KEY;
     fakeGemini();
-    expect(await generate(request)).toEqual({ ok: false, error: "not_configured", model: "gemini-3.8-flash", usage: null });
+    expect(await generate(request)).toEqual({ ok: false, error: "not_configured", model: "gemini-3.6-flash", usage: null });
     expect(calls).toHaveLength(0);
   });
 
@@ -320,10 +374,21 @@ describe("runAi (the gate every AI call goes through)", () => {
     expect(await runs()).toEqual([]);
 
     await turnOn();
-    expect(await runAi(A, request)).toEqual({ ok: true, data: GOOD, model: "gemini-3.8-flash" });
+    expect(await runAi(A, request)).toEqual({ ok: true, data: GOOD, model: "gemini-3.6-flash" });
     expect(await runs()).toEqual([
-      { userId: "ownerA", feature: "DRAFT", model: "gemini-3.8-flash", status: "SUCCEEDED", error: null, promptTokens: 120, outputTokens: 40, thinkingTokens: 15 },
+      { userId: "ownerA", feature: "DRAFT", model: "gemini-3.6-flash", status: "SUCCEEDED", error: null, promptTokens: 120, outputTokens: 40, thinkingTokens: 15 },
     ]);
+  });
+
+  it("a call a fallback answered is SUCCEEDED, with a note of the model that failed first", async () => {
+    await turnOn();
+    fakeGemini(apiError(503, "This model is currently experiencing high demand.", "UNAVAILABLE"), answer(JSON.stringify(GOOD)));
+    expect(await runAi(A, request)).toEqual({ ok: true, data: GOOD, model: "gemini-3.8-flash" });
+    const [run] = await runs();
+    expect(run).toMatchObject({ feature: "DRAFT", model: "gemini-3.8-flash", status: "SUCCEEDED" });
+    expect(run.error).toMatch(/^fallback after gemini-3\.6-flash unavailable \d+ms$/);
+    // It still counts as one of this person's drafts.
+    expect(await draftsToday(A)).toBe(1);
   });
 
   it("logs a failed call with a short code and shows a plain message", async () => {
@@ -461,14 +526,17 @@ describe("generate: deadlines and replies that aren't refusals", () => {
 
   test.for(["RECITATION", "PROHIBITED_CONTENT", "SPII", "BLOCKLIST"])("a %s stop is a refusal (blocked), not retried", async (finish) => {
     fakeGemini(answer("", finish));
-    expect(await generate(request)).toMatchObject({ ok: false, error: "blocked", model: "gemini-3.8-flash" });
+    expect(await generate(request)).toMatchObject({ ok: false, error: "blocked", model: "gemini-3.6-flash" });
     expect(calls).toHaveLength(1);
   });
 
   it("500 on the main model, then a good answer from the fallback, for fact extraction and the claim check", async () => {
-    for (const feature of ["FACT_EXTRACTION", "CLAIM_CHECK"] as const) {
+    for (const [feature, fallback] of [
+      ["FACT_EXTRACTION", "gemini-3.8-flash"],
+      ["CLAIM_CHECK", "gemini-3.6-flash"],
+    ] as const) {
       fakeGemini(apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify(GOOD)));
-      expect(await generate({ ...request, feature })).toMatchObject({ ok: true, model: "gemini-3.6-flash" });
+      expect(await generate({ ...request, feature })).toMatchObject({ ok: true, model: fallback });
     }
   });
 

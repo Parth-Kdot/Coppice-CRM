@@ -121,3 +121,30 @@ export async function disconnect(userId: string, clientId: string): Promise<Acti
   if (counts.consents === 0 && counts.accessTokens === 0 && counts.refreshTokens === 0) return { ok: false, error: NOT_CONNECTED };
   return { ok: true, data: counts };
 }
+
+// Tokens left behind by a consent that is gone some other way than Disconnect: Better Auth's own
+// POST /oauth2/delete-consent removes only the consent row, so the token endpoint kept refreshing
+// that client's tokens while /api/mcp refused every one, and the assistant failed with an opaque
+// 401 instead of asking the person to connect again (live test, 2026-11-07). This deletes every
+// access and refresh token this person holds for a client they no longer have a consent for (one
+// client, or all of them), so the next refresh gets invalid_grant and the assistant starts a fresh
+// sign-in. A client with a consent is never touched. Called after delete-consent (lib/auth.ts) and
+// by the grant check whenever it finds a consent missing (lib/mcp/grant.ts).
+export async function endGrantsWithoutConsent(userId: string, clientId?: string): Promise<{ accessTokens: number; refreshTokens: number }> {
+  return prisma.$transaction(async (tx) => {
+    const scoped = clientId ? { userId, clientId } : { userId };
+    const [refresh, access, consents] = await Promise.all([
+      tx.oauthRefreshToken.findMany({ where: scoped, select: { clientId: true }, distinct: ["clientId"] }),
+      tx.oauthAccessToken.findMany({ where: scoped, select: { clientId: true }, distinct: ["clientId"] }),
+      tx.oauthConsent.findMany({ where: scoped, select: { clientId: true } }),
+    ]);
+    const allowed = new Set(consents.map((c) => c.clientId));
+    const orphaned = [...new Set([...refresh, ...access].map((t) => t.clientId).filter((c) => !allowed.has(c)))];
+    if (orphaned.length === 0) return { accessTokens: 0, refreshTokens: 0 };
+    const where = { userId, clientId: { in: orphaned } };
+    // Access tokens before refresh tokens: an access token row can point at its refresh token.
+    const accessTokens = await tx.oauthAccessToken.deleteMany({ where });
+    const refreshTokens = await tx.oauthRefreshToken.deleteMany({ where });
+    return { accessTokens: accessTokens.count, refreshTokens: refreshTokens.count };
+  });
+}

@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { AiFeature } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { generate, isConfigured, providerOf, ROUTES, type AiErrorCode, type GenerateRequest } from "@/lib/ai/client";
+import { generate, isConfigured, providerOf, ROUTES, type AiErrorCode, type FailedTry, type GenerateRequest } from "@/lib/ai/client";
 import { dbNow } from "@/lib/claims";
 import { advisoryXactLock, prisma, withTenant, type Tenant } from "@/lib/db";
 import { breakdownAiUsage, type AiBreakdown } from "@/lib/ai/usage";
@@ -18,7 +18,7 @@ import type { ActionResult } from "@/lib/validation";
 //    one after another and can't all pass a limit (reserveAi);
 // 4. calls the model (lib/ai/client.ts), outside any database transaction;
 // 5. updates the row: the model that answered, tokens, time, and SUCCEEDED or FAILED with a short
-//    error code. A reply the caller's own checks reject (drafts that broke the rules) is FAILED
+//    error code (a SUCCEEDED call a fallback model answered notes the models that failed first). A reply the caller's own checks reject (drafts that broke the rules) is FAILED
 //    too, so the log never counts an unusable answer as a success.
 // Callers check membership first, as every server action does.
 
@@ -214,23 +214,36 @@ export async function runAi<S extends z.ZodType>(
   }
   const latencyMs = Math.round(performance.now() - started);
   const error: AiRunError | null = result.ok ? (options.accept?.(result.data) ?? null) : result.error;
-  await finish(tenant, reservation.id, { model: result.model, error, usage: result.usage, latencyMs });
+  await finish(tenant, reservation.id, { model: result.model, error, usage: result.usage, latencyMs, fellBack: result.fellBack });
 
   if (error === null && result.ok) return { ok: true, data: result.data, model: result.model };
   const code = error ?? "invalid_output";
   return { ok: false, error: options.messages?.[code] ?? (code === "broke_rules" ? BROKE_RULES : AI_ERROR_MESSAGES[code]) };
 }
 
-type Finished = { model: string; error: AiRunError | null; usage: { promptTokens: number | null; outputTokens: number | null; thinkingTokens: number | null } | null; latencyMs: number };
+type Finished = {
+  model: string;
+  error: AiRunError | null;
+  usage: { promptTokens: number | null; outputTokens: number | null; thinkingTokens: number | null } | null;
+  latencyMs: number;
+  fellBack?: FailedTry[];
+};
 
-function finish(tenant: Tenant, id: string, { model, error, usage, latencyMs }: Finished) {
+// A call that a fallback model answered keeps, in its error column, which models failed first, how
+// and after how long ("fallback after gemini-3.6-flash timeout 20004ms"), so a slow fallback shows
+// in the log even though the call SUCCEEDED. A FAILED call's column stays its bare code, which the
+// daily limit reads (countsForPerson).
+export const fallbackNote = (tries: FailedTry[] | undefined): string | null =>
+  tries?.length ? `fallback after ${tries.map((t) => `${t.model} ${t.error} ${t.ms}ms`).join(", ")}` : null;
+
+function finish(tenant: Tenant, id: string, { model, error, usage, latencyMs, fellBack }: Finished) {
   return withTenant(tenant, (tx) =>
     tx.aiRun.updateMany({
       where: { id, workspaceId: tenant.workspaceId },
       data: {
         model,
         status: error ? "FAILED" : "SUCCEEDED",
-        error,
+        error: error ?? fallbackNote(fellBack),
         promptTokens: usage?.promptTokens ?? null,
         outputTokens: usage?.outputTokens ?? null,
         thinkingTokens: usage?.thinkingTokens ?? null,

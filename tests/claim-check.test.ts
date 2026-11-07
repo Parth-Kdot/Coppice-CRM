@@ -50,8 +50,32 @@ describe("checkRules", () => {
     "We'd love your continued support.",
     "As a past sponsor, you know our work.",
     "It was great working with you before.",
+    // Typed into a live draft on 2026-11-07; only the AI check caught it then.
+    "Last year Ferncliff Foods sponsored our Gold tier.",
+    "Globex sponsored our hackathon before.",
+    "In the past, your team was sponsoring the robotics expo.",
+    "Previously Globex sponsored the Gold tier.",
+    "Thanks for supporting us last year.",
+    "You backed us before, and it meant a lot.",
   ])("flags a claimed history: %s", (text) => {
     expect(checkRules(text, RULES)).toMatchObject([{ kind: "history", reason: "Check this company really has a history with you." }]);
+  });
+
+  it("the invented sponsorship from the live test is flagged together with its number", () => {
+    const text = "Last year Ferncliff Foods sponsored our Gold tier, and 40 companies backed us in total.";
+    expect(checkRules(text, RULES).map((f) => [f.kind, f.quote])).toEqual([
+      ["number", "40"],
+      ["history", "Last year Ferncliff Foods sponsored"],
+    ]);
+  });
+
+  test.for([
+    "Would you consider sponsoring our hackathon this spring?",
+    "Our sponsorship packet has the tiers. Last year 600 students came.",
+    "Sponsoring the Gold tier puts your logo on every shirt.",
+    "In the past year we grew a lot. Would Globex like to sponsor us?",
+  ])("leaves an ask or an unrelated sentence alone: %s", (text) => {
+    expect(checkRules(text, RULES).filter((f) => f.kind === "history")).toEqual([]);
   });
 
   it("collects the numbers in verified facts", () => {
@@ -185,6 +209,27 @@ describe("the AI check", () => {
     // Every model in line is out of quota.
     fakeGemini(...Array.from({ length: 2 }, () => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")));
     expect(await aiCheck(OWNER, [draft], NAMES)).toEqual([{ ...draft, ai: [], error: "The AI is busy right now. Try again in a minute." }]);
+  });
+
+  // Recorded from the live test on 2026-11-07: a draft listed the Gold benefits the way the facts
+  // define them ("everything in Silver, plus ..."), and the check flagged it: "The Gold tier
+  // description combines benefits from multiple tiers instead of just the Gold tier benefits."
+  it("tells the check to read the facts together, following one tier to the tier it builds on", async () => {
+    await addFact(OWNER, "Silver ($1,000): logo on the event page, plus everything in Bronze.");
+    await addFact(OWNER, "Bronze ($500): a thank-you post.");
+    await addFact(OWNER, "Gold ($2,500): a booth, plus everything in Silver.");
+    const gold = { subject: "Gold", body: "Hi Hank,\n\nGold ($2,500) gets a booth, logo on the event page and a thank-you post.\n\nSam Lee\nOrg A" };
+    fakeGemini(issues());
+    const [check] = await aiCheck(OWNER, [gold], NAMES);
+    expect(check).toMatchObject({ ai: [], error: null });
+    const body = calls[0].body as { systemInstruction: unknown; contents: unknown };
+    const system = JSON.stringify(body.systemInstruction);
+    expect(system).toContain("Read the facts together, not one at a time.");
+    expect(system).toContain("resolve such a reference by following it to the fact it names");
+    expect(system).not.toMatch(/student organization/);
+    // Every verified fact goes in one numbered list, so a reference can be followed.
+    const prompt = JSON.stringify(body.contents);
+    expect(prompt).toMatch(/1\. The annual hackathon[^]*2\. Silver[^]*3\. Bronze[^]*4\. Gold/);
   });
 
   it("says when no facts are verified", async () => {

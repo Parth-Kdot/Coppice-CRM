@@ -30,9 +30,19 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // 6 s), and each model has its own quota (on 2026-10-26 3.6 Flash was out while 3.5 Flash-Lite
 // answered every call). So each feature gets one short try on its main model (`firstTryMs`), then
 // moves to a `fallback` model when the main one is overloaded, slow or out of quota, and drafting
-// has a `lastResort` after that. The last model in line gets one retry; everything shares the
-// overall deadline. AiRun records whichever model actually answered.
-type Model = { model: string; thinkingLevel?: ThinkingLevel };
+// has a `lastResort` after that. An overloaded model's 503 ("high demand") is never retried on the
+// same model while another is left in line: the call moves on as soon as it arrives, without
+// waiting out the try's timer. The last model in line gets one retry; everything shares the
+// overall deadline. AiRun records whichever model actually answered, and when it wasn't the first,
+// which model failed before it, how, and after how long (lib/ai/run.ts).
+//
+// On 2026-11-07 Gemini 3.8 Flash answered nothing on the owner's free key (503 "high demand" in
+// 3 s, or a hang through the proxy) while 3.6 Flash answered in about 1 s and 3.5 Flash-Lite in
+// 0.7 s, so every drafting, extraction and research-reading call waited out 3.8's first try. 3.6
+// Flash, with the thinking levels it was proven at, now goes first, and 3.8 is the fallback.
+// `tryMs` caps one try on a model that isn't first or last in line, so a hanging middle model
+// can't eat the drafting call's deadline.
+type Model = { model: string; thinkingLevel?: ThinkingLevel; tryMs?: number };
 // `overallMs` shortens the whole call's deadline for a feature that is only a convenience (Smart
 // import's column suggestions and look-alikes): the person shouldn't wait the full 100 s for it.
 type GeminiRoute = Model & { provider?: "gemini"; firstTryMs: number; fallback: Model; lastResort?: Model; overallMs?: number };
@@ -45,22 +55,23 @@ type GroqRoute = { provider: "groq"; model: string; reasoningEffort: "low" | "me
 export type Route = GeminiRoute | GroqRoute;
 export type Provider = "gemini" | "groq";
 export const ROUTES: Record<AiFeature, Route> = {
-  // Long input and more thinking, so a longer first try.
+  // Long input and more thinking, so a longer first try (3.6 Flash read the 2-page live packet in
+  // 23.5 s at MEDIUM).
   FACT_EXTRACTION: {
-    model: "gemini-3.8-flash",
+    model: "gemini-3.6-flash",
     thinkingLevel: ThinkingLevel.MEDIUM,
     firstTryMs: 50_000,
-    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.MEDIUM },
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.MEDIUM },
   },
   // The officer is waiting with nothing else to do, so drafting tries a third model before giving
   // up. Flash-Lite's drafts pass the same rules and Claim Checker as any other.
   DRAFT: {
-    model: "gemini-3.8-flash",
+    model: "gemini-3.6-flash",
     thinkingLevel: ThinkingLevel.LOW,
     firstTryMs: 20_000,
-    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.LOW, tryMs: 15_000 },
     // At its default (minimal) thinking it sometimes skipped the placeholders and line breaks;
-    // LOW followed them, at the same speed (tested 2026-10-26).
+    // LOW followed them, at the same speed (tested 2026-10-26). It must stay at LOW.
     lastResort: { model: "gemini-3.5-flash-lite", thinkingLevel: ThinkingLevel.LOW },
   },
   // Flash-Lite's default (minimal) thinking is right for a quick check.
@@ -88,12 +99,13 @@ export const ROUTES: Record<AiFeature, Route> = {
   // 1,500 tokens, so 3,000 leaves room without letting one call take most of a minute's quota.
   IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 3000 },
   // Research briefs (lib/research/brief.ts): reading up to six fetched pages is long input, like
-  // fact extraction; writing the brief from the passages read is short, so Flash-Lite goes first.
+  // fact extraction (3.6 Flash took 38 s live at MEDIUM); writing the brief from the passages read
+  // is short, so Flash-Lite goes first.
   RESEARCH_READ: {
-    model: "gemini-3.8-flash",
+    model: "gemini-3.6-flash",
     thinkingLevel: ThinkingLevel.MEDIUM,
     firstTryMs: 50_000,
-    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.MEDIUM },
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.MEDIUM },
   },
   RESEARCH_BRIEF: {
     model: "gemini-3.5-flash-lite",
@@ -118,9 +130,12 @@ export type AiErrorCode =
 
 export type Usage = { promptTokens: number | null; outputTokens: number | null; thinkingTokens: number | null };
 
+// A model that failed before the one that answered (or before the last one tried), for AiRun.
+export type FailedTry = { model: string; error: AiErrorCode; ms: number };
+
 export type GenerateResult<T> =
-  | { ok: true; data: T; model: string; usage: Usage }
-  | { ok: false; error: AiErrorCode; model: string; usage: Usage | null };
+  | { ok: true; data: T; model: string; usage: Usage; fellBack?: FailedTry[] }
+  | { ok: false; error: AiErrorCode; model: string; usage: Usage | null; fellBack?: FailedTry[] };
 
 export type GenerateRequest<S extends z.ZodType> = {
   feature: AiFeature;
@@ -183,16 +198,29 @@ export async function generate<S extends z.ZodType>(request: GenerateRequest<S>)
     if (route.lastResort) line.push([route.lastResort, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
   }
 
+  // A model in the middle of the line gets its own shorter try, if it has one.
+  if (line.length === 3 && line[1][0].tryMs) line[1][1].timeoutMs = Math.min(line[1][0].tryMs, ATTEMPT_TIMEOUT_MS);
+
+  const failed: FailedTry[] = [];
+  const noted = (r: GenerateResult<z.output<S>>): GenerateResult<z.output<S>> => (failed.length ? { ...r, fellBack: failed } : r);
   let result!: GenerateResult<z.output<S>>;
-  for (const [model, tries] of line) {
+  for (const [i, [model, tries]] of line.entries()) {
     // Past the deadline, the next model would only time out at once.
-    if (signal.aborted) return { ok: false, error: "timeout", model: model.model, usage: null };
+    if (signal.aborted) return noted({ ok: false, error: "timeout", model: model.model, usage: null });
+    const started = performance.now();
     result = await callModel(model, tries, request, signal);
     // Only a busy, slow or out-of-quota model is worth moving away from; a bad key, a refused
     // request or a blocked prompt would fail the same way on the next model.
-    if (result.ok || !MOVE_ON.includes(result.error)) return result;
+    if (result.ok || !MOVE_ON.includes(result.error)) return noted(result);
+    if (i < line.length - 1) {
+      const tried = { model: model.model, error: result.error, ms: Math.round(performance.now() - started) };
+      failed.push(tried);
+      // In the server log as well, for calls that end FAILED too (their AiRun row keeps only the
+      // code). The feature, model, code and time only: never the prompt, the reply or the key.
+      console.warn(`[ai] ${request.feature}: ${tried.model} ${tried.error} after ${tried.ms} ms, moving to ${line[i + 1][0].model}`);
+    }
   }
-  return result;
+  return noted(result);
 }
 
 // Why a reply that didn't finish normally is no use. Only a safety or policy stop is a refusal;

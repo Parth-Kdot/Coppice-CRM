@@ -199,24 +199,41 @@ const PLAIN_HEADERS: Partial<Record<keyof ImportMapping, Set<string>>> = {
   website: new Set(["website", "web site", "url", "site", "domain", "web address", "homepage"]),
   name: new Set(["company", "company name", "companies", "sponsor", "sponsor name", "sponsors", "organization", "organisation", "organization name", "business", "employer"]),
   industry: new Set(["industry", "sector", "industries"]),
-  notes: new Set(["notes", "note", "comments", "comment"]),
+  // "Notes / status" is how the live test sheet headed its notes (2026-11-07).
+  notes: new Set(["notes", "note", "comments", "comment", "notes status", "status notes", "status", "remarks", "notes comments", "comments notes"]),
   contactName: new Set(["contact", "contact name", "contact person", "contacts"]),
 };
 // The fields whose plain column the AI's pick replaces only when it gives a usable column.
 const SOFT_PLAIN: (keyof ImportMapping)[] = ["name", "industry", "notes", "contactName"];
-const CELL_TESTS: Partial<Record<keyof ImportMapping, (cell: string) => boolean>> = { contactEmail: (cell) => EMAIL_CELL.test(cell), website: isWebCell };
+// The fields that, with no sample cells to judge, keep to the code's guess.
+const STRICT_CELLS: (keyof ImportMapping)[] = ["contactEmail", "website"];
+// What a cell of each field looks like. Loose on purpose (a company can be "3M", a note can be one
+// word), but enough to refuse a column that plainly holds something else: emails, web addresses,
+// phone numbers or bare numbers and dates are nobody's company name, industry, notes or contact name.
+const hasLetter = (cell: string) => /\p{L}/u.test(cell);
+const isBare = (cell: string) => EMAIL_CELL.test(cell) || isWebCell(cell) || ["[email]", "[phone]"].includes(maskContactDetails(cell));
+const CELL_TESTS: Record<keyof ImportMapping, (cell: string) => boolean> = {
+  contactEmail: (cell) => EMAIL_CELL.test(cell),
+  website: isWebCell,
+  name: (cell) => hasLetter(cell) && !isBare(cell),
+  industry: (cell) => hasLetter(cell) && !isBare(cell) && !hasDate(cell) && cell.split(/\s+/).length <= NAME_MAX_WORDS,
+  notes: (cell) => hasLetter(cell) && !isBare(cell),
+  contactName: (cell) => hasLetter(cell) && !isBare(cell) && cell.split(/\s+/).length <= 8,
+};
 
 export function cleanSuggestion(headers: string[], suggested: z.output<typeof SuggestedColumns>, rows: { cells: string[] }[] = []): Omit<ColumnSuggestion, "note"> {
   const inFile = (c: number | null) => c !== null && c >= 0 && c < headers.length;
   const guessed = guessMapping(headers);
   const sample = rows.slice(0, SAMPLE_ROWS);
-  // Whether column c's sample cells fit the field (fields with no cell test always fit).
+  // Whether column c's sample cells fit the field: most filled cells pass the field's test. A
+  // column that is empty in every sample row fits no field but the one the code itself guessed for
+  // it (the live test moved Notes to an empty "misc" column, and the notes were lost). With no
+  // sample rows at all there is nothing to judge, so only the email and website keep to the
+  // code's guess.
   const fits = (field: keyof ImportMapping, c: number) => {
-    const test = CELL_TESTS[field];
-    if (!test) return true;
     const cells = sample.map((r) => (r.cells[c] ?? "").trim()).filter(Boolean);
-    if (cells.length === 0) return guessed[field] === c;
-    return cells.filter(test).length / cells.length >= 0.6;
+    if (cells.length === 0) return sample.length === 0 && !STRICT_CELLS.includes(field) ? true : guessed[field] === c;
+    return cells.filter(CELL_TESTS[field]).length / cells.length >= 0.6;
   };
   const plainPick = (field: keyof ImportMapping) => {
     const c = guessed[field];
@@ -250,6 +267,16 @@ export function cleanSuggestion(headers: string[], suggested: z.output<typeof Su
     if (plain !== null && !used.has(plain)) {
       mapping[field] = plain;
       used.add(plain);
+      continue;
+    }
+    // The AI named a free column whose sample cells don't fit the field (empty in every row, say):
+    // the code's own guess, when its cells fit, rather than nothing. A field the AI cleared, or
+    // gave a column another field holds, stays as it was.
+    const guess = guessed[field];
+    const refusedByCells = inFile(c) && !used.has(c as number) && sample.length > 0 && !fits(field, c as number);
+    if (field !== "name" && refusedByCells && guess !== null && inFile(guess) && !used.has(guess) && !reserved.has(guess) && fits(field, guess)) {
+      mapping[field] = guess;
+      used.add(guess);
     }
   }
   if (mapping.name === -1) {

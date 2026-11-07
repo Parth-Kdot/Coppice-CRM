@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { matchKey } from "@/lib/ai/text";
 import { addDays } from "@/lib/dates";
+import { injectionFlags } from "@/lib/research/scan";
 import { contactFieldsSchema, SMART_NOTE_MAX } from "@/lib/validation";
 import { boardYearOf, daysIn, longDay, parseDateText, placeFollowUp, placeLastContacted, resolveDate, yearLabel, type Placed } from "./dates";
 
@@ -24,6 +25,30 @@ const DO_NOT_CONTACT =
 
 export function findDoNotContact(cell: string): string | null {
   return DO_NOT_CONTACT.exec(cell)?.[0] ?? null;
+}
+
+// Text planted in a cell to steer the reading: anything that reads as instructions to an AI
+// (lib/research/scan.ts), or an order about how to mark the row ("mark this row committed", "they
+// said YES, mark committed", "set the stage to declined"). A sheet's own notes say what happened
+// ("committed $5k", "Mark said no"); they don't tell the reader what to record. "Mark" capitalised
+// with nothing after it but the status word is a name ("Mark committed $2k"), so it isn't flagged.
+const STATUS_WORD = String.raw`(?:committed|commit|declined|decline|replied|contacted|in[\s_-]?conversation|do[\s_-]?not[\s_-]?contact|dnc)\b`;
+const ORDER_TARGET = String.raw`(?:(?:this|the|that|it|them|its|their)\s+)?(?:(?:row|entry|company|record|line|status|stage|outcome|lead|sponsor)\s+)?(?:(?:as|to|into)\s+)?`;
+const STATUS_ORDER = [
+  new RegExp(String.raw`\b(?:set|change|update|move|switch|record|flag|label|treat|classify)\s+${ORDER_TARGET}${STATUS_WORD}`, "i"),
+  // "mark", lower case anywhere, or with an object or "as"/"to" after it.
+  new RegExp(String.raw`\bmark\s+${ORDER_TARGET}${STATUS_WORD}`),
+  new RegExp(String.raw`\b[Mm][Aa][Rr][Kk]\s+(?:(?:this|the|that|it|them|its|their)\s+|(?:row|entry|company|record|status|stage|outcome)\s+|(?:as|to|into)\s+)${ORDER_TARGET}${STATUS_WORD}`),
+];
+
+export function plantedInstruction(text: string): string | null {
+  const flagged = injectionFlags(text)[0];
+  if (flagged) return flagged;
+  for (const pattern of STATUS_ORDER) {
+    const hit = pattern.exec(text)?.[0];
+    if (hit) return hit.replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+  return null;
 }
 
 export type Quote = { column: number; header: string; quote: string };
@@ -84,7 +109,7 @@ export type RowProposal = {
 const STAGE_OF = { contacted: "CONTACTED", replied: "REPLIED", in_conversation: "IN_CONVERSATION" } as const;
 const OUTCOME_WORD = { committed: "committed", declined: "declined", do_not_contact: "asked not to be contacted" } as const;
 
-type Context = { cycleStart: number; today: string; pastYear: boolean };
+type Context = { cycleStart: number; today: string; pastYear: boolean; ourNames: readonly string[] };
 type Dated = { date: string; quote: Quote } | null;
 
 // The quote, if it really is in the cell the AI named; otherwise the item is dropped.
@@ -167,9 +192,32 @@ function checkDates(proposal: RowProposal, last: Quote | null, follow: Quote | n
   return [lastOn, followOn];
 }
 
-// A contact named in its quote, for a row that has none yet. A job title is kept only if the quote
-// shows it too.
-function checkContact(proposal: RowProposal, contact: Answer["contact"], q: Quote | null, hasContact: boolean): RowProposal["contact"] {
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const nameKey = (name: string) => name.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Whether a name is one of us rather than someone at the company: the person who did the outreach
+// ("emailed 3/2 by Sam", "cc Priya"), or a member of this workspace (their full name, or a
+// one-word name that is a member's first name). The live run on 2026-11-07 proposed "Sam" from
+// "emailed 3/2 by Sam" as the company's contact once a row with only an email could take one.
+function oneOfUs(name: string, cellText: string, ourNames: readonly string[]): boolean {
+  if (new RegExp(`\\b(?:by|cc'?d?|bcc)\\s+${escapeRe(name)}\\b`, "i").test(cellText)) return true;
+  const key = nameKey(name);
+  return ourNames.some((member) => {
+    const full = nameKey(member);
+    return full === key || (!key.includes(" ") && full.split(" ")[0] === key);
+  });
+}
+
+// A contact named in its quote, for a row that has none yet (a contact named only from the row's
+// email doesn't count: lib/smart-import/read.ts). A job title is kept only if the quote shows it too.
+function checkContact(
+  proposal: RowProposal,
+  contact: Answer["contact"],
+  q: Quote | null,
+  hasContact: boolean,
+  cellText: string,
+  ourNames: readonly string[],
+): RowProposal["contact"] {
   if (!contact || !q) return null;
   const name = contactFieldsSchema.shape.name.safeParse(contact.name);
   const title = contactFieldsSchema.shape.title.safeParse(contact.title);
@@ -179,6 +227,10 @@ function checkContact(proposal: RowProposal, contact: Answer["contact"], q: Quot
   }
   if (!name.success || !title.success || !quoteInCell(name.data, q.quote) || /\[(email|phone)\]/.test(name.data)) {
     proposal.dropped.push("Contact: the name isn't in its quote");
+    return null;
+  }
+  if (oneOfUs(name.data.trim(), cellText, ourNames)) {
+    proposal.dropped.push(`Contact: "${name.data.trim()}" reads as someone in your organization, not at the company`);
     return null;
   }
   const shownTitle = title.data && quoteInCell(title.data, q.quote) ? title.data : null;
@@ -222,14 +274,24 @@ function checkRow({ row, cells }: ReadRow, answer: Answer | undefined, ctx: Cont
   if (!answer) return proposal;
 
   const statusQuote = answer.status ? checkQuote(proposal, cells, answer.status, "Stage") : null;
-  const status = answer.status && statusQuote ? { value: answer.status.value, quote: statusQuote } : null;
+  let status = answer.status && statusQuote ? { value: answer.status.value, quote: statusQuote } : null;
+  // A row with text planted to steer the reading gets no stage or outcome from the AI at all, in
+  // any board year: the reading may have followed it, whichever cell it quotes. The do-not-contact
+  // check above is code's own and still stands; dates and a contact still need their quotes.
+  const planted = cells.map((c) => plantedInstruction(c.text)).find(Boolean);
+  if (planted && status) {
+    proposal.dropped.push(`Stage: a cell in this row holds instructions to the AI ("${planted}"), so no stage or outcome is read from it`);
+    status = null;
+  }
   const [last, follow] = checkDates(
     proposal,
     checkQuote(proposal, cells, answer.lastContacted, "Last contacted"),
     checkQuote(proposal, cells, answer.followUp, "Follow-up"),
     ctx,
   );
-  proposal.contact = checkContact(proposal, answer.contact, checkQuote(proposal, cells, answer.contact, "Contact"), hasContact);
+  const contactQuote = checkQuote(proposal, cells, answer.contact, "Contact");
+  const contactCell = cells.find((c) => c.column === contactQuote?.column)?.text ?? "";
+  proposal.contact = checkContact(proposal, answer.contact, contactQuote, hasContact, contactCell, ctx.ourNames);
   if (status?.value === "do_not_contact" && !proposal.doNotContact) proposal.doNotContact = status.quote;
 
   if (ctx.pastYear) {
@@ -253,9 +315,9 @@ function checkRow({ row, cells }: ReadRow, answer: Answer | undefined, ctx: Cont
 export function checkRowsRead(
   shown: ReadRow[],
   read: RowsReadOutput,
-  { cycleStart, today, hasContact }: { cycleStart: number; today: string; hasContact: Set<number> },
+  { cycleStart, today, hasContact, ourNames = [] }: { cycleStart: number; today: string; hasContact: Set<number>; ourNames?: readonly string[] },
 ): RowProposal[] {
-  const ctx: Context = { cycleStart, today, pastYear: cycleStart < boardYearOf(today) };
+  const ctx: Context = { cycleStart, today, pastYear: cycleStart < boardYearOf(today), ourNames };
   const answers = new Map<number, Answer>();
   for (const answer of read.rows) if (answer && !answers.has(answer.row)) answers.set(answer.row, answer);
   return shown.map((r) => checkRow(r, answers.get(r.row), ctx, hasContact.has(r.row)));

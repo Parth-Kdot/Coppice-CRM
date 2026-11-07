@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from 
 import { logOutreach as logOutreachAction } from "@/app/(app)/[workspaceId]/companies/actions";
 import { draftEmail as draftAction } from "@/app/(app)/[workspaceId]/companies/draft-actions";
 import type { Membership } from "@/lib/authz";
-import { claimCompany, dbToday, logOutreach } from "@/lib/claims";
+import { changeStage, claimCompany, dbToday, logOutreach, markReply } from "@/lib/claims";
 import { composeLinks, LINK_MAX } from "@/lib/compose-links";
 import { addContact, createCompany } from "@/lib/companies";
 import { addDays } from "@/lib/dates";
@@ -109,7 +109,7 @@ describe("draftEmail", () => {
     expect(await claimOf(companyId)).toEqual({ claimedById: "officerA" });
     const rows = await withTenant(OWNER, (tx) => tx.aiDraft.findMany({ select: { model: true, contactId: true, createdById: true, createdAt: true } }));
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ model: "gemini-3.8-flash", contactId, createdById: "officerA" });
+    expect(rows[0]).toMatchObject({ model: "gemini-3.6-flash", contactId, createdById: "officerA" });
     expect(rows[0].createdAt).toEqual(rows[1].createdAt);
   });
 
@@ -159,6 +159,47 @@ describe("draftEmail", () => {
     expect(prompt).toContain("LinkedIn");
     expect(prompt).not.toContain("Talked to Hank");
     expect(prompt).toContain("Write two follow-up emails.");
+  });
+
+  // Recorded from the live test on 2026-11-07: Glasswing Hardware was Replied, its only outreach had
+  // a reply ("Hugo replied and asked whether students could visit"), and both follow-ups said
+  // "following up on my October 30 email" as if nobody had answered.
+  it("tells a follow-up that the company replied: its stage, and which outreach got the reply, never the note", async () => {
+    const followUpOn = addDays(await dbToday(), 7);
+    expect((await claimCompany(OWNER, companyId)).ok).toBe(true);
+    const logged = await logOutreach(OWNER, companyId, { channel: "EMAIL", note: "Hank replied and asked whether students could visit", followUpOn });
+    if (!logged.ok) throw new Error(logged.error);
+    expect((await changeStage(OWNER, companyId, "REPLIED")).ok).toBe(true);
+    expect((await markReply(OWNER, companyId, logged.data.outreachId)).ok).toBe(true);
+
+    const replied = variant(2, { body: "Hi {{firstName}},\n\nThanks for getting back to me. Our hackathon draws 600 students.\n\n{{senderName}}\n{{orgName}}" });
+    fakeGemini(...drafted(replied));
+    const result = await draftEmail(OWNER, companyId, { kind: "FOLLOW_UP", contactId, note: null });
+    expect(result).toMatchObject({ ok: true, data: [{ body: expect.stringContaining("Thanks for getting back to me.") }] });
+    const prompt = promptOf();
+    expect(prompt).toContain("Website: globex.com\\nStage: Replied\\n</company>");
+    expect(prompt).toMatch(/<earlier_outreach>\\n[A-Z][a-z]{2} \d{1,2}, Email, they replied\\n<\/earlier_outreach>/);
+    expect(prompt).toContain("never write as if they hadn't answered");
+    expect(prompt).not.toMatch(/Hank|visit/);
+  });
+
+  it("an outreach with no reply says nothing about one, and the stage is still given", async () => {
+    expect((await claimCompany(OWNER, companyId)).ok).toBe(true);
+    expect((await logOutreach(OWNER, companyId, { channel: "EMAIL", note: null, followUpOn: addDays(await dbToday(), 7) })).ok).toBe(true);
+    fakeGemini(...drafted(variant(1)));
+    await draftEmail(OWNER, companyId, { kind: "FOLLOW_UP", contactId: null, note: null });
+    expect(promptOf()).toContain("Stage: Contacted");
+    expect(promptOf()).not.toContain("Email, they replied");
+  });
+
+  // The drafting rules once said "a Purdue University student organization" for every workspace.
+  it("describes the organization only through its verified facts and {{orgName}}, never a school it assumed", async () => {
+    fakeGemini(...drafted(variant(1)));
+    await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId, note: null });
+    const system = JSON.stringify(calls[0].body.systemInstruction);
+    expect(system).not.toMatch(/Purdue|University|student organization/i);
+    expect(system).toContain("names the organization only as {{orgName}}");
+    expect(system).toContain("Say nothing about the organization except what the numbered facts state");
   });
 
   it("says when nothing has been logged yet for a follow-up", async () => {
@@ -423,7 +464,7 @@ describe("draftEmail: the claim check right after drafting is quick", () => {
     expect(result.data).toHaveLength(2);
     for (const d of result.data) expect(d.check).toMatchObject({ ai: [], error: message });
     // The draft call, then one claim-check call: no fallback model after a Draft click.
-    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
     expect(await draftCount()).toBe(2);
   });
 

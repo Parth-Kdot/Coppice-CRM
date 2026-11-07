@@ -627,7 +627,9 @@ model AiRun {
   feature        AiFeature
   model          String
   status         AiRunStatus
-  // A short code such as "rate_limited" or "blocked"; never the prompt or the reply.
+  // A short code such as "rate_limited" or "blocked"; never the prompt or the reply. On a
+  // SUCCEEDED call that a fallback model answered, a short note of the models that failed first
+  // ("fallback after gemini-3.6-flash timeout 20004ms"), so slow fallbacks show in the log.
   error          String?
   promptTokens   Int?
   outputTokens   Int?

@@ -2,7 +2,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { AI_ERROR_MESSAGES, isRetryableAiError, runAi } from "@/lib/ai/run";
 import { promptSafe } from "@/lib/ai/text";
 import { dbToday } from "@/lib/claims";
-import { checkRows, parseCsv } from "@/lib/csv";
+import { checkRows, namedFromEmail, parseCsv } from "@/lib/csv";
 import { withTenant, type Tenant } from "@/lib/db";
 import { CHUNK_ROWS, checkRowsRead, RowsRead, type ReadRow, type RowProposal } from "./check";
 import { yearLabel } from "./dates";
@@ -67,7 +67,9 @@ export async function readSmartChunk(tenant: Tenant, text: string, sessionId: st
   const names = valid.map((r) => ({ row: r.row, name: r.company.name }));
   if (staged) return { ok: true, data: { index, proposals: staged.proposals as unknown as RowProposal[], names } };
   const shown = readRows(table.data, valid, session.freeText);
-  const hasContact = new Set(valid.filter((r) => r.contact).map((r) => r.row));
+  // A contact named only from the email ("outreach" for outreach@...) doesn't count: a real name
+  // in the notes may replace it.
+  const hasContact = new Set(valid.filter((r) => r.contact && !namedFromEmail(r)).map((r) => r.row));
 
   const read = await runAi(tenant, {
     feature: "IMPORT_ROWS",
@@ -82,7 +84,11 @@ export async function readSmartChunk(tenant: Tenant, text: string, sessionId: st
     return fail(read.error, false, isRetryableAiError(read.error));
   }
 
-  const proposals = checkRowsRead(shown, read.data, { cycleStart: session.cycleStart, today: await dbToday(), hasContact });
+  // The workspace's members, so none of them is proposed as a company's contact.
+  const ourNames = await withTenant(tenant, async (tx) =>
+    (await tx.membership.findMany({ where: { workspaceId: tenant.workspaceId }, select: { user: { select: { name: true } } } })).map((m) => m.user.name),
+  );
+  const proposals = checkRowsRead(shown, read.data, { cycleStart: session.cycleStart, today: await dbToday(), hasContact, ourNames });
   const saved = await withTenant(tenant, async (tx) => {
     // The session may have expired or been used while the AI was answering.
     if (!(await loadSession(tx, tenant, sessionId, text, since)).ok) return false;

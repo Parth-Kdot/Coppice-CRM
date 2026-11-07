@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { disconnectAssistant } from "@/app/(app)/[workspaceId]/settings/assistant-actions";
 import { prisma } from "@/lib/db";
-import { NOT_CONNECTED, accessLabel, disconnect, listConnections, redirectLabel } from "@/lib/mcp/connections";
+import { auth } from "@/lib/auth";
+import { appUrl } from "@/lib/mcp/config";
+import { NOT_CONNECTED, accessLabel, disconnect, endGrantsWithoutConsent, listConnections, redirectLabel } from "@/lib/mcp/connections";
 import { form, redirectTo } from "./helpers/form";
 import { asUser, signedOut } from "./helpers/next-request";
-import { authorize, consent, deleteOAuthClients, exchangeCode, mcpClient, mcpPost, pkce, refresh, registerClient, restoreFetch, routeAppFetches } from "./helpers/oauth";
+import { authorize, consent, deleteOAuthClients, exchangeCode, fromNewIp, mcpClient, mcpPost, pkce, refresh, registerClient, restoreFetch, routeAppFetches } from "./helpers/oauth";
 import { resetAndSeed } from "./helpers/seed";
+import { signedInHeaders } from "./helpers/session";
 
 vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
@@ -234,6 +237,86 @@ describe("disconnect", () => {
     await connect(clientId, "ownerA");
     expect((await disconnect("ownerA", clientId)).ok).toBe(true);
     expect(await disconnect("ownerA", clientId)).toEqual({ ok: false, error: NOT_CONNECTED });
+  });
+});
+
+// Recorded from the live run with the official MCP client on 2026-11-07: after Better Auth's own
+// POST /oauth2/delete-consent the access token was refused, but the token endpoint went on issuing
+// and rotating tokens for the revoked grant, and the client failed with "Server returned 401 after
+// re-authentication" instead of sending the person back to sign in.
+describe("a consent removed some other way than Disconnect", () => {
+  async function deleteConsentOverHttp(userId: string, clientId: string) {
+    const consent = await prisma.oauthConsent.findFirstOrThrow({ where: { userId, clientId }, select: { id: true } });
+    const headers = await signedInHeaders(userId);
+    const response = await auth.handler(
+      new Request(new URL("/api/auth/oauth2/delete-consent", appUrl()), {
+        method: "POST",
+        headers: { ...Object.fromEntries(headers), "content-type": "application/json", ...fromNewIp() },
+        body: JSON.stringify({ id: consent.id }),
+      }),
+    );
+    return response.status;
+  }
+
+  it("Better Auth's delete-consent also ends that client's tokens, so a refresh gets invalid_grant", async () => {
+    const clientId = await newClient();
+    const first = await connect(clientId, "ownerA");
+    const rotated = await refresh(clientId, first.refreshToken);
+    expect(rotated.status).toBe(200);
+    const officers = await connect(clientId, "officerA");
+    const before = await rows("officerA", clientId);
+
+    expect(await deleteConsentOverHttp("ownerA", clientId)).toBe(200);
+    expect(await rows("ownerA", clientId)).toEqual({ consents: 0, accessTokens: 0, refreshTokens: 0 });
+    const refused = await refresh(clientId, rotated.body.refresh_token);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toBe("invalid_grant");
+    await expectRefused(rotated.body.access_token);
+    // Another person's connection to the same assistant is untouched.
+    expect(await rows("officerA", clientId)).toEqual(before);
+    expect(await works(officers.accessToken)).toBe(true);
+  });
+
+  it("a consent gone from the database is caught by the grant check, which ends the leftover tokens too", async () => {
+    const clientId = await newClient();
+    const { accessToken, refreshToken } = await connect(clientId, "ownerA");
+    // Removed without any hook (a direct delete), the way the live run left it.
+    await prisma.oauthConsent.deleteMany({ where: { userId: "ownerA", clientId } });
+    expect((await rows("ownerA", clientId)).refreshTokens).toBeGreaterThan(0);
+    await expectRefused(accessToken);
+    expect(await rows("ownerA", clientId)).toEqual({ consents: 0, accessTokens: 0, refreshTokens: 0 });
+    expect((await refresh(clientId, refreshToken)).body.error).toBe("invalid_grant");
+  });
+
+  it("a refused token says invalid_token in its challenge, so the assistant signs in again cleanly", async () => {
+    const clientId = await newClient();
+    const { accessToken } = await connect(clientId, "ownerA");
+    expect((await disconnect("ownerA", clientId)).ok).toBe(true);
+    const response = await mcpPost(listTools, accessToken, LEGACY);
+    expect(response.status).toBe(401);
+    const challenge = response.headers.get("www-authenticate") ?? "";
+    expect(challenge).toMatch(/^Bearer error="invalid_token", error_description="This connection to Coppice was revoked\. Connect your assistant again\.", /);
+    expect(challenge).toContain('resource_metadata="');
+    expect(challenge).toContain('scope="coppice:read coppice:write"');
+  });
+
+  it("connecting again afterwards works, and the tokens from before stay dead", async () => {
+    const clientId = await newClient();
+    const old = await connect(clientId, "ownerA");
+    expect(await deleteConsentOverHttp("ownerA", clientId)).toBe(200);
+    const again = await connect(clientId, "ownerA");
+    expect(await works(again.accessToken)).toBe(true);
+    expect((await refresh(clientId, old.refreshToken)).status).toBe(400);
+    expect((await refresh(clientId, again.refreshToken)).status).toBe(200);
+  });
+
+  it("endGrantsWithoutConsent never touches a client the person still allows", async () => {
+    const kept = await newClient("Kept");
+    const { accessToken } = await connect(kept, "ownerA");
+    const before = await rows("ownerA", kept);
+    expect(await endGrantsWithoutConsent("ownerA")).toEqual({ accessTokens: 0, refreshTokens: 0 });
+    expect(await rows("ownerA", kept)).toEqual(before);
+    expect(await works(accessToken)).toBe(true);
   });
 });
 

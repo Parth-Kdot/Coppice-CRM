@@ -783,12 +783,12 @@ describe("requestBrief: names and masked contacts are dropped in code", () => {
     expect(await latestBrief(OWNER, companyId)).toBeNull();
   });
 
-  it("a reading that times out on 3.8 Flash moves on to 3.6 Flash", async () => {
+  it("a reading that times out on 3.6 Flash moves on to 3.8 Flash", async () => {
     const [read, write] = GOOD_RUN();
     fakeGemini(new DOMException("The operation was aborted.", "AbortError"), read, write);
     const brief = ok(await ask(OWNER, [careersId, givingId]));
     expect(brief.items.length).toBeGreaterThan(0);
-    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]);
   });
 });
 

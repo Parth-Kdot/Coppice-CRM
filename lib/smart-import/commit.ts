@@ -1,5 +1,5 @@
 import { dbToday } from "@/lib/claims";
-import { runImport, type CheckedRow, type ImportResult, type RowExtras, type SmartExtras } from "@/lib/csv";
+import { namedFromEmail, runImport, type CheckedRow, type ImportResult, type RowExtras, type SmartExtras } from "@/lib/csv";
 import { addDays, localMidnight } from "@/lib/dates";
 import type { Tenant } from "@/lib/db";
 import { COMPANY_LIMITS, IMPORT_FIELDS, type ActionResult, type ImportMapping, type SmartDecision } from "@/lib/validation";
@@ -23,7 +23,8 @@ function checkDecision(r: CheckedRow, decision: SmartDecision | undefined, propo
   if (!decision) return null;
   // A field can only be kept if the AI proposed it for this row.
   if ((decision.stage && !proposal?.stage) || (decision.lastContactedOn && !proposal?.lastContactedOn) || (decision.followUpOn && !proposal?.followUpOn)) return REVIEW_AGAIN;
-  if ((decision.contact && (!proposal?.contact || r.contact)) || (decision.note && !proposal?.note)) return REVIEW_AGAIN;
+  // A contact only for a row with none, or one named only from its email.
+  if ((decision.contact && (!proposal?.contact || (r.contact && !namedFromEmail(r)))) || (decision.note && !proposal?.note)) return REVIEW_AGAIN;
   if (decision.lastContactedOn && decision.lastContactedOn > today) return `Row ${r.row}: a last-contacted date can't be in the future.`;
   if (decision.lastContactedOn && decision.lastContactedOn < addDays(today, -730)) return `Row ${r.row}: pick a last-contacted date in the last two years.`;
   if (decision.followUpOn && (decision.followUpOn < addDays(today, -365) || decision.followUpOn > addDays(today, 365))) {
@@ -38,7 +39,8 @@ function checkDecision(r: CheckedRow, decision: SmartDecision | undefined, propo
     lastContactedAt: decision.lastContactedOn ? localMidnight(decision.lastContactedOn) : undefined,
     nextFollowUpAt: decision.followUpOn ? localMidnight(decision.followUpOn) : undefined,
     noteLine: decision.note ?? undefined,
-    contact: decision.contact ? { name: decision.contact.name, email: null, title: decision.contact.title } : undefined,
+    // The name found in the notes, with the email the row's own cell gave.
+    contact: decision.contact ? { name: decision.contact.name, email: r.contact?.email ?? null, title: decision.contact.title } : undefined,
   };
 }
 

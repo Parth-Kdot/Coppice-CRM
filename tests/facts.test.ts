@@ -461,10 +461,10 @@ describe("uploadFactSheet: one wordy fact never throws the read away", () => {
     });
   });
 
-  it("a 500 on 3.8 Flash, then 3.6 Flash answers", async () => {
+  it("a 500 on 3.6 Flash, then 3.8 Flash answers", async () => {
     fakeGemini(apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify({ facts: [good] })));
     expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 1 } });
-    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.6-flash"]);
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.6-flash", "gemini-3.8-flash"]);
   });
 });
 
