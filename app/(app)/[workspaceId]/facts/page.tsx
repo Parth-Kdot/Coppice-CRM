@@ -160,7 +160,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
               {addForm}
             </div>
           ) : (
-            <LazyDisclosure variant="inline" summary="+ Add a fact" className="lg-factadd" data-tour="facts-add">
+            <LazyDisclosure variant="inline" summary="Add a fact" className="lg-factadd" data-tour="facts-add">
               {addForm}
             </LazyDisclosure>
           )

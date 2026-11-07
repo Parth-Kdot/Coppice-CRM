@@ -47,11 +47,19 @@ const groupLabel = (group: readonly Stage[]) => (group.length > 1 ? "Closed" : S
 
 const FILTER_FROM = 10;
 
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 type Menu = { id: string; anchor: HTMLButtonElement };
-// A move on its way: `flew` when the slip flew there (menu, keyboard) rather than being dropped.
-type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boolean; flew: boolean };
+// A move on its way: `flew` when the slip flew there (menu, keyboard) rather than being dropped;
+// `away` when its new column is out of view (a phone shows one column), so the board stays put.
+type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boolean; flew: boolean; away: boolean };
+
+// Whether `el` is inside the board's horizontal view (on a phone only one column is).
+function inBoardView(el: Element | null, root: HTMLElement | null): boolean {
+  if (!el || !root) return false;
+  const r = el.getBoundingClientRect();
+  const v = root.getBoundingClientRect();
+  return r.width > 0 && r.left >= v.left - 1 && r.right <= v.right + 1;
+}
+const stripButton = (stage: Stage) => document.querySelector<HTMLElement>(`[data-strip-stages~="${stage}"]`);
 
 type Props = {
   workspaceId: string;
@@ -154,8 +162,17 @@ export function BoardView(props: Props) {
       else if (there.stage === pin.stage) top.set(pin.id, { ...there, justMoved: true });
     }
     if (top.size === 0 && moving.size === 0) return columns;
+    // A move the server's page hasn't caught up with counts in its new column already, not its old.
+    const delta = new Map<Stage, number>();
+    for (const [id, from] of moving) {
+      const to = pins.get(id)?.stage;
+      if (!to || to === from) continue;
+      delta.set(from, (delta.get(from) ?? 0) - 1);
+      delta.set(to, (delta.get(to) ?? 0) + 1);
+    }
     return columns.map((col) => ({
       ...col,
+      count: Math.max(0, col.count + (delta.get(col.stage) ?? 0)),
       cards: [...[...top.values()].filter((card) => card.stage === col.stage), ...col.cards.filter((card) => !top.has(card.id) && !moving.has(card.id))],
     }));
   }, [columns, pins, moving]);
@@ -190,6 +207,24 @@ export function BoardView(props: Props) {
     [],
   );
 
+  // "See it" after a move to a column out of view: the board scrolls there (smoothly, unless motion
+  // is reduced; the strip marks the column as it arrives) and the slip takes focus and its stamp.
+  const seeIt = (id: string, stage: Stage) => {
+    const el = slipOf(id);
+    const col = (el ?? document.querySelector(`[data-stage-head="${stage}"]`))?.closest<HTMLElement>(".lg-bcol");
+    const root = scroller.current;
+    if (!root || !col) return;
+    const still = prefersReducedMotion();
+    root.scrollTo({ left: col.offsetLeft, behavior: still ? "auto" : "smooth" });
+    el?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" });
+    const link = el?.querySelector<HTMLElement>(SLIP_LINK);
+    if (link) {
+      rove(link);
+      link.focus({ preventScroll: true });
+    }
+    window.setTimeout(() => void completeStamp(slipOf(id)), still ? 0 : 320);
+  };
+
   // Moving a slip calls the real stage action with the same form fields as the stage form. Committed
   // and Declined ask first, because they close the pitch and release any claim. From the menu or the
   // keyboard the slip flies to its new column's head (the motion kit's sendTo) while the server
@@ -218,11 +253,18 @@ export function BoardView(props: Props) {
     const closes = TERMINAL_STAGES.includes(to);
     const previousPin = pins.get(id);
     const slip = slipOf(id);
-    const flying = dropped ? Promise.resolve() : sendTo(slip, document.querySelector(`[data-stage-head="${to}"]`), { collapse: "height" });
-    landing.current = { id, from: card.stage, to, rect: from, focus, flew: !dropped };
-    // Drawn in the new column as soon as the flight ends (a drop: right away), without waiting on
-    // the server. An urgent update, outside the transition below, so it paints at once.
-    const moved = flying.then(() => {
+    // The new column's head, or on a phone, where that column is out of view, its button in the
+    // stage strip: the slip flies there and the board stays on the column the person is working
+    // through (a note offers "See it"). Focus stays in this column, on the next slip.
+    const head = document.querySelector<HTMLElement>(`[data-stage-head="${to}"]`);
+    const away = !dropped && !!head && !inBoardView(head, scroller.current);
+    const strip = away ? stripButton(to) : null;
+    const nextHere = away && focus && slip ? ((slip.nextElementSibling ?? slip.previousElementSibling)?.querySelector<HTMLElement>(SLIP_LINK) ?? null) : null;
+    landing.current = { id, from: card.stage, to, rect: from, focus: focus && !away, flew: !dropped, away };
+    // Drawn in the new column, with both counts updated, as the flight reaches it (a drop: right
+    // away), without waiting on the server. An urgent update, outside the transition below, so it
+    // paints at once.
+    const place = () => {
       setPins((current) =>
         new Map(current).set(id, {
           ...card,
@@ -233,13 +275,16 @@ export function BoardView(props: Props) {
         }),
       );
       setMoving((current) => new Map(current).set(id, card.stage));
-    });
+    };
+    const moved = dropped ? Promise.resolve().then(place) : sendTo(slip, away ? (strip && strip.offsetParent ? strip : null) : head, { collapse: "height", focus: nextHere, arrived: place });
+    if (away && focus && !nextHere) focusSoon(`[data-stage-head="${card.stage}"]`);
     startTransition(async () => {
       // Waits for the flight too, so a refusal never lands before the slip it puts back.
       const [result] = await Promise.all([moveStage(null, form), moved]);
       if (result.ok) {
         flash(id);
-        notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`);
+        if (away) notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`, "ok", { action: { label: "See it", onSelect: () => seeIt(id, to) } });
+        else notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`);
         if (result.data?.replyChoices) setReplyAsk({ id, name: card.name, choices: result.data.replyChoices });
       } else {
         if (landing.current?.id === id) landing.current = null;
@@ -285,13 +330,15 @@ export function BoardView(props: Props) {
       return;
     }
     landing.current = null;
+    // Out of view on a phone: the board stays where it is; "See it" in the note goes there.
+    if (land.away) return;
     el.scrollIntoView({ block: "nearest", inline: "nearest" });
     const link = el.querySelector<HTMLElement>(SLIP_LINK);
     if (land.focus && link) {
       rove(link);
       link.focus({ preventScroll: true });
     }
-    if (land.flew || reducedMotion() || typeof el.animate !== "function") {
+    if (land.flew || prefersReducedMotion() || typeof el.animate !== "function") {
       void completeStamp(el);
       return;
     }
@@ -651,14 +698,21 @@ function BoardStrip({ scroller, counts }: { scroller: RefObject<HTMLDivElement |
     const root = scroller.current;
     const col = root?.querySelectorAll<HTMLElement>(":scope > .lg-bcol")[index];
     if (!root || !col) return;
-    root.scrollTo({ left: col.offsetLeft, behavior: reducedMotion() ? "auto" : "smooth" });
+    root.scrollTo({ left: col.offsetLeft, behavior: prefersReducedMotion() ? "auto" : "smooth" });
     setInView(index);
   };
 
   return (
     <div className="lg-bstrip" role="group" aria-label="Jump to a stage" data-tour="board-strip">
       {GROUPS.map((group, i) => (
-        <button key={group.join("-")} type="button" className="lg-bstrip-btn" aria-current={inView === i ? "true" : undefined} onClick={() => jump(i)}>
+        <button
+          key={group.join("-")}
+          type="button"
+          className="lg-bstrip-btn"
+          data-strip-stages={group.join(" ")}
+          aria-current={inView === i ? "true" : undefined}
+          onClick={() => jump(i)}
+        >
           <StageGlyph stage={group[0]} size={15} />
           <span>{groupLabel(group)}</span>
           <span className="lg-bstrip-n">{counts[i].toLocaleString("en-US")}</span>

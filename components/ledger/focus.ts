@@ -15,6 +15,10 @@ import { useEffect, useRef, useState } from "react";
 //                            the component that scheduled it is unmounted by it (a Claim form replaced
 //                            by the log card). OverflowMenu uses it for focusAfter; ActionForm waits on
 //                            its own action state the same way.
+//   whenDrawn(find, run)     Runs `run` on the element `find` returns once the server's fresh render
+//                            has drawn it: looks again on each frame for about a second, then gives up
+//                            quietly. For a finish moment that plays on what an action brought (the new
+//                            ticket, the new outreach entry), never on a page load.
 
 export type FocusTarget = string | HTMLElement | null | (() => HTMLElement | null);
 
@@ -47,6 +51,17 @@ export function focusSoon(target: FocusTarget): void {
     });
   };
   requestAnimationFrame(attempt);
+}
+
+export function whenDrawn<T extends Element>(find: () => T | null | undefined, run: (el: T) => void): void {
+  if (typeof window === "undefined") return;
+  let frames = 0;
+  const look = () => {
+    const el = find();
+    if (el && el.isConnected) return run(el);
+    if (++frames < 60) requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
 }
 
 export function useFocusAfterCommit(): (target: FocusTarget | undefined) => void {

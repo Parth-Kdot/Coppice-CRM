@@ -12,6 +12,7 @@ import { ChipGroup, type ChipOption } from "./chips";
 import { CopyLinkIcon } from "./icons";
 import { CalendarPopover } from "./date-popover";
 import { Disclosure } from "./disclosure";
+import { whenDrawn } from "./focus";
 import { completeStamp } from "./motion-kit";
 import { formatYmd } from "./ymd";
 import "./company.css";
@@ -79,20 +80,26 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       if (!result.ok) return result;
       void completeStamp(wrap.current?.querySelector('button[type="submit"]'));
       if (seen && settleInto) {
-        settleWhenDrawn(settleInto, seen);
+        // The new entry, once the fresh render draws it at the top of the list, settles in with the
+        // same stamp, a beat after the button's.
+        whenDrawn(
+          () => Array.from(document.querySelectorAll<HTMLElement>(`${settleInto} [data-entry-id]`)).find((el) => !seen.has(el.dataset.entryId)),
+          (entry) => void completeStamp(entry),
+        );
       }
       if (onLogged) await onLogged();
       else {
-        // The button was disabled while saving, which drops focus to <body>: give it back.
-        let frames = 0;
-        const give = () => {
-          const button = wrap.current?.querySelector<HTMLButtonElement>('button[type="submit"]');
-          const lost = !document.activeElement || document.activeElement === document.body;
-          if (!lost || !button) return;
-          if (!button.disabled) return button.focus({ preventScroll: true });
-          if (++frames < 60) requestAnimationFrame(give);
-        };
-        requestAnimationFrame(give);
+        // The button was disabled while saving, which drops focus to <body>: give it back once it
+        // is enabled again, unless the person has moved on.
+        whenDrawn(
+          () => {
+            const button = wrap.current?.querySelector<HTMLButtonElement>('button[type="submit"]');
+            return button && !button.disabled ? button : null;
+          },
+          (button) => {
+            if (!document.activeElement || document.activeElement === document.body) button.focus({ preventScroll: true });
+          },
+        );
       }
       return result;
     },
@@ -218,18 +225,6 @@ export function LogOutreachForm({ workspaceId, companyId, action, today, aiDraft
       </ActionForm>
     </div>
   );
-}
-
-// The new entry, once the fresh render draws it at the top of the list: it settles in with the same
-// stamp, a beat after the button's. Looks for about a second, then gives up quietly.
-function settleWhenDrawn(list: string, seen: Set<string | undefined>) {
-  let frames = 0;
-  const look = () => {
-    const entry = Array.from(document.querySelectorAll<HTMLElement>(`${list} [data-entry-id]`)).find((el) => !seen.has(el.dataset.entryId));
-    if (entry) return void completeStamp(entry);
-    if (++frames < 60) requestAnimationFrame(look);
-  };
-  requestAnimationFrame(look);
 }
 
 // The note, with Ctrl/Cmd+Enter to save. The shortcut is refused while a save is in flight (the

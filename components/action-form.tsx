@@ -6,7 +6,7 @@ import { ErrorLine } from "@/components/ledger/shared";
 import { useConfirm, useNotify } from "@/components/ledger/providers";
 import { focusSoon, type FocusTarget } from "@/components/ledger/focus";
 import { Tick } from "@/components/ledger/marks";
-import { completeStamp } from "@/components/ledger/motion-kit";
+import { completeStamp, removeAway } from "@/components/ledger/motion-kit";
 import type { ActionResult } from "@/lib/validation";
 
 // Runs a server action from a form with one submit button. A refusal is written under the form,
@@ -23,6 +23,12 @@ import type { ActionResult } from "@/lib/validation";
 //   savedNote        write the success message beside the button (a settings Save) instead of as a
 //                    margin note, with a tick, stamped by the motion kit when it lands; it clears
 //                    as soon as the form is edited again.
+//   successUndo      offered as "Undo" in the success note, for a change that is easy to take
+//                    back (releasing your own claim), so it needs no "are you sure?" first.
+//   leaveRow         the form removes the list row it sits in (Disconnect, Cancel an invitation):
+//                    on success that <li> slides away and its space closes (the motion kit's
+//                    removeAway) before the server's fresh list is drawn, and focus moves to the
+//                    next row's button (else the one before, else focusAfter).
 //
 // ActionFormPending / useActionFormPending(): children read whether the action is in flight, so a
 // keyboard shortcut (log-form's Ctrl+Enter) can refuse to requestSubmit() while it is.
@@ -54,8 +60,16 @@ type Props = {
   submitClassName?: string;
   submitDataTour?: string;
   savedNote?: boolean;
+  leaveRow?: boolean;
+  successUndo?: () => void;
   children?: ReactNode;
 };
+
+// The row after (else before) `li`, its first button: where focus goes when `li` leaves.
+export function nextRowControl(li: Element | null | undefined): HTMLElement | null {
+  const sibling = li?.nextElementSibling ?? li?.previousElementSibling;
+  return sibling?.querySelector<HTMLElement>("button:not([disabled]), a[href]") ?? null;
+}
 
 export function ActionForm({
   action,
@@ -72,14 +86,16 @@ export function ActionForm({
   submitClassName,
   submitDataTour,
   savedNote = false,
+  leaveRow = false,
+  successUndo,
   children,
 }: Props) {
   const notify = useNotify();
   const router = useRouter();
   // Read when the action returns, so the latest props are used even if the form re-rendered meanwhile.
-  const latest = useRef({ focusAfter, refreshOnError });
+  const latest = useRef({ focusAfter, refreshOnError, successUndo });
   useEffect(() => {
-    latest.current = { focusAfter, refreshOnError };
+    latest.current = { focusAfter, refreshOnError, successUndo };
   });
   // focusAfter waits for the render that carries the result (and the server's fresh page), or for
   // this form's unmount when that render removes it.
@@ -90,10 +106,17 @@ export function ActionForm({
   // when the form that sent it is gone by then (a fact that moved to the other list, a deleted row).
   const [state, formAction, pending] = useActionState(async (prev: ActionResult | null, data: FormData) => {
     const result = await action(prev, data);
-    if (result.ok && successMessage && !savedNote) notify(successMessage);
+    const undo = latest.current.successUndo;
+    if (result.ok && successMessage && !savedNote) notify(successMessage, "ok", undo ? { action: { label: "Undo", onSelect: undo } } : undefined);
     if (savedNote) setSavedFor(result.ok ? result : null);
     if (result.ok) await onSuccess?.();
-    if (result.ok && latest.current.focusAfter) focusNext.current = latest.current.focusAfter;
+    let rowNext: HTMLElement | null = null;
+    if (result.ok && leaveRow) {
+      const li = form.current?.closest("li");
+      rowNext = nextRowControl(li);
+      await removeAway(li, { focus: rowNext });
+    }
+    if (result.ok && (rowNext || latest.current.focusAfter)) focusNext.current = rowNext ?? latest.current.focusAfter ?? null;
     if (!result.ok && latest.current.refreshOnError) router.refresh();
     return result;
   }, null);

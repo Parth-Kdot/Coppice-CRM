@@ -71,6 +71,12 @@ describe("basicsSteps", () => {
     expect(steps.at(-1)?.body).toBe("Recommended next: the AI tour, 7 short cards.");
   });
 
+  it("without AI set up on the server, the done card offers the AI tour as optional, not recommended", () => {
+    const body = basicsSteps({ role: "owner", empty: false, basicsRole: null, aiCards: 3, aiConfigured: false }).at(-1)?.body ?? "";
+    expect(body).toMatch(/^Optional: the AI tour, 3 short cards\./);
+    expect(body).not.toMatch(/Recommended/);
+  });
+
   test.each([1, 14, 60])("the claim card says how long a claim lasts (%i)", (days) => {
     const claim = basicsSteps({ role: "member", empty: false, basicsRole: null, claimWindowDays: days }).find((s) => s.key === "claim")!;
     expect(claim.body).toContain(`A claim lasts ${days} ${days === 1 ? "day" : "days"}.`);

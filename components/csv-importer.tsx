@@ -14,7 +14,7 @@ import { readingMatches, useSmartImport, type SmartActions } from "@/components/
 import { Disclosure } from "@/components/ledger/disclosure";
 import { focusSoon } from "@/components/ledger/focus";
 import { ImportIcon, WarningIcon } from "@/components/ledger/icons";
-import { reducedMotion } from "@/components/ledger/motion";
+import { prefersReducedMotion } from "@/components/ledger/motion-kit";
 import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportPreview, ImportResult } from "@/lib/csv";
@@ -478,7 +478,7 @@ export function CsvImporter({ workspaceId, preview, run, smart }: Props) {
                 const el = document.getElementById("smart-year");
                 const fold = el?.closest("details");
                 if (fold) fold.open = true;
-                el?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+                el?.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
                 el?.querySelector("button")?.focus({ preventScroll: true });
               }}
               groupOf={(row) => {

@@ -44,7 +44,8 @@ export type FactHandlers = {
 
 function QuoteLines({ fact, owner }: { fact: FactView; owner: boolean }) {
   const check =
-    owner && fact.fromPdf ? (
+    // A masked fact can't be used whatever its quote says, so only its reason is shown, not a tick.
+    owner && fact.fromPdf && !(fact.masked && fact.quoteFound) ? (
       <span key="check" className={`lg-quotecheck ${fact.quoteFound ? "lg-ok" : "lg-late"}`}>
         {fact.quoteFound ? <CheckIcon size={14} /> : <WarningIcon size={14} />}
         <span>{fact.quoteFound ? "Quote found on that page" : "Quote not found on that page, or it doesn't match the fact. Check the PDF."}</span>
@@ -137,16 +138,17 @@ export function FactRow({ fact, busy, handlers }: { fact: FactView; busy: boolea
       </>
     );
   } else {
+    // Edit is the next step here, so it is the filled one; it keeps the second slot, as on every row.
     acts = (
       <>
-        <button type="button" className={`${btn} lg-btn-primary`} aria-label={`Edit: ${label}`} onClick={openEditor} aria-disabled={busy || undefined}>
-          Edit
-        </button>
         {!fact.masked && (
           <button type="button" className={btn} aria-label={`Verify anyway: ${label}`} onClick={run(handlers.verify)} aria-disabled={busy || undefined}>
             Verify anyway
           </button>
         )}
+        <button type="button" className={`${btn} lg-btn-primary`} aria-label={`Edit: ${label}`} onClick={openEditor} aria-disabled={busy || undefined}>
+          Edit
+        </button>
       </>
     );
   }

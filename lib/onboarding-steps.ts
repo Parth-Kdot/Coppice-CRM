@@ -60,6 +60,9 @@ export type BasicsContext = {
   claimWindowDays?: number;
   // How many cards the AI tour has, for the done card's estimate.
   aiCards?: number;
+  // The server has an AI key. Without one the done card offers the AI tour as optional, not
+  // recommended: most of it would be about features that can't be used here yet.
+  aiConfigured?: boolean;
 };
 
 export type AiContext = {
@@ -94,7 +97,7 @@ const inviteStep: TourStep = {
   anchors: ["invite", "settings-members", '[aria-labelledby="set-invites"]', '[aria-labelledby="set-members"]'],
 };
 
-export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14, aiCards }: BasicsContext): TourStep[] {
+export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14, aiCards, aiConfigured = true }: BasicsContext): TourStep[] {
   // Finished as an officer, an owner now: the one card they have not seen.
   if (basicsRole === "member" && role === "owner") return [inviteStep];
 
@@ -174,7 +177,11 @@ export function basicsSteps({ role, empty, basicsRole, claimWindowDays = 14, aiC
     key: "done",
     kind: "done",
     title: "You are set.",
-    body: aiCards ? `Recommended next: the AI tour, ${aiCards} short cards.` : "Recommended next: the AI tour.",
+    body: aiConfigured
+      ? aiCards
+        ? `Recommended next: the AI tour, ${aiCards} short cards.`
+        : "Recommended next: the AI tour."
+      : `Optional: the AI tour${aiCards ? `, ${aiCards} short cards` : ""}. AI drafting isn't set up on this server yet.`,
     route: "queue",
     anchors: [],
   });

@@ -2,19 +2,24 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { focusSoon } from "@/components/ledger/focus";
-import { completeStamp, preloadMotion, prefersReducedMotion, removeAway, restore, sendTo } from "@/components/ledger/motion-kit";
+import { completeStamp, preloadMotion, prefersReducedMotion, pulse, removeAway, restore, sendTo, withinReach } from "@/components/ledger/motion-kit";
 import { useConfirm, useNotify } from "@/components/ledger/providers";
 import type { ActionResult } from "@/lib/validation";
-import { groupByPage } from "./fact-groups";
+import { groupByPage, verifyAllLabel } from "./fact-groups";
 import { FactRow, factDomId, type FactHandlers, type FactView } from "./fact-item";
 
 // The owner's fact sheet: "Waiting for your check" and "Verified", each grouped by page. The board
 // runs every action on a fact together with its move, so finishing one feels like something:
-//   Verify          the fact is stamped (a check settles into its mark) and flies to "Verified".
-//   Unverify        it flies back up to "Waiting for your check".
-//   Edit and save   stamped where it is, or sent to the other section when saving moved it.
+//   Verify          the fact is stamped (a check settles into its mark) and filed under "Verified".
+//   Unverify        it is filed back under "Waiting for your check".
+//   Edit and save   stamped where it is, or filed in the other section when saving moved it.
 //   Delete          it slides away and its space closes.
 //   Verify all      every fact with its quote found is stamped in a quick stagger, then filed.
+// Filing flies the fact to the other section's count only when that count is on screen and near
+// (withinReach); otherwise the fact slides off to the right in place and the count pulses when it
+// next comes into view, so nothing flies off the edge of the screen. Verify all always files in
+// place. A page group whose last fact leaves goes with it, heading and all. The flight is clipped to
+// its panel's width (.lg-factpanel), so it never crosses the sidebar.
 // The server is called at the same time as the move. While a move plays the lists are held as they
 // were (`frozen`), so the server's fresh render can't pull a row out from under its animation; once
 // every move is done the lists follow the server again. Reduced motion: no moves, same results.
@@ -57,6 +62,45 @@ function keepFocus(row: HTMLElement, next: HTMLElement | null) {
 const target = (to: keyof typeof COUNTS) => document.getElementById(COUNTS[to]) ?? document.getElementById(HEADINGS[to]);
 const markOf = (row: HTMLElement) => row.querySelector(".lg-factmark svg");
 
+// The page group `row` is in, when every fact in it is now leaving (so the group goes too).
+function emptiedGroup(row: HTMLElement): HTMLElement | null {
+  const group = row.closest<HTMLElement>(".lg-factgroup");
+  return group && [...group.querySelectorAll(".lg-fact")].every((r) => r.hasAttribute("data-leaving")) ? group : null;
+}
+
+const near = (row: HTMLElement, to: HTMLElement | null) =>
+  !!to && withinReach(row.getBoundingClientRect(), to.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight });
+const onScreen = (el: HTMLElement) => near(el, el);
+
+// A count that went up while it was off screen answers once it is seen (given up after a while).
+function pulseWhenSeen(el: HTMLElement | null) {
+  if (!el || prefersReducedMotion() || typeof IntersectionObserver === "undefined") return;
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      observer.disconnect();
+      window.clearTimeout(stop);
+      void pulse(el);
+    },
+    { threshold: 1 },
+  );
+  const stop = window.setTimeout(() => observer.disconnect(), 20000);
+  observer.observe(el);
+}
+
+// Files a fact that has been marked leaving: a flight to `to` when it is near, else a slide away in
+// place (its page group with it when it was the group's last fact) and a pulse on `to` once seen.
+async function file(row: HTMLElement, to: HTMLElement | null, next: HTMLElement | null) {
+  const group = emptiedGroup(row);
+  if (near(row, to)) {
+    const heading = group?.querySelector<HTMLElement>(".lg-factgroup-h");
+    await Promise.all([sendTo(row, to, { focus: next }), heading ? removeAway(heading, { direction: "right", distance: 12 }) : undefined]);
+    return;
+  }
+  await removeAway(group ?? row, { direction: "right", focus: next });
+  pulseWhenSeen(to);
+}
+
 export function FactBoard({
   workspaceId,
   facts,
@@ -74,7 +118,7 @@ export function FactBoard({
   remove: Action;
   update: Action<{ verified: boolean }>;
   verifyQuoted: Action;
-  // "+ Add a fact", rendered by the page under the verified list.
+  // "Add a fact", rendered by the page under the verified list.
   addSlot: ReactNode;
 }) {
   const notify = useNotify();
@@ -103,10 +147,15 @@ export function FactBoard({
     if (awaitingProps.current && facts !== frozenFrom.current) unfreeze();
   }, [facts]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  // Most clicks here finish something: have the motion library ready before the first one.
-  useEffect(() => {
+  // Most clicks here finish something: once the pointer or focus reaches one of the board's
+  // buttons, start loading the motion library, so it is ready for the click (never on page load,
+  // never under reduced motion).
+  const warmed = useRef(false);
+  const warm = (event: { target: EventTarget | null }) => {
+    if (warmed.current || !(event.target instanceof Element) || !event.target.closest("button")) return;
+    warmed.current = true;
     if (!prefersReducedMotion()) preloadMotion();
-  }, []);
+  };
 
   const begin = (ids: string[]) => {
     if (ops.current++ === 0 && !frozenFrom.current) {
@@ -130,6 +179,9 @@ export function FactBoard({
   const leave = (row: HTMLElement) => row.setAttribute("data-leaving", "");
   const stay = (row: HTMLElement) => {
     restore(row);
+    const group = row.closest(".lg-factgroup");
+    restore(group);
+    restore(group?.querySelector(".lg-factgroup-h"));
     row.removeAttribute("data-leaving");
     row.removeAttribute("data-stamped");
   };
@@ -149,10 +201,11 @@ export function FactBoard({
         notify(result.error, "error");
       } else {
         const next = neighbour(row, HEADINGS.verified);
+        const to = target("verified");
         leave(row);
-        await sendTo(row, target("verified"), { focus: next });
+        await file(row, to, next);
         keepFocus(row, next);
-        notify("Fact verified.");
+        notify("Fact verified.", "ok", { avoid: to });
       }
       end([fact.id]);
     },
@@ -160,7 +213,7 @@ export function FactBoard({
       begin([fact.id]);
       const next = neighbour(row, HEADINGS.verified);
       leave(row);
-      const going = sendTo(row, target("waiting"), { focus: next });
+      const going = file(row, target("waiting"), next);
       const result = await call(setVerified, { workspaceId, factId: fact.id, verified: "0" });
       if (!result.ok) {
         stay(row);
@@ -178,7 +231,7 @@ export function FactBoard({
       begin([fact.id]);
       const next = neighbour(row, fact.verified ? HEADINGS.verified : HEADINGS.waiting);
       leave(row);
-      const going = removeAway(row, { focus: next });
+      const going = removeAway(emptiedGroup(row) ?? row, { focus: next });
       const result = await call(remove, { workspaceId, factId: fact.id });
       if (!result.ok) {
         stay(row);
@@ -208,14 +261,15 @@ export function FactBoard({
       } else if (verified) {
         await stamp(row);
         const next = neighbour(row, HEADINGS.verified);
+        const to = target("verified");
         leave(row);
-        await sendTo(row, target("verified"), { focus: next });
+        await file(row, to, next);
         keepFocus(row, next);
-        notify("Saved and verified.");
+        notify("Saved and verified.", "ok", { avoid: to });
       } else if (fact.verified) {
         const next = neighbour(row, HEADINGS.waiting);
         leave(row);
-        await sendTo(row, target("waiting"), { focus: next });
+        await file(row, target("waiting"), next);
         keepFocus(row, next);
         notify("Saved, not verified: the quote no longer supports this. Verify anyway or add it as a hand-written fact.");
       } else {
@@ -249,9 +303,13 @@ export function FactBoard({
     } else {
       rows.forEach(leave);
       const to = target("verified");
-      const filing = Math.min(30, 240 / rows.length);
-      await Promise.all(rows.map((row, i) => (step ? wait(i * filing) : Promise.resolve()).then(() => sendTo(row, to, { pulseTarget: i === rows.length - 1 }))));
-      notify(`${plural(rows.length, "fact", "facts")} verified.`);
+      // Filed in place, a page group at a time where every fact in it goes, in a quick stagger.
+      const leaving = [...new Set(rows.map((row) => emptiedGroup(row) ?? row))];
+      const filing = Math.min(30, 240 / leaving.length);
+      await Promise.all(leaving.map((el, i) => (step ? wait(i * filing) : Promise.resolve()).then(() => removeAway(el, { direction: "right" }))));
+      if (to && onScreen(to)) void pulse(to);
+      else pulseWhenSeen(to);
+      notify(`${plural(rows.length, "fact", "facts")} verified.`, "ok", { avoid: to });
       focusSoon(stayingBehind ? `#${factDomId(stayingBehind.id)}` : `#${HEADINGS.verified}`);
     }
     end(ids);
@@ -273,7 +331,14 @@ export function FactBoard({
   return (
     <>
       {waiting.length > 0 && (
-        <section className="lg-panel lg-factpanel" aria-labelledby={HEADINGS.waiting} id="facts-waiting" data-count={waiting.length}>
+        <section
+          className="lg-panel lg-factpanel"
+          aria-labelledby={HEADINGS.waiting}
+          id="facts-waiting"
+          data-count={waiting.length}
+          onPointerOver={warm}
+          onFocus={warm}
+        >
           <div className="lg-panel-head">
             <h2 id={HEADINGS.waiting} className="lg-panel-title" tabIndex={-1}>
               Waiting for your check{" "}
@@ -283,7 +348,7 @@ export function FactBoard({
             </h2>
             {quoted.length > 0 && (
               <button type="button" className="lg-btn lg-btn-sm lg-btn-primary" data-tour="facts-verify-all" onClick={verifyAll} disabled={bulk}>
-                {bulk ? "Working..." : quoted.length === waiting.length ? `Verify all ${quoted.length}` : `Verify all ${quoted.length} with quotes found`}
+                {bulk ? "Working..." : verifyAllLabel(quoted.length, waiting.length)}
               </button>
             )}
           </div>
@@ -291,7 +356,7 @@ export function FactBoard({
         </section>
       )}
 
-      <section className="lg-panel lg-factpanel" aria-labelledby={HEADINGS.verified} data-quiet="">
+      <section className="lg-panel lg-factpanel" aria-labelledby={HEADINGS.verified} data-quiet="" onPointerOver={warm} onFocus={warm}>
         <div className="lg-panel-head">
           <h2 id={HEADINGS.verified} className="lg-panel-title" tabIndex={-1}>
             Verified{" "}

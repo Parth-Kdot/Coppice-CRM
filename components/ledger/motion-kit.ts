@@ -22,6 +22,8 @@ import type { gsap as GsapNamespace } from "gsap";
                                    fades into it, its old slot closes, and the target answers with
                                    a small pulse. For: a card to a board column, a fact to the
                                    "Verified" heading, a row to "Done".
+     pulse(target)                 The target's answer alone, for an item that left in place because
+                                   its target was off screen (withinReach says when).
      celebrate(el, { mark })       A big finish. A small lift and one soft ring. For: an import
                                    finished, a tour finished, a stage closed. Once per moment, not
                                    on every row.
@@ -80,16 +82,16 @@ type Timeline = ReturnType<Gsap["timeline"]>;
 type Context = ReturnType<Gsap["context"]>;
 type Ease = (progress: number) => number;
 
-export type MoveName = "completeStamp" | "removeAway" | "sendTo" | "celebrate" | "land";
+type MoveName = "completeStamp" | "removeAway" | "sendTo" | "celebrate" | "land";
 
 // Seconds, the same three steps as the --dur-* tokens.
-export const DUR = { fast: 0.12, base: 0.22, slow: 0.48 } as const;
+const DUR = { fast: 0.12, base: 0.22, slow: 0.48 } as const;
 // The longest any one move may run, start to resolve.
 export const MOVE_LIMIT_S = 0.45;
 // How long past its planned end a move may run before its timer finishes it.
-export const FINISH_SLACK_MS = 250;
+const FINISH_SLACK_MS = 250;
 
-export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 // Token fallbacks, for when the custom properties can't be read.
 const FALLBACK = { moss: "#2f5233", moss2: "#456b47", paper: "#f6f1e6" } as const;
@@ -110,7 +112,8 @@ export const TIMING = {
   sendTo: {
     flight: { at: 0, dur: 0.28 },
     fade: { at: 0.1, dur: 0.18 },
-    collapse: { at: 0.2, dur: 0.2 },
+    // The old slot starts closing as the item fades, so no empty gap is left behind it.
+    collapse: { at: 0.12, dur: 0.2 },
     land: { at: 0.2, dur: 0.24 },
   },
   celebrate: {
@@ -166,6 +169,16 @@ export function flightVector(from: RectLike, to: RectLike, { reach = 0.85, maxPx
     y = (y / length) * cap;
   }
   return { x: Math.round(x * 10) / 10 || 0, y: Math.round(y * 10) / 10 || 0 };
+}
+
+/** Whether a flight from `from` to `to` would be seen to land: the target is on screen and no more
+ *  than about one viewport away. When it isn't, an item should leave in place (removeAway) and the
+ *  target be pulsed once it is seen, rather than fly off the edge of the screen. */
+export function withinReach(from: RectLike, to: RectLike, viewport: { width: number; height: number }): boolean {
+  const onScreen = to.top < viewport.height && to.top + to.height > 0 && to.left < viewport.width && to.left + to.width > 0;
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+  const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+  return onScreen && Math.abs(dy) <= viewport.height && Math.abs(dx) <= viewport.width;
 }
 
 /** "#rgb" or "#rrggbb" to rgba() with the given alpha, or null if it isn't a hex color. */
@@ -390,7 +403,7 @@ export function removeAway(el: Element | null | undefined, { direction = "left",
 function closeSpace(tl: Timeline, node: Element, axis: "height" | "width", at: { at: number; dur: number }, ease: Ease) {
   const vars =
     axis === "height"
-      ? { height: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0, marginBottom: 0, borderTopWidth: 0, borderBottomWidth: 0 }
+      ? { height: 0, minHeight: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0, marginBottom: 0, borderTopWidth: 0, borderBottomWidth: 0 }
       : { width: 0, minWidth: 0, paddingLeft: 0, paddingRight: 0, marginLeft: 0, marginRight: 0, borderLeftWidth: 0, borderRightWidth: 0 };
   tl.set(node, { overflow: "hidden" }, at.at);
   tl.to(node, { ...vars, duration: at.dur, ease }, at.at);
@@ -405,12 +418,22 @@ export type SendOptions = {
   pulseTarget?: boolean;
   /** Where focus goes if it is inside the item. Moved at the start. */
   focus?: HTMLElement | null;
+  /** Runs once, when the item has reached the target and its old slot has closed (before the
+   *  target's pulse ends), or at once when the move is skipped: the moment to draw the item in its
+   *  new place and update counts. */
+  arrived?: () => void;
 };
 
 /** Moved: flies toward `target` (a column, a heading), fades into it, closes its old slot, and the
- *  target pulses. Resolves when finished; render the item in its new place then. */
-export function sendTo(el: Element | null | undefined, target: Element | null | undefined, { reach, collapse = "height", pulseTarget = true, focus }: SendOptions = {}): Promise<void> {
-  if (!isElement(target)) return removeAway(el, { collapse: collapse || false, focus });
+ *  target pulses. Resolves when finished; render the item in its new place then (or in `arrived`). */
+export function sendTo(el: Element | null | undefined, target: Element | null | undefined, { reach, collapse = "height", pulseTarget = true, focus, arrived }: SendOptions = {}): Promise<void> {
+  let reached = false;
+  const arrive = () => {
+    if (reached) return;
+    reached = true;
+    arrived?.();
+  };
+  if (!isElement(target)) return removeAway(el, { collapse: collapse || false, focus }).then(arrive);
   if (isElement(el)) handOffFocus(el, focus);
   const t = TIMING.sendTo;
   let landing: Promise<void> = Promise.resolve();
@@ -423,12 +446,25 @@ export function sendTo(el: Element | null | undefined, target: Element | null | 
     tl.to(node, { opacity: 0, duration: t.fade.dur, ease: out }, t.fade.at);
     if (collapse) closeSpace(tl, node, collapse, t.collapse, out);
     if (pulseTarget) tl.call(() => void (landing = land(target)), undefined, t.land.at);
+    // Arrived once its old slot has all but closed (three quarters of the collapse, past 95% of the
+    // height on this ease) or the flight is over, so drawing it in its new place then never snaps
+    // the old place shut, and it is never long in neither place.
+    tl.call(arrive, undefined, collapse ? t.collapse.at + t.collapse.dur * 0.75 : t.flight.at + t.flight.dur);
   });
-  return flying.then(() => landing);
+  return flying.then(() => {
+    arrive();
+    return landing;
+  });
+}
+
+/** The target's answer on its own: a small swell and a faint ring, as when something lands on it.
+ *  For a count that went up while the item left in place (its target was off screen). */
+export function pulse(target: Element | null | undefined): Promise<void> {
+  return land(target);
 }
 
 // The target's answer when something lands on it: a small swell and a faint ring.
-function land(target: Element): Promise<void> {
+function land(target: Element | null | undefined): Promise<void> {
   const t = TIMING.land;
   return play("land", target, false, ({ out, inOut }, tl, node) => {
     const base = getComputedStyle(node).boxShadow;

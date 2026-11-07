@@ -45,6 +45,10 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/set
 
 const METER_CELLS = 20;
 
+// A name an assistant registered with, set apart (first-strong isolate) inside a sentence, so a
+// name in a right-to-left script can't reorder the punctuation around it, as <bdi> does in the row.
+const isolate = (name: string) => `\u2068${name}\u2069`;
+
 // The AI feature's state, in one place, so the summary, the body and the officer's line agree.
 type AiState = "on" | "off" | "unavailable";
 const AI_STATE_LABEL: Record<AiState, string> = { on: "On", off: "Off", unavailable: "Not available" };
@@ -156,6 +160,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                         submitAriaLabel={`Cancel invitation for ${invite.email}`}
                         successMessage="Invitation canceled."
                         focusAfter="#set-members"
+                        leaveRow
                         className="lg-invite-cancel"
                         small
                       >
@@ -336,6 +341,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                           <bdi>{c.name}</bdi>
                         </p>
                         <p className="lg-hint">
+                          {!workspace.mcpEnabled && <>Off in this workspace · </>}
                           Returns to {c.returnsTo} · {accessLabel(c)} · allowed {day(c.allowedAt)}
                           {c.lastRenewedAt && <> · last connected {day(c.lastRenewedAt)}</>}
                         </p>
@@ -343,10 +349,11 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                       <ActionForm
                         action={disconnectAssistant}
                         submitLabel="Disconnect"
-                        submitAriaLabel={`Disconnect ${c.name}`}
-                        confirmMessage={`Disconnect ${c.name}? It loses access to Coppice at once, in every workspace. To use it again, connect it again.`}
-                        successMessage={`${c.name} disconnected.`}
+                        submitAriaLabel={`Disconnect ${isolate(c.name)}`}
+                        confirmMessage={`Disconnect ${isolate(c.name)}? It loses access to Coppice at once, in every workspace. To use it again, connect it again.`}
+                        successMessage={`${isolate(c.name)} disconnected.`}
                         focusAfter="#set-mcp-mine"
+                        leaveRow
                         refreshOnError
                         className="lg-invite-cancel"
                         small

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import type { ActionResult } from "@/lib/validation";
 import { useFocusAfterCommit } from "./focus";
+import { removeAway } from "./motion-kit";
 import { ChevronDownIcon, MoreIcon } from "./icons";
 import { menuIndex, popoverPortal, usePopover, type MenuKey } from "./popover";
 import { useConfirm, useNotify } from "./providers";
@@ -42,6 +43,10 @@ type ActionFields = {
   confirmMessage?: string;
   successMessage?: string;
   focusAfter?: string;
+  // The item removes the list row the menu sits in (Remove a member): on success the <li> slides
+  // away and its space closes before the fresh list is drawn, and focus moves to the next row's
+  // menu button (else the one before, else focusAfter).
+  leaveRow?: boolean;
 };
 
 export type OverflowItem = { key: string; label: string; hint?: string; danger?: boolean; disabled?: boolean; disabledReason?: string } & ({ href: string } | { onSelect: () => void } | ActionFields);
@@ -104,7 +109,14 @@ export function OverflowMenu({
         const result = await item.action(null, data);
         if (result.ok) {
           if (item.successMessage) notify(item.successMessage);
-          startTransition(() => scheduleFocus(item.focusAfter));
+          let next: HTMLElement | null = null;
+          if (item.leaveRow) {
+            const li = anchor?.closest("li");
+            const sibling = li?.nextElementSibling ?? li?.previousElementSibling;
+            next = sibling?.querySelector<HTMLElement>(".lg-omenu-btn") ?? null;
+            await removeAway(li, { focus: next });
+          }
+          startTransition(() => scheduleFocus(next ?? item.focusAfter));
         } else {
           notify(result.error, "error");
         }

@@ -218,6 +218,7 @@ export function MemberList({
         confirmMessage: `Remove ${m.name} from ${workspaceName}? Their claims are released.`,
         successMessage: `${m.name} removed.`,
         focusAfter: "#set-members",
+        leaveRow: true,
       },
     ];
   };

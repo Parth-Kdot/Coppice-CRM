@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from "react";
 import type { Stage } from "@/generated/prisma/enums";
+import { prefersReducedMotion } from "./motion-kit";
 import { STAGES } from "@/lib/stages";
 
 // Drag and drop for board slips, on pointer events. Press a slip and move more than 5 px and it
@@ -43,10 +44,6 @@ type Session = {
   y: number;
   raf: number | null;
 };
-
-const reducedMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const isStage = (value: string | undefined): value is Stage =>
   (STAGES as readonly string[]).includes(value ?? "");
@@ -112,7 +109,7 @@ export function useBoardDrag({
     }
     // Back to where it came from.
     const home = s.el.getBoundingClientRect();
-    if (reducedMotion() || typeof ghost.animate !== "function") {
+    if (prefersReducedMotion() || typeof ghost.animate !== "function") {
       ghost.remove();
       return;
     }

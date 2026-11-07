@@ -56,8 +56,25 @@ type Refusals = {
   takeFocus: (id: string) => boolean;
   // Today in West Lafayette ("2026-11-07"), from the database, for the rows' log form.
   today: string | null;
+  // Just after a claim the claimed row jumps up to "Yours" and every row below it shifts, which
+  // can put another company's Claim button under the pointer. For a moment the list's Claim
+  // buttons ignore the pointer, so an impatient second click never claims the wrong company.
+  settling: boolean;
+  settle: () => void;
 };
-const RefusalContext = createContext<Refusals>({ get: () => undefined, set: () => undefined, any: () => false, wantFocus: () => undefined, takeFocus: () => false, today: null });
+const RefusalContext = createContext<Refusals>({
+  get: () => undefined,
+  set: () => undefined,
+  any: () => false,
+  wantFocus: () => undefined,
+  takeFocus: () => false,
+  today: null,
+  settling: false,
+  settle: () => undefined,
+});
+
+// How long the Claim buttons ignore the pointer after a claim.
+const SETTLE_MS = 450;
 
 export function QueueProvider({ today = null, children }: { today?: string | null; children: ReactNode }) {
   const [map, setMap] = useState<Record<string, string>>({});
@@ -70,6 +87,14 @@ export function QueueProvider({ today = null, children }: { today?: string | nul
     focusLog.current = null;
     return true;
   }, []);
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<number | undefined>(undefined);
+  const settle = useCallback(() => {
+    setSettling(true);
+    window.clearTimeout(settleTimer.current);
+    settleTimer.current = window.setTimeout(() => setSettling(false), SETTLE_MS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(settleTimer.current), []);
   const set = useCallback((id: string, error: string | null) => {
     setMap((current) => {
       const next = { ...current };
@@ -78,7 +103,10 @@ export function QueueProvider({ today = null, children }: { today?: string | nul
       return next;
     });
   }, []);
-  const api = useMemo<Refusals>(() => ({ get: (id) => map[id], set, any: (ids) => ids.some((id) => id in map), wantFocus, takeFocus, today }), [map, set, wantFocus, takeFocus, today]);
+  const api = useMemo<Refusals>(
+    () => ({ get: (id) => map[id], set, any: (ids) => ids.some((id) => id in map), wantFocus, takeFocus, today, settling, settle }),
+    [map, set, wantFocus, takeFocus, today, settling, settle],
+  );
   return <RefusalContext value={api}>{children}</RefusalContext>;
 }
 
@@ -114,6 +142,7 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
   const [state, formAction, pending] = useActionState(async (prev: ActionResult | null, data: FormData) => {
     const result = await claimCompany(prev, data);
     if (result.ok) {
+      refusals.settle();
       refusals.set(row.id, null);
       notify(`Claimed ${row.name}.`);
       // The "Log outreach" link in the same slot: in the Yours group once the page refreshes, or in
@@ -225,7 +254,7 @@ export function QueueRow({ workspaceId, row, variant, windowDays }: { workspaceI
     );
   } else {
     action = (
-      <form action={formAction} className="lg-qclaim">
+      <form action={formAction} className="lg-qclaim" data-settling={refusals.settling || undefined}>
         <input type="hidden" name="workspaceId" value={workspaceId} />
         <input type="hidden" name="companyId" value={row.id} />
         <ClaimChip claim={row.claim} companyName={row.name} pending={pending} windowDays={windowDays} dataTour="queue-claim" />
