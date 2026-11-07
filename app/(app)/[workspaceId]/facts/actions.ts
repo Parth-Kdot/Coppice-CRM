@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { failure } from "@/lib/actions";
-import { PDF_MAX_BYTES } from "@/lib/ai/pdf";
+import { pdfFileProblem } from "@/lib/ai/pdf-limits";
 import { requireOwner } from "@/lib/authz";
 import * as facts from "@/lib/facts";
 import {
@@ -27,9 +27,9 @@ export async function uploadFactSheet(_prev: ActionResult | null, form: FormData
   try {
     const owner = await requireOwner(workspaceId);
     const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a PDF file." };
-    if (!/\.pdf$/i.test(file.name)) return { ok: false, error: "Choose a PDF file." };
-    if (file.size > PDF_MAX_BYTES) return { ok: false, error: "The PDF is over 3.5 MB. Export a smaller copy." };
+    if (!(file instanceof File)) return { ok: false, error: "Choose a PDF file." };
+    const problem = pdfFileProblem(file);
+    if (problem) return { ok: false, error: problem };
     const result = await facts.uploadFactSheet(owner, file.name, new Uint8Array(await file.arrayBuffer()));
     if (!result.ok) return result;
   } catch (e) {

@@ -5,7 +5,7 @@ import type { Tenant } from "@/lib/db";
 import { COMPANY_LIMITS, IMPORT_FIELDS, type ActionResult, type ImportMapping, type SmartDecision } from "@/lib/validation";
 import type { RowProposal } from "./check";
 import type { LookalikeGroup } from "./lookalikes";
-import { AI_OFF, aiOn, EXPIRED, FILE_CHANGED, loadSession, REVIEW_AGAIN, sessionSince, type Session, type Tx } from "./shared";
+import { AI_OFF_MIDWAY, aiOn, EXPIRED, FILE_CHANGED, loadSession, REVIEW_AGAIN, sessionSince, type Session, type Tx } from "./shared";
 
 // The import (lib/smart-import/): the file goes in the normal way (lib/csv.ts runImport), plus what
 // the person kept of the AI's reading, in that one transaction. Each decision is checked against
@@ -65,7 +65,7 @@ export async function runSmartImport(
   text: string,
   { sessionId, mapping, skip, seen, decisions }: { sessionId: string; mapping: ImportMapping; skip: number[]; seen: string[]; decisions: SmartDecision[] },
 ): Promise<ActionResult<ImportResult>> {
-  if (!(await aiOn(tenant))) return { ok: false, error: AI_OFF };
+  if (!(await aiOn(tenant))) return { ok: false, error: AI_OFF_MIDWAY };
   const since = await sessionSince();
   const today = await dbToday();
   const byRow = new Map<number, SmartDecision>();

@@ -16,6 +16,12 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // contacted"), otherwise its shape ("[header: 2 words]"); the company names and industries from the
 // columns headed plainly as such ("Company", "Industry"), unless a cell reads as a note; and only
 // the shape of every other cell (lib/smart-import/columns.ts).
+// Research briefs (owner decision, recorded here): the reading call gets the text of public pages an
+// owner approved, which can name people (a page's "Jane Doe leads campus outreach"); emails and
+// phone numbers are masked. Code then drops every passage and item that names a person or holds a
+// masked contact detail (lib/research/checks.ts namesPerson), so no name reaches the writing call
+// or the brief. Smart import's look-alike call gets company names cleaned the same way as the
+// column step: a cell that reads as a note is cut to the name before it, or left out.
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
@@ -27,11 +33,15 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // has a `lastResort` after that. The last model in line gets one retry; everything shares the
 // overall deadline. AiRun records whichever model actually answered.
 type Model = { model: string; thinkingLevel?: ThinkingLevel };
-type GeminiRoute = Model & { provider?: "gemini"; firstTryMs: number; fallback: Model; lastResort?: Model };
+// `overallMs` shortens the whole call's deadline for a feature that is only a convenience (Smart
+// import's column suggestions and look-alikes): the person shouldn't wait the full 100 s for it.
+type GeminiRoute = Model & { provider?: "gemini"; firstTryMs: number; fallback: Model; lastResort?: Model; overallMs?: number };
 // Groq (Smart import's row pass, which reads cells that can hold names): one model, one try. Its
 // free tier allows about 30 requests and 8,000 tokens a minute, so a 429 is reported to the person
 // to wait and continue; it is never retried, and there is no fallback model.
-type GroqRoute = { provider: "groq"; model: string; reasoningEffort: "low" | "medium" | "high"; timeoutMs: number };
+// `maxTokens` caps the reply, which also caps how much one call can count toward the minute's
+// token quota.
+type GroqRoute = { provider: "groq"; model: string; reasoningEffort: "low" | "medium" | "high"; timeoutMs: number; maxTokens: number };
 export type Route = GeminiRoute | GroqRoute;
 export type Provider = "gemini" | "groq";
 export const ROUTES: Record<AiFeature, Route> = {
@@ -62,18 +72,21 @@ export const ROUTES: Record<AiFeature, Route> = {
   // Smart import: which column is which, from the headers and a few sample rows (mostly cell shapes).
   IMPORT_MAPPING: {
     model: "gemini-3.5-flash-lite",
-    firstTryMs: 20_000,
+    firstTryMs: 15_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    overallMs: 30_000,
   },
   // Smart import: which company names in a sheet look like each other or like existing companies.
   IMPORT_LOOKALIKES: {
     model: "gemini-3.5-flash-lite",
-    firstTryMs: 20_000,
+    firstTryMs: 15_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    overallMs: 30_000,
   },
   // Smart import: free-text cells, which can contain names, so Groq (owner decision). Low reasoning
-  // keeps a chunk of rows well inside the free tier's tokens per minute.
-  IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000 },
+  // keeps a chunk of rows well inside the free tier's tokens per minute. A 15-row answer is about
+  // 1,500 tokens, so 3,000 leaves room without letting one call take most of a minute's quota.
+  IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 3000 },
   // Research briefs (lib/research/brief.ts): reading up to six fetched pages is long input, like
   // fact extraction; writing the brief from the passages read is short, so Flash-Lite goes first.
   RESEARCH_READ: {
@@ -116,6 +129,12 @@ export type GenerateRequest<S extends z.ZodType> = {
   // The task, with any data wrapped and labelled as data (never as instructions).
   prompt: string;
   schema: S;
+  // A shorter deadline for this one call, in ms: the claim check that follows a Draft click gets
+  // one quick try on its main model, since the drafts are already saved and "Check with AI" is
+  // there if it doesn't answer in time.
+  deadlineMs?: number;
+  // false: no fallback model, only the main one (with the deadline above).
+  fallback?: false;
 };
 
 // Thinking tokens count against this, so it's generous; replies are short JSON.
@@ -154,15 +173,20 @@ export async function generate<S extends z.ZodType>(request: GenerateRequest<S>)
   if (!isConfigured()) return { ok: false, error: "not_configured", model: route.model, usage: null };
 
   // One deadline for the whole call, every model included. Only the last model in line is retried.
-  const signal = AbortSignal.timeout(OVERALL_TIMEOUT_MS);
-  const line: [Model, { attempts: number; timeoutMs: number }][] = [
-    [route, { attempts: 1, timeoutMs: route.firstTryMs }],
-    [route.fallback, { attempts: route.lastResort ? 1 : 2, timeoutMs: ATTEMPT_TIMEOUT_MS }],
-  ];
-  if (route.lastResort) line.push([route.lastResort, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+  const overall = Math.min(OVERALL_TIMEOUT_MS, route.overallMs ?? OVERALL_TIMEOUT_MS, request.deadlineMs ?? OVERALL_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(overall);
+  // With no fallback, the one model gets the whole deadline.
+  const firstTry = request.fallback === false ? overall : Math.min(route.firstTryMs, overall);
+  const line: [Model, { attempts: number; timeoutMs: number }][] = [[route, { attempts: 1, timeoutMs: firstTry }]];
+  if (request.fallback !== false) {
+    line.push([route.fallback, { attempts: route.lastResort ? 1 : 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+    if (route.lastResort) line.push([route.lastResort, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+  }
 
   let result!: GenerateResult<z.output<S>>;
   for (const [model, tries] of line) {
+    // Past the deadline, the next model would only time out at once.
+    if (signal.aborted) return { ok: false, error: "timeout", model: model.model, usage: null };
     result = await callModel(model, tries, request, signal);
     // Only a busy, slow or out-of-quota model is worth moving away from; a bad key, a refused
     // request or a blocked prompt would fail the same way on the next model.
@@ -170,6 +194,11 @@ export async function generate<S extends z.ZodType>(request: GenerateRequest<S>)
   }
   return result;
 }
+
+// Why a reply that didn't finish normally is no use. Only a safety or policy stop is a refusal;
+// no candidate at all, or an "OTHER" stop, is the service failing, which another model may not.
+const REFUSALS = new Set(["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "LANGUAGE"]);
+export const finishError = (finish: string | undefined): AiErrorCode => (finish && REFUSALS.has(finish) ? "blocked" : "unavailable");
 
 // Free-tier quotas are per model, so a rate limit sends the call on too.
 const MOVE_ON: AiErrorCode[] = ["unavailable", "timeout", "rate_limited"];
@@ -210,7 +239,7 @@ async function callModel<S extends z.ZodType>(
   const finish = response.candidates?.[0]?.finishReason;
   if (response.promptFeedback?.blockReason) return { ok: false, error: "blocked", model, usage };
   if (finish === "MAX_TOKENS") return { ok: false, error: "truncated", model, usage };
-  if (finish !== "STOP") return { ok: false, error: "blocked", model, usage };
+  if (finish !== "STOP") return { ok: false, error: finishError(finish), model, usage };
 
   let json: unknown;
   try {
@@ -257,7 +286,7 @@ async function callGroq<S extends z.ZodType>(route: GroqRoute, request: Generate
       response_format: { type: "json_schema", json_schema: { name: "result", schema: toGroqSchema(request.schema), strict: true } },
       reasoning_effort: route.reasoningEffort,
       include_reasoning: false,
-      max_completion_tokens: MAX_OUTPUT_TOKENS,
+      max_completion_tokens: route.maxTokens,
     });
   } catch (error) {
     return { ok: false, error: groqErrorCode(error), model, usage: null };
@@ -271,7 +300,10 @@ async function callGroq<S extends z.ZodType>(route: GroqRoute, request: Generate
   };
   const choice = completion.choices?.[0];
   if (choice?.finish_reason === "length") return { ok: false, error: "truncated", model, usage };
-  if (choice?.finish_reason !== "stop") return { ok: false, error: "blocked", model, usage };
+  // Groq's types leave it out, but its API sends "content_filter" when a reply was filtered.
+  if ((choice?.finish_reason as string | undefined) === "content_filter") return { ok: false, error: "blocked", model, usage };
+  // No choice, or a stop for any other reason (a tool call it wasn't offered): the service failed.
+  if (choice?.finish_reason !== "stop") return { ok: false, error: "unavailable", model, usage };
 
   let json: unknown;
   try {

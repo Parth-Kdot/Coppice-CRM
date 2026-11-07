@@ -9,11 +9,12 @@ import { addContact, archiveCompany, createCompany } from "@/lib/companies";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { acceptBriefItem } from "@/lib/research/accept";
 import { BRIEF_RUNNING_MS, latestBrief, requestBrief, type BriefView } from "@/lib/research/brief";
+import { namesPerson } from "@/lib/research/checks";
 import { htmlToText } from "@/lib/research/html";
 import { maskPage } from "@/lib/research/scan";
-import { addSource, archiveSource, listSources, renameSource } from "@/lib/research/sources";
+import { addSource, archiveSource, defaultSourceLabel, listSources, renameSource } from "@/lib/research/sources";
 import { form, redirectTo } from "./helpers/form";
-import { answer, apiError, calls, fakeGemini } from "./helpers/gemini";
+import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { FAST, fakeNet, html, robots, type FakeReply } from "./helpers/research";
 import { resetAndSeed } from "./helpers/seed";
@@ -258,9 +259,9 @@ describe("requestBrief", () => {
     );
     const brief = ok(await ask(OWNER, [trickId], web({ [TRICK]: html(page) })));
     // An octal or short address is already masked as a phone number in the page text, so a quote
-    // of that line names no site at all and may stay.
-    const masked = hostile.includes("[phone]");
-    expect(brief.items.map((i) => i.title)).toEqual(masked ? ["Community Giving Portal", "Spring form"] : ["Community Giving Portal"]);
+    // of that line names no site; it holds "[phone]" instead, and a passage with a masked phone
+    // number or email is about reaching a person, so it is dropped as well (lib/research/checks.ts).
+    expect(brief.items.map((i) => i.title)).toEqual(["Community Giving Portal"]);
     expect(JSON.stringify(brief.items)).not.toMatch(/acme-giving|0x5d|0135|93\.184|%[0-9a-f]{2}/i);
     for (const kept of brief.items) ok(await acceptBriefItem(OWNER, companyId, brief.id, kept.id));
     expect(await notesOf()).not.toMatch(/acme-giving|0x5d|0135|93\.184|%[0-9a-f]{2}/i);
@@ -460,7 +461,10 @@ describe("requestBrief", () => {
       return transport(request);
     };
     let answered = 0;
-    const pending = Array.from({ length: 15 }, () => ask(OFFICER, [careersId], net).then((r) => (answered++, r)));
+    // The held fetch must outlast the other 14 answers, so this test gives a page more than FAST's
+    // 150 ms (run alone, on a cold start, the 14 refusals can take longer than that).
+    const patient = { deps: net.deps, limits: { ...FAST, requestMs: 5_000, pageMs: 5_000 } };
+    const pending = Array.from({ length: 15 }, () => requestBrief(OFFICER, companyId, [careersId], patient).then((r) => (answered++, r)));
     for (let waited = 0; answered < 14 && waited < 10_000; waited += 10) await new Promise((r) => setTimeout(r, 10));
     release();
     const results = await Promise.all(pending);
@@ -693,5 +697,114 @@ describe("the server actions", () => {
     expect(await asUser("officerA", () => acceptAction(null, accept))).toMatchObject({ ok: false, error: expect.stringContaining("AI is turned off") });
     expect(await asUser("ownerB", () => acceptAction(null, accept))).toEqual({ ok: false, error: "You are not a member of this workspace." });
     await expect(signedOut(() => acceptAction(null, accept))).rejects.toEqual(redirectTo("/signin"));
+  });
+});
+
+// ----- Found in the Research Agent stress run -----
+
+describe("namesPerson (a brief never names an individual)", () => {
+  test.for([
+    ["Jane Doe leads campus outreach.", true],
+    ["Contact Jane Q. Doe for details.", true],
+    ["Dr. Patel runs the program.", true],
+    ["Sam Lee and the team welcome you.", true],
+    ["Our University Relations team partners with student organizations at Purdue.", false],
+    ["The Acme Women's Network is an employee resource group.", false],
+    ["The Acme Foundation accepts requests through the Community Giving Portal.", false],
+    ["Requests for spring events are due by February 15, 2027.", false],
+    ["Visit our West Lafayette office or the Fort Wayne site.", false],
+    ["Join the Spring Career Fair.", false],
+    ["Eli Lilly and Company funds STEM outreach.", false],
+    ["Email [team inbox] to apply.", false],
+  ] as const)("%j: %s", ([text, named]) => {
+    expect(namesPerson(text, text.includes("Lilly") ? "Eli Lilly" : "Acme")).toBe(named);
+  });
+});
+
+describe("requestBrief: names and masked contacts are dropped in code", () => {
+  it("drops a passage that names a person or holds a masked phone, so the writing call never sees it, and keeps a team inbox passage", async () => {
+    const PAGE = "https://acme.org/people";
+    const pageId = await source(PAGE, "People");
+    const text = `<p>Jane Doe leads campus outreach and can be reached on her cell at 765-555-0142.</p>
+<p>Students can write to campus@acme.org to request a speaker.</p>
+<p>Our University Relations team partners with student organizations at Purdue.</p>`;
+    const [person, inbox, team] = maskPage(htmlToText(text).replace("campus@acme.org", "[team inbox]")).split("\n");
+    expect(person).toContain("[phone]");
+    fakeGemini(
+      passages({ page: 1, door: "CAMPUS_RECRUITING", quote: person }, { page: 1, door: "UNIVERSITY_RELATIONS", quote: inbox }, { page: 1, door: "UNIVERSITY_RELATIONS", quote: team }),
+      items(
+        item({ door: "UNIVERSITY_RELATIONS", title: "Speaker requests", detail: "Ask the team inbox for a speaker.", passage: 1, quote: inbox }),
+        item({ door: "UNIVERSITY_RELATIONS", title: "Jane Doe's program", detail: "Partners with student organizations.", passage: 2, quote: team }),
+        item({ door: "UNIVERSITY_RELATIONS", title: "University Relations team", detail: "Ask Sam Lee for a meeting.", passage: 2, quote: team }),
+        item({ door: "UNIVERSITY_RELATIONS", title: "University Relations team", detail: "Partners with student organizations at Purdue.", passage: 2, quote: team }),
+      ),
+    );
+    const brief = ok(await ask(OWNER, [pageId], web({ [PAGE]: html(text) })));
+    const writing = promptOf(1);
+    expect(writing).not.toContain("Jane Doe");
+    expect(writing).toContain("[team inbox]");
+    expect(brief.items.map((i) => i.title)).toEqual(["Speaker requests", "University Relations team"]);
+    expect(JSON.stringify(brief.items)).not.toMatch(/Jane|Sam Lee|\[phone\]/);
+    expect(brief.inboxes.map((i) => i.email)).toEqual(["campus@acme.org"]);
+  });
+
+  it("a blocked reading says so for pages, not a note", async () => {
+    fakeGemini(reply({ promptFeedback: { blockReason: "SAFETY" } }));
+    expect(await ask(OWNER, [careersId])).toEqual({ ok: false, error: "The AI declined to read these pages. Try other pages." });
+  });
+
+  it("the writing call failing after a good reading: both calls logged, the brief FAILED and not shown", async () => {
+    fakeGemini(GOOD_RUN()[0], apiError(400, "Invalid argument", "INVALID_ARGUMENT"));
+    expect(await ask(OWNER, [careersId, givingId])).toEqual({ ok: false, error: "The AI service refused this request. Tell the app admin." });
+    const logged = await withTenant(OWNER, (tx) => tx.aiRun.findMany({ select: { feature: true, status: true, error: true }, orderBy: { createdAt: "asc" } }));
+    expect(logged).toEqual([
+      { feature: "RESEARCH_READ", status: "SUCCEEDED", error: null },
+      { feature: "RESEARCH_BRIEF", status: "FAILED", error: "rejected" },
+    ]);
+    expect(await withTenant(OWNER, (tx) => tx.companyBrief.findMany({ select: { status: true } }))).toEqual([{ status: "FAILED" }]);
+    expect(await latestBrief(OWNER, companyId)).toBeNull();
+  });
+
+  it("a reading that times out on 3.8 Flash moves on to 3.6 Flash", async () => {
+    const [read, write] = GOOD_RUN();
+    fakeGemini(new DOMException("The operation was aborted.", "AbortError"), read, write);
+    const brief = ok(await ask(OWNER, [careersId, givingId]));
+    expect(brief.items.length).toBeGreaterThan(0);
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+  });
+});
+
+describe("latestBrief: an empty brief never hides a useful one", () => {
+  it("shows the earlier brief with items, and the newer empty one as a notice", async () => {
+    fakeGemini(...GOOD_RUN());
+    const useful = ok(await ask(OWNER, [careersId, givingId]));
+    // The pages are gone now: the next request reads none.
+    const gone = web({ [CAREERS]: { status: 404 }, [GIVING]: { status: 404 } });
+    const empty = ok(await ask(OFFICER, [careersId, givingId], gone));
+    expect(empty.status).toBe("NO_PAGES");
+    const shown = await latestBrief(OWNER, companyId);
+    expect(shown?.id).toBe(useful.id);
+    expect(shown?.newer).toEqual({ status: "NO_PAGES", createdAt: empty.createdAt, createdBy: "officerA" });
+    // A newer brief that finds something replaces it, with no notice.
+    fakeGemini(...GOOD_RUN());
+    const again = ok(await ask(OWNER, [careersId, givingId]));
+    expect(await latestBrief(OWNER, companyId)).toMatchObject({ id: again.id, newer: null });
+  });
+
+  it("with only empty briefs, the latest one is shown as it is", async () => {
+    const gone = web({ [CAREERS]: { status: 404 } });
+    const empty = ok(await ask(OWNER, [careersId], gone));
+    expect(await latestBrief(OWNER, companyId)).toMatchObject({ id: empty.id, status: "NO_PAGES", newer: null });
+  });
+});
+
+describe("approved sources without a label", () => {
+  it("are labelled with host and path, so two pages on one site look different", async () => {
+    expect(defaultSourceLabel("https://careers.acme-test.com/students")).toBe("careers.acme-test.com/students");
+    expect(defaultSourceLabel("https://careers.acme-test.com/")).toBe("careers.acme-test.com");
+    expect(defaultSourceLabel(`https://acme.com/${"a".repeat(200)}`).length).toBeLessThanOrEqual(80);
+    const added = await addSource(OWNER, "https://careers.acme.com/interns", null);
+    if (!added.ok) throw new Error(added.error);
+    expect((await listSources(OWNER)).find((s) => s.id === added.data.sourceId)?.label).toBe("careers.acme.com/interns");
   });
 });

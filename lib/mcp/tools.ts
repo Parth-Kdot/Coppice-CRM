@@ -5,7 +5,7 @@ import { changeStage, claimCompany, claimState, dbNow, heldBy, logOutreach } fro
 import { getCompanyDetail } from "@/lib/companies";
 import { prisma, withTenant } from "@/lib/db";
 import { WRITE_SCOPE } from "@/lib/mcp/config";
-import { MCP_LIMITS, takeMcpCall, type McpCallKind } from "@/lib/mcp/rate-limit";
+import { MCP_LIMITS, returnMcpCall, takeMcpCall, type McpCallKind } from "@/lib/mcp/rate-limit";
 import { getQueue, type QueueRow } from "@/lib/queue";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import {
@@ -262,14 +262,28 @@ export async function logOutreachTool(principal: McpPrincipal, args: z.infer<typ
 }
 
 export async function changeStageTool(principal: McpPrincipal, args: z.infer<typeof mcpChangeStageSchema>): Promise<ToolResult> {
-  const gate = await openWorkspace(principal, args.workspaceId, "action");
-  if (gate.refused) return gate.refused;
   // The app asks "Move to Committed?" before these two; an assistant must pass confirm: true,
-  // which it should only do after asking the person.
+  // which it should only do after asking the person. Checked before the gate, so the "ask first"
+  // round trip doesn't use up one of the person's actions for the minute.
   if (TERMINAL_STAGES.includes(args.stage) && args.confirm !== true) {
     return fail(
       `Moving a company to ${STAGE_LABELS[args.stage]} ends the pitch and releases the claim. Ask the person to confirm, then call change_stage again with confirm: true. Nothing was changed.`,
     );
+  }
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  // Reopening a closed pitch (out of Committed or Declined) needs the same confirm: it undoes an
+  // outcome someone recorded. Nothing ran, so the action counted by the gate is given back.
+  if (args.confirm !== true) {
+    const company = await withTenant(gate.member, (tx) =>
+      tx.company.findFirst({ where: { id: args.companyId, workspaceId: gate.member.workspaceId }, select: { stage: true } }),
+    );
+    if (company && TERMINAL_STAGES.includes(company.stage) && company.stage !== args.stage) {
+      await returnMcpCall(principal.userId, "action");
+      return fail(
+        `This company is ${STAGE_LABELS[company.stage]}, so moving it to ${STAGE_LABELS[args.stage]} reopens a closed pitch. Ask the person to confirm, then call change_stage again with confirm: true. Nothing was changed.`,
+      );
+    }
   }
   const result = await changeStage(gate.member, args.companyId, args.stage, "ASSISTANT");
   return fromResult(result, (data) => ok({ changed: data.changed, from: data.fromStage, to: data.toStage }));

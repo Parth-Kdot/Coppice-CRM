@@ -130,7 +130,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
       ) : (
         <>
           <PacketUpload workspaceId={workspaceId} action={uploadFactSheet} />
-          <p className="lg-uploadnote">A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading takes up to a minute.</p>
+          <p className="lg-uploadnote">A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading usually takes under a minute.</p>
           <Disclosure variant="inline" summary="What is sent">
             <p className="lg-uploadnote">
               The PDF&apos;s text goes to Google&apos;s free Gemini tier with emails and phone numbers masked, so don&apos;t upload anything you wouldn&apos;t

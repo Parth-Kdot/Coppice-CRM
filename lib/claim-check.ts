@@ -1,5 +1,7 @@
 import { z } from "zod";
+import type { GenerateRequest } from "@/lib/ai/client";
 import { runAi } from "@/lib/ai/run";
+import { clamped, keptItems } from "@/lib/ai/schema";
 import { matchKey, promptSafe } from "@/lib/ai/text";
 import type { Finding } from "@/lib/claim-rules";
 import { withTenant, type Tenant } from "@/lib/db";
@@ -23,16 +25,17 @@ export const draftCheckSchema = z.object({
   error: z.string().nullable(),
 });
 
-const Issues = z.object({
-  issues: z
-    .array(
-      z.object({
-        email: z.number().int().describe("The number of the email the quote is from"),
-        quote: z.string().max(300).describe("The unsupported statement, copied exactly from the email"),
-        problem: z.string().max(200).describe("In a few plain words, what the facts don't support"),
-      }),
-    )
-    .max(30),
+// An issue whose quote is too long is dropped on its own, a long "problem" is cut to fit, and only
+// the first 30 are kept, instead of losing every finding (lib/ai/schema.ts).
+export const Issues = z.object({
+  issues: keptItems(
+    z.object({
+      email: z.number().int().describe("The number of the email the quote is from"),
+      quote: z.string().max(300).describe("The unsupported statement, copied exactly from the email, at most 300 characters"),
+      problem: clamped(200).describe("In a few plain words, what the facts don't support, at most 200 characters"),
+    }),
+    30,
+  ),
 });
 
 const SYSTEM = `You check sponsorship emails a student organization is about to send. For each email, list every statement about the organization (its events, audience, prices, benefits, achievements, past sponsors) or about a past relationship with the recipient's company that the numbered facts do not fully support.
@@ -52,7 +55,13 @@ const whole = (t: Text) => `Subject: ${t.subject}\n\n${t.body}`;
 
 // Checks one or more drafts in one AI call. Never fails the caller: if the AI can't answer, every
 // draft gets no AI findings and the reason, and the rule checks still stand.
-export async function aiCheck(tenant: Tenant, drafts: Text[], names: CheckNames): Promise<DraftCheck[]> {
+// `quick`: a shorter deadline and no fallback model, for the check right after a Draft click.
+export async function aiCheck(
+  tenant: Tenant,
+  drafts: Text[],
+  names: CheckNames,
+  quick: Pick<GenerateRequest<typeof Issues>, "deadlineMs" | "fallback"> = {},
+): Promise<DraftCheck[]> {
   // What the AI sees: names back to placeholders, contact details masked.
   const masked = drafts.map((d) => promptSafe(unfill(whole(d), names)));
   const facts = await verifiedFacts(tenant);
@@ -62,7 +71,7 @@ export async function aiCheck(tenant: Tenant, drafts: Text[], names: CheckNames)
     "List the unsupported statements.",
   ].join("\n\n");
 
-  const result = await runAi(tenant, { feature: "CLAIM_CHECK", system: SYSTEM, prompt, schema: Issues });
+  const result = await runAi(tenant, { feature: "CLAIM_CHECK", system: SYSTEM, prompt, schema: Issues, ...quick });
   const shown = { ...names, firstName: names.firstName ?? "there" };
   return drafts.map(({ subject, body }, i) => {
     if (!result.ok) return { subject, body, ai: [], error: result.error };

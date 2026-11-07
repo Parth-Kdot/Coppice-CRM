@@ -16,6 +16,14 @@ const MINUTE = 60_000;
 // time rule in the app) is one row per person and kind; the count goes up with an upsert, so two
 // calls at the same moment are both counted. When a person starts a new minute, their rows from
 // more than ten minutes ago are deleted, so the table stays small.
+// Gives back a call counted this minute that did nothing (a change_stage that must ask the person
+// first). Never below zero; a minute that has already turned over has nothing to give back.
+export async function returnMcpCall(userId: string, kind: McpCallKind): Promise<void> {
+  const now = await dbNow();
+  const windowStart = new Date(Math.floor(now.getTime() / MINUTE) * MINUTE);
+  await prisma.mcpRateLimit.updateMany({ where: { userId, kind, windowStart, count: { gt: 0 } }, data: { count: { decrement: 1 } } });
+}
+
 export async function takeMcpCall(userId: string, kind: McpCallKind): Promise<RateLimitResult> {
   const now = await dbNow();
   const windowStart = new Date(Math.floor(now.getTime() / MINUTE) * MINUTE);

@@ -10,7 +10,9 @@ import { addContact, createCompany, getCompanyDetail } from "@/lib/companies";
 import { addDays } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { appUrl, mcpResourceUrl } from "@/lib/mcp/config";
+import { clientNameProblem, namesCoppice, safeClientName } from "@/lib/mcp/oauth-limits";
 import { MCP_LIMITS, takeMcpCall } from "@/lib/mcp/rate-limit";
+import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { INTERNAL_ERROR, MCP_OFF, NOT_A_MEMBER, READ_ONLY, UNTRUSTED_NOTICE, changeStageTool, guarded, type McpPrincipal } from "@/lib/mcp/tools";
 import { form } from "./helpers/form";
 import { asUser } from "./helpers/next-request";
@@ -24,6 +26,7 @@ import {
   legacyToolCall,
   mcpClient,
   mcpPost,
+  MODERN_PROTOCOL,
   pkce,
   REDIRECT_URI,
   refresh,
@@ -923,5 +926,252 @@ describe("the database", () => {
       tx.$queryRaw<{ via: string }[]>`INSERT INTO "Outreach" (id, "workspaceId", "companyId", "senderId") VALUES ('legacy-row', 'a', ${id}, 'ownerA') RETURNING via`,
     );
     expect(via).toBe("APP");
+  });
+});
+
+// ----- Found in the MCP stress run (each was checked live, and is recorded here) -----
+
+describe("client names on the consent page", () => {
+  test.for([
+    ["a right-to-left override", "Notes ‮gnp.exe"],
+    ["a left-to-right isolate", "Notes ⁦evil⁩"],
+    ["a zero-width space", "Note​s"],
+    ["a soft hyphen", "No­tes"],
+    ["a line break", "Notes\nAllow"],
+    ["the Coppice name", "Coppice Official"],
+    ["Coppice spelled with a zero", "C0ppice Helper"],
+    ["Coppice with an accent", "Coppíce"],
+    ["Coppice with a Cyrillic o", "Cоppice"],
+    ["Coppice spaced out", "c o p p i c e"],
+  ])("refuses %s at registration", async ([, name]) => {
+    expect(clientNameProblem(name)).not.toBeNull();
+    const before = await prisma.oauthClient.count();
+    const { status, body } = await registerClient({ client_name: name });
+    expect(status).toBe(400);
+    expect(body.error).toBe("invalid_client_metadata");
+    expect(await prisma.oauthClient.count()).toBe(before);
+  });
+
+  test.for(["Claude", "My Notes Helper", "Copilot", "Coppersmith Tools", "Cop Pie"])("accepts an ordinary name: %s", async (name) => {
+    expect(namesCoppice(name)).toBe(false);
+    expect((await registerClient({ client_name: name })).status).toBe(201);
+  });
+
+  it("shows any older stored name without control or format characters", () => {
+    expect(safeClientName("Coppice Official <img src=x> ‮gnp.exe​")).toBe("Coppice Official <img src=x> gnp.exe");
+    expect(safeClientName("  Two\n\tlines  ")).toBe("Two lines");
+    expect(safeClientName(null)).toBe("");
+  });
+
+  it("a consent link with an edited redirect_uri or scope no longer checks out", async () => {
+    const clientId = (await registerClient()).body.client_id as string;
+    const { location } = await authorize(clientId, "ownerA", { scope: "openid coppice:read", challenge: pkce().challenge });
+    const { secret } = await auth.$context;
+    const query = location.search.slice(1);
+    expect(await verifyOAuthQueryParams(query, secret)).toBe(true);
+    const redirect = new URLSearchParams(query);
+    redirect.set("redirect_uri", "https://evil.example/callback");
+    expect(await verifyOAuthQueryParams(redirect.toString(), secret)).toBe(false);
+    const scope = new URLSearchParams(query);
+    scope.set("scope", "openid coppice:read coppice:write");
+    expect(await verifyOAuthQueryParams(scope.toString(), secret)).toBe(false);
+  });
+});
+
+describe("a revoked grant stops working at once", () => {
+  const listTools = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
+  const revoke = (clientId: string, token: string, hint: "refresh_token" | "access_token") =>
+    auth.handler(
+      new Request(new URL("/api/auth/oauth2/revoke", appUrl()), {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", ...fromNewIp() },
+        body: new URLSearchParams({ token, token_type_hint: hint, client_id: clientId }),
+      }),
+    );
+  const expectRevoked = async (token: string) => {
+    const response = await mcpPost(listTools, token, { "mcp-protocol-version": "2025-06-18" });
+    expect(response.status).toBe(401);
+    // The same challenge as a missing token, so the assistant asks the person to connect again.
+    expect(response.headers.get("www-authenticate")).toContain("resource_metadata=");
+    expect(response.json.error.message).toMatch(/revoked/);
+  };
+
+  it("works while the grant stands", async () => {
+    const { accessToken } = await getAccessToken("ownerA");
+    expect((await mcpPost(listTools, accessToken, { "mcp-protocol-version": "2025-06-18" })).status).toBe(200);
+  });
+
+  it("after its refresh token is revoked (/oauth2/revoke), the access token is refused too", async () => {
+    const { clientId, accessToken, refreshToken } = await getAccessToken("ownerA");
+    expect((await revoke(clientId, refreshToken, "refresh_token")).status).toBe(200);
+    await expectRevoked(accessToken);
+  });
+
+  it("reusing a rotated refresh token throws the family away: the newer refresh and access tokens stop too", async () => {
+    const { clientId, refreshToken } = await getAccessToken("ownerA");
+    const rotated = await refresh(clientId, refreshToken);
+    expect(rotated.status).toBe(200);
+    // An ordinary refresh leaves the new access token working.
+    expect((await mcpPost(listTools, rotated.body.access_token, { "mcp-protocol-version": "2025-06-18" })).status).toBe(200);
+    // The old refresh token is used again (the stolen-token case).
+    expect((await refresh(clientId, refreshToken)).status).toBe(400);
+    expect((await refresh(clientId, rotated.body.refresh_token)).status).toBe(400);
+    await expectRevoked(rotated.body.access_token);
+  });
+
+  it("after the person's consent for that assistant is deleted, its tokens are refused (and others' are not)", async () => {
+    const mine = await getAccessToken("ownerA");
+    const theirs = await getAccessToken("officerA");
+    await prisma.oauthConsent.deleteMany({ where: { clientId: mine.clientId, userId: "ownerA" } });
+    await expectRevoked(mine.accessToken);
+    expect((await mcpPost(listTools, theirs.accessToken, { "mcp-protocol-version": "2025-06-18" })).status).toBe(200);
+  });
+
+  it("a token without offline_access needs only the consent", async () => {
+    const { clientId, accessToken } = await getAccessToken("ownerA", { scope: "openid coppice:read" });
+    expect((await mcpPost(listTools, accessToken, { "mcp-protocol-version": "2025-06-18" })).status).toBe(200);
+    await prisma.oauthConsent.deleteMany({ where: { clientId } });
+    await expectRevoked(accessToken);
+  });
+
+  it("the 401 for a revoked grant carries CORS through the route", async () => {
+    const { clientId, accessToken } = await getAccessToken("ownerA");
+    await prisma.oauthConsent.deleteMany({ where: { clientId } });
+    const response = await mcpRoute(
+      new Request(mcpResourceUrl(), {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify(listTools),
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
+describe("the rest of the OAuth flow, as the stress run walked it", () => {
+  it("a second authorize for a client the person already allowed skips the consent page, with iss on the callback", async () => {
+    const clientId = (await registerClient()).body.client_id as string;
+    const first = await authorize(clientId, "ownerA", { scope: ALL, challenge: pkce().challenge });
+    const back = await consent(first.location, first.headers, true);
+    expect(back.searchParams.get("iss")).toEqual(expect.any(String));
+    const again = await authorize(clientId, "ownerA", { scope: ALL, challenge: pkce().challenge });
+    expect(again.location.pathname).not.toBe("/oauth/consent");
+    expect(again.location.searchParams.get("code")).toEqual(expect.any(String));
+  });
+
+  it("a refresh without a resource is still bound to the MCP URL", async () => {
+    const { clientId, refreshToken } = await getAccessToken("ownerA");
+    const response = await auth.handler(
+      new Request(new URL("/api/auth/oauth2/token", appUrl()), {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", ...fromNewIp() },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const token = ((await response.json()) as { access_token: string }).access_token;
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    expect([payload.aud].flat()).toContain(mcpResourceUrl());
+    expect((await mcpPost({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }, token, { "mcp-protocol-version": "2025-06-18" })).status).toBe(200);
+  });
+
+  it("a read-only grant asking for write on refresh gets invalid_scope", async () => {
+    const { clientId, refreshToken } = await getAccessToken("ownerA", { scope: "openid offline_access coppice:read" });
+    const response = await auth.handler(
+      new Request(new URL("/api/auth/oauth2/token", appUrl()), {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", ...fromNewIp() },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId, resource: mcpResourceUrl(), scope: "coppice:read coppice:write" }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toBe("invalid_scope");
+  });
+
+  it("a member removed while holding a valid token is refused, then works again once re-added", async () => {
+    const client = await mcpClient(await tokenFor("officerA"));
+    const call = () => client.callTool({ name: "list_my_claims", arguments: { workspaceId: "a" } });
+    expect((await call()).isError).toBeFalsy();
+    const membership = await prisma.membership.findUniqueOrThrow({ where: { id: "m-officerA" } });
+    await prisma.membership.delete({ where: { id: "m-officerA" } });
+    try {
+      const refused = await call();
+      expect(refused.isError).toBe(true);
+      expect(resultText(refused)).toBe(NOT_A_MEMBER);
+    } finally {
+      await prisma.membership.create({ data: membership });
+    }
+    expect((await call()).isError).toBeFalsy();
+  });
+
+  it("assistants follow their own switch, not the workspace's AI switch (owner decision: the two are separate)", async () => {
+    await prisma.workspace.update({ where: { id: "a" }, data: { aiEnabled: false } });
+    const client = await mcpClient(await tokenFor("ownerA"));
+    expect((await client.callTool({ name: "list_companies", arguments: { workspaceId: "a" } })).isError).toBeFalsy();
+    await setMcp("a", false);
+    expect(resultText(await client.callTool({ name: "list_companies", arguments: { workspaceId: "a" } }))).toBe(MCP_OFF);
+  });
+});
+
+describe("protocol eras", () => {
+  it("the test client is pinned to the current protocol, which the server answers directly", async () => {
+    const client = await mcpClient(await tokenFor("ownerA"));
+    expect(client.getProtocolEra()).toBe("modern");
+    expect(client.getNegotiatedProtocolVersion()).toBe(MODERN_PROTOCOL);
+    expect((await client.callTool({ name: "list_workspaces", arguments: {} })).isError).toBeFalsy();
+  });
+
+  it("the SDK's default client negotiates the 2025 era and still works", async () => {
+    const client = await mcpClient(await tokenFor("ownerA"), { era: "sdk-default" });
+    expect(client.getProtocolEra()).toBe("legacy");
+    expect((await client.callTool({ name: "list_workspaces", arguments: {} })).isError).toBeFalsy();
+  });
+});
+
+describe("change_stage confirmations", () => {
+  const principal = (userId = "ownerA"): McpPrincipal => ({ userId, clientId: "test", scopes: new Set(["coppice:read", "coppice:write"]) });
+  const actionCount = async () => (await prisma.mcpRateLimit.findMany({ where: { userId: "ownerA", kind: "action" } })).reduce((n, r) => n + r.count, 0);
+
+  it("asking first doesn't use up an action: 9 actions, COMMITTED without confirm, then with confirm, succeeds", async () => {
+    const id = await company();
+    for (let i = 0; i < MCP_LIMITS.action - 1; i++) await takeMcpCall("ownerA", "action");
+    const ask = await changeStageTool(principal(), { workspaceId: "a", companyId: id, stage: "COMMITTED" });
+    expect(ask.isError).toBe(true);
+    expect(resultText(ask)).toMatch(/confirm: true/);
+    expect(await actionCount()).toBe(MCP_LIMITS.action - 1);
+    const done = await changeStageTool(principal(), { workspaceId: "a", companyId: id, stage: "COMMITTED", confirm: true });
+    expect(done.isError).toBeFalsy();
+    expect((await getCompanyDetail(OWNER, id))?.stage).toBe("COMMITTED");
+  });
+
+  test.for(["COMMITTED", "DECLINED"] as const)("reopening a %s company needs confirm too, and asking costs nothing", async (closed) => {
+    const id = await company();
+    await changeStage(OWNER, id, closed);
+    const ask = await changeStageTool(principal(), { workspaceId: "a", companyId: id, stage: "NOT_CONTACTED" });
+    expect(ask.isError).toBe(true);
+    expect(resultText(ask)).toMatch(/reopens a closed pitch/);
+    expect((await getCompanyDetail(OWNER, id))?.stage).toBe(closed);
+    expect(await actionCount()).toBe(0);
+    const done = await changeStageTool(principal(), { workspaceId: "a", companyId: id, stage: "NOT_CONTACTED", confirm: true });
+    expect(done.isError).toBeFalsy();
+    expect((await getCompanyDetail(OWNER, id))?.stage).toBe("NOT_CONTACTED");
+    expect(await actionCount()).toBe(1);
+  });
+
+  it('confirm: "true" as a string is refused by the tool\'s schema', async () => {
+    const id = await company();
+    const client = await mcpClient(await tokenFor("ownerA"));
+    const result = await client.callTool({ name: "change_stage", arguments: { workspaceId: "a", companyId: id, stage: "COMMITTED", confirm: "true" } });
+    expect(result.isError).toBe(true);
+    expect((await getCompanyDetail(OWNER, id))?.stage).toBe("NOT_CONTACTED");
+  });
+
+  it("refused calls for another workspace still count (they reach the database), so a flood is bounded", async () => {
+    for (let i = 0; i < MCP_LIMITS.action; i++) {
+      await changeStageTool(principal(), { workspaceId: "b", companyId: "nope", stage: "REPLIED" });
+    }
+    const over = await changeStageTool(principal(), { workspaceId: "a", companyId: "nope", stage: "REPLIED" });
+    expect(resultText(over)).toMatch(/Rate limit reached/);
   });
 });

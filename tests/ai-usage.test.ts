@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { aiBreakdown, aiUsage, aiUsageDetail } from "@/lib/ai/run";
-import { breakdownAiUsage, describeAiFailures, describeAiUsage } from "@/lib/ai/usage";
+import { AiFeature } from "@/generated/prisma/enums";
+import { breakdownAiUsage, describeAiFailures, describeAiUsage, GROUPED_FEATURES } from "@/lib/ai/usage";
 import { dbNow } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
 import { resetAndSeed } from "./helpers/seed";
@@ -38,6 +39,37 @@ describe("breakdownAiUsage (pure)", () => {
     expect(describeAiUsage(breakdownAiUsage([]))).toBe("");
     expect(describeAiFailures(0)).toBe("");
     expect(describeAiFailures(2)).toBe("2 of them failed. Failed calls still count.");
+  });
+});
+
+describe("breakdownAiUsage covers every feature", () => {
+  it("names research briefs' two calls as one line", () => {
+    const b = breakdownAiUsage([
+      { feature: "DRAFT", status: "SUCCEEDED", count: 83 },
+      { feature: "CLAIM_CHECK", status: "SUCCEEDED", count: 27 },
+      { feature: "FACT_EXTRACTION", status: "SUCCEEDED", count: 19 },
+      { feature: "RESEARCH_READ", status: "SUCCEEDED", count: 1 },
+      { feature: "RESEARCH_BRIEF", status: "FAILED", count: 1 },
+    ]);
+    expect(describeAiUsage(b)).toBe("83 draft calls, 27 claim checks, 19 fact sheet reads, 2 research brief calls.");
+    expect(b.total).toBe(131);
+  });
+
+  it("every AiFeature is in exactly one group", () => {
+    const all = Object.values(AiFeature);
+    expect([...GROUPED_FEATURES].sort()).toEqual([...all].sort());
+    expect(new Set(GROUPED_FEATURES).size).toBe(GROUPED_FEATURES.length);
+  });
+
+  it("the parts always add up to the total, whatever mix of features and statuses", () => {
+    const statuses = ["SUCCEEDED", "FAILED", "RUNNING"] as const;
+    const rows = Object.values(AiFeature).flatMap((feature, i) => statuses.map((status, j) => ({ feature, status, count: i + j + 1 })));
+    const b = breakdownAiUsage(rows);
+    expect(b.parts.reduce((sum, p) => sum + p.count, 0)).toBe(b.total);
+    expect(b.total).toBe(rows.reduce((sum, r) => sum + r.count, 0));
+    // A feature added later, before it has a group, is still counted.
+    const later = breakdownAiUsage([{ feature: "SOMETHING_NEW" as AiFeature, status: "SUCCEEDED", count: 3 }]);
+    expect(later.parts).toEqual([{ key: "other", label: "3 other AI calls", count: 3 }]);
   });
 });
 

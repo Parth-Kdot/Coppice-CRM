@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useActionState, useId, useState } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import "@/components/ledger/zod-jitless";
 import { ActionForm } from "@/components/action-form";
 import { QuillWait } from "@/components/draft-panel";
+import { focusSoon } from "@/components/ledger/focus";
 import { AiDraftIcon, ExternalIcon, WarningIcon } from "@/components/ledger/icons";
 import { Tick } from "@/components/ledger/marks";
 import { ErrorLine } from "@/components/ledger/shared";
@@ -15,7 +16,7 @@ import { BRIEF_SOURCES_MAX, type ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 import "@/components/ledger/research.css";
 
-type Source = { id: string; label: string; host: string; suggested: boolean };
+type Source = { id: string; label: string; host: string; url: string; suggested: boolean };
 
 type Props = {
   workspaceId: string;
@@ -44,9 +45,27 @@ export function BriefPanel(props: Props) {
   const fresh = state?.ok ? state.data : null;
   // The page reloads with the newest brief after a request or an "Add to notes"; a brief this
   // request just returned is shown until then.
-  const brief = fresh && (!props.initialBrief || fresh.createdAt > props.initialBrief.createdAt) ? fresh : props.initialBrief;
+  // A new brief that found nothing doesn't replace an earlier one that did: that one stays, with
+  // a line saying the new request came back empty (the server does the same on reload).
+  const freshEmpty = fresh !== null && fresh.items.length === 0 && fresh.inboxes.length === 0;
+  const initialUseful = props.initialBrief !== null && (props.initialBrief.items.length > 0 || props.initialBrief.inboxes.length > 0);
+  const newerThanInitial = fresh !== null && (!props.initialBrief || fresh.createdAt > props.initialBrief.createdAt);
+  const brief =
+    fresh && newerThanInitial && !(freshEmpty && initialUseful)
+      ? fresh
+      : fresh && newerThanInitial && props.initialBrief
+        ? { ...props.initialBrief, newer: { status: fresh.status, createdAt: fresh.createdAt, createdBy: fresh.createdBy } }
+        : props.initialBrief;
   const [picked, setPicked] = useState(() => new Set(props.sources.filter((s) => s.suggested).map((s) => s.id).slice(0, BRIEF_SOURCES_MAX)));
   const limitLeft = props.usage.limit - props.usage.used;
+  // The button is disabled while the brief is prepared, so the browser drops focus to the page;
+  // when the answer comes, focus goes to the brief, or back to the button after a refusal.
+  const section = useRef<HTMLElement>(null);
+  const askButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!state || document.activeElement !== document.body) return;
+    focusSoon(state.ok ? () => section.current?.querySelector<HTMLElement>(".lg-brief-card h3") ?? null : askButton.current);
+  }, [state]);
 
   const toggle = (sourceId: string, on: boolean) =>
     setPicked((now) => {
@@ -57,7 +76,7 @@ export function BriefPanel(props: Props) {
     });
 
   return (
-    <section id="research" className="lg-draftpanel lg-brief" aria-labelledby={`${id}-h`}>
+    <section id="research" className="lg-draftpanel lg-brief" aria-labelledby={`${id}-h`} ref={section}>
       <div className="lg-draft-head">
         <h2 id={`${id}-h`} className="lg-h2">
           Who to contact
@@ -104,7 +123,7 @@ export function BriefPanel(props: Props) {
             </legend>
             <div className="lg-chips">
               {props.sources.map((s) => (
-                <label key={s.id} className="lg-chipx" title={s.host}>
+                <label key={s.id} className="lg-chipx" title={s.url}>
                   <input
                     type="checkbox"
                     name="sourceId"
@@ -119,7 +138,7 @@ export function BriefPanel(props: Props) {
             </div>
           </fieldset>
           <div className="lg-draftgo">
-            <button type="submit" disabled={pending || picked.size === 0 || limitLeft < 2} className="lg-btn lg-btn-primary">
+            <button ref={askButton} type="submit" disabled={pending || picked.size === 0 || limitLeft < 2} className="lg-btn lg-btn-primary">
               <AiDraftIcon size={18} />
               {pending ? "Reading... (up to a few minutes)" : "Research who to contact"}
             </button>
@@ -182,6 +201,12 @@ function BriefCard(props: CardProps) {
           {when(brief.createdAt)}, asked by {brief.createdBy}
         </p>
       </header>
+      {brief.newer && (
+        <p className="lg-hint lg-brief-note" role="note">
+          A newer brief ({when(brief.newer.createdAt)}, asked by {brief.newer.createdBy}){" "}
+          {brief.newer.status === "NO_PAGES" ? "couldn't read any of its pages" : "found nothing that checked out"}, so this earlier one is shown.
+        </p>
+      )}
       <p className="lg-hint lg-brief-note">A suggestion, not a fact: open each page and check it. Adding an item writes one line to this company&apos;s notes.</p>
 
       {flagged.length > 0 && (

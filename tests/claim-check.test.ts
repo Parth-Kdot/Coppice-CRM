@@ -71,6 +71,18 @@ describe("placeholders", () => {
   it("leaves a missing name alone, so 'there' is never replaced", () => {
     expect(unfill("Hi there, over there", { firstName: null, senderName: "", orgName: "Org A" })).toBe("Hi there, over there");
   });
+  // A short first name is replaced only as a whole word: "Ed" is not in "Education" or "Edison".
+  test.for([
+    ["Ed", "Our Education Day reaches 1,200 students. Edison would approve. Thanks, Ed!", "Our Education Day reaches 1,200 students. Edison would approve. Thanks, {{firstName}}!"],
+    ["Al", "Also, Al: we'd love a call. Alan says hi.", "Also, {{firstName}}: we'd love a call. Alan says hi."],
+    ["Jo", "Join us, Jo. Jo's team and Jody too.", "Join us, {{firstName}}. {{firstName}}'s team and Jody too."],
+    ["Di", "Did Di see it? Diana didn't.", "Did {{firstName}} see it? Diana didn't."],
+    ["Ana", "Banana Ana anagram ANA", "Banana {{firstName}} anagram ANA"],
+    ["Zoë", "Hi Zoë, Zoëlle wrote.", "Hi {{firstName}}, Zoëlle wrote."],
+    ["J.R.", "Hi J.R., thanks. J.R.R. is someone else.", "Hi {{firstName}}, thanks. J.R.R. is someone else."],
+  ] as const)("unfill replaces %s as a whole word only", ([name, text, expected]) => {
+    expect(unfill(text, { firstName: name, senderName: "Sam Lee", orgName: "Org A" })).toBe(expected);
+  });
 });
 
 describe("the AI check", () => {
@@ -125,6 +137,38 @@ describe("the AI check", () => {
       ai: [{ kind: "unsupported", quote: "Org A has 900 members", reason: "No fact gives a member count." }],
       error: null,
     });
+  });
+
+  it("sends a draft for a contact named Ed with 'Education' and 'Edison' intact", async () => {
+    fakeGemini(issues());
+    const text = { subject: "Education Day", body: "Hi Ed,\n\nOur Education Day reaches 1,200 students. Edison would approve.\n\nSam Lee\nOrg A" };
+    await aiCheck(OWNER, [text], { ...NAMES, firstName: "Ed" });
+    const prompt = JSON.stringify(calls[0].body);
+    expect(prompt).toContain("Subject: Education Day");
+    expect(prompt).toContain("Hi {{firstName}},");
+    expect(prompt).toContain("Our Education Day reaches 1,200 students. Edison would approve.");
+    expect(prompt).not.toContain("{{firstName}}ucation");
+  });
+
+  it("keeps the good findings when one quote is too long, and cuts a long problem to fit", async () => {
+    fakeGemini(
+      issues(
+        { email: 1, quote: "x".repeat(301), problem: "Too long a quote." },
+        { email: 1, quote: "{{orgName}} has 900 members", problem: `${"No fact gives a member count, ".repeat(10)}` },
+      ),
+    );
+    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    expect(check.error).toBeNull();
+    expect(check.ai).toHaveLength(1);
+    expect(check.ai[0].quote).toBe("Org A has 900 members");
+    expect(check.ai[0].reason.length).toBeLessThanOrEqual(200);
+  });
+
+  it("a 500 on Flash-Lite moves on to 3.6 Flash for Check again", async () => {
+    fakeGemini(apiError(500, "Internal", "INTERNAL"), issues({ email: 1, quote: "{{orgName}} has 900 members", problem: "No member count." }));
+    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    expect(check.ai).toHaveLength(1);
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.5-flash-lite", "gemini-3.6-flash"]);
   });
 
   it("returns the reason, and no AI findings, when the AI can't answer", async () => {

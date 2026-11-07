@@ -45,6 +45,32 @@ function DoNotContact({ smart, row, quote }: { smart: SmartState; row: number; q
   );
 }
 
+// This board year's sheet says they committed or declined: skipped unless the person imports it
+// anyway (as Not contacted, with the note), so nobody pitches them again by mistake.
+function Outcome({ smart, row, outcome }: { smart: SmartState; row: number; outcome: NonNullable<RowProposal["outcome"]> }) {
+  const skipped = smart.skipsHas(row);
+  return (
+    <div className="lg-smart-item lg-smart-dnc">
+      <p className="lg-tag">{outcome.value === "committed" ? "Committed" : "Declined"}</p>
+      <div className="lg-smart-ctl">
+        <p>The sheet says they {outcome.value}, so it is skipped unless you import it anyway.</p>
+        <Source quotes={[outcome]} />
+      </div>
+      <ImportChoice
+        className="lg-smart-choice"
+        question="Import it anyway?"
+        value={skipped ? "skip" : "import"}
+        onChange={(value) => smart.accept(row, value === "import")}
+        caption={skipped ? "Not imported." : "Imported as Not contacted, with the line below in its notes."}
+        options={[
+          { value: "skip", label: "Skip", ariaLabel: `Skip row ${row}` },
+          { value: "import", label: "Import anyway", ariaLabel: `Import row ${row} anyway` },
+        ]}
+      />
+    </div>
+  );
+}
+
 function RowCard({
   smart,
   row,
@@ -64,6 +90,7 @@ function RowCard({
   const skipped = smart.skipsHas(row);
   const name = smart.names.get(row) ?? "";
   const readings = p && hasReading({ ...p, doNotContact: null });
+  const outcome = !dnc && p?.outcome ? p.outcome : null;
   return (
     <div className="lg-group lg-smart-row" role="group" aria-labelledby={`smart-row-${row}`}>
       <div className="lg-group-head">
@@ -76,7 +103,7 @@ function RowCard({
       </div>
       {group && (
         <p className="lg-hint lg-smart-where">
-          {dnc ? "The sheet says not to contact them. " : ""}Import or skip it in{" "}
+          {dnc ? "The sheet says not to contact them. " : outcome ? `The sheet says they ${outcome.value}. ` : ""}Import or skip it in{" "}
           <a
             href="#"
             className="lg-link"
@@ -91,12 +118,13 @@ function RowCard({
         </p>
       )}
       {dnc && !group && <DoNotContact smart={smart} row={row} quote={dnc} />}
+      {outcome && !group && <Outcome smart={smart} row={row} outcome={outcome} />}
       {readings &&
         (skipped ? (
           <div className="lg-smart-skipped">
             <p>This row won&apos;t be imported, so what was read from it isn&apos;t used.</p>
             {/* In a group, the group is where it is imported or skipped; for a do-not-contact row, the line above. */}
-            {!dnc && !group && (
+            {!dnc && !outcome && !group && (
               <button
                 type="button"
                 className="lg-btn lg-btn-sm"

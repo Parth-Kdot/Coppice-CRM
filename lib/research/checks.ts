@@ -138,22 +138,102 @@ export function cleanQuote(quote: string, fetchedHosts: string[]): boolean {
   return sites !== null && sites.every((host) => isSameSite(host, fetchedHosts));
 }
 
+// ----- People's names -----
+//
+// A brief is about a company's channels, never its people, and the prompt says so; this enforces it
+// in code. A passage or item that names an individual is dropped, so a name on a public page never
+// reaches the writing call (RESEARCH_BRIEF) or the brief. A passage holding a masked "[email]" or
+// "[phone]" is about reaching a person too, and is dropped; team inboxes are kept, since the page
+// text calls them "[team inbox]" and the brief lists them itself (lib/research/brief.ts).
+//
+// The test is simple and errs on the side of dropping: a title (Dr., Ms. ...) before a capitalized
+// word, or two capitalized words in a row ("Jane Doe", "Jane Q. Doe") where neither is part of the
+// company's name or a word that names a team, a role, a program, a place or a time ("University
+// Relations", "Women in Engineering", "West Lafayette", "Spring Career Fair"). A real channel named
+// after a person ("Grace Hopper Celebration") is dropped too; the page is still linked.
+const NAME_WORD = /^\p{Lu}\p{Ll}+(?:[-'’]\p{Lu}?\p{Ll}+)*$/u;
+const INITIAL = /^\p{Lu}$/u;
+const TITLES = new Set(["mr", "mrs", "ms", "mx", "dr", "prof", "professor", "sir", "dame"]);
+const NOT_NAMES = new Set(
+  (
+    // teams, roles and programs
+    "university universities college colleges campus campuses career careers recruiting recruitment recruiter recruiters relations relation " +
+    "program programs programme team teams office offices department division group groups network networks council committee board " +
+    "foundation fund funds giving gift gifts grant grants sponsorship sponsorships sponsor sponsors partner partners partnership partnerships " +
+    "employee employees resource resources talent early student students intern interns internship internships fellowship fellowships " +
+    "scholarship scholarships alumni community communities outreach engagement diversity inclusion equity belonging impact philanthropy " +
+    "corporate social responsibility citizenship volunteer volunteering events event fair fairs expo summit conference day days week weekend " +
+    "women woman men veterans veteran black hispanic latino latina latinx asian pacific islander native indigenous pride lgbtq disability " +
+    "engineering engineer engineers science sciences technology technologies tech research development innovation design product products " +
+    "software hardware data analytics business marketing sales finance financial operations manufacturing supply chain legal human people " +
+    "services service solutions systems global national international regional local america american americas north south east west " +
+    "northern southern eastern western central midwest new old saint st fort port lake mount mountain river valley city county state states " +
+    "united kingdom republic center centre hall park street avenue road drive lane building tower plaza campus headquarters hq site sites " +
+    "lab labs laboratory laboratories studio institute academy school schools society association club clubs chapter chapters " +
+    "inc incorporated corp corporation company companies co llc ltd limited group holdings enterprises " +
+    "january february march july september october november december spring summer fall autumn winter " +
+    "monday tuesday wednesday thursday friday saturday sunday today annual year years month months history heritage awareness " +
+    "the a an our your their we you they this that these those its for and of in on at to with from by " +
+    "apply visit contact join learn read see email call find meet explore discover submit register sign request follow get start view " +
+    "click download check send share connect support ask welcome thank thanks please note deadline deadlines open opens closes due " +
+    "application applications portal portals form forms page pages website online web home about overview faq faqs news press media " +
+    "matching match volunteer grants request requests proposal proposals guidelines eligibility criteria opportunity opportunities " +
+    "general manager director coordinator specialist lead leads head chief officer president vice senior junior associate assistant " +
+    "executive representative ambassador ambassadors liaison advisor adviser counselor chair"
+  ).split(" "),
+);
+
+// Whether the text names an individual person, by the test above. `company` is the company's name,
+// whose words are never a person's ("Eli Lilly").
+export function namesPerson(text: string, company = ""): boolean {
+  const companyWords = new Set(company.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  // "Women's" is checked as "women".
+  const ordinary = (word: string) => {
+    const key = word.toLowerCase().replace(/['’]s$/, "");
+    return NOT_NAMES.has(key) || companyWords.has(key);
+  };
+  const line = text.normalize("NFKC");
+  const tokens = [...line.matchAll(/[\p{L}\p{M}][\p{L}\p{M}'’-]*/gu)].map((m) => ({
+    word: m[0].replace(/['’-]+$/, ""),
+    start: m.index ?? 0,
+    end: (m.index ?? 0) + m[0].length,
+  }));
+  const gap = (i: number) => line.slice(tokens[i].end, tokens[i + 1]?.start ?? tokens[i].end);
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const { word } = tokens[i];
+    // "Dr. Patel", "Ms Rivera"
+    if (TITLES.has(word.toLowerCase()) && /^\.?\s+$/.test(gap(i)) && NAME_WORD.test(tokens[i + 1].word)) return true;
+    if (!NAME_WORD.test(word) || ordinary(word)) continue;
+    let j = i + 1;
+    // A middle initial: "Jane Q. Doe".
+    if (INITIAL.test(tokens[j].word) && /^\s+$/.test(gap(i)) && /^\.\s+$/.test(gap(j)) && tokens[j + 1]) j++;
+    else if (!/^\s+$/.test(gap(i))) continue;
+    const next = tokens[j].word;
+    if (NAME_WORD.test(next) && !ordinary(next)) return true;
+  }
+  return false;
+}
+
+// A masked contact detail of a person (a team inbox is "[team inbox]", which stays).
+const PERSON_CONTACT = /\[(?:email|phone)\]/i;
+
 // ----- Passages and items -----
 
-export function checkPassages(passages: Passage[], pages: Map<number, CheckedPage>): Passage[] {
+export function checkPassages(passages: Passage[], pages: Map<number, CheckedPage>, company = ""): Passage[] {
   const seen = new Set<string>();
   return passages
     .map((p) => ({ ...p, quote: p.quote.trim() }))
     .filter((p) => {
       const page = pages.get(p.page);
       if (!page?.text || !quoteFound(p.quote, page.text, "")) return false;
+      if (PERSON_CONTACT.test(p.quote) || namesPerson(p.quote, company)) return false;
       const key = matchKey(p.quote);
       return !seen.has(key) && Boolean(seen.add(key));
     })
     .slice(0, PASSAGES_MAX);
 }
 
-export function checkItems(items: DraftItem[], passages: Passage[], pages: Map<number, CheckedPage>): BriefItem[] {
+export function checkItems(items: DraftItem[], passages: Passage[], pages: Map<number, CheckedPage>, company = ""): BriefItem[] {
   const fetchedHosts = [...pages.values()].flatMap((p) => (p.finalUrl ? [new URL(p.finalUrl).hostname, new URL(p.url).hostname] : []));
   const seen = new Set<string>();
   const kept: BriefItem[] = [];
@@ -172,6 +252,8 @@ export function checkItems(items: DraftItem[], passages: Passage[], pages: Map<n
     if (deadline && !matchKey(quote).includes(matchKey(deadline))) continue;
     if (![title, detail, deadline ?? ""].every((line) => cleanLine(line, fetchedHosts))) continue;
     if (!cleanQuote(quote, fetchedHosts)) continue;
+    // Never a person: not in the quote, the title or the detail.
+    if (PERSON_CONTACT.test(quote) || [quote, title, detail].some((line) => namesPerson(line, company))) continue;
     const key = matchKey(title);
     if (seen.has(key)) continue;
     seen.add(key);

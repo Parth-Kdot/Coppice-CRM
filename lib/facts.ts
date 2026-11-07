@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Membership } from "@/lib/authz";
 import { readPdfPages } from "@/lib/ai/pdf";
 import { runAi } from "@/lib/ai/run";
+import { clamped, keptItems } from "@/lib/ai/schema";
 import { promptSafe, quoteFound } from "@/lib/ai/text";
 import { withTenant, type Tenant } from "@/lib/db";
 import { FACT_MAX, type ActionResult } from "@/lib/validation";
@@ -22,17 +23,18 @@ const MASKED_VERIFY = "This fact holds [email] or [phone], so drafts can't use i
 const stripNul = (text: string) => text.replace(/\u0000/g, "");
 const FACT_NOT_FOUND = { ok: false, error: "Fact not found." } as const;
 
-// What the AI is asked to return.
-const Extracted = z.object({
-  facts: z
-    .array(
-      z.object({
-        text: z.string().max(FACT_MAX).describe("The fact as one short sentence about the organization, at most 300 characters"),
-        quote: z.string().max(600).describe("The sentence(s) the fact comes from, copied exactly from the page"),
-        page: z.number().int().describe("The number of the page the quote is on"),
-      }),
-    )
-    .max(150),
+// What the AI is asked to return. A fact over FACT_MAX is dropped on its own (cutting a fact could
+// change what it says), a long quote is cut to fit (its start is still checked against the page),
+// and only the first 150 facts are kept: one wordy fact never throws the whole read away.
+export const Extracted = z.object({
+  facts: keptItems(
+    z.object({
+      text: z.string().max(FACT_MAX).describe(`The fact as one short sentence about the organization, at most ${FACT_MAX} characters`),
+      quote: clamped(600).describe("The sentence(s) the fact comes from, copied exactly from the page, at most 600 characters"),
+      page: z.number().int().describe("The number of the page the quote is on"),
+    }),
+    150,
+  ),
 });
 
 const SYSTEM = `You read a student organization's sponsorship packet and list the facts in it that a sponsorship email could use: what the organization is, its events and audience size, sponsorship tiers and their prices and benefits, past sponsors, and achievements.
@@ -62,7 +64,7 @@ export async function uploadFactSheet(owner: Membership, fileName: string, bytes
     system: SYSTEM,
     prompt: `List the facts in this sponsorship packet.\n\n<document>\n${document}\n</document>`,
     schema: Extracted,
-  });
+  }, { messages: { blocked: "The AI declined to read this file. Try exporting the packet again, or add the facts by hand." } });
   if (!extracted.ok) return extracted;
 
   // One copy of each fact, and only real pages.

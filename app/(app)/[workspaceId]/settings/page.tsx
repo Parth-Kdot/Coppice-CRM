@@ -277,6 +277,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                   <input name="enabled" type="checkbox" defaultChecked={ai.enabled} className="lg-check" />
                   <span>AI on for this workspace</span>
                 </label>
+                {/* AI fixes (additive): the two switches are separate on purpose. */}
+                <p className="lg-hint">This doesn&apos;t affect AI assistants; turn those off under AI assistants below.</p>
                 <div className="lg-setrow">
                   <span className="lg-label !mb-0">
                     Limit

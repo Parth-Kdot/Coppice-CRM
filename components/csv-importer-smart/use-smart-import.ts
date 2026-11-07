@@ -9,8 +9,9 @@ import { SMART_STAGES, type ActionResult, type ImportMapping, type SmartDecision
 // Smart import, the optional half of the CSV importer (components/csv-importer.tsx). The AI only
 // proposes: every reading shows the cell text it came from, and the person keeps, edits or drops
 // each one before anything is imported. The browser sends the free-text rows one chunk at a time
-// (lib/smart-import/), so a long sheet never needs one long server call; a rate limit stops the
-// reading until the person presses Continue, and nothing is retried on its own.
+// (lib/smart-import/), so a long sheet never needs one long server call; a rate limit pauses the
+// reading for a minute (counted down on the page, with Continue to go on sooner), and the server
+// never retries on its own.
 
 type Action<T> = (prev: T | null, form: FormData) => Promise<T>;
 
@@ -74,7 +75,7 @@ const withChunk = (current: RowProposal[], chunk: SmartChunk) =>
 function useReading() {
   const [session, setSession] = useState<(SmartStart & { mapping: string }) | null>(null);
   const [next, setNext] = useState(0);
-  const [readError, setReadError] = useState<{ error: string; rateLimited: boolean } | null>(null);
+  const [readError, setReadError] = useState<{ error: string; rateLimited: boolean; retryable: boolean } | null>(null);
   const [proposals, setProposals] = useState<RowProposal[]>([]);
   const [names, setNames] = useState<Map<number, string>>(new Map());
   const [edits, setEdits] = useState<Record<number, RowEdits>>({});
@@ -127,6 +128,9 @@ export function useSmartImport({
 
   // Rows the sheet says not to contact: found by code when the reading started, or by the reading.
   const doNotContact = new Set([...(session?.doNotContact ?? []).map((d) => d.row), ...reading.proposals.filter((p) => p.doNotContact).map((p) => p.row)]);
+  // Rows this year's sheet says committed or declined: they start skipped too (lib/smart-import/check.ts).
+  const outcomes = new Set(reading.proposals.filter((p) => p.outcome && !p.doNotContact).map((p) => p.row));
+  const heldBack = new Set([...doNotContact, ...outcomes]);
 
   const reset = () => {
     setOn(false);
@@ -140,7 +144,7 @@ export function useSmartImport({
   // Throws the reading away. The do-not-contact rows it skipped go back to the normal suggestion,
   // so the normal import never skips a row without saying why.
   const discardReading = () => {
-    if (doNotContact.size > 0) release([...doNotContact]);
+    if (heldBack.size > 0) release([...heldBack]);
     clearReading();
   };
 
@@ -192,12 +196,12 @@ export function useSmartImport({
       if (!form) break;
       const res = await actions.read(null, form);
       if (!res.ok) {
-        reading.setReadError({ error: res.error, rateLimited: res.rateLimited });
+        reading.setReadError({ error: res.error, rateLimited: res.rateLimited, retryable: res.retryable === true || res.rateLimited });
         reading.setNext(index);
         break;
       }
       reading.addChunk(res.data);
-      for (const p of res.data.proposals) if (p.doNotContact) choose(p.row, true);
+      for (const p of res.data.proposals) if (p.doNotContact || p.outcome) choose(p.row, true);
       reading.setNext(index + 1);
     }
     setBusy(false);
@@ -231,7 +235,7 @@ export function useSmartImport({
   const accept = (row: number, value: boolean) => choose(row, !value);
   // The rows a new preview must keep skipped: a matching reading's do-not-contact rows start
   // skipped again, like when they were found.
-  const heldRows = (mapping: ImportMapping) => (session && session.mapping === JSON.stringify(mapping) ? [...doNotContact] : []);
+  const heldRows = (mapping: ImportMapping) => (session && session.mapping === JSON.stringify(mapping) ? [...heldBack] : []);
 
   return {
     skipsHas: (row: number) => skips.has(row),
