@@ -695,6 +695,11 @@
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
+  .lg-usage-detail {
+    max-width: 66ch;
+    margin-top: 4px;
+    color: var(--ink-2);
+  }
   .lg-meter {
     display: grid;
     grid-template-columns: repeat(20, minmax(0, 1fr));

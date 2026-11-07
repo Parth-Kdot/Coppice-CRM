@@ -3,6 +3,7 @@ import type { AiFeature } from "@/generated/prisma/enums";
 import { generate, isConfigured, providerOf, type AiErrorCode, type GenerateRequest } from "@/lib/ai/client";
 import { dbNow } from "@/lib/claims";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
+import { breakdownAiUsage, type AiBreakdown } from "@/lib/ai/usage";
 import type { ActionResult } from "@/lib/validation";
 
 // Every AI call in the app goes through runAi(). In order, it:
@@ -43,6 +44,20 @@ export async function aiUsage(tenant: Tenant): Promise<AiUsage> {
   const since = new Date((await dbNow()).getTime() - AI_WINDOW_DAYS * DAY_MS);
   const used = await withTenant(tenant, (tx) => tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, createdAt: { gte: since } } }));
   return { enabled: workspace.aiEnabled, limit: workspace.aiMonthlyLimit, used };
+}
+
+// What the same 30-day count is made of, by feature, for Settings. One grouped query, scoped to
+// the workspace, counting failed calls too (they count toward the limit).
+export async function aiBreakdown(tenant: Tenant): Promise<AiBreakdown> {
+  const since = new Date((await dbNow()).getTime() - AI_WINDOW_DAYS * DAY_MS);
+  const groups = await withTenant(tenant, (tx) =>
+    tx.aiRun.groupBy({
+      by: ["feature", "status"],
+      where: { workspaceId: tenant.workspaceId, createdAt: { gte: since } },
+      _count: { _all: true },
+    }),
+  );
+  return breakdownAiUsage(groups.map((g) => ({ feature: g.feature, status: g.status, count: g._count._all })));
 }
 
 // Whether this person may make an AI call for this feature right now (steps 1 and 2 above).

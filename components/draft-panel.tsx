@@ -135,7 +135,7 @@ export function DraftPanel(props: Props) {
           Draft an email
         </h2>
         <p className="lg-hint">
-          Two drafts built only from verified facts. Nothing is sent from here: each one opens in your own mail. {props.usage.used} of {props.usage.limit} AI calls used in the last 30 days.
+          Two drafts built only from verified facts. Nothing is sent from here: each one opens in your own mail. {props.usage.used} of {props.usage.limit} AI calls used in the last 30 days. Drafting uses two AI calls: one to write both drafts, one to check them.
         </p>
       </div>
 
@@ -400,6 +400,7 @@ function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Props & { 
         {aiFindings.length > 0 && <FindingList findings={aiFindings} />}
         {aiRan && aiFindings.length === 0 && <p className="lg-hint">The AI found no statement the facts don&apos;t support.</p>}
         <p className="lg-hint mt-1">{status}</p>
+        <p className="lg-hint">Checking uses one AI call.</p>
         {checking && <QuillWait label="Checking..." />}
         {needsCheck && (
           <form action={checkAction} className="lg-cc-actions">
