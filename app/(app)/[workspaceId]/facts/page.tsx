@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { Disclosure, LazyDisclosure } from "@/components/ledger/disclosure";
-import { FactsIcon } from "@/components/ledger/icons";
 import { PacketUpload } from "@/components/ledger/packet-upload";
 import { PageHead } from "@/components/ledger/shared";
 import { isConfigured } from "@/lib/ai/client";
@@ -13,7 +12,9 @@ import { day } from "@/lib/dates";
 import { getFactSheet, hasMaskToken, isStale, type FactSheetView } from "@/lib/facts";
 import { FACT_MAX } from "@/lib/validation";
 import { addFact, deleteFact, deleteFactSheet, setFactVerified, updateFact, uploadFactSheet, verifyQuotedFacts } from "./actions";
-import { FactItem, FactSource, type FactView } from "./fact-item";
+import { FactBoard } from "./fact-board";
+import { ReadOnlyFacts, type FactView } from "./fact-item";
+import { PacketFiles } from "./packet-files";
 import "@/components/ledger/pages.css";
 import { pageTitle } from "../page-title";
 
@@ -28,9 +29,10 @@ export const maxDuration = 150;
 type Fact = FactSheetView["facts"][number];
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-// The fact sheet: the only things the AI drafter may say about the org. The owner checks what the
-// AI read from the packet (waiting first), verifies, edits or adds facts; officers read the
-// verified ones. Every action is the owner's, checked again on the server.
+// The fact sheet: the only things the AI drafter may say about the org. Every fact shows its
+// quote and whether the quote was found on its page, grouped by page, so the owner can check and
+// verify (or edit) it in place; officers read the verified ones. Every action is the owner's,
+// checked again on the server.
 export default async function FactSheetPage({ params }: PageProps<"/[workspaceId]/facts">) {
   const { workspaceId } = await params;
   const me = await requireMembershipOr404(workspaceId);
@@ -51,29 +53,23 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
     stale: isStale(f, now),
     masked: hasMaskToken(f.text),
   });
-  const waiting = sheet.facts.filter((f) => !f.verifiedAt).map(view);
-  const verified = sheet.facts.filter((f) => f.verifiedAt).map(view);
+  const facts = sheet.facts.map(view);
+  const showFile = sheet.sheets.length > 1;
 
   if (!isOwner) {
+    const verified = facts.filter((f) => f.verified);
     return (
       <div className="lg-page-facts">
         <PageHead title="Fact sheet" sub="Only verified facts here can appear in AI drafts." />
-        <section className="lg-factsec" aria-labelledby="facts-verified-h">
-          <h2 id="facts-verified-h" className="lg-factsec-h">
-            {verified.length === 0 ? "No verified facts yet. An owner adds them here." : `${plural(verified.length, "verified fact", "verified facts")} the drafter can use`}
-          </h2>
-          {verified.length > 0 && (
-            <ul className="lg-facts-list">
-              {verified.map((fact) => (
-                <li key={fact.id} className="lg-fact">
-                  <p className="lg-facttext">
-                    <span>{fact.text}</span>
-                  </p>
-                  {fact.fromPdf && <FactSource fact={{ ...fact, verifiedLine: null }} />}
-                </li>
-              ))}
-            </ul>
-          )}
+        <section className="lg-panel lg-factpanel" aria-labelledby="facts-verified-h">
+          <div className="lg-panel-head">
+            <h2 id="facts-verified-h" className="lg-panel-title">
+              Verified <span className="lg-panel-count">{verified.length}</span>
+            </h2>
+          </div>
+          <div className="lg-panel-body">
+            {verified.length === 0 ? <p className="lg-muted">No verified facts yet. An owner adds them here.</p> : <ReadOnlyFacts facts={verified} showFile={showFile} />}
+          </div>
         </section>
       </div>
     );
@@ -81,23 +77,8 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
 
   const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
   const aiReady = isConfigured() && ai.enabled;
-  const quoted = waiting.filter((f) => f.fromPdf && f.quoteFound && !f.masked).length;
-  const empty = sheet.facts.length === 0;
-  const list = (facts: FactView[]) => (
-    <ul className="lg-facts-list">
-      {facts.map((fact, i) => (
-        <FactItem
-          key={fact.id}
-          workspaceId={workspaceId}
-          fact={fact}
-          nextId={facts[i + 1]?.id ?? facts[i - 1]?.id ?? null}
-          setVerified={setFactVerified}
-          remove={deleteFact}
-          update={updateFact}
-        />
-      ))}
-    </ul>
-  );
+  const empty = facts.length === 0;
+  const hasPacket = sheet.sheets.length > 0;
 
   const addForm = (
     <ActionForm action={addFact} submitLabel="Add fact" successMessage="Added and verified." className="lg-addfact" primary={empty}>
@@ -111,58 +92,31 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
     </ActionForm>
   );
 
-  const upload = (
-    <>
-      {!aiReady ? (
-        <p>
-          {isConfigured() ? (
-            <>
-              Turn AI on in{" "}
-              <Link href={`/${workspaceId}/settings`} className="lg-link">
-                Settings
-              </Link>{" "}
-              to read a packet.
-            </>
-          ) : (
-            "AI isn't set up on this server yet, so a packet can't be read here."
-          )}
-        </p>
-      ) : (
+  const upload = !aiReady ? (
+    <p>
+      {isConfigured() ? (
         <>
-          <PacketUpload workspaceId={workspaceId} action={uploadFactSheet} />
-          <p className="lg-uploadnote">A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading usually takes under a minute.</p>
-          <Disclosure variant="inline" summary="What is sent">
-            <p className="lg-uploadnote">
-              The PDF&apos;s text goes to Google&apos;s free Gemini tier with emails and phone numbers masked, so don&apos;t upload anything you wouldn&apos;t
-              hand a sponsor. The facts it finds wait here until you verify them.
-            </p>
-          </Disclosure>
+          Turn AI on in{" "}
+          <Link href={`/${workspaceId}/settings`} className="lg-link">
+            Settings
+          </Link>{" "}
+          to read a packet.
         </>
-      )}
-      {sheet.sheets.length > 0 && (
-        <ul className="lg-files">
-          {sheet.sheets.map((s) => (
-            <li key={s.id}>
-              <FactsIcon size={18} />
-              <span className="lg-wrap-any">
-                {s.fileName}: {plural(s.pageCount, "page", "pages")}, uploaded {day(s.createdAt)} by {s.uploadedBy.name}
-              </span>
-              <ActionForm
-                action={deleteFactSheet}
-                submitLabel="Delete file"
-                submitAriaLabel={`Delete ${s.fileName}`}
-                successMessage="File and its facts deleted."
-                confirmMessage={`Delete ${s.fileName} and every fact read from it? Facts added by hand stay.`}
-                small
-                focusAfter=".lg-page-facts .lg-h1"
-              >
-                {ids}
-                <input type="hidden" name="factSheetId" value={s.id} />
-              </ActionForm>
-            </li>
-          ))}
-        </ul>
-      )}
+      ) : (
+        "AI isn't set up on this server yet, so a packet can't be read here."
+      )}{" "}
+      You can still add facts by hand.
+    </p>
+  ) : (
+    <>
+      <PacketUpload workspaceId={workspaceId} action={uploadFactSheet} />
+      <p className="lg-uploadnote">A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading usually takes under a minute.</p>
+      <Disclosure variant="inline" summary="What is sent">
+        <p className="lg-uploadnote">
+          The PDF&apos;s text goes to Google&apos;s free Gemini tier with emails and phone numbers masked, so don&apos;t upload anything you wouldn&apos;t hand a
+          sponsor. The facts it finds wait here until you verify them.
+        </p>
+      </Disclosure>
     </>
   );
 
@@ -170,70 +124,48 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
     <div className="lg-page-facts">
       <PageHead title="Fact sheet" sub="Only verified facts here can appear in AI drafts." />
 
-      {empty ? (
-        <>
-          <section className="lg-panel" aria-labelledby="facts-add-h" data-tour="facts-add">
-            <div className="lg-panel-head">
-              <h2 id="facts-add-h" className="lg-panel-title">
-                Add a fact
-              </h2>
-            </div>
-            <div className="lg-panel-body">{addForm}</div>
-          </section>
-          <section className="lg-panel" aria-labelledby="facts-upload-h" data-tour="facts-upload">
-            <div className="lg-panel-head">
-              <h2 id="facts-upload-h" className="lg-panel-title">
-                Or read them from your sponsorship packet
-              </h2>
-            </div>
-            <div className="lg-panel-body">{upload}</div>
-          </section>
-        </>
+      {hasPacket ? (
+        <PacketFiles
+          workspaceId={workspaceId}
+          remove={deleteFactSheet}
+          upload={upload}
+          files={sheet.sheets.map((s) => ({
+            id: s.id,
+            fileName: s.fileName,
+            line: `${plural(s.pageCount, "page", "pages")}, uploaded ${day(s.createdAt)} by ${s.uploadedBy.name}`,
+          }))}
+        />
       ) : (
-        <>
-          {waiting.length > 0 && (
-            <section className="lg-panel" aria-labelledby="facts-waiting-h">
-              <div className="lg-panel-head">
-                <h2 id="facts-waiting-h" className="lg-panel-title" tabIndex={-1}>
-                  Waiting for your check <span className="lg-panel-count">{waiting.length}</span>
-                </h2>
-                {quoted > 0 && (
-                  <ActionForm
-                    action={verifyQuotedFacts}
-                    submitLabel={quoted === waiting.length ? `Verify all ${quoted}` : `Verify all ${quoted} with quotes found`}
-                    successMessage={`${plural(quoted, "fact", "facts")} verified.`}
-                    primary
-                    small
-                    submitDataTour="facts-verify-all"
-                    focusAfter="#facts-verified-h"
-                  >
-                    {ids}
-                  </ActionForm>
-                )}
-              </div>
-              <div className="lg-panel-body">{list(waiting)}</div>
-            </section>
-          )}
-
-          <section className="lg-panel" aria-labelledby="facts-verified-h">
-            <div className="lg-panel-head">
-              <h2 id="facts-verified-h" className="lg-panel-title" tabIndex={-1}>
-                Verified <span className="lg-panel-count">{verified.length}</span>
-              </h2>
-            </div>
-            <div className="lg-panel-body">
-              {verified.length === 0 ? <p className="lg-muted">None yet. Drafts say nothing about your org until you verify a fact.</p> : list(verified)}
-              <LazyDisclosure variant="inline" summary="+ Add a fact" className="mt-3" data-tour="facts-add">
-                {addForm}
-              </LazyDisclosure>
-            </div>
-          </section>
-
-          <Disclosure summary="Upload another packet" count={sheet.sheets.length || undefined} data-tour="facts-upload" className="lg-factupload">
-            {upload}
-          </Disclosure>
-        </>
+        <section className="lg-panel" aria-labelledby="facts-upload-h" data-tour="facts-upload">
+          <div className="lg-panel-head">
+            <h2 id="facts-upload-h" className="lg-panel-title">
+              Read facts from your sponsorship packet
+            </h2>
+          </div>
+          <div className="lg-panel-body">{upload}</div>
+        </section>
       )}
+
+      <FactBoard
+        workspaceId={workspaceId}
+        facts={facts}
+        showFile={showFile}
+        setVerified={setFactVerified}
+        remove={deleteFact}
+        update={updateFact}
+        verifyQuoted={verifyQuotedFacts}
+        addSlot={
+          empty ? (
+            <div className="lg-factadd" data-tour="facts-add">
+              {addForm}
+            </div>
+          ) : (
+            <LazyDisclosure variant="inline" summary="+ Add a fact" className="lg-factadd" data-tour="facts-add">
+              {addForm}
+            </LazyDisclosure>
+          )
+        }
+      />
     </div>
   );
 }
