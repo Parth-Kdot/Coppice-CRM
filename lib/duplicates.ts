@@ -20,15 +20,66 @@ export function nameKey(name: string): string {
   return key || name.trim().toLowerCase();
 }
 
+// Hosts that many unrelated companies share (a LinkedIn page, a Linktree, a Google Site). Their
+// host alone says nothing about which company it is, so for these the key is the host plus the
+// path segment(s) that name the page: "linkedin.com/company/acme", "linktr.ee/acme".
+export const SHARED_HOSTS = [
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "x.com",
+  "twitter.com",
+  "linktr.ee",
+  "sites.google.com",
+  "google.com",
+  "youtube.com",
+  "github.com",
+  "medium.com",
+  "notion.site",
+  "wixsite.com",
+] as const;
+
+// Path words that only say what kind of page follows ("linkedin.com/company/acme",
+// "youtube.com/channel/x", "sites.google.com/view/acme"), so the next segment is kept too.
+const PAGE_KIND = new Set(["company", "companies", "in", "school", "showcase", "pages", "page", "groups", "channel", "c", "user", "view", "site", "s", "pg", "people", "org", "orgs"]);
+
+// A country or mobile prefix on a shared host ("uk.linkedin.com", "m.facebook.com") is the same site.
+const SITE_PREFIX = /^(?:m|mobile|web|[a-z]{2})\./;
+
+function sharedHost(host: string): string | null {
+  for (const shared of SHARED_HOSTS) {
+    if (host === shared) return shared;
+    if (host.endsWith(`.${shared}`) && SITE_PREFIX.test(host.slice(0, -shared.length))) return shared;
+  }
+  return null;
+}
+
 // "https://www.Acme.com/about" and "acme.com" both become "acme.com". Returns null for anything
-// that isn't a real domain, so blank or junk websites never match each other.
+// that isn't a real domain, so blank or junk websites never match each other. On a shared host the
+// page's own path is kept ("linkedin.com/company/acme"), and a bare shared host is null.
 export function domainKey(website: string | null | undefined): string | null {
   const raw = website?.trim();
   if (!raw) return null;
   try {
     const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
     const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/\.$/, "");
-    return host.includes(".") ? host : null;
+    if (!host.includes(".")) return null;
+    const shared = sharedHost(host);
+    if (!shared) return host;
+    const segments = url.pathname
+      .split("/")
+      .map((part) => {
+        try {
+          return decodeURIComponent(part).trim().toLowerCase();
+        } catch {
+          return part.trim().toLowerCase();
+        }
+      })
+      .filter(Boolean);
+    if (segments.length === 0) return null;
+    const take = PAGE_KIND.has(segments[0]) ? 2 : 1;
+    if (segments.length < take) return null;
+    return `${shared}/${segments.slice(0, take).join("/")}`;
   } catch {
     return null;
   }

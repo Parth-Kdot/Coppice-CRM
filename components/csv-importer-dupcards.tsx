@@ -73,9 +73,12 @@ export function RowCard({
     <div className="lg-dupcard" data-skipped={skipped || undefined}>
       <p className="lg-dupcard-top">
         <span className="lg-tag lg-muted">In your file, row {row}</span>
-        <span className="lg-dupstate" data-on={!skipped || undefined}>
-          {skipped ? "Will skip" : "Will import"}
-        </span>
+        {/* With its own switch the switch says it; otherwise one tag does. */}
+        {!withSwitch && (
+          <span className="lg-dupstate" data-on={!skipped || undefined}>
+            {skipped ? "Will skip" : "Will import"}
+          </span>
+        )}
       </p>
       <p className="lg-dupname">
         <span className="lg-nametext">{nameIn(group, row)}</span>
@@ -90,7 +93,6 @@ export function RowCard({
           question="Import this row?"
           value={skipped ? "skip" : "import"}
           onChange={(value) => choose(row, value === "skip")}
-          caption={skipped ? "Not imported." : "Added as a new company."}
           options={[
             { value: "import", label: "Will import", ariaLabel: `Import row ${row}` },
             { value: "skip", label: "Will skip", ariaLabel: `Skip row ${row}` },

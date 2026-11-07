@@ -55,6 +55,46 @@ describe("domainKey: websites on the same domain match", () => {
   });
 });
 
+describe("domainKey on hosts many companies share (SHARED_HOSTS)", () => {
+  test.for([
+    ["https://www.linkedin.com/company/acme/", "linkedin.com/company/acme"],
+    ["linkedin.com/company/Acme/about", "linkedin.com/company/acme"],
+    ["https://uk.linkedin.com/company/acme", "linkedin.com/company/acme"],
+    ["https://www.linkedin.com/in/jen-park", "linkedin.com/in/jen-park"],
+    ["https://m.facebook.com/acmerobotics", "facebook.com/acmerobotics"],
+    ["https://www.facebook.com/pages/acme", "facebook.com/pages/acme"],
+    ["instagram.com/acme_bots/", "instagram.com/acme_bots"],
+    ["https://x.com/acme", "x.com/acme"],
+    ["https://twitter.com/acme?lang=en", "twitter.com/acme"],
+    ["https://linktr.ee/acme", "linktr.ee/acme"],
+    ["https://sites.google.com/view/acme-club/home", "sites.google.com/view/acme-club"],
+    ["https://www.youtube.com/channel/UC123", "youtube.com/channel/uc123"],
+    ["https://github.com/acme/robot", "github.com/acme"],
+    ["https://medium.com/@acme", "medium.com/@acme"],
+    ["https://acme.notion.site/Sponsors-123", "acme.notion.site"],
+    ["https://acme.wixsite.com/club", "acme.wixsite.com"],
+  ] as const)("%j is %j", ([input, expected]) => {
+    expect(domainKey(input)).toBe(expected);
+  });
+
+  test.for(["https://www.linkedin.com/", "linkedin.com", "https://www.linkedin.com/company/", "https://facebook.com", "notion.site", "https://sites.google.com/view"])(
+    "%j names no page, so it never matches",
+    (input) => {
+      expect(domainKey(input)).toBeNull();
+    },
+  );
+
+  test("two companies' LinkedIn pages don't look alike, the same page does", () => {
+    expect(domainKey("linkedin.com/company/acme")).not.toBe(domainKey("linkedin.com/company/globex"));
+    expect(domainKey("https://www.linkedin.com/company/acme/")).toBe(domainKey("http://linkedin.com/company/ACME"));
+  });
+
+  test("a company's own domain that merely contains a shared host's name is its own", () => {
+    expect(domainKey("notlinkedin.com/company/x")).toBe("notlinkedin.com");
+    expect(domainKey("google.com.au")).toBe("google.com.au");
+  });
+});
+
 describe("matchReasons", () => {
   const acme = { nameKey: "acme", domainKey: "acme.com" };
   test("same name and website gives both reasons", () => {

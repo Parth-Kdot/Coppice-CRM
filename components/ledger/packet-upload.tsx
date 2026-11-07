@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Tick } from "@/components/ledger/marks";
 import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
@@ -38,14 +38,22 @@ export function PacketUpload({
   // The chosen name belongs to the result it was chosen before: once the server answers, it clears.
   const [chosen, setChosen] = useState<{ name: string; after: typeof state } | null>(null);
   const name = chosen && chosen.after === state ? chosen.name : null;
+  // Once the server answers, the input lets go of the file, so picking the same file again (fixed
+  // and re-exported under the same name) fires a change and is read again.
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (state && input.current) input.current.value = "";
+  }, [state]);
 
   return (
     <form action={formAction}>
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <div className="lg-filerow">
         <input
+          ref={input}
           id={`${id}-file`}
           name="file"
+          autoComplete="off"
           type="file"
           accept="application/pdf,.pdf"
           required

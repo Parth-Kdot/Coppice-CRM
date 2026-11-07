@@ -209,15 +209,74 @@ describe("managing facts", () => {
     expect(await facts.verifiedFacts(OWNER)).toEqual([]);
   });
 
-  it("an owner's edit is verified, and its quote is checked again", async () => {
+  it("an owner's edit is checked against its quote again, and verified only while the quote supports it", async () => {
     const { ids } = await uploaded();
-    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $3,000.")).toEqual({ ok: true, data: undefined });
-    expect(await one(ids[1])).toMatchObject({ text: "Gold tier costs $3,000.", quoteFound: false, verifiedById: "ownerA" });
-    await facts.updateFact(OWNER, ids[1], "Gold tier costs $2,500.");
-    expect(await one(ids[1])).toMatchObject({ quoteFound: true });
-    // A fact whose page is unknown can't be checked.
+    // The quote says $2,500: the edit is saved, but waits for a check instead of being verified.
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $3,000.")).toEqual({ ok: true, data: { verified: false } });
+    expect(await one(ids[1])).toMatchObject({ text: "Gold tier costs $3,000.", quoteFound: false, verifiedAt: null, verifiedById: null });
+    expect((await facts.verifiedFacts(OWNER)).map((f) => f.text)).not.toContain("Gold tier costs $3,000.");
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $2,500.")).toEqual({ ok: true, data: { verified: true } });
+    expect(await one(ids[1])).toMatchObject({ quoteFound: true, verifiedById: "ownerA" });
+    // A verified fact whose edit no longer matches goes back to waiting.
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $9,000.")).toEqual({ ok: true, data: { verified: false } });
+    expect(await one(ids[1])).toMatchObject({ verifiedAt: null });
+    // A fact whose page is unknown can't be checked, so it isn't verified either.
     await facts.updateFact(OWNER, ids[4], "Members won 3 awards in 2025.");
-    expect(await one(ids[4])).toMatchObject({ quoteFound: false, verifiedById: "ownerA" });
+    expect(await one(ids[4])).toMatchObject({ quoteFound: false, verifiedAt: null });
+    // A fact written by hand is the owner's own statement: its edit stays verified.
+    const added = await facts.addFact(OWNER, "We meet on Tuesdays.");
+    if (!added.ok) throw new Error(added.error);
+    expect(await facts.updateFact(OWNER, added.data.factId, "We meet on Thursdays.")).toEqual({ ok: true, data: { verified: true } });
+  });
+
+  it("drops extracted facts made of masked contact details, and refuses them by hand", async () => {
+    fakeGemini(
+      answer(
+        JSON.stringify({
+          facts: [
+            ...EXTRACTED.facts.slice(0, 1),
+            { text: "Contact us at [email] or [phone].", quote: "Contact us at [email] or [phone].", page: 1 },
+            { text: "Call [PHONE] for tiers.", quote: "Call [phone] for tiers.", page: 1 },
+          ],
+        }),
+      ),
+    );
+    const result = await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET);
+    expect(result).toMatchObject({ ok: true, data: { facts: 1 } });
+    expect((await items()).map((f) => f.text)).toEqual([EXTRACTED.facts[0].text]);
+    expect(await facts.addFact(OWNER, "Reach us at [email].")).toEqual({ ok: false, error: facts.MASKED_FACT });
+    const [first] = await items();
+    const id = (await withTenant(OWNER, (tx) => tx.factSheetItem.findFirstOrThrow({ where: { text: first.text }, select: { id: true } }))).id;
+    expect(await facts.updateFact(OWNER, id, "Write to [email].")).toEqual({ ok: false, error: facts.MASKED_FACT });
+    // One stored before this check can't be verified, and never reaches the drafter.
+    await withTenant(OWNER, (tx) => tx.factSheetItem.update({ where: { id }, data: { text: "Old [phone] fact." } }));
+    expect(await facts.setFactVerified(OWNER, id, true)).toEqual({ ok: false, error: expect.stringContaining("[email] or [phone]") });
+    await withTenant(OWNER, (tx) => tx.factSheetItem.update({ where: { id }, data: { verifiedAt: new Date(), verifiedById: "ownerA" } }));
+    expect(await facts.verifiedFacts(OWNER)).toEqual([]);
+  });
+
+  it("strips NUL characters from the PDF's text before saving it", async () => {
+    vi.mocked(unpdf.extractText).mockResolvedValueOnce({ totalPages: 1, text: ["Our annual hackathon draws 600 students\u0000 over 36 hours."] } as never);
+    fakeGemini(answer(JSON.stringify({ facts: [{ text: "The hackathon\u0000 draws 600 students.", quote: "Our annual hackathon draws 600 students over 36 hours.", page: 1 }] })));
+    const result = await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET);
+    expect(result).toMatchObject({ ok: true, data: { facts: 1 } });
+    const [page] = await withTenant(OWNER, (tx) => tx.factSheetPage.findMany({ select: { text: true } }));
+    expect(page.text).not.toContain("\u0000");
+    expect((await items()).map((f) => f.text)).toEqual(["The hackathon draws 600 students."]);
+  });
+
+  it("verifies every fact whose quote was found in one go, owners only", async () => {
+    const { ids } = await uploaded();
+    expect(await facts.verifyQuotedFacts(OFFICER)).toEqual({ ok: false, error: "Only the workspace owner can do that." });
+    expect(await facts.verifyQuotedFacts(OTHER_ORG)).toEqual({ ok: true, data: { verified: 0 } });
+    const found = (await items()).filter((f) => f.quoteFound).length;
+    expect(await facts.verifyQuotedFacts(OWNER)).toEqual({ ok: true, data: { verified: found } });
+    const after = await items();
+    expect(after.filter((f) => f.verifiedAt !== null).map((f) => f.quoteFound)).toEqual(Array(found).fill(true));
+    expect(after.filter((f) => !f.quoteFound).every((f) => f.verifiedAt === null)).toBe(true);
+    expect(ids).toHaveLength(6);
+    expect(await asUser("officerA", () => actions.verifyQuotedFacts(null, form({ workspaceId: "a" })))).toEqual({ ok: false, error: "Only the workspace owner can do that." });
+    expect(await asUser("ownerA", () => actions.verifyQuotedFacts(null, form({ workspaceId: "a" })))).toEqual({ ok: true, data: undefined });
   });
 
   it("adds a fact by hand as verified, and deletes facts and files", async () => {
@@ -317,7 +376,7 @@ describe("fact sheet actions", () => {
     const ref = { workspaceId: "a", factId };
     const as = (fn: () => Promise<unknown>) => asUser("ownerA", fn);
     expect(await as(() => actions.setFactVerified(null, form({ ...ref, verified: "0" })))).toEqual({ ok: true, data: undefined });
-    expect(await as(() => actions.updateFact(null, form({ ...ref, text: "  Edited fact.  " })))).toEqual({ ok: true, data: undefined });
+    expect(await as(() => actions.updateFact(null, form({ ...ref, text: "  Edited fact.  " })))).toEqual({ ok: true, data: { verified: true } });
     expect(await as(() => actions.addFact(null, form({ workspaceId: "a", text: "Another fact." })))).toEqual({ ok: true, data: undefined });
     expect((await items()).map((f) => [f.text, f.verifiedById])).toEqual([
       ["Another fact.", "ownerA"],
@@ -342,7 +401,7 @@ describe("fact sheet actions", () => {
     ["delete a file with a bad id", () => actions.deleteFactSheet(null, form({ workspaceId: "a", factSheetId: "" })), "File not found."],
     ["delete a missing file", () => actions.deleteFactSheet(null, form({ workspaceId: "a", factSheetId: "missing" })), "File not found."],
   ] as const)("refuses %s", async ([, run, error]) => {
-    expect(await asUser("ownerA", run)).toEqual({ ok: false, error });
+    expect(await asUser<unknown>("ownerA", run)).toEqual({ ok: false, error });
   });
 
   it("refuses an officer on every fact action", async () => {
@@ -354,7 +413,7 @@ describe("fact sheet actions", () => {
       () => actions.deleteFact(null, form({ workspaceId: "a", factId: "f" })),
       () => actions.deleteFactSheet(null, form({ workspaceId: "a", factSheetId: "s" })),
     ]) {
-      expect(await asUser("officerA", run)).toEqual({ ok: false, error: owner });
+      expect(await asUser<unknown>("officerA", run)).toEqual({ ok: false, error: owner });
     }
   });
 });
