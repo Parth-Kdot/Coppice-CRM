@@ -24,9 +24,11 @@ export type FieldConflict = { field: EditableField; theirs: string | null; yours
 
 // Saving either succeeds, stops to ask about look-alike companies, or (for edits) stops because
 // someone else changed the same field first.
+// Look-alikes are listed up to MATCH_LIMIT, name matches first; `total` counts them all, so the form
+// can say "and 280 more".
 export type SaveResult =
   | { status: "saved"; companyId: string }
-  | { status: "possible-duplicates"; matches: DuplicateMatch[] }
+  | { status: "possible-duplicates"; matches: DuplicateMatch[]; total: number }
   | { status: "conflict"; conflicts: FieldConflict[] };
 
 // An edit: the values the person submitted, and the values the form showed when it loaded.
@@ -34,34 +36,54 @@ export type CompanyEdit = { changes: CompanyFields; original: CompanyFields };
 
 const keysFor = (fields: CompanyFields) => ({ nameKey: nameKey(fields.name), domainKey: domainKey(fields.website) });
 
-// Companies in this workspace (active or archived) that look like `keys`, minus pairs already
-// marked separate.
-async function findMatches(
-  tx: Tx,
-  workspaceId: string,
-  keys: { nameKey: string; domainKey: string | null },
-  excludeId?: string,
-): Promise<DuplicateMatch[]> {
-  const candidates = await tx.company.findMany({
-    where: {
-      workspaceId,
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-      OR: [{ nameKey: keys.nameKey }, ...(keys.domainKey ? [{ domainKey: keys.domainKey }] : [])],
-    },
-    select: { id: true, name: true, website: true, nameKey: true, domainKey: true, archivedAt: true },
-    orderBy: { createdAt: "asc" },
-  });
-  let separate = new Set<string>();
-  if (excludeId && candidates.length > 0) {
+// At most this many look-alikes are listed (and sent back as "separate entries"); the rest are counted.
+export const MATCH_LIMIT = 20;
+
+type Keys = { nameKey: string; domainKey: string | null };
+
+// Which companies count as look-alikes of `keys`: same name or same website, in this workspace,
+// active or archived, minus this company itself and the ones already marked separate from it.
+async function matchWhere(tx: Tx, workspaceId: string, keys: Keys, excludeId?: string): Promise<Prisma.CompanyWhereInput> {
+  const skip: string[] = [];
+  if (excludeId) {
     const decisions = await tx.companyPairDecision.findMany({
       where: { workspaceId, OR: [{ companyAId: excludeId }, { companyBId: excludeId }] },
       select: { companyAId: true, companyBId: true },
     });
-    separate = new Set(decisions.map((d) => (d.companyAId === excludeId ? d.companyBId : d.companyAId)));
+    skip.push(excludeId, ...decisions.map((d) => (d.companyAId === excludeId ? d.companyBId : d.companyAId)));
   }
-  return candidates
-    .filter((c) => !separate.has(c.id))
-    .map((c) => ({ id: c.id, name: c.name, website: c.website, archived: c.archivedAt !== null, matchedOn: matchReasons(keys, c) }));
+  return {
+    workspaceId,
+    ...(skip.length > 0 ? { id: { notIn: skip } } : {}),
+    OR: [{ nameKey: keys.nameKey }, ...(keys.domainKey ? [{ domainKey: keys.domainKey }] : [])],
+  };
+}
+
+// The first MATCH_LIMIT look-alikes, same name first (oldest first within each), and how many
+// there are in all. Never an unbounded list: a shared website can match hundreds.
+async function findMatches(tx: Tx, workspaceId: string, keys: Keys, excludeId?: string): Promise<{ matches: DuplicateMatch[]; total: number }> {
+  const where = await matchWhere(tx, workspaceId, keys, excludeId);
+  const select = { id: true, name: true, website: true, nameKey: true, domainKey: true, archivedAt: true } as const;
+  const byName = await tx.company.findMany({ where: { AND: [where, { nameKey: keys.nameKey }] }, select, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: MATCH_LIMIT });
+  const bySite =
+    keys.domainKey && byName.length < MATCH_LIMIT
+      ? await tx.company.findMany({
+          where: { AND: [where, { domainKey: keys.domainKey }, { nameKey: { not: keys.nameKey } }] },
+          select,
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: MATCH_LIMIT - byName.length,
+        })
+      : [];
+  const found = [...byName, ...bySite];
+  const total = found.length < MATCH_LIMIT ? found.length : await tx.company.count({ where });
+  const matches = found.map((c) => ({ id: c.id, name: c.name, website: c.website, archived: c.archivedAt !== null, matchedOn: matchReasons(keys, c) }));
+  return { matches, total };
+}
+
+// Every look-alike's id, for "Separate entries: save anyway" when there were more than the form could list.
+async function allMatchIds(tx: Tx, workspaceId: string, keys: Keys, excludeId?: string): Promise<string[]> {
+  const rows = await tx.company.findMany({ where: await matchWhere(tx, workspaceId, keys, excludeId), select: { id: true } });
+  return rows.map((r) => r.id);
 }
 
 // Remember "these are separate" for each acknowledged match, so the pair never flags again.
@@ -73,21 +95,28 @@ async function recordSeparate(tx: Tx, tenant: Tenant, companyId: string, otherId
   if (data.length > 0) await tx.companyPairDecision.createMany({ data, skipDuplicates: true });
 }
 
-// Matches the person hasn't yet said are separate. Ids they "acknowledged" that aren't actual
-// matches are ignored, so a stale or tampered list can't create decisions for random companies.
-function split(matches: DuplicateMatch[], separateFrom: string[]) {
+// Looks for look-alikes and works out which ones the person has already said are separate. Ids
+// they "acknowledged" that aren't actual matches are ignored, so a stale or tampered list can't
+// create decisions for random companies. When there were more matches than the form could list
+// and the person said "separate" to every one it listed, they said it to the whole list ("and 280
+// more"): the server records a decision for every match it finds, rather than trusting ids from
+// the browser.
+async function resolveMatches(tx: Tx, workspaceId: string, keys: Keys, separateFrom: string[], excludeId?: string) {
+  const { matches, total } = await findMatches(tx, workspaceId, keys, excludeId);
   const acknowledged = new Set(separateFrom);
-  return {
-    unresolved: matches.filter((m) => !acknowledged.has(m.id)),
-    confirmedSeparate: matches.filter((m) => acknowledged.has(m.id)).map((m) => m.id),
-  };
+  const unresolved = matches.filter((m) => !acknowledged.has(m.id));
+  if (unresolved.length > 0) {
+    return { unresolved, unresolvedTotal: total - (matches.length - unresolved.length), confirmedSeparate: [] };
+  }
+  const confirmedSeparate = total > matches.length ? await allMatchIds(tx, workspaceId, keys, excludeId) : matches.map((m) => m.id);
+  return { unresolved, unresolvedTotal: 0, confirmedSeparate };
 }
 
 export function createCompany(tenant: Tenant, fields: CompanyFields, separateFrom: string[] = []): Promise<SaveResult> {
   return withTenant(tenant, async (tx) => {
     const keys = keysFor(fields);
-    const { unresolved, confirmedSeparate } = split(await findMatches(tx, tenant.workspaceId, keys), separateFrom);
-    if (unresolved.length > 0) return { status: "possible-duplicates", matches: unresolved };
+    const { unresolved, unresolvedTotal, confirmedSeparate } = await resolveMatches(tx, tenant.workspaceId, keys, separateFrom);
+    if (unresolved.length > 0) return { status: "possible-duplicates", matches: unresolved, total: unresolvedTotal };
     const company = await tx.company.create({
       data: { workspaceId: tenant.workspaceId, ...fields, ...keys },
       select: { id: true },
@@ -129,8 +158,8 @@ export function updateCompany(
     let keys: ReturnType<typeof keysFor> | undefined;
     if (changed.includes("name") || changed.includes("website")) {
       keys = keysFor({ ...current, ...changes } as CompanyFields);
-      const { unresolved, confirmedSeparate } = split(await findMatches(tx, tenant.workspaceId, keys, companyId), separateFrom);
-      if (unresolved.length > 0) return { ok: true, data: { status: "possible-duplicates", matches: unresolved } };
+      const { unresolved, unresolvedTotal, confirmedSeparate } = await resolveMatches(tx, tenant.workspaceId, keys, separateFrom, companyId);
+      if (unresolved.length > 0) return { ok: true, data: { status: "possible-duplicates", matches: unresolved, total: unresolvedTotal } };
       await recordSeparate(tx, tenant, companyId, confirmedSeparate);
     }
 
@@ -170,68 +199,109 @@ export function unarchiveCompany(tenant: Tenant, companyId: string): Promise<Act
   });
 }
 
-// Everything the company page shows. Stage history is capped at the latest 50 moves and the
-// outreach log at the latest 100.
+// How much of a company's history the page loads: the latest 100 outreach entries and 50 stage
+// moves, or with "Show older" up to 500 of each. The totals are always counted, so the page can
+// say "the latest 100 of 200".
+export const DETAIL_TAKE = { outreach: 100, history: 50, max: 500 } as const;
+export type DetailOptions = { outreach?: number; history?: number };
+
+// Everything the company page shows about the company itself.
 //
 // The lists are loaded one query at a time on purpose. Asked for all of them in one nested query,
 // Prisma runs the parts at the same moment on the transaction's single connection, which the pg
 // driver only tolerates with a deprecation warning (and pg 9 will refuse).
-export function getCompanyDetail(tenant: Tenant, companyId: string) {
-  return withTenant(tenant, async (tx) => {
-    const scope = { companyId, workspaceId: tenant.workspaceId };
-    const company = await tx.company.findFirst({
-      where: { id: companyId, workspaceId: tenant.workspaceId },
-      select: {
-        id: true,
-        name: true,
-        industry: true,
-        website: true,
-        notes: true,
-        stage: true,
-        archivedAt: true,
-        updatedAt: true,
-        lastContactedAt: true,
-        nextFollowUpAt: true,
-        // Read only; whether the claim is still live is decided against dbNow() (lib/claims.ts).
-        claimedById: true,
-        claimExpiresAt: true,
-        claimedVia: true,
-        claimedBy: { select: { name: true } },
-      },
-    });
-    if (!company) return null;
-    const contacts = await tx.contact.findMany({
-      where: scope,
-      select: { id: true, name: true, email: true, title: true },
-      orderBy: { createdAt: "asc" },
-    });
-    const outreach = await tx.outreach.findMany({
-      where: scope,
-      select: {
-        id: true,
-        channel: true,
-        note: true,
-        sentAt: true,
-        aiDraftId: true,
-        gotReply: true,
-        via: true,
-        sender: { select: { name: true } },
-        template: { select: { name: true } },
-      },
-      orderBy: { sentAt: "desc" },
-      take: 100,
-    });
-    const stageChanges = await tx.stageChange.findMany({
-      where: scope,
-      select: { id: true, fromStage: true, toStage: true, changedAt: true, via: true, changedBy: { select: { name: true } } },
-      orderBy: { changedAt: "desc" },
-      take: 50,
-    });
-    return { ...company, contacts, outreach, stageChanges };
+export function getCompanyDetail(tenant: Tenant, companyId: string, options: DetailOptions = {}) {
+  return withTenant(tenant, (tx) => readCompanyDetail(tx, tenant, companyId, options));
+}
+
+async function readCompanyDetail(tx: Tx, tenant: Tenant, companyId: string, options: DetailOptions) {
+  const scope = { companyId, workspaceId: tenant.workspaceId };
+  const take = (n: number | undefined, fallback: number) => Math.min(DETAIL_TAKE.max, Math.max(1, Math.floor(n ?? fallback)));
+  const company = await tx.company.findFirst({
+    where: { id: companyId, workspaceId: tenant.workspaceId },
+    select: {
+      id: true,
+      name: true,
+      industry: true,
+      website: true,
+      notes: true,
+      stage: true,
+      archivedAt: true,
+      updatedAt: true,
+      lastContactedAt: true,
+      nextFollowUpAt: true,
+      // Read only; whether the claim is still live is decided against dbNow() (lib/claims.ts).
+      claimedById: true,
+      claimExpiresAt: true,
+      claimedVia: true,
+      claimedBy: { select: { name: true } },
+      _count: { select: { outreach: true, stageChanges: true } },
+    },
   });
+  if (!company) return null;
+  const contacts = await tx.contact.findMany({
+    where: scope,
+    select: { id: true, name: true, email: true, title: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const outreach = await tx.outreach.findMany({
+    where: scope,
+    select: {
+      id: true,
+      channel: true,
+      note: true,
+      sentAt: true,
+      aiDraftId: true,
+      gotReply: true,
+      via: true,
+      sender: { select: { name: true } },
+      template: { select: { name: true } },
+    },
+    orderBy: [{ sentAt: "desc" }, { id: "desc" }],
+    take: take(options.outreach, DETAIL_TAKE.outreach),
+  });
+  const stageChanges = await tx.stageChange.findMany({
+    where: scope,
+    select: { id: true, fromStage: true, toStage: true, changedAt: true, via: true, changedBy: { select: { name: true } } },
+    orderBy: [{ changedAt: "desc" }, { id: "desc" }],
+    take: take(options.history, DETAIL_TAKE.history),
+  });
+  const { _count, ...rest } = company;
+  return { ...rest, contacts, outreach, stageChanges, outreachTotal: _count.outreach, stageChangeTotal: _count.stageChanges };
 }
 
 export type CompanyDetail = NonNullable<Awaited<ReturnType<typeof getCompanyDetail>>>;
+
+// Active companies that look like this one (same name or website, not marked separate), for the
+// header's "Same as Acme: archive this one". A few at most.
+export type LookAlike = { id: string; name: string };
+
+// The whole company page in one transaction, one query after another: the company, the
+// workspace's industries (for Edit details), its templates (for the log form) and up to three
+// active look-alikes. One pooled connection per page view instead of one per list.
+export function getCompanyPage(tenant: Tenant, companyId: string, options: DetailOptions = {}) {
+  return withTenant(tenant, async (tx) => {
+    const company = await readCompanyDetail(tx, tenant, companyId, options);
+    if (!company) return null;
+    const industries = await readIndustries(tx, tenant);
+    const templates = await tx.template.findMany({
+      where: { workspaceId: tenant.workspaceId, archivedAt: null },
+      select: { id: true, name: true, body: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    });
+    let lookAlikes: LookAlike[] = [];
+    if (company.archivedAt === null) {
+      const where = await matchWhere(tx, tenant.workspaceId, keysFor(company), companyId);
+      lookAlikes = await tx.company.findMany({
+        where: { AND: [where, { archivedAt: null }] },
+        select: { id: true, name: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 3,
+      });
+    }
+    return { company, industries, templates, lookAlikes };
+  });
+}
 
 // The latest outreach on a company, for "Which outreach got the reply?" after a stage move.
 export const REPLY_CHOICES = 10;
@@ -266,16 +336,18 @@ export function replyChoices(tenant: Tenant, companyId: string): Promise<ReplyCh
 // Industries already used in this workspace, for the industry box's suggestions, so "Tech",
 // "tech" and "Technology" don't drift apart. Capped at 200.
 export function listIndustries(tenant: Tenant): Promise<string[]> {
-  return withTenant(tenant, async (tx) => {
-    const rows = await tx.company.findMany({
-      where: { workspaceId: tenant.workspaceId, industry: { not: null } },
-      distinct: ["industry"],
-      select: { industry: true },
-      orderBy: { industry: "asc" },
-      take: 200,
-    });
-    return rows.map((r) => r.industry as string);
+  return withTenant(tenant, (tx) => readIndustries(tx, tenant));
+}
+
+async function readIndustries(tx: Tx, tenant: Tenant): Promise<string[]> {
+  const rows = await tx.company.findMany({
+    where: { workspaceId: tenant.workspaceId, industry: { not: null } },
+    distinct: ["industry"],
+    select: { industry: true },
+    orderBy: { industry: "asc" },
+    take: 200,
   });
+  return rows.map((r) => r.industry as string);
 }
 
 export type DuplicatePair = { a: DuplicateMatch; b: DuplicateMatch; matchedOn: MatchReason[] };

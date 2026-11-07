@@ -558,6 +558,10 @@ model Outreach {
   // The AI draft this email came from, if any (AI feature 1), so stats can compare AI-drafted and
   // hand-written emails. Always a draft of the same workspace (composite key).
   aiDraftId   String?
+  // A key the log form makes once per entry (a UUID), so a double submit, a retry after a
+  // timeout or a second tab can never log the same outreach twice. Null for rows logged
+  // before it existed and for the AI assistant's logs.
+  clientKey   String?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   company   Company   @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
@@ -571,8 +575,11 @@ model Outreach {
   @@index([workspaceId, templateId])
   @@index([aiDraftId, workspaceId])
   @@index([companyId, workspaceId])
+  // A company's latest outreach first (the queue's last note, the company page's log).
+  @@index([companyId, workspaceId, sentAt(sort: Desc)])
   @@index([senderId])
   @@index([templateId])
+  @@unique([workspaceId, clientKey])
 }
 
 // ----- AI (feature 1: the Fact-Locked Pitch Drafter) -----

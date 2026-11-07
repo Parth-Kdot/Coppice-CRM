@@ -17,7 +17,9 @@ import {
   updateContact,
 } from "@/app/(app)/[workspaceId]/companies/actions";
 import type { Membership } from "@/lib/authz";
+import * as claims from "@/lib/claims";
 import * as companies from "@/lib/companies";
+import { addDays } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { isWebAddress, websiteHref } from "@/lib/validation";
 import { form, redirectTo } from "./helpers/form";
@@ -26,7 +28,9 @@ import { resetAndSeed } from "./helpers/seed";
 
 // Real server actions, real database as app_user. Only Next.js's request APIs are swapped.
 vi.mock("next/headers", () => import("./helpers/next-request"));
-vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// A spy rather than a no-op, so a test can check which pages an action refreshes.
+const { revalidatePath } = vi.hoisted(() => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath }));
 
 const A: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
 const B: Membership = { userId: "ownerB", workspaceId: "b", role: "owner" };
@@ -150,7 +154,7 @@ describe("createCompany", () => {
     const first = await asUser("ownerA", () => create({ name: "ACME, Inc." }));
     expect(first).toEqual({
       ok: true,
-      data: { status: "possible-duplicates", matches: [{ id: acme, name: "Acme Corp", website: "acme.com", archived: false, matchedOn: ["name"] }] },
+      data: { status: "possible-duplicates", matches: [{ id: acme, name: "Acme Corp", website: "acme.com", archived: false, matchedOn: ["name"] }], total: 1 },
     });
     await expect(asUser("ownerA", () => create({ name: "ACME, Inc.", separateFrom: acme }))).rejects.toEqual(toNewCompany);
     expect(await withTenant(A, (tx) => tx.companyPairDecision.count())).toBe(1);
@@ -448,5 +452,60 @@ describe("the board's Possible duplicates box", () => {
     expect(await asUser("ownerA", () => keepSeparate(null, form({ workspaceId: "a", companyId: "", otherId: "dupe-2" })))).toEqual(NOT_OK);
     expect(await asUser("ownerA", () => archiveDuplicate(null, form({ workspaceId: "a", keepId: "dupe-1", archiveId: "" })))).toEqual(NOT_OK);
     expect(await listed()).toEqual([["dupe-1", "dupe-2"]]);
+  });
+});
+
+describe("de-bloat pass (P2): the server stays the backstop", () => {
+  const ref = (companyId: string) => form({ workspaceId: "a", companyId });
+
+  it("an officer can't move or archive a company someone else holds, even with the buttons hidden", async () => {
+    const acme = await make(A, "Acme");
+    await claims.claimCompany(A, acme);
+    expect(await asUser("officerA", () => moveStage(null, form({ workspaceId: "a", companyId: acme, stage: "REPLIED" })))).toEqual({
+      ok: false,
+      error: expect.stringContaining("ownerA holds this company"),
+    });
+    expect(await asUser("officerA", () => archiveCompany(null, ref(acme)))).toEqual({ ok: false, error: expect.stringContaining("ownerA holds this company") });
+    expect(await row(acme)).toMatchObject({ stage: "NOT_CONTACTED", archivedAt: null, claimedById: "ownerA" });
+  });
+
+  it("a lost claim refreshes the company page and the queue, so they show the winner", async () => {
+    const acme = await make(A, "Acme");
+    await claims.claimCompany(A, acme);
+    revalidatePath.mockClear();
+    expect(await asUser("officerA", () => claimCompany(null, ref(acme)))).toEqual({ ok: false, error: expect.stringContaining("claimed this first") });
+    expect(revalidatePath).toHaveBeenCalledWith(companyPage(acme));
+    expect(revalidatePath).toHaveBeenCalledWith("/a");
+  });
+
+  it("'Separate entries' with more than 20 look-alikes saves (it used to fail on the 20-id limit)", async () => {
+    await withTenant(A, (tx) =>
+      tx.company.createMany({
+        data: Array.from({ length: 30 }, (_, i) => ({ workspaceId: "a", name: `Person ${i}`, website: `linkedin.com/in/p${i}`, nameKey: `person ${i}`, domainKey: "linkedin.com" })),
+      }),
+    );
+    const fields = { workspaceId: "a", name: "Recruiting", website: "linkedin.com/in/new", industry: "", notes: "" };
+    const first = await asUser("ownerA", () => createCompany(null, form(fields)));
+    if (!first.ok || first.data.status !== "possible-duplicates") throw new Error("expected look-alikes");
+    expect(first.data.matches).toHaveLength(20);
+    expect(first.data.total).toBe(30);
+    const listed = first.data.matches.map((m) => m.id).join(",");
+    await expect(asUser("ownerA", () => createCompany(null, form({ ...fields, separateFrom: listed })))).rejects.toEqual(toNewCompany);
+    expect(await withTenant(A, (tx) => tx.companyPairDecision.count())).toBe(30);
+  });
+
+  it("logging the same form twice (one clientKey) adds one entry; a malformed key is refused", async () => {
+    const acme = await make(A, "Acme");
+    await claims.claimCompany(A, acme);
+    const today = await claims.dbToday();
+    const fields = { workspaceId: "a", companyId: acme, channel: "EMAIL", note: "Sent", followUpOn: addDays(today, 7), clientKey: "6f1c1f1e-8a6f-4d8e-9f39-0c8a4b2d7e11" };
+    const [one, two] = await Promise.all([asUser("ownerA", () => logOutreach(null, form(fields))), asUser("ownerA", () => logOutreach(null, form(fields)))]);
+    expect(one).toEqual(OK);
+    expect(two).toEqual(OK);
+    expect(await withTenant(A, (tx) => tx.outreach.count())).toBe(1);
+    expect(await asUser("ownerA", () => logOutreach(null, form({ ...fields, clientKey: "not-a-key" })))).toEqual(NOT_OK);
+    // No key at all still logs (an older page, the AI assistant).
+    expect(await asUser("ownerA", () => logOutreach(null, form({ ...fields, clientKey: "" })))).toEqual(OK);
+    expect(await withTenant(A, (tx) => tx.outreach.count())).toBe(2);
   });
 });

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useId, useState } from "react";
+import { createContext, useActionState, useContext, useEffect, useId, useState } from "react";
 import "@/components/ledger/zod-jitless";
+import { LazyDisclosure } from "@/components/ledger/disclosure";
 import { DuplicateIcon, WarningIcon } from "@/components/ledger/icons";
 import { IndustryField } from "@/components/ledger/industry-field";
 import { Tick } from "@/components/ledger/marks";
@@ -28,6 +29,10 @@ type Props = {
   | { mode: "edit"; companyId: string; initial: CompanyValues; archiveAsDuplicate: Action<undefined> }
 );
 
+// Set by the company header while Edit details is open in place: close(true) after a save, close(false) on Cancel.
+export const EditDetailsContext = createContext<{ close: (saved: boolean) => void } | null>(null);
+const useEditDetails = () => useContext(EditDetailsContext);
+
 const EMPTY: CompanyValues = { name: "", industry: "", website: "", notes: "" };
 const LABELS: Record<keyof CompanyValues, string> = { name: "Name", industry: "Industry", website: "Website", notes: "Notes" };
 
@@ -41,8 +46,11 @@ const stored = (form: FormData): CompanyValues => {
 const reason = (matchedOn: ("name" | "website")[]) => (matchedOn.length === 2 ? "same name and website" : `same ${matchedOn[0]}`);
 
 // Add and edit form for a company. The boxes are controlled (kept in React state) so nothing
-// typed is lost when the server stops to ask about look-alikes or reports a conflict.
+// typed is lost when the server stops to ask about look-alikes or reports a conflict. Adding: name,
+// website and industry, with notes one click away. Editing: opened in place from the company
+// header's ⋯ menu, with Cancel; it closes itself after a save.
 export function CompanyForm(props: Props) {
+  const editor = useEditDetails();
   const initial = props.mode === "edit" ? props.initial : EMPTY;
   const [values, setValues] = useState(initial);
   // The values this form was based on, sent with every edit so the server can tell whether
@@ -80,8 +88,11 @@ export function CompanyForm(props: Props) {
 
   const result = state?.ok ? state.data : null;
   useEffect(() => {
-    if (result?.status === "saved" && props.mode === "edit") notify("Saved.");
-  }, [result, props.mode, notify]);
+    if (result?.status === "saved" && props.mode === "edit") {
+      notify("Saved.");
+      editor?.close(true);
+    }
+  }, [result, props.mode, notify, editor]);
 
   const set = (field: keyof CompanyValues) => (value: string) => setValues((v) => ({ ...v, [field]: value }));
 
@@ -111,10 +122,8 @@ export function CompanyForm(props: Props) {
           onChange={(e) => set("name")(e.target.value)}
           autoFocus={props.mode === "create"}
         />
-        {props.mode === "create" && <p className="lg-hint mt-1">Required, up to {COMPANY_LIMITS.name} characters.</p>}
       </div>
       <div className="lg-row2">
-        <IndustryField value={values.industry} onChange={set("industry")} suggestions={props.industries} maxLength={COMPANY_LIMITS.industry} />
         <div>
           <label className="lg-label" htmlFor={`${id}-website`}>
             Website
@@ -130,21 +139,15 @@ export function CompanyForm(props: Props) {
             onChange={(e) => set("website")(e.target.value)}
           />
         </div>
+        <IndustryField value={values.industry} onChange={set("industry")} suggestions={props.industries} maxLength={COMPANY_LIMITS.industry} />
       </div>
-      <div>
-        <label className="lg-label" htmlFor={`${id}-notes`}>
-          Notes
-        </label>
-        <textarea
-          id={`${id}-notes`}
-          name="notes"
-          className="lg-textarea"
-          rows={4}
-          maxLength={COMPANY_LIMITS.notes}
-          value={values.notes}
-          onChange={(e) => set("notes")(e.target.value)}
-        />
-      </div>
+      {props.mode === "create" ? (
+        <LazyDisclosure summary="Add notes" variant="inline" className="lg-notesdisc">
+          <NotesBox id={id} value={values.notes} onChange={set("notes")} />
+        </LazyDisclosure>
+      ) : (
+        <NotesBox id={id} value={values.notes} onChange={set("notes")} />
+      )}
 
       {result?.status === "possible-duplicates" && (
         <div role="alert" className="lg-warn-box">
@@ -181,6 +184,11 @@ export function CompanyForm(props: Props) {
               </li>
             ))}
           </ul>
+          {result.total > result.matches.length && (
+            <p className="lg-muted mt-2">
+              And {(result.total - result.matches.length).toLocaleString("en-US")} more with the same name or website.
+            </p>
+          )}
           <ErrorLine>{dialogError}</ErrorLine>
           <div className="mt-3">
             <button type="submit" name="separateFrom" value={result.matches.map((m) => m.id).join(",")} disabled={pending} className="lg-btn">
@@ -218,7 +226,12 @@ export function CompanyForm(props: Props) {
         <button type="submit" disabled={pending} className="lg-btn lg-btn-primary">
           {pending ? "Saving..." : props.mode === "create" ? "Add company" : "Save changes"}
         </button>
-        {result?.status === "saved" && props.mode === "edit" && (
+        {props.mode === "edit" && editor && (
+          <button type="button" className="lg-btn" onClick={() => editor.close(false)}>
+            Cancel
+          </button>
+        )}
+        {result?.status === "saved" && props.mode === "edit" && !editor && (
           <span className="lg-ok" role="status">
             <Tick size={18} />
             Saved.
@@ -227,5 +240,24 @@ export function CompanyForm(props: Props) {
       </div>
       {state && !state.ok && <ErrorLine>{state.error}</ErrorLine>}
     </form>
+  );
+}
+
+function NotesBox({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div>
+      <label className="lg-label" htmlFor={`${id}-notes`}>
+        Notes
+      </label>
+      <textarea
+        id={`${id}-notes`}
+        name="notes"
+        className="lg-textarea"
+        rows={4}
+        maxLength={COMPANY_LIMITS.notes}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
   );
 }

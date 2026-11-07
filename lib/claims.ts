@@ -1,6 +1,7 @@
+import { cache } from "react";
 import type { Channel, Stage, Via } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
-import { when } from "@/lib/dates";
+import { day } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { REPLY_STAGES, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
@@ -51,7 +52,8 @@ async function readClaim(tx: Tx, workspaceId: string, companyId: string, { lock 
 
 const NOT_FOUND = { ok: false, error: "Company not found." } as const;
 const closedMessage = (stage: Stage) => `This company is ${STAGE_LABELS[stage]}, so it can't be claimed.`;
-const until = (row: ClaimRow) => when(row.claimExpiresAt as Date);
+// The short date used everywhere a claim's end is shown: "Nov 21".
+const until = (row: ClaimRow) => day(row.claimExpiresAt as Date);
 
 // A live claim by someone else blocks this person, unless they're an owner.
 function blockedBy(row: ClaimRow, actor: Membership): string | null {
@@ -59,11 +61,18 @@ function blockedBy(row: ClaimRow, actor: Membership): string | null {
   return `${row.holderName} holds this company until ${until(row)}. Ask them, or an owner.`;
 }
 
-// The database's clock, for pages that show whether a claim is still live ("held until",
-// "expired"). Comparing against the server's clock instead could disagree with the claim SQL.
+// The database's clock, read once per request: the time (for "held until", "expired") and today's
+// date in West Lafayette ("2026-10-25"). Comparing against the server's clock instead could
+// disagree with the claim SQL. React's cache shares one read between the layout, generateMetadata
+// and the page of the same request; outside a render (actions, tests) it simply reads again.
+const dbClock = cache(async (): Promise<{ now: Date; today: string }> => {
+  const [clock] = await prisma.$queryRaw<{ now: Date; today: string }[]>`
+    SELECT now() AS now, to_char((now() AT TIME ZONE ${TIME_ZONE})::date, 'YYYY-MM-DD') AS today`;
+  return clock;
+});
+
 export async function dbNow(): Promise<Date> {
-  const [{ now }] = await prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
-  return now;
+  return (await dbClock()).now;
 }
 
 // What a page should show for a company's claim, given the database's time (from dbNow) and who
@@ -73,6 +82,14 @@ export function claimState(claim: { claimedById: string | null; claimExpiresAt: 
   if (claim.claimedById === null || claim.claimExpiresAt === null) return "free";
   if (claim.claimExpiresAt <= now) return "expired";
   return claim.claimedById === userId ? "mine" : "theirs";
+}
+
+// The company page also tells your own expired claim apart from someone else's: it speaks to you
+// ("Your claim expired Nov 5") and still offers the log form, since logging renews it.
+export type ClaimView = ClaimState | "expired-mine";
+export function claimView(claim: { claimedById: string | null; claimExpiresAt: Date | null }, now: Date, userId: string): ClaimView {
+  const state = claimState(claim, now, userId);
+  return state === "expired" && claim.claimedById === userId ? "expired-mine" : state;
 }
 
 // Query filters for "who holds it", so claim rules stay in this file. `now` comes from dbNow().
@@ -85,9 +102,7 @@ export const notHeldByOthers = (userId: string, now: Date): Prisma.CompanyWhereI
 
 // Today's date in West Lafayette ("2026-10-25"), from the database clock.
 export async function dbToday(): Promise<string> {
-  const [{ today }] = await prisma.$queryRaw<{ today: string }[]>`
-    SELECT to_char((now() AT TIME ZONE ${TIME_ZONE})::date, 'YYYY-MM-DD') AS today`;
-  return today;
+  return (await dbClock()).today;
 }
 
 // Claims a company for the workspace's claim window. Succeeds if nobody holds it, the claim has
@@ -159,7 +174,8 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
 
 // aiDraftId: the AI draft this outreach sent, if any ("I sent it"), so stats can compare drafted
 // and hand-written emails. templateId: the template it was based on, if any, for template stats.
-// via: logged in the app (the default) or by the person's AI assistant.
+// via: logged in the app (the default) or by the person's AI assistant. clientKey: the log form's
+// key for this entry (a UUID); the same key twice logs once.
 export type OutreachInput = {
   channel: Channel;
   note: string | null;
@@ -167,16 +183,27 @@ export type OutreachInput = {
   aiDraftId?: string | null;
   templateId?: string | null;
   via?: Via;
+  clientKey?: string | null;
 };
 
 // Records that you contacted the company. One transaction:
-// 1. A conditional UPDATE that only matches if YOU hold a LIVE claim. It sets last contacted
-//    and the next follow-up, renews your claim, and moves Not contacted to Contacted. It also
-//    returns the stage from before, so the history is right.
+// 0. With a clientKey that is already logged in this workspace, it was this same entry (a double
+//    press, a retry): answer ok with that row and write nothing.
+// 1. A conditional UPDATE that only matches if YOU hold the claim: live, or your own that ran out
+//    and that nobody has taken since (logging renews it, so you can just log). It sets last
+//    contacted and the next follow-up, renews your claim, and moves Not contacted to Contacted. It
+//    also returns the stage from before, so the history is right.
 // 2. If it matched nothing, return why. Nothing has been written.
-// 3. Otherwise add the Outreach row, and a StageChange row if the stage moved.
+// 3. Otherwise add the Outreach row, and a StageChange row if the stage moved. Two submits with the
+//    same key at the same moment both reach this step (the row lock orders them); the unique
+//    (workspaceId, clientKey) index lets only the first insert, and the second answers ok too.
 export function logOutreach(actor: Tenant, companyId: string, input: OutreachInput): Promise<ActionResult<{ outreachId: string }>> {
   return withTenant(actor, async (tx) => {
+    const key = input.clientKey ?? null;
+    if (key) {
+      const done = await tx.outreach.findFirst({ where: { workspaceId: actor.workspaceId, clientKey: key }, select: { id: true, companyId: true } });
+      if (done) return done.companyId === companyId ? { ok: true, data: { outreachId: done.id } } : NOT_FOUND;
+    }
     // The follow-up must be from today to a year out, "today" being West Lafayette's date.
     const [{ inRange }] = await tx.$queryRaw<{ inRange: boolean }[]>`
       SELECT ${input.followUpOn}::date BETWEEN (now() AT TIME ZONE ${TIME_ZONE})::date
@@ -209,7 +236,7 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
           "updatedAt" = now()
       FROM (SELECT id, stage FROM "Company" WHERE id = ${companyId} AND "workspaceId" = ${actor.workspaceId} FOR UPDATE) before
       WHERE c.id = before.id
-        AND c."claimedById" = ${actor.userId} AND c."claimExpiresAt" > now()
+        AND c."claimedById" = ${actor.userId}
         AND c."archivedAt" IS NULL AND c.stage NOT IN ('COMMITTED', 'DECLINED')
       RETURNING before.stage AS "fromStage", c.stage AS "toStage"`;
 
@@ -218,26 +245,30 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
       if (!row || row.archived) return NOT_FOUND;
       if (TERMINAL_STAGES.includes(row.stage)) return { ok: false, error: `This company is ${STAGE_LABELS[row.stage]}. Nothing was saved.` };
       if (row.live) return { ok: false, error: `${row.holderName} holds this company now, until ${until(row)}. Nothing was saved.` };
-      if (row.claimedById === actor.userId) {
-        return { ok: false, error: "Your claim on this company has expired. Claim it again, then log your outreach. Nothing was saved." };
-      }
       return { ok: false, error: "Claim this company before logging outreach. Nothing was saved." };
     }
 
     const { fromStage, toStage } = updated[0];
-    const outreach = await tx.outreach.create({
-      data: {
-        workspaceId: actor.workspaceId,
-        companyId,
-        senderId: actor.userId,
-        channel: input.channel,
-        note: input.note,
-        aiDraftId: input.aiDraftId ?? null,
-        templateId: input.templateId ?? null,
-        via: input.via ?? "APP",
-      },
-      select: { id: true },
-    });
+    const data = {
+      workspaceId: actor.workspaceId,
+      companyId,
+      senderId: actor.userId,
+      channel: input.channel,
+      note: input.note,
+      aiDraftId: input.aiDraftId ?? null,
+      templateId: input.templateId ?? null,
+      via: input.via ?? "APP",
+      clientKey: key,
+    };
+    const [created] = key
+      ? await tx.outreach.createManyAndReturn({ data: [data], skipDuplicates: true, select: { id: true } })
+      : [await tx.outreach.create({ data, select: { id: true } })];
+    if (!created) {
+      // The same entry, logged by the submit that held the row lock first.
+      const done = await tx.outreach.findFirstOrThrow({ where: { workspaceId: actor.workspaceId, clientKey: key }, select: { id: true } });
+      return { ok: true, data: { outreachId: done.id } };
+    }
+    const outreach = created;
     if (fromStage !== toStage) {
       await tx.stageChange.create({
         data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage, via: input.via ?? "APP" },

@@ -12,6 +12,7 @@ import {
   changeStage,
   claimCompany,
   claimState,
+  claimView,
   dbNow,
   dbToday,
   forceRelease,
@@ -106,6 +107,8 @@ describe("claimCompany", () => {
     const id = await company();
     await claimCompany(OWNER, id);
     expect(await claimCompany(OFFICER, id)).toEqual({ ok: false, error: expect.stringMatching(/^ownerA claimed this first\. They hold it until /) });
+    // The short date used everywhere ("Nov 21"), no clock time (P2, R1-6).
+    expect(await claimCompany(OFFICER, id)).toEqual({ ok: false, error: expect.stringMatching(/until [A-Z][a-z]{2} \d{1,2}\.$/) });
     expect((await row(id)).claimedById).toBe("ownerA");
   });
 
@@ -236,14 +239,17 @@ describe("logOutreach", () => {
     expect(await historyOf(id)).toEqual([]);
   });
 
-  it("your own expired claim: refused, nothing written", async () => {
+  // Changed by the de-bloat pass (P2, finding R1-4): the page now offers the log form on your own
+  // expired claim, and saving claims it again, so the log is no longer refused.
+  it("your own expired claim that nobody took since: logging renews it", async () => {
     const id = await company();
     await claimCompany(OFFICER, id);
     await expireClaim(id);
-    const before = await row(id);
-    expect(await logOutreach(OFFICER, id, await outreach())).toEqual({ ok: false, error: expect.stringContaining("Your claim on this company has expired") });
-    expect(await row(id)).toEqual(before);
-    expect(await outreachCount()).toBe(0);
+    expect(await logOutreach(OFFICER, id, await outreach())).toEqual({ ok: true, data: { outreachId: expect.any(String) } });
+    const after = await row(id);
+    expect(after.claimedById).toBe("officerA");
+    expect(after.claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY);
+    expect(await outreachCount()).toBe(1);
   });
 
   it("refuses without a claim, on a closed company, and on one that doesn't exist", async () => {
@@ -261,12 +267,42 @@ describe("logOutreach", () => {
       const id = await company(`Takeover ${round}`);
       await claimCompany(OFFICER, id);
       await expireClaim(id);
+      const before = await outreachCount();
       const [logged, claimed] = await Promise.all([logOutreach(OFFICER, id, await outreach()), claimCompany(OWNER, id)]);
-      // The officer's claim had expired, so their log must fail; the owner's claim must succeed.
-      expect(logged.ok).toBe(false);
-      expect(claimed.ok).toBe(true);
+      // Logging renews your own expired claim (P2, R1-4), so whichever reaches the row first wins,
+      // and never both: a won log keeps the company for the officer, a won claim writes no outreach.
+      expect(logged.ok !== claimed.ok).toBe(true);
+      expect((await row(id)).claimedById).toBe(logged.ok ? "officerA" : "ownerA");
+      expect(await outreachCount()).toBe(before + (logged.ok ? 1 : 0));
     }
-    expect(await outreachCount()).toBe(0);
+  });
+
+  it("the same entry twice (one clientKey) logs once, at the same moment or one after the other", async () => {
+    const id = await company();
+    await claimCompany(OFFICER, id);
+    const input = await outreach(7, { clientKey: "6f1c1f1e-8a6f-4d8e-9f39-0c8a4b2d7e11" });
+    const [a, b] = await Promise.all([logOutreach(OFFICER, id, input), logOutreach(OFFICER, id, input)]);
+    expect(a).toEqual({ ok: true, data: { outreachId: expect.any(String) } });
+    expect(b).toEqual(a);
+    expect(await outreachCount()).toBe(1);
+    // A retry later: still the same row, nothing new.
+    expect(await logOutreach(OFFICER, id, input)).toEqual(a);
+    expect(await outreachCount()).toBe(1);
+    expect(await historyOf(id)).toHaveLength(1);
+    // A new key is a new entry.
+    expect((await logOutreach(OFFICER, id, { ...input, clientKey: "0b7d2c1a-3e4f-4a5b-8c6d-7e8f9a0b1c2d" })).ok).toBe(true);
+    expect(await outreachCount()).toBe(2);
+  });
+
+  it("a key already used on another company is refused, not credited to it", async () => {
+    const one = await company("One");
+    const two = await company("Two");
+    await claimCompany(OFFICER, one);
+    await claimCompany(OFFICER, two);
+    const input = await outreach(7, { clientKey: "6f1c1f1e-8a6f-4d8e-9f39-0c8a4b2d7e11" });
+    expect((await logOutreach(OFFICER, one, input)).ok).toBe(true);
+    expect(await logOutreach(OFFICER, two, input)).toEqual({ ok: false, error: "Company not found." });
+    expect(await outreachCount()).toBe(1);
   });
 });
 
@@ -420,6 +456,24 @@ describe("what pages show for a claim", () => {
     [claim("ownerA", "2026-10-25T12:00:00Z"), "expired"],
   ] as const)("%j is %s for officerA", ([c, state]) => {
     expect(claimState(c, now, "officerA")).toBe(state);
+  });
+
+  // The company page tells your own expired claim apart, to speak to you about it (P2, R1-4).
+  test.for([
+    [claim(null, null), "free"],
+    [claim("officerA", "2026-11-01T00:00:00Z"), "mine"],
+    [claim("ownerA", "2026-11-01T00:00:00Z"), "theirs"],
+    [claim("ownerA", "2026-10-25T11:59:59Z"), "expired"],
+    [claim("officerA", "2026-10-25T11:59:59Z"), "expired-mine"],
+    [claim("officerA", "2026-10-25T12:00:00Z"), "expired-mine"],
+  ] as const)("claimView: %j is %s for officerA", ([c, view]) => {
+    expect(claimView(c, now, "officerA")).toBe(view);
+  });
+
+  it("dbNow and dbToday read the same database clock", async () => {
+    const [now, today] = [await dbNow(), await dbToday()];
+    expect(Math.abs(now.getTime() - Date.now())).toBeLessThan(60_000);
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("lists the outreach channels in form order with their labels", () => {
