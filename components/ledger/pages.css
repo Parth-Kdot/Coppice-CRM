@@ -126,7 +126,8 @@
     background: var(--moss);
     color: var(--paper);
   }
-  .lg-step[data-state="done"] .lg-step-no {
+  .lg-step[data-state="done"] .lg-step-no,
+  .lg-step[data-state="set"] .lg-step-no {
     border-color: var(--moss);
     color: var(--moss);
   }
@@ -294,7 +295,7 @@
     text-decoration: line-through;
     text-decoration-thickness: 1.5px;
   }
-  .lg-dupcard .lg-chipset {
+  .lg-dupcard .lg-dupchoice {
     margin-top: auto;
   }
 
@@ -305,6 +306,9 @@
     max-width: 520px;
     border: 1px solid var(--edge);
     background: var(--sheet);
+  }
+  .lg-tally:focus-visible {
+    outline-offset: 3px;
   }
   .lg-tally > div {
     padding: 12px 18px 14px;
@@ -721,6 +725,355 @@
     background: var(--rust);
   }
 
+  /* ---------- Import review: the summary bar, choices, groups that leave ---------- */
+  /* The summary sits above the steps and stays in view while the page scrolls. */
+  .lg-importer {
+    /* Where the bar sticks, and the room it takes, so a group scrolled to is never under it. */
+    --importbar-top: 0px;
+    --importbar-room: 100px;
+  }
+  .lg-importbar {
+    position: sticky;
+    top: var(--importbar-top);
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 16px;
+    margin-top: 20px;
+    padding: 10px 16px;
+    border: 1px solid var(--ink-2);
+    background: var(--sheet);
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-importbar + .lg-entries {
+    margin-top: 10px;
+  }
+  .lg-importbar-line {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-importbar-n {
+    font-weight: 700;
+  }
+  .lg-importbar-ok {
+    color: var(--moss);
+  }
+  .lg-importbar-ok svg {
+    display: inline-block;
+    vertical-align: -2px;
+  }
+  .lg-importbar-acts .lg-link {
+    white-space: nowrap;
+  }
+  .lg-importbar-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+  }
+  .lg-importbar-short {
+    display: none;
+  }
+  .lg-importbar-cap {
+    flex-basis: 100%;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+
+  /* A choice: real radios drawn as one joined switch, or as a short list of answers. The chosen
+     side is the moss fill with a check; the others are flat paper with an empty ring, so it reads
+     as "which is on", not as a row of buttons. */
+  .lg-choice {
+    container-type: inline-size;
+    min-width: 0;
+  }
+  .lg-seg .lg-label {
+    margin: 0 0 6px;
+    padding: 0;
+    white-space: normal;
+    font-size: var(--fs-2);
+    font-weight: 600;
+  }
+  .lg-seg .lg-chips {
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0;
+    max-width: 100%;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+  }
+  .lg-seg .lg-chipx {
+    display: flex;
+    min-width: 0;
+  }
+  .lg-seg .lg-chipx > span {
+    flex: 1;
+    gap: 7px;
+    justify-content: flex-start;
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink-2);
+    white-space: normal;
+    text-align: left;
+  }
+  .lg-seg .lg-chipx + .lg-chipx > span {
+    border-left: 1px solid var(--edge);
+  }
+  .lg-seg .lg-chipx:first-child > span {
+    border-radius: 2px 0 0 2px;
+  }
+  .lg-seg .lg-chipx:last-child > span {
+    border-radius: 0 2px 2px 0;
+  }
+  .lg-seg .lg-chipx > span::before {
+    content: "";
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--edge);
+    border-radius: 50%;
+  }
+  .lg-seg .lg-chipx:hover > span {
+    background: var(--paper-2);
+    border-color: var(--edge);
+    color: var(--ink);
+  }
+  .lg-seg .lg-chipx input:checked + span {
+    background: var(--moss);
+    color: var(--paper);
+    cursor: default;
+  }
+  .lg-seg .lg-chipx input:checked + span::before {
+    border: 0;
+    border-radius: 0;
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.6l3.3 3.1L13 4.6' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .lg-seg .lg-chipx input:focus-visible + span {
+    outline-offset: -4px;
+    outline-color: var(--paper);
+  }
+  .lg-seg .lg-chipx input:focus-visible:not(:checked) + span {
+    outline-color: var(--moss-2);
+  }
+  /* The words inside a choice are plain text, not chips of their own. */
+  .lg-seg .lg-chipx:hover span span {
+    border: 0;
+    background: none;
+    color: inherit;
+  }
+  .lg-seg .lg-chipx span span {
+    display: inline;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    white-space: normal;
+    transition: none;
+  }
+  .lg-seg-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-seg .lg-chipx span.lg-seg-sugg {
+    margin-left: auto;
+    padding-left: 10px;
+    font-size: var(--fs-1);
+    font-weight: 500;
+    opacity: 0.85;
+    white-space: nowrap;
+  }
+  /* A list: one answer per line, the whole width. */
+  .lg-seg-list .lg-chips {
+    display: grid;
+    grid-auto-flow: row;
+    width: 100%;
+    max-width: 560px;
+  }
+  .lg-seg-list .lg-chipx + .lg-chipx > span {
+    border-left: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .lg-seg-list .lg-chipx:first-child > span {
+    border-radius: 2px 2px 0 0;
+  }
+  .lg-seg-list .lg-chipx:last-child > span {
+    border-radius: 0 0 2px 2px;
+  }
+  .lg-seg-list .lg-chipx > span {
+    min-height: 40px;
+    padding: 6px 12px;
+  }
+  /* Too narrow for two side by side: they stack. */
+  @container (max-width: 250px) {
+    .lg-seg .lg-chips {
+      display: grid;
+      grid-auto-flow: row;
+      width: 100%;
+    }
+    .lg-seg .lg-chipx + .lg-chipx > span {
+      border-left: 0;
+      border-top: 1px solid var(--edge);
+    }
+  }
+  .lg-seg-cap {
+    margin-top: 6px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-seg-ack {
+    color: var(--moss);
+    font-weight: 600;
+    animation: lg-fade var(--dur-fast) ease both;
+  }
+
+  /* A duplicate group: which one it is, why it was flagged, the entries, the answer, Confirm. */
+  .lg-dupgroup {
+    scroll-margin-top: calc(var(--importbar-top) + var(--importbar-room));
+  }
+  .lg-dupgroup .lg-group-head {
+    display: grid;
+    gap: 2px;
+  }
+  .lg-group-count {
+    color: var(--moss);
+  }
+  .lg-dupgroup .lg-group-q {
+    overflow-wrap: anywhere;
+  }
+  .lg-dupgroup .lg-group-q:focus-visible {
+    outline-offset: 4px;
+  }
+  .lg-group-why {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-groupchoice {
+    margin-top: 14px;
+  }
+  .lg-group-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-dupcard-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 8px;
+  }
+  /* What the import does with a row, in words: never color alone. */
+  .lg-dupstate {
+    padding: 0 6px;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .lg-dupstate[data-on] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+  .lg-dupdnc {
+    margin-bottom: 8px;
+    color: var(--rust);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-dupdnc .lg-quote {
+    font-weight: 400;
+  }
+  .lg-groups-done {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+    font-weight: 600;
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-groups-done:focus-visible {
+    outline-offset: 3px;
+  }
+  .lg-decided {
+    margin-top: 14px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+  }
+  .lg-decided > summary {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .lg-decided ul {
+    border-top: 1px solid var(--rule);
+  }
+  .lg-decided li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 14px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--rule);
+    overflow-wrap: anywhere;
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-decided li:last-child {
+    border-bottom: 0;
+  }
+  .lg-decided li .lg-btn {
+    flex: none;
+  }
+
+  /* The first rows of the file, folded on a phone. */
+  .lg-sample > summary,
+  .lg-resultnames > summary {
+    min-height: 32px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    cursor: pointer;
+  }
+  .lg-resultlists {
+    display: grid;
+    gap: 10px;
+    max-width: 520px;
+    margin-top: 14px;
+  }
+  .lg-resultnames > summary {
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 600;
+  }
+  .lg-resultnames ul {
+    margin-top: 4px;
+    padding-left: 18px;
+    list-style: disc;
+    overflow-wrap: anywhere;
+  }
+
   /* ---------- Phones ---------- */
   @media (max-width: 860px) {
     .lg-sec {
@@ -761,9 +1114,44 @@
       font-size: 0.6875rem;
       letter-spacing: 0.04em;
     }
+    /* Under the shell's own sticky bar. */
+    .lg-importer {
+      --importbar-top: 49px;
+      --importbar-room: 120px;
+    }
+    .lg-importbar {
+      margin-top: 14px;
+      padding: 8px 12px;
+    }
+    .lg-importbar-line {
+      font-size: var(--fs-1);
+    }
+    .lg-importbar-acts {
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      width: 100%;
+    }
+    /* The button already says it uses the suggested choices; the line says how many groups. */
+    .lg-importbar-cap,
+    .lg-importbar-long {
+      display: none;
+    }
+    .lg-importbar-short {
+      display: inline;
+    }
+    .lg-group {
+      padding: 10px 10px 12px;
+    }
+    .lg-dupcard {
+      padding: 10px 12px 12px;
+    }
+    .lg-decided li {
+      flex-wrap: wrap;
+    }
 
     /* The review table becomes a stack of small cards, one per row of the file. */
     .lg-tablewrap {
+      position: relative;
       border: 0;
     }
     .lg-table,

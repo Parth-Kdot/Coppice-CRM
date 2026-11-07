@@ -3,7 +3,8 @@ import Papa from "papaparse";
 import type { Prisma, Stage } from "@/generated/prisma/client";
 import type { ContactFields, CompanyFields } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
-import { domainKey, groupLookAlikes, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
+import { domainKey, groupLookAlikes, lookalikePairs, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
+import { CONTAINED_WHY } from "@/lib/import-review";
 import {
   companyFieldsSchema,
   contactFieldsSchema,
@@ -169,6 +170,35 @@ async function findGroups(tx: Tx, workspaceId: string, rows: CheckedRow[]): Prom
     .sort((a, b) => a.rows[0] - b.rows[0]);
 }
 
+// Names where one is inside the other ("Avum" and "Avum Space"), which the exact keys above miss:
+// rows of the file against each other and against companies already saved. Plain code, no AI
+// (lib/duplicates.ts lookalikePairs, the same check Smart import runs). Only shown for a person to
+// decide; nothing is skipped by default, and the import's checks don't depend on them.
+export type NameLookalike = { rows: { row: number; name: string; website: string | null }[]; existing: ExistingMatch[]; why: string };
+export const CONTAINED_SHOWN = 100;
+
+async function findContained(tx: Tx, workspaceId: string, rows: CheckedRow[]): Promise<NameLookalike[]> {
+  if (rows.length === 0) return [];
+  const companies = await tx.company.findMany({
+    where: { workspaceId },
+    select: { id: true, name: true, website: true, archivedAt: true, nameKey: true, domainKey: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const items = [
+    ...rows.map((r) => ({ key: `r${r.row}`, name: r.company.name, isRow: true, nameKey: nameKey(r.company.name), domainKey: domainKey(r.company.website), row: r, company: null })),
+    ...companies.map((c) => ({ key: `c:${c.id}`, name: c.name, isRow: false, nameKey: c.nameKey, domainKey: c.domainKey, row: null, company: c })),
+  ];
+  return lookalikePairs(items, [], CONTAINED_SHOWN)
+    .map(({ members }) => ({
+      rows: members
+        .flatMap((m) => (m.row ? [{ row: m.row.row, name: m.row.company.name, website: m.row.company.website ?? null }] : []))
+        .sort((a, b) => a.row - b.row),
+      existing: members.flatMap((m) => (m.company ? [{ id: m.company.id, name: m.company.name, website: m.company.website, archived: m.company.archivedAt !== null }] : [])),
+      why: CONTAINED_WHY,
+    }))
+    .sort((a, b) => a.rows[0].row - b.rows[0].row);
+}
+
 // What the person sees before importing: suggested defaults are to skip rows that match a
 // company already in the workspace, and inside the file to import the first of each look-alike
 // group and skip the rest.
@@ -185,12 +215,16 @@ export type ImportPreview = {
   // Every row that can't be imported, and why.
   errors: { row: number; messages: string[] }[];
   groups: DuplicateGroup[];
+  // Names inside other names, shown with the groups above; they suggest no skips.
+  contained: NameLookalike[];
   // Name and website of every row that's in a group, so the choices can say which row is which.
   labels: { row: number; name: string; website: string | null }[];
   defaultSkips: number[];
   // Existing companies shown as possible duplicates; sent back with the import, so a company
   // added in between is noticed instead of slipping through.
   seen: string[];
+  // The name of every row that can be imported, so the result can say which went in.
+  names: { row: number; name: string }[];
 };
 
 export const PREVIEW_ROWS = 10;
@@ -203,7 +237,10 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
   if (!checked.ok) return checked;
 
   const valid = checked.data.filter((r) => r.errors.length === 0);
-  const groups = await withTenant(tenant, (tx) => findGroups(tx, tenant.workspaceId, valid));
+  const { groups, contained } = await withTenant(tenant, async (tx) => ({
+    groups: await findGroups(tx, tenant.workspaceId, valid),
+    contained: await findContained(tx, tenant.workspaceId, valid),
+  }));
   const grouped = new Set(groups.flatMap((g) => g.rows));
   return {
     ok: true,
@@ -214,9 +251,11 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
       sample: checked.data.slice(0, PREVIEW_ROWS),
       errors: checked.data.filter((r) => r.errors.length > 0).map((r) => ({ row: r.row, messages: r.errors })),
       groups,
+      contained,
       labels: valid.filter((r) => grouped.has(r.row)).map((r) => ({ row: r.row, name: r.company.name, website: r.company.website ?? null })),
       defaultSkips: defaultSkips(groups),
       seen: groups.flatMap((g) => g.existing.map((c) => c.id)),
+      names: valid.map((r) => ({ row: r.row, name: r.company.name })),
     },
   };
 }

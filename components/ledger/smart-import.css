@@ -58,7 +58,7 @@
   }
   .lg-smart-item {
     display: grid;
-    grid-template-columns: 120px minmax(0, 1fr) auto;
+    grid-template-columns: 120px minmax(0, 520px) minmax(220px, auto);
     gap: 6px 14px;
     align-items: start;
     padding: 10px 0;
@@ -72,6 +72,43 @@
   }
   .lg-smart-ctl {
     min-width: 0;
+  }
+  .lg-smart-item[data-dropped] .lg-smart-src {
+    text-decoration: line-through;
+  }
+  .lg-smart-choice .lg-seg .lg-label {
+    font-size: var(--fs-1);
+  }
+  /* What turning Smart import on changed in the columns, with Undo. */
+  .lg-smart-mapnote {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    max-width: 72ch;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--moss);
+    background: var(--moss-wash);
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-smart-mapnote p {
+    flex: 1 1 260px;
+    font-weight: 500;
+  }
+  /* A skipped row: its readings fold away. */
+  .lg-smart-skipped {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 10px 0 2px;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-2);
+  }
+  .lg-smart-where {
+    padding: 8px 0;
+    border-top: 1px solid var(--rule);
   }
   .lg-smart-src {
     margin-top: 4px;

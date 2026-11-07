@@ -27,7 +27,7 @@ function FreeTextColumns({ smart, view }: { smart: SmartState; view: ImportPrevi
               disabled={taken || smart.busy}
               checked={smart.freeText.includes(index)}
               onChange={(e) => {
-                smart.clearReading();
+                smart.discardReading();
                 smart.setFreeText(e.target.checked ? [...smart.freeText, index].sort((a, b) => a - b) : smart.freeText.filter((c) => c !== index));
               }}
             />
@@ -52,7 +52,7 @@ function BoardYear({ smart, actions }: { smart: SmartState; actions: SmartAction
         value={String(smart.cycle)}
         options={options.cycles.map((c) => ({ value: String(c.start), label: c.start === options.current ? `${c.label} (this year)` : c.label }))}
         onChange={(value) => {
-          smart.clearReading();
+          smart.discardReading();
           smart.setCycle(Number(value));
         }}
       />
@@ -73,12 +73,12 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
         Smart import
       </h3>
       <label className="lg-switch">
-        <input type="checkbox" className="lg-check" checked={smart.on} disabled={smart.busy || pending} onChange={(e) => smart.turn(e.target.checked)} />
+        <input type="checkbox" className="lg-check" checked={smart.on} disabled={smart.busy || pending} onChange={(e) => smart.turn(e.target.checked, view)} />
         <span>Read the free-text columns with AI</span>
       </label>
       <p className="lg-hint lg-smart-say">
         Coppice reads notes like &ldquo;emailed 3/2 by Sam, said reach out in Aug&rdquo; and proposes a stage, dates and a contact, each with the text it came from.
-        You keep, change or drop each one. Up to {SMART_MAX_ROWS} rows with free text are read per import; the rest import the normal way.
+        You use, change or leave out each one. Up to {SMART_MAX_ROWS} rows with free text are read per import; the rest import the normal way.
       </p>
       {smart.on && !options.groq && (
         <p className="lg-error" role="status">
@@ -94,6 +94,14 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
             &ldquo;Industry&rdquo;), and for up to 15 sample rows only the shape of the other cells (like &ldquo;6 words, has a date&rdquo;), not their words. Gemini also gets the company names to spot look-alikes. The free-text
             cells, which can include names, go to Groq, with email addresses and phone numbers masked.
           </p>
+          {smart.mappingNote && (
+            <div className="lg-smart-mapnote" role="status">
+              <p>{smart.mappingNote.changes.join(". ")}.</p>
+              <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={smart.undoMapping}>
+                Undo
+              </button>
+            </div>
+          )}
           {smart.note && <p className="lg-hint">{smart.note}</p>}
           <FreeTextColumns smart={smart} view={view} />
           <BoardYear smart={smart} actions={actions} />

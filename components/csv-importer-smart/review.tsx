@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChipGroup } from "@/components/ledger/chips";
+import { ImportChoice } from "@/components/csv-importer-choice";
 import { WarningIcon } from "@/components/ledger/icons";
+import { useNotify } from "@/components/ledger/providers";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import type { ImportPreview } from "@/lib/csv";
 import type { Quote, RowProposal, SmartStart } from "@/lib/smart-import";
@@ -13,7 +14,12 @@ import { hasReading, readingMatches, type RowEdits, type SmartState } from "./us
 import "@/components/ledger/smart-import.css";
 
 // Step 3 of the importer with Smart import on: what was read, one card per row, each reading with
-// the cell text it came from and Keep or Drop.
+// the cell text it came from and Use or Leave out. A row's import choice lives in one place: in
+// its duplicate group when it has one, otherwise here for a do-not-contact row. A skipped row's
+// readings are folded away, since nothing of a skipped row is imported.
+
+// Where a row's import choice is decided, when it is in a duplicate group.
+export type GroupRef = { index: number; jump: () => void };
 
 function Source({ quotes }: { quotes: Quote[] }) {
   return (
@@ -27,6 +33,14 @@ function Source({ quotes }: { quotes: Quote[] }) {
   );
 }
 
+const QUESTIONS: Record<string, string> = {
+  Stage: "Use this stage?",
+  "Last contacted": "Use this date?",
+  "Follow up": "Use this date?",
+  Contact: "Use this contact?",
+  "Add to notes": "Add this line?",
+};
+
 function Item({ label, row, kept, onKeep, quotes, children }: { label: string; row: number; kept: boolean; onKeep: (keep: boolean) => void; quotes: Quote[]; children: ReactNode }) {
   return (
     <div className="lg-smart-item" data-dropped={!kept || undefined}>
@@ -35,14 +49,15 @@ function Item({ label, row, kept, onKeep, quotes, children }: { label: string; r
         {children}
         <Source quotes={quotes} />
       </div>
-      <ChipGroup
-        legend={`${label}, row ${row}`}
-        hideLegend
-        value={kept ? "keep" : "drop"}
-        onChange={(value) => onKeep(value === "keep")}
+      <ImportChoice
+        className="lg-smart-choice"
+        question={QUESTIONS[label] ?? "Use it?"}
+        value={kept ? "use" : "leave"}
+        onChange={(value) => onKeep(value === "use")}
+        caption={kept ? "Used when you import." : "Left out of the import."}
         options={[
-          { value: "keep", label: "Keep", ariaLabel: `Keep ${label.toLowerCase()} for row ${row}` },
-          { value: "drop", label: "Drop", ariaLabel: `Drop ${label.toLowerCase()} for row ${row}` },
+          { value: "use", label: "Use", ariaLabel: `Use ${label.toLowerCase()} for row ${row}` },
+          { value: "leave", label: "Leave out", ariaLabel: `Leave out ${label.toLowerCase()} for row ${row}` },
         ]}
       />
     </div>
@@ -50,6 +65,7 @@ function Item({ label, row, kept, onKeep, quotes, children }: { label: string; r
 }
 
 function DoNotContact({ smart, row, quote }: { smart: SmartState; row: number; quote: Quote }) {
+  const skipped = smart.skipsHas(row);
   return (
     <div className="lg-smart-item lg-smart-dnc">
       <p className="lg-tag lg-late">
@@ -57,14 +73,15 @@ function DoNotContact({ smart, row, quote }: { smart: SmartState; row: number; q
         Do not contact
       </p>
       <div className="lg-smart-ctl">
-        <p>The sheet says not to contact them. It is skipped unless you choose to import it anyway.</p>
+        <p>The sheet says not to contact them, so it is skipped unless you import it anyway.</p>
         <Source quotes={[quote]} />
       </div>
-      <ChipGroup
-        legend={`Row ${row}, do not contact`}
-        hideLegend
-        value={smart.accepted.has(row) ? "import" : "skip"}
+      <ImportChoice
+        className="lg-smart-choice"
+        question="Import it anyway?"
+        value={skipped ? "skip" : "import"}
         onChange={(value) => smart.accept(row, value === "import")}
+        caption={skipped ? "Not imported." : "Imported, though the sheet says not to contact them."}
         options={[
           { value: "skip", label: "Skip", ariaLabel: `Skip row ${row}` },
           { value: "import", label: "Import anyway", ariaLabel: `Import row ${row} anyway` },
@@ -155,7 +172,7 @@ function Readings({ smart, row, p, e }: { smart: SmartState; row: number; p: Row
       {p.dropped.length > 0 && (
         <details className="lg-smart-dropped">
           <summary>
-            {p.dropped.length} {p.dropped.length === 1 ? "reading" : "readings"} dropped
+            {p.dropped.length} {p.dropped.length === 1 ? "reading" : "readings"} Coppice couldn&apos;t verify
           </summary>
           <ul>
             {p.dropped.map((d, i) => (
@@ -168,22 +185,88 @@ function Readings({ smart, row, p, e }: { smart: SmartState; row: number; p: Row
   );
 }
 
-function RowCard({ smart, row, p, dnc }: { smart: SmartState; row: number; p: RowProposal | undefined; dnc: Quote | null }) {
+function RowCard({
+  smart,
+  row,
+  p,
+  dnc,
+  group,
+  choose,
+}: {
+  smart: SmartState;
+  row: number;
+  p: RowProposal | undefined;
+  dnc: Quote | null;
+  group: GroupRef | undefined;
+  choose: (row: number, skip: boolean) => void;
+}) {
+  const notify = useNotify();
+  const skipped = smart.skipsHas(row);
+  const name = smart.names.get(row) ?? "";
+  const readings = p && hasReading({ ...p, doNotContact: null });
   return (
     <div className="lg-group lg-smart-row" role="group" aria-labelledby={`smart-row-${row}`}>
       <div className="lg-group-head">
         <h4 id={`smart-row-${row}`} className="lg-group-q">
-          Row {row}: {smart.names.get(row) ?? ""}
+          Row {row}: {name}
         </h4>
-        {smart.skipsHas(row) && <span className="lg-tag lg-muted">Skipped</span>}
+        <span className="lg-dupstate" data-on={!skipped || undefined}>
+          {skipped ? "Will skip" : "Will import"}
+        </span>
       </div>
-      {dnc && <DoNotContact smart={smart} row={row} quote={dnc} />}
-      {p && <Readings smart={smart} row={row} p={p} e={smart.edits[row] ?? {}} />}
+      {group && (
+        <p className="lg-hint lg-smart-where">
+          {dnc ? "The sheet says not to contact them. " : ""}Import or skip it in{" "}
+          <a
+            href="#"
+            className="lg-link"
+            onClick={(event) => {
+              event.preventDefault();
+              group.jump();
+            }}
+          >
+            group {group.index} of the possible duplicates
+          </a>
+          .
+        </p>
+      )}
+      {dnc && !group && <DoNotContact smart={smart} row={row} quote={dnc} />}
+      {readings &&
+        (skipped ? (
+          <div className="lg-smart-skipped">
+            <p>This row won&apos;t be imported, so what was read from it isn&apos;t used.</p>
+            {!dnc && (
+              <button
+                type="button"
+                className="lg-btn lg-btn-sm"
+                onClick={() => {
+                  choose(row, false);
+                  notify(`${name || `Row ${row}`} will be imported after all.`);
+                }}
+              >
+                Import it after all
+              </button>
+            )}
+          </div>
+        ) : (
+          <Readings smart={smart} row={row} p={p} e={smart.edits[row] ?? {}} />
+        ))}
     </div>
   );
 }
 
-export function SmartReview({ smart, view }: { smart: SmartState; view: ImportPreview }) {
+export function SmartReview({
+  smart,
+  view,
+  groupOf,
+  choose,
+}: {
+  smart: SmartState;
+  view: ImportPreview;
+  // The duplicate group each row is in, if any.
+  groupOf: (row: number) => GroupRef | undefined;
+  choose: (row: number, skip: boolean) => void;
+}) {
   if (!readingMatches(smart, view.mapping)) return null;
   const session = smart.session as SmartStart;
   const errored = new Set(view.errors.map((e) => e.row));
@@ -199,15 +282,18 @@ export function SmartReview({ smart, view }: { smart: SmartState; view: ImportPr
     <div className="lg-groups">
       <h3 className="lg-h3">What Smart import read</h3>
       <p className="lg-hint mb-3">
-        {rows.length === 0 ? "Nothing to review yet." : `${rows.length} ${rows.length === 1 ? "row has" : "rows have"} something to review. Every reading starts as Keep and is applied when you import: drop or change any that are wrong.`}
+        {rows.length === 0
+          ? "Nothing to review yet."
+          : `${rows.length} ${rows.length === 1 ? "row has" : "rows have"} something to review. Every reading starts as Use and is applied when you import: leave out or change any that are wrong.`}
         {nothing > 0 && ` ${nothing} ${nothing === 1 ? "row" : "rows"} said nothing Coppice could check.`}
-        {dropped > 0 && ` ${dropped} ${dropped === 1 ? "reading was" : "readings were"} dropped because the quote or date didn't check out.`} {futureHint(smart.proposals, session.cycleStart)} Coppice never imports
-        Committed or Declined, and never logs outreach or claims a company.
+        {dropped > 0 && ` ${dropped} ${dropped === 1 ? "reading" : "readings"} Coppice couldn't verify ${dropped === 1 ? "is" : "are"} listed under ${dropped === 1 ? "its row" : "their rows"} and won't be imported.`}{" "}
+        {futureHint(smart.proposals, session.cycleStart)} Coppice never imports Committed or Declined, and never logs outreach or claims a
+        company.
       </p>
       {rows.map((row) => {
         const p = byRow.get(row);
         const dnc = p?.doNotContact ?? session.doNotContact.find((d) => d.row === row) ?? null;
-        return <RowCard key={row} smart={smart} row={row} p={p} dnc={dnc} />;
+        return <RowCard key={row} smart={smart} row={row} p={p} dnc={dnc} group={groupOf(row)} choose={choose} />;
       })}
     </div>
   );

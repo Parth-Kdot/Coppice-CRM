@@ -174,6 +174,72 @@ describe("previewImport", () => {
   });
 });
 
+describe("previewImport: names inside other names", () => {
+  const nameSite: ImportMapping = { name: 0, website: 1, industry: null, notes: null, contactName: null, contactEmail: null };
+
+  it("flags Avum and Avum Space without Smart import, and suggests no skips for them", async () => {
+    const text = "Name,Website\nAvum,avum.example.com\nAvum Space,avumspace.example.com\nGlobex,globex.com\n";
+    const preview = ok(await previewImport(OWNER, text, nameSite));
+    expect(preview.groups).toEqual([]);
+    expect(preview.contained).toEqual([
+      {
+        rows: [
+          { row: 2, name: "Avum", website: "avum.example.com" },
+          { row: 3, name: "Avum Space", website: "avumspace.example.com" },
+        ],
+        existing: [],
+        why: "One name contains the other",
+      },
+    ]);
+    expect(preview.defaultSkips).toEqual([]);
+    expect(preview.seen).toEqual([]);
+    expect(preview.names).toEqual([
+      { row: 2, name: "Avum" },
+      { row: 3, name: "Avum Space" },
+      { row: 4, name: "Globex" },
+    ]);
+  });
+
+  it("flags a row whose name holds a saved company's name, archived ones too, and never another workspace's", async () => {
+    await createCompany(OTHER_ORG, { name: "Globex" });
+    const archived = await createCompany(OWNER, { name: "Hooli" });
+    if (archived.status !== "saved") throw new Error("seed");
+    await withTenant(OWNER, (tx) => tx.company.update({ where: { id: archived.companyId }, data: { archivedAt: new Date() } }));
+    const text = "Name,Website\nInitech Labs,initechlabs.com\nGlobex Energy,\nHooli XYZ,\n";
+    const preview = ok(await previewImport(OWNER, text, nameSite));
+    expect(preview.contained).toEqual([
+      { rows: [{ row: 2, name: "Initech Labs", website: "initechlabs.com" }], existing: [{ id: initechId, name: "Initech", website: "initech.com", archived: false }], why: "One name contains the other" },
+      { rows: [{ row: 4, name: "Hooli XYZ", website: null }], existing: [{ id: archived.companyId, name: "Hooli", website: null, archived: true }], why: "One name contains the other" },
+    ]);
+    // Not exact matches, so the import's own check of `seen` doesn't change.
+    expect(preview.groups).toEqual([]);
+    expect(preview.seen).toEqual([]);
+  });
+
+  it("leaves pairs the exact check already groups to that check, and short names alone", async () => {
+    const text = "Name,Website\nAcme,acme.com\nAcme Labs,acme.com\nIBM,\nIBM Research,\n";
+    const preview = ok(await previewImport(OWNER, text, nameSite));
+    expect(preview.groups).toEqual([{ rows: [2, 3], existing: [], matchedOn: ["website"] }]);
+    // Acme and Acme Labs share a website, so they are one exact group; IBM is under 4 letters.
+    expect(preview.contained).toEqual([]);
+  });
+
+  it("shows at most 100 pairs", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) => `Northwind ${String.fromCharCode(65 + (i % 26))}${i}`);
+    const text = `Name\nNorthwind\n${rows.join("\n")}\nNorthwind Alpha\n`;
+    const many = `Name\n${["Northwind", ...Array.from({ length: 120 }, (_, i) => `Northwind Unit${i}`)].join("\n")}\n`;
+    expect(ok(await previewImport(OWNER, text, { ...nameSite, website: null })).contained).toHaveLength(31);
+    expect(ok(await previewImport(OWNER, many, { ...nameSite, website: null })).contained).toHaveLength(100);
+  });
+
+  it("imports both rows of a contained-name pair with the suggested choices", async () => {
+    const text = "Name,Website\nAvum,avum.example.com\nAvum Space,avumspace.example.com\n";
+    const preview = ok(await previewImport(OWNER, text, nameSite));
+    expect(await runImport(OWNER, text, nameSite, preview.defaultSkips, preview.seen)).toEqual({ ok: true, data: { imported: 2, skipped: 0, errored: 0 } });
+    expect((await companies()).map((c) => c.name)).toEqual(["Avum", "Avum Space", "Initech"]);
+  });
+});
+
 describe("runImport", () => {
   async function preview(text = MESSY): Promise<ImportPreview> {
     return ok(await previewImport(OWNER, text, MAPPING));
