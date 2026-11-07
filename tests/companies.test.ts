@@ -4,6 +4,9 @@ import {
   addContact,
   archiveCompany,
   createCompany,
+  getCompanyDetail,
+  getCompanyPage,
+  MATCH_LIMIT,
   listPossibleDuplicatePairs,
   markSeparate,
   removeContact,
@@ -50,6 +53,7 @@ describe("creating companies and duplicate flags", () => {
     expect(result).toEqual({
       status: "possible-duplicates",
       matches: [{ id: acme, name: "Acme Corp", website: null, archived: false, matchedOn: ["name"] }],
+      total: 1,
     });
     expect(await countIn(A)).toBe(1);
   });
@@ -87,6 +91,7 @@ describe("creating companies and duplicate flags", () => {
     expect(await createCompany(A, { name: "Initech, Inc." })).toEqual({
       status: "possible-duplicates",
       matches: [{ id: old, name: "Initech", website: null, archived: true, matchedOn: ["name"] }],
+      total: 1,
     });
     // "Separate entries" still works against an archived match.
     expect((await createCompany(A, { name: "Initech, Inc." }, [old])).status).toBe("saved");
@@ -369,5 +374,101 @@ describe("changeStage (lib/claims.ts)", () => {
     const id = saved(await createCompany(A, { name: "Acme" }));
     await changeStage(A, id, "CONTACTED");
     expect(await history(B)).toEqual([]);
+  });
+});
+
+describe("look-alikes are capped, with a total (P2)", () => {
+  // 25 companies on one shared website, plus one with the same name as the new one.
+  const crowd = async () => {
+    await withTenant(A, (tx) =>
+      tx.company.createMany({
+        data: Array.from({ length: 25 }, (_, i) => ({
+          id: `site-${String(i).padStart(2, "0")}`,
+          workspaceId: "a",
+          name: `Person ${i}`,
+          website: `linkedin.com/in/p${i}`,
+          nameKey: `person ${i}`,
+          domainKey: "linkedin.com",
+        })),
+      }),
+    );
+    return saved(await createCompany(A, { name: "Recruiter Desk" }));
+  };
+
+  it("lists at most 20, same name first, and counts them all", async () => {
+    const sameName = await crowd();
+    const result = await createCompany(A, { name: "Recruiter Desk, Inc.", website: "https://linkedin.com/in/someone" });
+    if (result.status !== "possible-duplicates") throw new Error("expected look-alikes");
+    expect(result.matches).toHaveLength(MATCH_LIMIT);
+    expect(result.total).toBe(26);
+    expect(result.matches[0]).toMatchObject({ id: sameName, matchedOn: ["name"] });
+    expect(result.matches.slice(1).every((m) => m.matchedOn.includes("website"))).toBe(true);
+  });
+
+  it("'Separate entries' for the 20 listed covers the rest too: saved, with a decision for every match", async () => {
+    await crowd();
+    const first = await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" });
+    if (first.status !== "possible-duplicates") throw new Error("expected look-alikes");
+    const id = saved(await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" }, first.matches.map((m) => m.id)));
+    expect(await withTenant(A, (tx) => tx.companyPairDecision.count({ where: { OR: [{ companyAId: id }, { companyBId: id }] } }))).toBe(26);
+  });
+
+  it("acknowledging only some of the listed ones still asks about the rest, counting what is left", async () => {
+    await crowd();
+    const first = await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" });
+    if (first.status !== "possible-duplicates") throw new Error("expected look-alikes");
+    const again = await createCompany(A, { name: "Recruiter Desk", website: "linkedin.com/in/someone" }, first.matches.slice(0, 5).map((m) => m.id));
+    expect(again).toMatchObject({ status: "possible-duplicates", total: 21 });
+    expect(await withTenant(A, (tx) => tx.companyPairDecision.count())).toBe(0);
+  });
+
+  it("an edit leaves out pairs already marked separate before capping", async () => {
+    await crowd();
+    const mine = saved(await createCompany(A, { name: "Other Name" }));
+    await markSeparate(A, mine, "site-00");
+    const result = await updateCompany(A, mine, edit({ name: "Other Name" }, { website: "linkedin.com/in/x" }));
+    expect(result).toMatchObject({ ok: true, data: { status: "possible-duplicates", total: 24 } });
+    if (!result.ok || result.data.status !== "possible-duplicates") throw new Error("expected look-alikes");
+    expect(result.data.matches.map((m) => m.id)).not.toContain("site-00");
+  });
+});
+
+describe("company page data (P2)", () => {
+  it("counts all outreach and stage moves while loading only the latest", async () => {
+    const id = saved(await createCompany(A, { name: "Busy Co", industry: "Energy" }));
+    await withTenant(A, async (tx) => {
+      await tx.outreach.createMany({
+        data: Array.from({ length: 7 }, (_, i) => ({ workspaceId: "a", companyId: id, senderId: "ownerA", sentAt: new Date(Date.UTC(2026, 0, i + 1)) })),
+      });
+      await tx.stageChange.createMany({
+        data: Array.from({ length: 4 }, () => ({ workspaceId: "a", companyId: id, changedById: "ownerA", fromStage: "NOT_CONTACTED" as const, toStage: "CONTACTED" as const })),
+      });
+    });
+    const detail = await getCompanyDetail(A, id, { outreach: 3, history: 2 });
+    expect(detail).toMatchObject({ outreachTotal: 7, stageChangeTotal: 4 });
+    expect(detail?.outreach).toHaveLength(3);
+    expect(detail?.outreach[0].sentAt.toISOString()).toBe("2026-01-07T00:00:00.000Z");
+    expect(detail?.stageChanges).toHaveLength(2);
+    // Never more than 500, never fewer than 1.
+    expect((await getCompanyDetail(A, id, { outreach: 10_000 }))?.outreach).toHaveLength(7);
+    expect((await getCompanyDetail(A, id, { outreach: 0 }))?.outreach).toHaveLength(1);
+  });
+
+  it("loads the page in one go: industries, templates and active look-alikes", async () => {
+    const id = saved(await createCompany(A, { name: "Acme", industry: "Energy" }));
+    const twin = saved(await createCompany(A, { name: "Acme Inc" }, [id]));
+    const page = await getCompanyPage(A, id);
+    expect(page?.industries).toEqual(["Energy"]);
+    expect(Array.isArray(page?.templates)).toBe(true);
+    // Marked separate when it was added, so it is not offered as "same as".
+    expect(page?.lookAlikes).toEqual([]);
+    saved(await createCompany(A, { name: "ACME corp" }, [id, twin]));
+    await archiveCompany(A, twin);
+    expect((await getCompanyPage(A, id))?.lookAlikes).toEqual([]);
+    const fourth = await withTenant(A, (tx) =>
+      tx.company.create({ data: { workspaceId: "a", name: "Acme Co", nameKey: "acme" }, select: { id: true } }),
+    );
+    expect((await getCompanyPage(A, id))?.lookAlikes).toEqual([{ id: fourth.id, name: "Acme Co" }]);
+    expect(await getCompanyPage(B, id)).toBeNull();
   });
 });

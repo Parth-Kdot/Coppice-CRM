@@ -1,11 +1,10 @@
 import { ActionForm } from "@/components/action-form";
-import { ClaimIcon } from "@/components/ledger/icons";
-import { Ribbon } from "@/components/ledger/marks";
+import { ClaimButton } from "@/components/ledger/company-blocks";
 import type { Stage, Via } from "@/generated/prisma/enums";
 import type { Role } from "@/lib/authz";
-import type { ClaimState } from "@/lib/claims";
-import { when } from "@/lib/dates";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import type { ClaimView } from "@/lib/claims";
+import { day } from "@/lib/dates";
+import { TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 
@@ -17,8 +16,8 @@ type Props = {
   companyName: string;
   stage: Stage;
   role: Role;
-  // Worked out by claimState() against the database clock.
-  state: ClaimState;
+  // Worked out by claimView() against the database clock.
+  state: ClaimView;
   holderName: string | null;
   expiresAt: Date | null;
   // How the live claim was made; ASSISTANT gets a "via assistant" stamp.
@@ -26,85 +25,107 @@ type Props = {
   actions: { claim: Action; release: Action; forceRelease: Action };
 };
 
-// The claim ticket at the top of the right-hand page: a paper ticket with a perforated stub. The
-// stub carries the gilt ribbon when the claim is yours, a plain mark when someone else holds it and
-// when nobody does. The body says who holds the company and until when, in words, and holds the
-// buttons that fit: Claim, Release, and for owners Force release. A refused claim is written under
-// the buttons by the form itself, naming the holder and the expiry. Rendered on the server; only the
-// forms run in the browser.
+// Where focus goes after a release removes the Release button: the strip's new Claim button. (The
+// Claim button hands focus on by itself: to the log card, or to the strip after a refusal.)
+const AFTER_RELEASE = '[data-tour="company-claim"] button';
+
+// The claim strip: one line saying who holds the company and until when, with the one button that
+// fits. Yours: "Yours until Nov 21" and a quiet Release. Free: "Nobody holds this" and Claim it. Your
+// own claim ran out: "Your claim expired Nov 5" and Claim again (the log form still shows, since
+// logging renews it). Someone else's: a plain sentence, and for an owner Force release. A closed
+// company (Committed, Declined) has no strip: it can't be claimed and the header says why. A
+// refused claim (someone was quicker) is written under the strip and the page re-renders with the
+// winner. Rendered on the server; only the forms run in the browser.
 export function ClaimPanel(props: Props) {
   const { state, holderName, expiresAt, actions } = props;
+  if (TERMINAL_STAGES.includes(props.stage)) return null;
   const ids = (
     <>
       <input type="hidden" name="workspaceId" value={props.workspaceId} />
       <input type="hidden" name="companyId" value={props.companyId} />
     </>
   );
-  const closed = TERMINAL_STAGES.includes(props.stage);
-  const kind = state === "mine" ? "mine" : state === "theirs" ? "theirs" : "free";
   const holder = holderName ?? "Someone";
+  const first = holder.split(/\s+/)[0] || holder;
+  const date = expiresAt ? day(expiresAt) : "";
+  const via = (state === "mine" || state === "theirs") && props.claimedVia === "ASSISTANT" ? <span className="lg-via">via assistant</span> : null;
 
-  let text: string;
-  if (closed) text = `This company is ${STAGE_LABELS[props.stage].toLowerCase()}, so it can't be claimed.`;
-  else if (state === "mine") text = `You hold this until ${when(expiresAt as Date)}.`;
-  else if (state === "theirs") text = `Held by ${holder} until ${when(expiresAt as Date)}.`;
-  else if (state === "expired") text = `${holder}'s claim expired ${when(expiresAt as Date)}.`;
-  else text = "Not claimed.";
-
-  const stub = kind === "mine" ? "Yours" : kind === "theirs" ? "Held" : closed ? "Closed" : "Free";
+  let text: React.ReactNode;
+  let action: React.ReactNode = null;
+  if (state === "mine") {
+    text = <>Yours until {date}.</>;
+    action = (
+      <ActionForm
+        action={actions.release}
+        submitLabel="Release"
+        small
+        submitAriaLabel={`Release your claim on ${props.companyName}`}
+        confirmMessage={`Release your claim on ${props.companyName}? Someone else can claim it then.`}
+        successMessage={`You released ${props.companyName}.`}
+        focusAfter={AFTER_RELEASE}
+        className="lg-strip-form"
+      >
+        {ids}
+      </ActionForm>
+    );
+  } else if (state === "theirs") {
+    text =
+      props.role === "owner" ? (
+        <>
+          {holder} holds this until {date}.
+        </>
+      ) : (
+        <>
+          {holder} holds this until {date}. Until then only {first} can log outreach, move it or archive it.
+        </>
+      );
+    if (props.role === "owner") {
+      action = (
+        <ActionForm
+          action={actions.forceRelease}
+          submitLabel="Force release"
+          small
+          confirmMessage={`Release ${holder}'s claim on ${props.companyName}?`}
+          successMessage={`${holder}'s claim on ${props.companyName} was released.`}
+          focusAfter={AFTER_RELEASE}
+          className="lg-strip-form"
+        >
+          {ids}
+        </ActionForm>
+      );
+    }
+  } else {
+    text =
+      state === "expired-mine" ? (
+        <>Your claim expired {date}. Claim it again to keep working, or just log outreach.</>
+      ) : state === "expired" ? (
+        <>
+          {holder}&rsquo;s claim expired {date}. Nobody holds this now.
+        </>
+      ) : (
+        <>Nobody holds this.</>
+      );
+    action = (
+      <ClaimButton
+        action={actions.claim}
+        workspaceId={props.workspaceId}
+        companyId={props.companyId}
+        companyName={props.companyName}
+        label={state === "expired-mine" ? "Claim again" : "Claim it"}
+      />
+    );
+  }
 
   return (
-    <section className="lg-ticket" data-kind={kind} aria-labelledby="ticket-title">
-      <div className="lg-ticket-stub" aria-hidden="true">
-        {kind === "mine" ? <Ribbon size="lg" drop className="lg-ticket-ribbon" /> : <ClaimIcon size={26} />}
-        <span>{stub}</span>
-      </div>
-      <div className="lg-ticket-body">
-        <h2 id="ticket-title" className="lg-ticket-title lg-tag">
-          Claim
-        </h2>
-        <p className="lg-ticket-text" aria-live="polite">
-          {text}
-          {(state === "mine" || state === "theirs") && props.claimedVia === "ASSISTANT" && <span className="lg-via">via assistant</span>}
-        </p>
-        {!closed && (
-          <div className="lg-ticket-actions">
-            {(state === "free" || state === "expired") && (
-              <ActionForm action={actions.claim} submitLabel="Claim" primary successMessage={`Claimed ${props.companyName}.`}>
-                {ids}
-              </ActionForm>
-            )}
-            {state === "mine" && (
-              <ActionForm
-                action={actions.release}
-                submitLabel="Release"
-                confirmMessage={`Release your claim on ${props.companyName}?`}
-                successMessage={`You released ${props.companyName}.`}
-              >
-                {ids}
-              </ActionForm>
-            )}
-            {state === "theirs" && props.role === "owner" && (
-              <ActionForm
-                action={actions.forceRelease}
-                submitLabel="Force release"
-                confirmMessage={`Release ${holder}'s claim on ${props.companyName}?`}
-                successMessage={`${holder}'s claim on ${props.companyName} was released.`}
-              >
-                {ids}
-              </ActionForm>
-            )}
-          </div>
-        )}
-        {state === "theirs" && !closed && (
-          <p className="lg-hint lg-ticket-hint">
-            {props.role === "owner"
-              ? "Logging outreach is for the person who holds the claim. As an owner you can release it."
-              : "There is no outreach form while someone else holds this company. Ask them, or an owner."}
-          </p>
-        )}
-      </div>
+    <section className="lg-strip" data-kind={state} aria-labelledby="claim-h" data-tour="company-claim" tabIndex={-1}>
+      <h2 id="claim-h" className="lg-sr" tabIndex={-1}>
+        Claim
+      </h2>
+      <p className="lg-strip-text" aria-live="polite">
+        {text}
+        {via}
+      </p>
+      {action}
     </section>
   );
 }
-

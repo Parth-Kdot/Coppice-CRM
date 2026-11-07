@@ -121,8 +121,8 @@ export async function archiveCompany(_prev: ActionResult | null, form: FormData)
 }
 
 // Brings an archived company back and opens its page. Also used by "Unarchive it instead" when
-// someone tries to add a company that was archived. From the board's Archived list
-// (stay=board), it stays on the board instead.
+// someone tries to add a company that was archived. From the board's Archived list, and from the
+// archived company's own page (stay=board), it stays where the person is instead; the page re-renders.
 export async function unarchiveCompany(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = unarchiveSchema.safeParse({
     workspaceId: form.get("workspaceId"),
@@ -267,7 +267,13 @@ export async function claimCompany(_prev: ActionResult | null, form: FormData): 
   try {
     const member = await requireMembership(workspaceId);
     const result = await claims.claimCompany(member, companyId);
-    if (!result.ok) return result;
+    if (!result.ok) {
+      // Lost the race: the company page and the queue re-render with the winner, so the strip
+      // reads "Held by Priya" instead of still offering Claim under the refusal.
+      revalidatePath(companyPath(workspaceId, companyId));
+      revalidatePath(`/${workspaceId}`);
+      return result;
+    }
   } catch (e) {
     return failure(e);
   }
@@ -317,6 +323,8 @@ export async function logOutreach(_prev: ActionResult | null, form: FormData): P
     followUpOn: form.get("followUpOn"),
     aiDraftId: form.get("aiDraftId"),
     templateId: form.get("templateId"),
+    // A form without a key (older page, the AI assistant) still logs, just without the double-submit guard.
+    clientKey: form.get("clientKey") || undefined,
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const { workspaceId, companyId, ...input } = parsed.data;

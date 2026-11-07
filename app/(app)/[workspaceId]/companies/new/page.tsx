@@ -22,7 +22,7 @@ export default async function NewCompanyPage({ params }: PageProps<"/[workspaceI
 
   return (
     <div className="lg-sheetwrap">
-      <PageHead title="Add a company" sub="Check the name against the workspace first: a look-alike is shown before anything is saved.">
+      <PageHead title="Add a company" sub="We check for look-alikes before saving.">
         <Link href={`/${workspaceId}`} className="lg-btn">
           Back
         </Link>

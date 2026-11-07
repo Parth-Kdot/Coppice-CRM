@@ -1,11 +1,13 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import "./company.css";
 
-// Industry: a free text box with the workspace's own industries as chips under it. A chip fills the
-// box, and pressing the chosen one again clears it, so "Tech", "tech" and "Technology" don't drift
-// apart. The box is a plain named input, so the form posts it like any other.
+// Industry: a free text box. While it has focus, the workspace's own industries that contain what
+// is typed show as chips under it, so "Tech", "tech" and "Technology" don't drift apart; a chip
+// fills the box. Once the box holds one of them exactly, the chips go away (there is nothing left to
+// suggest), and a chip never clears the box. The box is a plain named input, so the form posts it
+// like any other.
 export function IndustryField({
   name = "industry",
   value,
@@ -20,25 +22,51 @@ export function IndustryField({
   maxLength?: number;
 }) {
   const id = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
   const q = value.trim().toLowerCase();
-  const cur = suggestions.find((s) => s.toLowerCase() === q);
-  const shown = [...(cur ? [cur] : []), ...suggestions.filter((s) => s !== cur && (!q || s.toLowerCase().includes(q)))].slice(0, 8);
+  const exact = suggestions.some((s) => s.toLowerCase() === q);
+  const shown = focused && !exact ? suggestions.filter((s) => !q || s.toLowerCase().includes(q)).slice(0, 8) : [];
   return (
-    <div>
+    <div
+      className="lg-industry"
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+      }}
+    >
       <label className="lg-label" htmlFor={`${id}-industry`}>
         Industry
       </label>
-      <input id={`${id}-industry`} name={name} className="lg-input" maxLength={maxLength} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input
+        ref={input}
+        id={`${id}-industry`}
+        name={name}
+        className="lg-input"
+        maxLength={maxLength}
+        value={value}
+        autoComplete="off"
+        aria-describedby={shown.length > 0 ? `${id}-chips` : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      />
       {shown.length > 0 && (
-        <div className="lg-industry-chips" role="group" aria-label="Industries already in this workspace">
-          {shown.map((industry) => {
-            const on = value.trim().toLowerCase() === industry.toLowerCase();
-            return (
-              <button key={industry} type="button" className="lg-ichip" aria-pressed={on} onClick={() => onChange(on ? "" : industry)}>
-                {industry}
-              </button>
-            );
-          })}
+        <div id={`${id}-chips`} className="lg-industry-chips" role="group" aria-label="Industries already in this workspace">
+          {shown.map((industry) => (
+            <button
+              key={industry}
+              type="button"
+              className="lg-ichip"
+              // Keeps focus in the box, so the chips are still there when the click lands.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(industry);
+                // The chips go away with an exact match; focus stays in the box, never on <body>.
+                input.current?.focus();
+              }}
+            >
+              {industry}
+            </button>
+          ))}
         </div>
       )}
     </div>

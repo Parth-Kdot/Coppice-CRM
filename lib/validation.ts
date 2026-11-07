@@ -155,6 +155,8 @@ export const logOutreachSchema = companyRefSchema.extend({
   aiDraftId: id.nullish(),
   // The template the email was based on, if one was picked ("" is "No template").
   templateId: z.string().max(64).nullish().transform((v) => v || null),
+  // P2: the log form's key for this entry, so the same submit twice logs once (lib/claims.ts).
+  clientKey: z.string().uuid().optional(),
 });
 
 export const DRAFT_NOTE_MAX = 300;
