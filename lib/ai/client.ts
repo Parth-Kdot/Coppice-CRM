@@ -113,6 +113,12 @@ export const ROUTES: Record<AiFeature, Route> = {
     firstTryMs: 20_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
   },
+  // Time Capsule (lib/capsule/): relationship cards read from company and outreach notes, four
+  // companies a call, and Ask the Archive's one answer from the notes that mention a question's
+  // words. Both read notes that can name people, so they go to Groq, never Gemini. A cards reply is
+  // up to eight short bullets for each of four companies; an answer is at most five sentences.
+  CAPSULE_CARDS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 2000 },
+  ARCHIVE_ASK: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 700 },
 };
 
 export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";

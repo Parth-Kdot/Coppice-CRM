@@ -4,6 +4,7 @@ import { domainKey } from "@/lib/duplicates";
 import { placeholderProblem } from "@/lib/placeholders";
 import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
 import { MCP_SCOPES } from "@/lib/mcp/config";
+import { ARCHIVE_QUESTION_MAX, ARCHIVE_QUESTION_MIN, CARD_MAX_CALLS } from "@/lib/capsule/limits";
 import {
   AI_LIMIT_MAX,
   BOARD_QUERY_MAX,
@@ -658,3 +659,51 @@ export const tourProgressSchema = z.object({
 })
   .refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.")
   .refine((v) => (v.event !== "hide" && v.event !== "show") || v.tour === "basics", "Only the basics can be hidden.");
+
+// ----- Time Capsule (lib/capsule/, app/(app)/[workspaceId]/capsule/actions.ts) -----
+
+const CAPSULE_STALE = "This handoff is out of date. Reload the page.";
+// The year a board year starts in (2026 is 2026-27). lib/capsule checks it is not in the future.
+const capsuleYear = z.coerce.number("Choose a board year.").int("Choose a board year.").min(2000, "Choose a board year.").max(2100, "Choose a board year.");
+const yesNo = z.enum(["1", "0"]).transform((v) => v === "1");
+
+export const capsuleYearSchema = z.object({ workspaceId: id, boardYearStart: capsuleYear });
+// Who is leaving: "1" marks the member, "0" clears the mark.
+export const departingSchema = z.object({ workspaceId: id, userId: id, departing: yesNo });
+export const startHandoffSchema = capsuleYearSchema;
+export const handoffRefSchema = z.object({ workspaceId: id, reportId: id });
+// One call of the browser-driven reading: at most 15 chunks in a report.
+export const handoffChunkSchema = handoffRefSchema.extend({
+  index: z.coerce.number(CAPSULE_STALE).int(CAPSULE_STALE).min(0, CAPSULE_STALE).max(CARD_MAX_CALLS - 1, CAPSULE_STALE),
+});
+export const cardRefSchema = z.object({ workspaceId: id, cardId: id });
+// Hide or show a bullet (its index) or the whole card (no index).
+export const hideCardSchema = cardRefSchema.extend({
+  bulletIndex: z
+    .string()
+    .regex(/^(\d{1,2})?$/, CAPSULE_STALE)
+    .nullable()
+    .transform((v) => (v === null || v === "" ? null : Number(v))),
+  hidden: yesNo,
+});
+// The owner's re-contact dates for approved cards: a date for each company, or null for blank.
+export const recontactDatesSchema = handoffRefSchema.extend({
+  dates: json(
+    z
+      .array(z.object({ companyId: id, date: z.iso.date("Enter a date like 2026-08-01.").nullable() }))
+      .min(1, CAPSULE_STALE)
+      .max(2000, CAPSULE_STALE),
+    CAPSULE_STALE,
+  ),
+});
+export const fillBlankDatesSchema = handoffRefSchema.extend({ date: z.iso.date("Enter a date like 2026-08-01.") });
+// A question for Ask the Archive: text a person typed, so it is trimmed and bounded.
+export const askArchiveSchema = z.object({
+  workspaceId: id,
+  question: z
+    .string()
+    .trim()
+    .min(ARCHIVE_QUESTION_MIN, `Ask a question of at least ${ARCHIVE_QUESTION_MIN} letters.`)
+    .max(ARCHIVE_QUESTION_MAX, `Keep the question to ${ARCHIVE_QUESTION_MAX} characters or fewer.`)
+    .refine(hasNoNul, NUL_MESSAGE),
+});

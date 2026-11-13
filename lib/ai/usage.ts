@@ -19,6 +19,7 @@ const GROUPS: { key: string; one: string; many: string; features: AiFeature[] }[
   { key: "smart-import", one: "Smart import call", many: "Smart import calls", features: ["IMPORT_MAPPING", "IMPORT_LOOKALIKES", "IMPORT_ROWS"] },
   { key: "fact-sheet", one: "fact sheet read", many: "fact sheet reads", features: ["FACT_EXTRACTION"] },
   { key: "research", one: "research brief call", many: "research brief calls", features: ["RESEARCH_READ", "RESEARCH_BRIEF"] },
+  { key: "time-capsule", one: "Time Capsule call", many: "Time Capsule calls", features: ["CAPSULE_CARDS", "ARCHIVE_ASK"] },
 ];
 export const GROUPED_FEATURES: readonly AiFeature[] = GROUPS.flatMap((g) => g.features);
 

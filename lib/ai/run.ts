@@ -26,6 +26,8 @@ export const AI_WINDOW_DAYS = 30;
 export const DAILY_DRAFTS_PER_PERSON = 40;
 // Research briefs (lib/research/brief.ts) fetch pages and make two AI calls each, so fewer.
 export const DAILY_BRIEFS_PER_PERSON = 10;
+// Ask the Archive (lib/capsule/archive.ts) makes one call per question that has a match.
+export const DAILY_ARCHIVE_QUESTIONS_PER_PERSON = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -99,10 +101,15 @@ export async function aiUsageDetail(tenant: Tenant): Promise<AiUsage & { breakdo
 // the reason it may not, or null. Runs inside a transaction: reserveAi's, under the workspace lock.
 // Groq is only used by Smart import, which says what still works without it.
 export const GROQ_NOT_CONFIGURED = "Smart import isn't set up on this server yet. Ask the app admin. The normal import below still works.";
+// The same for the Time Capsule's two features, which also use Groq.
+export const CAPSULE_NOT_CONFIGURED = "The Time Capsule's AI isn't set up on this server yet. Ask the app admin. Cards without AI, the recap and the playbook still work.";
 export const AI_OFF_MESSAGE = "AI is turned off for this workspace. An owner can turn it on in Settings.";
 
 function configProblem(feature: AiFeature): string | null {
-  if (providerOf(feature) === "groq") return isConfigured("groq") ? null : GROQ_NOT_CONFIGURED;
+  if (providerOf(feature) === "groq") {
+    if (isConfigured("groq")) return null;
+    return feature === "CAPSULE_CARDS" || feature === "ARCHIVE_ASK" ? CAPSULE_NOT_CONFIGURED : GROQ_NOT_CONFIGURED;
+  }
   return isConfigured() ? null : AI_ERROR_MESSAGES.not_configured;
 }
 
@@ -126,6 +133,12 @@ async function gateIn(tx: Prisma.TransactionClient, tenant: Tenant, feature: AiF
   if (feature === "RESEARCH_READ") {
     if ((await tx.aiRun.count({ where: { ...mine, feature: "RESEARCH_READ" } })) >= DAILY_BRIEFS_PER_PERSON) {
       return `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.`;
+    }
+  }
+  // Questions to the archive, per person. A call that failed on the AI service's side doesn't count.
+  if (feature === "ARCHIVE_ASK") {
+    if ((await tx.aiRun.count({ where: { ...mine, feature: "ARCHIVE_ASK", ...countsForPerson } })) >= DAILY_ARCHIVE_QUESTIONS_PER_PERSON) {
+      return `You've asked ${DAILY_ARCHIVE_QUESTIONS_PER_PERSON} questions in the last 24 hours. Try again tomorrow.`;
     }
   }
   return null;
