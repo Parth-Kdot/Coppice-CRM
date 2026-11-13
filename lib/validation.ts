@@ -719,11 +719,15 @@ const copilotQuestion = z
   .refine(hasNoNul, NUL_MESSAGE);
 
 // threadId null starts a new conversation.
-export const askCopilotSchema = z.object({ workspaceId: id, threadId: id.nullable(), question: copilotQuestion });
+// retryOf: the failed turn this question asks again, which the new answer replaces.
+export const askCopilotSchema = z.object({ workspaceId: id, threadId: id.nullable(), question: copilotQuestion, retryOf: id.nullable() });
 export const copilotStarterSchema = z.object({ workspaceId: id, threadId: id.nullable(), starter: z.enum(COPILOT_STARTERS) });
 // "Show again", and a chip edit when `filter` is sent.
 export const rerunTurnSchema = z.object({ workspaceId: id, turnId: id, filter: copilotFilterSchema.nullable() });
 export const openThreadSchema = z.object({ workspaceId: id, threadId: id.nullable() });
+// Taking one chip off a list: the filter as the screen shows it and the field to put back to its default.
+export const COPILOT_FILTER_KEYS = ["stages", "industry", "due", "claim", "neverContacted", "nameOrSite", "notesMention", "sort"] as const;
+export const copilotChipSchema = z.object({ workspaceId: id, turnId: id, filter: copilotFilterSchema, remove: z.enum(COPILOT_FILTER_KEYS) });
 // A next-move chip: the card for one action on one company, checked against the company as it is now.
 export const copilotMoveSchema = z.object({
   workspaceId: id,

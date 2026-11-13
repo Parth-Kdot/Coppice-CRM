@@ -52,6 +52,8 @@ type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boole
 type Props = {
   workspaceId: string;
   isOwner: boolean;
+  // AI is on for the workspace, so the More menu links to Ask Coppice.
+  askOn?: boolean;
   columns: BoardColumnData[];
   filters: BoardFilters;
   industries: string[];
@@ -512,6 +514,7 @@ export function BoardView(props: Props) {
     ...(duplicateCount > 0 ? [{ key: "dupes", label: `Possible duplicates (${duplicateLabel})`, href: dupesHref }] : []),
     ...(archivedCount > 0 ? [{ key: "archived", label: `Archived (${archivedCount.toLocaleString("en-US")})`, href: archivedHref }] : []),
     { key: "stats", label: "Template stats", href: `/${workspaceId}/stats` },
+    ...(props.askOn ? [{ key: "ask", label: "Ask Coppice", href: `/${workspaceId}/ask` }] : []),
     ...(workspaceTotal > 0 ? [{ key: "keys", label: "Keyboard shortcuts", onSelect: () => setShortcuts(true) }] : []),
   ];
   const empty = workspaceTotal === 0;

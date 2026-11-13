@@ -24,7 +24,9 @@ The name comes from coppicing, the old forestry practice of cutting a tree back 
 
 **Research briefs.** On a company page, "Who to contact" asks for a short brief on the company's official ways in: university relations, campus recruiting, giving programs. It reads only web pages an Owner approved in Settings, every line quotes the page it came from and links to it, and nothing reaches the company until someone adds a specific line to its notes. AI must be on for the workspace, and each person can ask for 10 briefs a day.
 
-**Getting started.** The first time someone opens a workspace, a short basics tour points at the real controls: the queue, claiming, logging a follow-up, the board, adding companies and search (and, for Owners, inviting officers). An optional AI tour covers the fact sheet, Smart import, the drafter and checker, research briefs and AI assistants. Either can be replayed from the account menu.
+**Ask Coppice.** A member types a question in plain English ("who's overdue in tech?", "what should I do in the next 30 minutes?", "how do claims work?") at `/<workspace>/ask`. One Groq call turns the question into a small structured intent; the model never sees companies, notes, contacts or outreach history, and never calls tools. Code checks the intent and reads the answer from the workspace: filter chips you can take off (no AI call), rows with a next-move chip, a company card, a plan, a template stats summary, or sections of the built-in Coppice guide. Anything it proposes (claim, release, log, move a stage, set a follow-up date) is a confirm card that calls the same server actions the rest of the app uses, so the claim rules apply. Conversations are private to each person and kept for 30 days. AI must be on for the workspace, and each person can ask 50 questions a day. The four starter chips work without a Groq key.
+
+**Getting started.** The first time someone opens a workspace, a short basics tour points at the real controls: the queue, claiming, logging a follow-up, the board, adding companies and search (and, for Owners, inviting officers). An optional AI tour covers the fact sheet, Smart import, the drafter and checker, research briefs, Ask Coppice and AI assistants. Either can be replayed from the account menu.
 
 **Sending and logging.** Coppice never sends email. Drafts open in your own Gmail, Outlook or mail app. Logging the outreach renews your claim and sets the next follow-up.
 
@@ -32,7 +34,7 @@ The name comes from coppicing, the old forestry practice of cutting a tree back 
 
 ## Stack
 
-Next.js 16 (App Router) and React 19 with TypeScript, Tailwind CSS 4, Prisma 7 with the pg driver adapter, Postgres on Supabase, Better Auth with Google sign-in and the organization plugin, Gemini for the AI features (and Groq for Smart import's free-text cells), Papa Parse for CSV and unpdf for PDF text. Hosted on Vercel. Tests run on Vitest against a real Postgres.
+Next.js 16 (App Router) and React 19 with TypeScript, Tailwind CSS 4, Prisma 7 with the pg driver adapter, Postgres on Supabase, Better Auth with Google sign-in and the organization plugin, Gemini for the AI features (and Groq for Smart import's free-text cells and for Ask Coppice), Papa Parse for CSV and unpdf for PDF text. Hosted on Vercel. Tests run on Vitest against a real Postgres.
 
 ## Security
 
@@ -52,7 +54,7 @@ npm run dev
 
 The app runs at http://localhost:3000.
 
-`.env.example` explains every variable. In short: `DATABASE_URL` and `DIRECT_URL` point at the local Postgres, `BETTER_AUTH_SECRET` comes from `openssl rand -base64 32`, the Google client ID and secret come from a Google Cloud OAuth client, and `WORKSPACE_CREATOR_EMAILS` lists who may create workspaces. `GEMINI_API_KEY` is optional; without it the AI features say so and stay off. `GROQ_API_KEY` is optional too; without it Smart import says so and the normal CSV import works as usual.
+`.env.example` explains every variable. In short: `DATABASE_URL` and `DIRECT_URL` point at the local Postgres, `BETTER_AUTH_SECRET` comes from `openssl rand -base64 32`, the Google client ID and secret come from a Google Cloud OAuth client, and `WORKSPACE_CREATOR_EMAILS` lists who may create workspaces. `GEMINI_API_KEY` is optional; without it the AI features say so and stay off. `GROQ_API_KEY` is optional too; without it Smart import and typed questions in Ask Coppice say so; the normal CSV import and the Ask Coppice starter chips work as usual.
 
 ## Demo data
 
@@ -80,4 +82,4 @@ npm test                      # needs the local Postgres running
 
 ## Status
 
-The core workflow works end to end: import (with Smart import for messy notes), claims, the queue and board, the fact sheet, drafts, the claim checker, logging outreach, reply rates for each pitch template, and research briefs from approved pages. Members can also connect their own AI assistant through the MCP server. Next up are a pipeline assistant that only acts after you approve, and a turnover summary for each incoming board.
+The core workflow works end to end: import (with Smart import for messy notes), claims, the queue and board, the fact sheet, drafts, the claim checker, logging outreach, reply rates for each pitch template, and research briefs from approved pages. Members can also connect their own AI assistant through the MCP server. Ask Coppice answers questions about the pipeline and only acts after you confirm. Next up is a turnover summary for each incoming board.

@@ -83,11 +83,11 @@ describe("a card says exactly what will happen, and whether it can", () => {
     const owner = await card(OWNER, { companyId: p.id.bramble, type: "RELEASE" });
     expect(owner).toMatchObject({ legal: true, force: true, label: "Force release", text: "Force-release officerA's claim on Bramblewick Consulting." });
     const officer = await card(OFFICER, { companyId: p.id.globex, type: "RELEASE" });
-    expect(officer).toMatchObject({ legal: false, force: false, reason: OWNERS_FORCE_RELEASE });
+    expect(officer).toMatchObject({ legal: false, force: false, reason: OWNERS_FORCE_RELEASE, text: "Release the claim on Globex." });
   });
 
   it("RELEASE of a company you don't hold is disabled", async () => {
-    expect(await card(OFFICER, { companyId: p.id.acme, type: "RELEASE" })).toMatchObject({ legal: false, reason: NOT_YOURS_TO_RELEASE });
+    expect(await card(OFFICER, { companyId: p.id.acme, type: "RELEASE" })).toMatchObject({ legal: false, reason: NOT_YOURS_TO_RELEASE, text: "Release the claim on Acme Tech." });
   });
 
   it("LOG opens the log form with nothing filled in, and is legal only on a company you hold", async () => {

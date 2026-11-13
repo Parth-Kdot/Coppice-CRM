@@ -255,6 +255,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               workspace, cut before any note in the name. Its free-text cells, which can include names, go to Groq instead, with
               email addresses and phone numbers masked. Groq says it doesn&apos;t keep what it&apos;s sent by default, apart from logs it may hold for up to 30 days to
               look into errors or abuse.
+              Ask Coppice sends Groq your question, your last few questions in that conversation, and the names of companies it just showed you,
+              and Groq keeps them as described above. Notes, contacts and outreach history are not sent; answers are read from your workspace by code.
               An AI assistant a member connects is separate (see AI assistants below): what it reads, contact names included, goes to
               the company behind it.
             </p>
