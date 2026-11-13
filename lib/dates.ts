@@ -50,3 +50,7 @@ export function localMidnight(ymd: string): Date {
   const utc = Date.parse(`${ymd}T00:00:00Z`);
   return new Date(utc - offsetAt(utc - offsetAt(utc)));
 }
+
+// The calendar date in West Lafayette for a moment ("2026-10-25"), for code that groups rows by day
+// or month (Time Capsule's recap).
+export const dayString = (date: Date) => localDay(date);

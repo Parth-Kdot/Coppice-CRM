@@ -165,6 +165,8 @@ describe("generate (the Gemini client)", () => {
       IMPORT_ROWS: ["openai/gpt-oss-120b"],
       RESEARCH_READ: ["gemini-3.6-flash", "gemini-3.8-flash", undefined],
       RESEARCH_BRIEF: ["gemini-3.5-flash-lite", "gemini-3.6-flash", undefined],
+      CAPSULE_CARDS: ["openai/gpt-oss-120b"],
+      ARCHIVE_ASK: ["openai/gpt-oss-120b"],
     });
     fakeGemini(answer(JSON.stringify(GOOD)));
     await generate({ ...request, feature: "CLAIM_CHECK" });
