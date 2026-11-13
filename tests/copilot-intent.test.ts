@@ -59,12 +59,63 @@ describe("the reply sentence", () => {
     ["a bare domain", "Ask acme.com about it.", "how do I import?", true],
     ["a domain with a path", "Try example.dev/help.", "how do I import?", true],
     ["an email address", "Write to dana@purdue.edu.", "how do I import?", true],
-    ["a sentence with a dot and no link", "Claims last two weeks. Release gives one up early.", "how do claims work?", false],
-    ["an abbreviation", "e.g. Acme Inc. and others.", "show acme", false],
+    ["a sentence with a dot and no link", "Claims end on their own. Release gives a claim up early.", "how do claims work?", false],
+    ["an abbreviation", "e.g. Acme and others.", "show acme", false],
+    // Numbers in words are numbers.
+    ["a number in words", "Twelve companies are overdue.", "who's overdue in tech?", true],
+    ["a number in words after a name", "Bramblewick has been quiet for three weeks.", "who's overdue in tech?", true],
+    ["a spelled-out phone number", "Call (three one seven) five five five.", "who's overdue in tech?", true],
+    ["a tens word", "About forty of them.", "who's overdue in tech?", true],
+    ["hundreds", "Hundreds of companies match.", "who's overdue in tech?", true],
+    ["a dozen", "A dozen are overdue.", "who's overdue in tech?", true],
+    ["a number word the question used", "Plan a ten minute session.", "plan ten minutes", false],
+    // Dates, weekdays and relative days.
+    ["a month", "Acme committed last November.", "who's overdue in tech?", true],
+    ["an abbreviated month", "Due in Dec.", "who's overdue in tech?", true],
+    ["a weekday", "It is waiting until Friday.", "who's overdue in tech?", true],
+    ["a lower-case weekday", "Try again on monday.", "who's overdue in tech?", true],
+    ["a relative day", "Follow up tomorrow.", "who's overdue in tech?", true],
+    ["a relative week", "Most are due next week.", "who's overdue in tech?", true],
+    ["this month", "Claims end this month.", "who's overdue in tech?", true],
+    ["a relative day the question used", "Nothing is due today.", "anything due today?", false],
+    ["a relative week the question used", "Nothing is due next week.", "what is due next week?", false],
+    ["the word may as a verb", "You may claim a free company.", "can I claim it?", false],
+    // Names the model could invent.
+    ["an invented company", "Bramblewick is the worst.", "who's overdue in tech?", false],
+    ["an invented company after a clause", "These are overdue; Bramblewick is the worst.", "who's overdue in tech?", true],
+    ["an invented person", "Dana Whitfield holds most of them.", "who's overdue in tech?", true],
+    ["an invented name mid-sentence", "Ask Priya about it.", "who's overdue in tech?", true],
+    ["an invented name in capitals", "Ask ACME about it.", "who's overdue in tech?", true],
+    ["a name the question used", "Nothing to show for Acme yet.", "what's our history with Acme?", false],
+    ["Coppice itself", "Coppice can't send email.", "email them", false],
+    ["a stage label", "Move it to Committed first.", "what next?", false],
+    ["a spelled-out web address", "Visit acme dot com.", "who's overdue in tech?", true],
+    ["a spelled-out web address in brackets", "Visit acme [dot] org.", "who's overdue in tech?", true],
   ] as const)("%s", ([, reply, question, replaced]) => {
-    expect(replyProblem(reply, question)).toBe(replaced);
-    const checked = checkIntent(intent({ view: "companies", reply, filter: DEFAULT_FILTER }), ctx({ question }));
-    expect(checked.intent.reply).toBe(replaced ? CODE_REPLIES.companies : reply);
+    expect(replyProblem(reply, question, [], ctx().industries)).toBe(replaced);
+    // A sentence is the model's own only for the none and guide views.
+    for (const view of ["none", "guide"] as const) {
+      const checked = checkIntent(intent({ view, reply, guideTopics: ["claims"] }), ctx({ question }));
+      expect(checked.intent.reply).toBe(replaced ? CODE_REPLIES[view] : reply);
+    }
+  });
+
+  it("lets a name through that Coppice itself listed: a shown company, a guide title, an industry", () => {
+    const reply = "Coppice can't email Bramblewick Consulting. See Claims and the claim window under Technology.";
+    expect(replyProblem(reply, "email them")).toBe(true);
+    expect(replyProblem(reply, "email them", ["Bramblewick Consulting", "Claims and the claim window"], ["Technology"])).toBe(false);
+    const checked = checkIntent(intent({ view: "none", reply }), ctx({ question: "email them", names: ["Bramblewick Consulting", "Claims and the claim window"] }));
+    expect(checked.intent.reply).toBe(reply);
+  });
+
+  test.for(["companies", "company", "plan", "stats"] as const)("a %s answer always shows Coppice's own sentence, even for a harmless one", (view) => {
+    const checked = checkIntent(intent({ view, reply: "Here you go.", filter: DEFAULT_FILTER, company: { id: "co-1", name: null }, minutes: 30 }), ctx());
+    expect(checked.intent.reply).toBe(CODE_REPLIES[view]);
+  });
+
+  it("a stored reply is kept when its turn is read back, even one that names a company the check can't know now", () => {
+    const stored = intent({ view: "none", reply: "Coppice can't email Bramblewick Consulting." });
+    expect(recheckStored(stored, { question: "email them", industries: [], today: TODAY, guideIds: [] }).intent.reply).toBe(stored.reply);
   });
 
   it("is replaced when empty, with the sentence for the view it ended up with", () => {

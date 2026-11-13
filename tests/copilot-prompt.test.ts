@@ -1,6 +1,9 @@
 import { describe, expect, it, test } from "vitest";
 import { GUIDE, guideIndex } from "@/lib/copilot/guide";
 import { DEFAULT_FILTER, NONE_INTENT, type StoredIntent } from "@/lib/copilot/intent";
+import { ROUTES } from "@/lib/ai/client";
+import { toGroqSchema } from "@/lib/ai/schema";
+import { copilotIntentSchema } from "@/lib/validation";
 import { buildPrompt, compactIntent, estimateTokens, PROMPT_LIMITS, SYSTEM, weekdayOf, type PromptInput } from "@/lib/copilot/prompt";
 
 // What Groq is sent for one question: contents, labelling and size. Pure.
@@ -21,9 +24,9 @@ describe("what the prompt holds", () => {
     const { prompt } = buildPrompt(base({ role: "owner" }));
     expect(prompt).toContain("Today is Friday 2026-11-13. The person is an owner.");
     expect(prompt).toContain("Stages: NOT_CONTACTED, CONTACTED, REPLIED, IN_CONVERSATION, COMMITTED, DECLINED.");
-    expect(prompt).toContain("Industries in this workspace: Technology; Finance.");
+    expect(prompt).toContain("Industries in this workspace (data): Technology; Finance.");
     expect(buildPrompt(base()).prompt).toContain("The person is an officer.");
-    expect(buildPrompt(base({ industries: [] })).prompt).toContain("Industries in this workspace: none yet.");
+    expect(buildPrompt(base({ industries: [] })).prompt).toContain("Industries in this workspace (data): none yet.");
   });
 
   test.for([
@@ -58,14 +61,16 @@ describe("what the prompt holds", () => {
     expect(recent).toEqual(['Q: "third" A: {"view":"stats"}', 'Q: "fourth" A: {"view":"stats"}', 'Q: "fifth" A: {"view":"stats"}']);
   });
 
-  it("puts up to 8 earlier questions on one line, each cut to 80 characters", () => {
+  it("puts up to 5 earlier questions on one line, each cut to 60 characters", () => {
     const turns = Array.from({ length: 14 }, (_, i) => ({ question: `question ${i} ${"x".repeat(200)}`, intent: intent() }));
     const line = buildPrompt(base({ turns })).prompt.split("\n").find((l) => l.startsWith("Earlier questions"))!;
     const questions = line.slice(line.indexOf(":") + 2).split(" | ");
-    // 14 turns: the last 3 are recent, so the 11 before them are earlier, of which the latest 8 are listed.
-    expect(questions).toHaveLength(8);
-    expect(questions[0]).toContain("question 3 ");
-    expect(questions[7]).toContain("question 10 ");
+    // 14 turns: the last 3 are recent, so the 11 before them are earlier, of which the latest 5 are listed.
+    expect(questions).toHaveLength(5);
+    expect(questions[0]).toContain("question 6 ");
+    expect(questions[4]).toContain("question 10 ");
+    expect(PROMPT_LIMITS.earlierQuestions).toBe(5);
+    expect(PROMPT_LIMITS.earlierChars).toBe(60);
     for (const q of questions) expect(q.length).toBeLessThanOrEqual(PROMPT_LIMITS.earlierChars + 3);
     expect(questions[0].endsWith('…"')).toBe(true);
   });
@@ -180,7 +185,10 @@ describe("compactIntent", () => {
   });
 });
 
-describe("size: under about 1,800 tokens however long the conversation", () => {
+// The worst case below measures 2,328 estimated tokens (system and prompt 1,794, schema 534), so the budget is 2,350.
+const REQUEST_TOKEN_BUDGET = 2350;
+
+describe("size: under about 2,350 tokens a request (system, prompt and schema) however long the conversation", () => {
   const long = (n: number, c: string) => c.repeat(n);
   // Every cap at its limit at once: 30 long industries, a long conversation of 500-character
   // questions with the fullest intents there are, ten long company names and a 500-character question.
@@ -209,8 +217,12 @@ describe("size: under about 1,800 tokens however long the conversation", () => {
 
   it("holds the worst conversation to the budget", () => {
     const { system, prompt } = buildPrompt(worst());
-    // About 3.5 characters a token is a cautious count (English prose is nearer 4, ids and JSON nearer 3).
-    expect(estimateTokens(system + prompt)).toBeLessThanOrEqual(1900);
+    // What Groq bills as prompt tokens is the system text, the prompt and the strict JSON schema it is
+    // sent. About 3.5 characters a token is a cautious count (English nearer 4, ids and JSON nearer 3).
+    const schema = JSON.stringify(toGroqSchema(copilotIntentSchema));
+    expect(estimateTokens(system + prompt + schema)).toBeLessThanOrEqual(REQUEST_TOKEN_BUDGET);
+    // And with the answer cap on top, one call stays under half of Groq's 8,000 a minute.
+    expect(estimateTokens(system + prompt + schema) + (ROUTES.COPILOT as { maxTokens: number }).maxTokens).toBeLessThanOrEqual(4000);
   });
 
   it("is far smaller for an ordinary follow-up", () => {
@@ -228,7 +240,7 @@ describe("size: under about 1,800 tokens however long the conversation", () => {
   it("grows by nothing as a conversation gets longer", () => {
     const turns = (n: number) => Array.from({ length: n }, (_, i) => ({ question: `question ${i} about companies`, intent: intent({ view: "stats" }) }));
     const size = (n: number) => buildPrompt(base({ turns: turns(n) })).prompt.length;
-    // Past 11 turns (3 recent and 8 earlier) the prompt can't get longer.
+    // Past 8 turns (3 recent and 5 earlier) the prompt can't get longer.
     expect(size(11)).toBe(size(11));
     expect(Math.abs(size(40) - size(12))).toBeLessThan(60);
   });

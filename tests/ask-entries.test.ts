@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 import { announcement, collapse, failedEntry, fromAnswer, fromTurn, initialEntries, pendingEntry, withAnswer } from "@/components/ledger/ask/entries";
-import { asksQuestion } from "@/components/ledger/ask/question";
+import { asksQuestion, handedOverDraft } from "@/components/ledger/ask/question";
 import type { CopilotAnswer, Entry, TurnView } from "@/components/ledger/ask/types";
 
 // The thread the Ask Coppice screen keeps, and when the search palette offers to ask a question.
@@ -109,5 +109,20 @@ describe("the thread", () => {
   it("reads out the sentence and the code-built summary", () => {
     expect(announcement(answer())).toBe("These are overdue. 3 companies match.");
     expect(announcement(answer({ summary: null }))).toBe("These are overdue.");
+  });
+});
+
+describe("a question handed over in the address", () => {
+  test.for([
+    ["a question", "who's overdue in tech?", "who's overdue in tech?"],
+    ["extra spaces and line breaks", "  who is\n overdue   in tech?  ", "who is overdue in tech?"],
+    ["nothing", null, ""],
+    ["only spaces", "   ", ""],
+  ] as const)("%s goes into the box as plain text", ([, param, draft]) => {
+    expect(handedOverDraft(param, 500)).toBe(draft);
+  });
+
+  it("is cut to the longest question the server takes", () => {
+    expect(handedOverDraft("x".repeat(900), 500)).toHaveLength(500);
   });
 });

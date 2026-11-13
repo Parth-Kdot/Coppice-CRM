@@ -187,7 +187,7 @@ function pageItems(workspaceId: string, query: string, askOn: boolean): PageItem
   return found;
 }
 
-// The first row for a question: Enter opens Ask Coppice with it already asked.
+// The first row for a question: Enter opens Ask Coppice with it in the question box, ready to ask.
 function askItem(workspaceId: string, query: string): PageItem {
   const text = query.trim();
   return {

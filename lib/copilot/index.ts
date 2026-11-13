@@ -129,12 +129,20 @@ export async function askCopilot(member: Membership, input: AskInput): Promise<C
   const thread = await openForTurn(member, input.threadId, now);
   const industries = await listIndustries(member);
   const shown = await namesOf(member, thread.shownIds);
-  const check: CheckContext = { question, shownIds: new Set(shown.map((s) => s.id)), industries, today, guideIds: GUIDE_IDS };
+  const guide = guideIndex();
+  const check: CheckContext = {
+    question,
+    shownIds: new Set(shown.map((s) => s.id)),
+    industries,
+    today,
+    guideIds: GUIDE_IDS,
+    names: [...shown.map((s) => s.name), ...guide.map((g) => g.title)],
+  };
   const { system, prompt } = buildPrompt({
     today,
     role: member.role,
     industries,
-    guide: guideIndex(),
+    guide,
     turns: thread.turns.flatMap((t) => (t.intent ? [{ question: t.question, intent: t.intent }] : [])),
     shown,
     question,

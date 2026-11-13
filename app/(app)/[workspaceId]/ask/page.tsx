@@ -16,10 +16,11 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/ask
 
 // Ask Coppice: a question about the pipeline, or about how Coppice works, answered with a sentence,
 // editable filter chips, rows read from the workspace by code, and confirm cards for anything it
-// proposes. The model sees only the question, the last few questions and the names of the companies
-// just shown (lib/copilot/prompt.ts); everything on screen is read by code (lib/copilot/). This page
-// loads the person's latest conversation; the rest happens in the browser through ./actions.ts. A
-// question from the search palette arrives as ?q= and the screen asks it once.
+// proposes. The model sees only the question, the last few questions, the names of the companies
+// just shown and the workspace's industry names (lib/copilot/prompt.ts); everything on screen is read
+// by code (lib/copilot/). This page loads the person's latest conversation; the rest happens in the
+// browser through ./actions.ts. A question from the search palette arrives as ?q= and the screen puts
+// it in the question box; the person presses Ask.
 // With AI off for the workspace the page says so and nothing else (the links to it are hidden too).
 export default async function AskPage({ params }: PageProps<"/[workspaceId]/ask">) {
   const { workspaceId } = await params;
