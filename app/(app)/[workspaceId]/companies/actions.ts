@@ -20,6 +20,7 @@ import {
   markReplySchema,
   moveStageSchema,
   sameCompanySchema,
+  setFollowUpSchema,
   unarchiveSchema,
   updateCompanySchema,
   updateContactSchema,
@@ -398,5 +399,32 @@ export async function removeContact(_prev: ActionResult | null, form: FormData):
     return failure(e);
   }
   revalidatePath(companyPath(workspaceId, companyId));
+  return { ok: true, data: undefined };
+}
+
+// Sets a company's next follow-up date and nothing else: no claim, no outreach entry (lib/claims.ts
+// setFollowUp). Refused under someone else's live claim, on an archived company and on a closed one.
+export async function setFollowUp(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = setFollowUpSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    companyId: form.get("companyId"),
+    followUpOn: form.get("followUpOn"),
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const { workspaceId, companyId, followUpOn } = parsed.data;
+
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await claims.setFollowUp(member, companyId, followUpOn);
+    if (!result.ok) {
+      // The page may be showing a claim that has changed since it loaded.
+      revalidatePath(companyPath(workspaceId, companyId));
+      revalidatePath(`/${workspaceId}`);
+      return result;
+    }
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
   return { ok: true, data: undefined };
 }

@@ -1,11 +1,12 @@
 import { cache } from "react";
 import type { Channel, Stage, Via } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
+import { followUpClosed, followUpHeld } from "@/lib/claim-messages";
 import { day } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { REPLY_STAGES, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 
 // Everything that touches a claim lives here (project rule 2). A claim says "I'm pitching this
 // company": while it's live, nobody else can log outreach on it, move its stage or archive it
@@ -172,6 +173,25 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
   });
 }
 
+// The follow-up date rule and its time-zone conversion, shared by logOutreach and setFollowUp so the
+// two can never disagree. A follow-up is a calendar date from today to a year out, "today" being
+// West Lafayette's date by the database clock; it is stored as midnight there.
+export const FOLLOW_UP_RANGE_MESSAGE = "Pick a follow-up date from today to a year from now.";
+const followUpAt = (followUpOn: string) => Prisma.sql`(${followUpOn}::date)::timestamp AT TIME ZONE ${TIME_ZONE}`;
+async function followUpInRange(tx: Tx, followUpOn: string): Promise<boolean> {
+  const [{ inRange }] = await tx.$queryRaw<{ inRange: boolean }[]>`
+    SELECT ${followUpOn}::date BETWEEN (now() AT TIME ZONE ${TIME_ZONE})::date
+                                   AND (now() AT TIME ZONE ${TIME_ZONE})::date + 365 AS "inRange"`;
+  return inRange;
+}
+// Whether the text is YYYY-MM-DD and a real calendar day ("2026-02-30" is not). Checked before the
+// text reaches Postgres, which would refuse it with an error instead of a message.
+export function isCalendarDate(text: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
+
 // aiDraftId: the AI draft this outreach sent, if any ("I sent it"), so stats can compare drafted
 // and hand-written emails. templateId: the template it was based on, if any, for template stats.
 // via: logged in the app (the default) or by the person's AI assistant. clientKey: the log form's
@@ -205,10 +225,7 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
       if (done) return done.companyId === companyId ? { ok: true, data: { outreachId: done.id } } : NOT_FOUND;
     }
     // The follow-up must be from today to a year out, "today" being West Lafayette's date.
-    const [{ inRange }] = await tx.$queryRaw<{ inRange: boolean }[]>`
-      SELECT ${input.followUpOn}::date BETWEEN (now() AT TIME ZONE ${TIME_ZONE})::date
-                                         AND (now() AT TIME ZONE ${TIME_ZONE})::date + 365 AS "inRange"`;
-    if (!inRange) return { ok: false, error: "Pick a follow-up date from today to a year from now." };
+    if (!(await followUpInRange(tx, input.followUpOn))) return { ok: false, error: FOLLOW_UP_RANGE_MESSAGE };
     // Only your own draft of this company can be credited.
     if (input.aiDraftId) {
       const draft = await tx.aiDraft.findFirst({
@@ -230,7 +247,7 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
     const updated = await tx.$queryRaw<{ fromStage: Stage; toStage: Stage }[]>`
       UPDATE "Company" c
       SET "lastContactedAt" = now(),
-          "nextFollowUpAt" = (${input.followUpOn}::date)::timestamp AT TIME ZONE ${TIME_ZONE},
+          "nextFollowUpAt" = ${followUpAt(input.followUpOn)},
           "claimExpiresAt" = now() + make_interval(days => (SELECT "claimWindowDays" FROM public.workspace WHERE id = ${actor.workspaceId})),
           stage = CASE WHEN c.stage = 'NOT_CONTACTED' THEN 'CONTACTED'::"Stage" ELSE c.stage END,
           "updatedAt" = now()
@@ -275,6 +292,41 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
       });
     }
     return { ok: true, data: { outreachId: outreach.id } };
+  });
+}
+
+// Sets only the next follow-up date of a company: it does not claim, does not renew a claim, does not
+// touch last contacted and writes no Outreach row. One conditional UPDATE: the company is in the
+// workspace, not archived, not Committed or Declined, and not held by someone else under a live claim
+// (compared with now() in SQL; your own claim, an expired one and no claim all pass). The date rule
+// and the stored time are logOutreach's (followUpInRange, followUpAt). Owners are not exempt: the
+// app lets an owner move a stage past someone's claim, but nobody but the holder logs or reschedules.
+// `via` is part of the signature for callers that act for a person (an assistant, a later feature);
+// with no history row written there is nothing to record it on yet.
+export function setFollowUp(actor: Tenant, companyId: string, followUpOn: string, via: Via = "APP"): Promise<ActionResult<{ nextFollowUpAt: Date }>> {
+  void via;
+  return withTenant(actor, async (tx) => {
+    if (!isCalendarDate(followUpOn) || !(await followUpInRange(tx, followUpOn))) return { ok: false, error: FOLLOW_UP_RANGE_MESSAGE };
+    const updated = await tx.$queryRaw<{ nextFollowUpAt: Date }[]>`
+      UPDATE "Company"
+      SET "nextFollowUpAt" = ${followUpAt(followUpOn)},
+          "updatedAt" = now()
+      WHERE id = ${companyId} AND "workspaceId" = ${actor.workspaceId}
+        AND "archivedAt" IS NULL
+        AND stage NOT IN ('COMMITTED', 'DECLINED')
+        AND ("claimedById" IS NULL OR "claimExpiresAt" <= now() OR "claimedById" = ${actor.userId})
+      RETURNING "nextFollowUpAt"`;
+    if (updated.length === 1) return { ok: true, data: updated[0] };
+
+    // Refused: say why. Nothing has been written.
+    const row = await readClaim(tx, actor.workspaceId, companyId);
+    if (!row || row.archived) return NOT_FOUND;
+    if (TERMINAL_STAGES.includes(row.stage)) return { ok: false, error: followUpClosed(row.stage) };
+    // Only reachable if the claim changed in the instant between the UPDATE and this read, which no
+    // test can time reliably, so coverage skips it.
+    /* v8 ignore next */
+    if (!row.live) return { ok: false, error: "The claim on this company just changed. Try again." };
+    return { ok: false, error: followUpHeld(row.holderName, row.claimExpiresAt as Date) };
   });
 }
 
