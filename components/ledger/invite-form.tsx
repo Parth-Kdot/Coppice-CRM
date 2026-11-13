@@ -7,6 +7,7 @@ import { OverflowMenu, type OverflowItem } from "@/components/ledger/overflow-me
 import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
 import { ShowMore } from "@/components/ledger/show-more";
+import { roleLabel } from "@/lib/roles";
 import type { ActionResult } from "@/lib/validation";
 import "./company.css";
 import "./pages.css";
@@ -127,8 +128,6 @@ export type MemberRow = {
   isMe: boolean;
 };
 
-const roleName = (role: "owner" | "member") => (role === "owner" ? "Owner" : "Officer");
-
 // Past this many members the list shows the first ten, "Show all", and a filter box.
 const MEMBERS_SHOWN = 10;
 
@@ -235,7 +234,7 @@ export function MemberList({
         </p>
         <p className="lg-mrow-meta">
           <span className="lg-badge" data-role={m.role}>
-            {roleName(m.role)}
+            {roleLabel(m.role)}
           </span>
           {isOwner && <span className="lg-mrow-joined">joined {m.joined}</span>}
           {m.email && (

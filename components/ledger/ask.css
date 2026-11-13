@@ -1,0 +1,594 @@
+/* ==========================================================================================
+   Ledger, Ask Coppice. A thread like pages of a ledger: each question is a heading on a ruled line,
+   the answer hangs under it behind a moss margin rule, rows are the queue's ruled rows, and the
+   question box is pinned at the foot of the page. Plain CSS in a file, so the strict style-src
+   policy allows it. Nothing here moves on load; the only motion is the loading bar's pulse, and the
+   motion kit's stamp and exit when a card is confirmed (components/ledger/motion-kit.ts).
+   ========================================================================================== */
+
+@layer components {
+  .lg-page-ask {
+    display: flex;
+    flex-direction: column;
+    max-width: 880px;
+    /* The foot of the page sits at the foot of the screen even when the thread is short. */
+    min-height: calc(100dvh - 176px);
+  }
+  .lg-ask-off {
+    margin-top: 18px;
+    max-width: 60ch;
+    color: var(--ink-2);
+    font-size: var(--fs-3);
+  }
+
+  /* ---------- The empty thread: starter chips ---------- */
+  .lg-askstart {
+    flex: 1;
+    margin-top: 10px;
+    padding-top: 14px;
+    border-top: 2px solid var(--ink-2);
+  }
+  .lg-askstart-lead {
+    margin-bottom: 12px;
+    color: var(--ink-2);
+  }
+  .lg-askstarters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+  }
+  .lg-askstarter {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 500;
+    line-height: 1.1;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+  .lg-askstarter:hover:not([aria-disabled="true"]) {
+    background: var(--paper-2);
+    border-color: var(--ink-2);
+  }
+  .lg-askstarter[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: progress;
+  }
+
+  /* ---------- The thread ---------- */
+  .lg-askthread {
+    flex: 1;
+    margin-top: 6px;
+    list-style: none;
+    border-top: 2px solid var(--ink-2);
+  }
+  .lg-askturn {
+    padding: 16px 0 20px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-askturn:last-child {
+    border-bottom: 0;
+  }
+  .lg-askq {
+    max-width: 60ch;
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    font-weight: 400;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    outline: none;
+    scroll-margin-top: 72px;
+  }
+  .lg-askans {
+    margin-top: 8px;
+    padding-left: 14px;
+    border-left: 2px solid var(--moss);
+  }
+  .lg-askreply {
+    max-width: 65ch;
+    font-size: var(--fs-3);
+    overflow-wrap: anywhere;
+  }
+  .lg-asksummary {
+    margin-top: 12px;
+    color: var(--ink-2);
+  }
+  .lg-askagain {
+    margin-top: 10px;
+  }
+  .lg-askans .lg-askstarters {
+    margin-top: 14px;
+  }
+  .lg-askwait {
+    margin-top: 12px;
+    padding-left: 14px;
+    border-left: 2px solid var(--rule);
+  }
+  .lg-askwait-bar {
+    display: block;
+    width: min(320px, 70%);
+    height: 14px;
+    border-radius: 2px;
+    background: var(--rule);
+    animation: lg-skel-pulse 1200ms ease-in-out infinite alternate;
+  }
+  .lg-askfail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin-top: 8px;
+    padding-left: 14px;
+    border-left: 2px solid var(--rust);
+  }
+  .lg-askfail .lg-error {
+    margin-top: 0;
+  }
+
+  /* ---------- Filter chips ---------- */
+  .lg-askchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    list-style: none;
+  }
+  .lg-askfilter {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 4px 0 12px;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+    font-size: var(--fs-1);
+    font-weight: 500;
+    max-width: 100%;
+  }
+  .lg-askfilter > span {
+    overflow-wrap: anywhere;
+  }
+  /* The stage and the sort stay: plain paper, no x. */
+  .lg-askfilter[data-fixed] {
+    padding-right: 12px;
+    border-color: var(--rule);
+    background: var(--paper-2);
+    color: var(--ink-2);
+  }
+  .lg-askfilter-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-left: 2px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .lg-askfilter-x:hover:not([aria-disabled="true"]) {
+    background: var(--paper-2);
+    color: var(--rust);
+  }
+  .lg-askfilter-x[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: progress;
+  }
+
+  /* ---------- Rows ---------- */
+  .lg-askrows {
+    margin-top: 8px;
+    list-style: none;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-askrow {
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-askrow:hover,
+  .lg-askrow[data-open] {
+    background: rgb(239 231 214 / 0.55);
+  }
+  .lg-askrow-grid {
+    display: grid;
+    /* when | company and stage | who holds it | the one move */
+    grid-template-columns: 150px minmax(0, 1fr) 196px 112px;
+    column-gap: 14px;
+    align-items: center;
+    min-height: var(--pitch);
+    padding: 4px 8px;
+  }
+  .lg-askrow-due {
+    min-width: 0;
+    font-size: var(--fs-2);
+    white-space: nowrap;
+  }
+  .lg-askrow-name {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .lg-askname {
+    display: block;
+    max-width: 100%;
+    padding: 6px 0 0;
+    color: var(--ink);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lg-askname:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+  }
+  .lg-askrow-meta {
+    padding-bottom: 6px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lg-askrow-claim {
+    min-width: 0;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .lg-askrow-claim[data-state="mine"] {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .lg-askrow-act {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .lg-asknext {
+    white-space: nowrap;
+  }
+  /* A move that isn't legal right now: still there, dashed, and pressing it says why. */
+  .lg-asknext:not([data-legal]) {
+    border-style: dashed;
+    color: var(--ink-2);
+  }
+  .lg-askrow-sub {
+    margin: 0 8px 12px;
+  }
+  .lg-askrow-log {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px 16px;
+  }
+  .lg-askrow-log > .lg-logwrap {
+    flex: 1 1 420px;
+    min-width: 0;
+    max-width: 640px;
+  }
+
+  /* ---------- Cards to confirm ---------- */
+  .lg-askcards {
+    margin-top: 18px;
+  }
+  .lg-askcards-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+  }
+  .lg-askcards-list {
+    list-style: none;
+  }
+  .lg-askcard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 16px;
+    align-items: center;
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-askcard:not([data-legal]) {
+    border-color: var(--rule);
+    background: var(--paper-2);
+  }
+  .lg-askcard-text {
+    overflow-wrap: anywhere;
+  }
+  .lg-askcard-why {
+    margin-top: 4px;
+    color: var(--ink-2);
+    font-size: var(--fs-2);
+  }
+  .lg-askcard-act {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lg-askcard-log,
+  .lg-askcard-err {
+    grid-column: 1 / -1;
+  }
+  .lg-askcard-err .lg-error {
+    margin-top: 0;
+  }
+
+  /* ---------- One company ---------- */
+  .lg-askco {
+    margin-top: 12px;
+    padding: 14px 18px 16px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-askco-name {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    font-weight: 400;
+    line-height: 1.2;
+  }
+  .lg-askco-name .lg-qopen,
+  .lg-askco-name a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--moss);
+    text-underline-offset: 4px;
+  }
+  .lg-askco-sub {
+    margin-top: 2px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    overflow-wrap: anywhere;
+  }
+  .lg-askco-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 16px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-askco-facts dt {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-askco-facts dd {
+    overflow-wrap: anywhere;
+  }
+  .lg-askco-facts dd[data-state="mine"] {
+    font-weight: 600;
+  }
+  .lg-askco-sect {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-askco-contacts,
+  .lg-askco-log {
+    margin-top: 4px;
+    list-style: none;
+  }
+  .lg-askco-contacts li + li {
+    margin-top: 2px;
+  }
+  .lg-askco-cname {
+    font-weight: 600;
+  }
+  .lg-askco-log li {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 0 12px;
+    padding: 4px 0;
+  }
+  .lg-askco-when {
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-askco-note {
+    grid-column: 2;
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+  }
+  .lg-askco-moves {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-askco-blocked {
+    margin-top: 8px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-askco-card {
+    margin-top: 10px;
+  }
+
+  /* ---------- Stats and the guide ---------- */
+  .lg-askstats {
+    margin-top: 12px;
+  }
+  .lg-askstats ul {
+    padding-left: 18px;
+    list-style: disc;
+  }
+  .lg-askstats li + li {
+    margin-top: 4px;
+  }
+  .lg-askstats p {
+    margin-top: 10px;
+  }
+  .lg-askguide {
+    margin-top: 12px;
+  }
+  .lg-askguide-sect {
+    border-top: 1px solid var(--rule);
+  }
+  .lg-askguide-sect .lg-disc-body p {
+    max-width: 65ch;
+    margin-top: 8px;
+  }
+  .lg-askguide-sect .lg-disc-body {
+    padding-bottom: 10px;
+  }
+  .lg-askguide-sect > .lg-disc-summary {
+    font-weight: 600;
+  }
+
+  /* ---------- The question box, pinned at the foot ---------- */
+  .lg-askform {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: 18px;
+    padding: 12px 0 4px;
+    border-top: 1px solid var(--edge);
+    background: var(--paper);
+  }
+  .lg-askform-row {
+    display: flex;
+    gap: 8px;
+  }
+  .lg-askinput {
+    flex: 1;
+    min-width: 0;
+    min-height: 46px;
+    font-size: var(--fs-3);
+  }
+  .lg-askinput[readonly] {
+    background: var(--paper-2);
+    color: var(--ink-2);
+  }
+  .lg-askgo {
+    min-height: 46px;
+    padding: 0 22px;
+  }
+  .lg-askform .lg-hint {
+    margin-top: 6px;
+  }
+
+  /* The margin notes ("Claimed Acme.") sit above the pinned question box, not over it. */
+  .lg-pagecol:has(.lg-page-ask) .lg-notes-lane {
+    bottom: 92px;
+  }
+
+  /* ---------- A phone ---------- */
+  @media (max-width: 760px) {
+    .lg-page-ask {
+      /* The top bar and the tab bar are fixed around the page. */
+      min-height: calc(100dvh - 150px);
+    }
+    .lg-askq {
+      font-size: var(--fs-3);
+      scroll-margin-top: 64px;
+    }
+    .lg-askrow-grid {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "n n"
+        "t act"
+        "c act";
+      row-gap: 0;
+      padding: 6px 2px;
+    }
+    .lg-askrow-name {
+      grid-area: n;
+    }
+    .lg-askrow-due {
+      grid-area: t;
+    }
+    .lg-askrow-claim {
+      grid-area: c;
+      padding-bottom: 4px;
+    }
+    .lg-askrow-act {
+      grid-area: act;
+    }
+    .lg-askname {
+      padding-top: 4px;
+      font-size: var(--fs-3);
+    }
+    .lg-askrow-meta {
+      padding-bottom: 2px;
+    }
+    .lg-asknext,
+    .lg-askcard-go,
+    .lg-askco-moves .lg-btn {
+      min-height: 44px;
+    }
+    .lg-askrow-sub {
+      margin-inline: 2px;
+    }
+    .lg-askfilter {
+      min-height: 40px;
+    }
+    .lg-askfilter-x {
+      width: 36px;
+      height: 36px;
+    }
+    .lg-askcard {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-askcard-act .lg-btn {
+      min-height: 44px;
+    }
+    .lg-askco {
+      padding: 12px 12px 14px;
+    }
+    .lg-askco-facts {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+    }
+    .lg-askform {
+      /* Above the phone's tab bar. */
+      bottom: calc(60px + env(safe-area-inset-bottom));
+      margin-inline: -16px;
+      padding-inline: 16px;
+    }
+    .lg-pagecol:has(.lg-page-ask) .lg-notes-lane {
+      bottom: calc(144px + env(safe-area-inset-bottom));
+    }
+    .lg-askstarter {
+      flex: 1 1 100%;
+      justify-content: flex-start;
+    }
+    .lg-askstart {
+      flex: 0 0 auto;
+    }
+    .lg-page-ask[data-empty] .lg-askform {
+      margin-top: auto;
+    }
+  }
+
+  @media (max-width: 1099px) and (min-width: 761px) {
+    .lg-askrow-grid {
+      grid-template-columns: 120px minmax(0, 1fr) 150px 112px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lg-askwait-bar {
+      animation: none;
+    }
+  }
+}

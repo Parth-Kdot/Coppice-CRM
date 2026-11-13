@@ -759,3 +759,43 @@ describe("the model's reply is unreadable as a Groq answer, never a crash", () =
     expect(await askCopilot(OFFICER, { threadId: null, question: "Who's overdue?" })).toMatchObject({ ok: false });
   });
 });
+
+// Replies recorded from the real Groq model (openai/gpt-oss-120b, strict json_schema) on 2026-11-13,
+// word for word, including the order of its keys and its curly apostrophe. They are the shapes the
+// checks must keep accepting. The first is the model declining a question about companies because
+// "tech" was not an industry in its list, which the prompt's closest-match rule is there to prevent
+// (tests/copilot-prompt.test.ts pins that rule); the checks still show such a reply as a plain
+// sentence with the starter chips, never an error.
+describe("replies recorded from the real model", () => {
+  const LIVE_DECLINE = '{"view": "none", "reply": "I can’t provide that information.", "filter": null, "actions": [], "company": null, "minutes": null, "guideTopics": []}';
+  const LIVE_ONLY_MINE =
+    '{"view": "companies", "reply": "Showing only your companies.", "filter": {"due": "any", "sort": "most_overdue", "claim": "mine", "stages": [], "industry": null, "nameOrSite": null, "notesMention": null, "neverContacted": false}, "actions": [], "company": null, "minutes": null, "guideTopics": []}';
+  const LIVE_GUIDE =
+    '{"view": "guide", "reply": "Claims let you mark a company as yours while you pitch.", "filter": null, "actions": [], "company": null, "minutes": null, "guideTopics": ["claims"]}';
+
+  it("a decline with view none is the reply and the starter chips", async () => {
+    fakeGemini(groqAnswer(LIVE_DECLINE));
+    const result = ok(await askCopilot(OFFICER, { threadId: null, question: "who's overdue in tech?" }));
+    expect(result).toMatchObject({ view: "none", reply: "I can’t provide that information.", showStarters: true, rows: [], cards: [] });
+  });
+
+  it("a follow-up that comes back in the model's own key order is read the same", async () => {
+    fakeGemini(groqAnswer(list({ due: "overdue" })), groqAnswer(LIVE_ONLY_MINE));
+    const first = ok(await askCopilot(OFFICER, { threadId: null, question: "who's overdue?" }));
+    const second = ok(await askCopilot(OFFICER, { threadId: first.threadId, question: "only mine" }));
+    expect(second).toMatchObject({ view: "companies", reply: "Showing only your companies." });
+    expect(second.filter).toEqual({ ...DEFAULT_FILTER, claim: "mine" });
+    expect(second.chips.map((c) => c.label)).toEqual(["Open stages", "Held by me", "Sorted by most overdue"]);
+    expect(names(second)).toEqual([NAMES.bramble]);
+    // The model was shown the first filter, as a compact intent.
+    expect(sent(1).prompt).toMatch(/Q: "who's overdue\?" A: \{"view":"companies","filter":\{"due":"overdue"\}\}/);
+  });
+
+  it("a guide answer shows the sections it names, word for word", async () => {
+    fakeGemini(groqAnswer(LIVE_GUIDE));
+    const result = ok(await askCopilot(OFFICER, { threadId: null, question: "how do claims work?" }));
+    expect(result).toMatchObject({ view: "guide", reply: "Claims let you mark a company as yours while you pitch." });
+    expect(result.guide.map((g) => g.id)).toEqual(["claims"]);
+    expect(result.guide[0].body.length).toBeGreaterThanOrEqual(2);
+  });
+});

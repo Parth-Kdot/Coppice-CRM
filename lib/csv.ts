@@ -27,7 +27,7 @@ export type Table = { headers: string[]; rows: { row: number; cells: string[] }[
 // Parses CSV text into headers and rows. `row` is the spreadsheet row number (the header is row
 // 1), so messages match what people see in Google Sheets or Excel. Handles a byte-order mark,
 // Windows line endings, quoted commas and line breaks, and blank lines; refuses broken quoting.
-const NOT_UTF8 = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File > Download > CSV.";
+const NOT_UTF8 = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File, Download, Comma-separated values.";
 export function parseCsv(text: string): ActionResult<Table> {
   // A NUL character means binary or UTF-16 text read the wrong way; Postgres would refuse it.
   if (text.includes("\u0000")) return { ok: false, error: NOT_UTF8 };

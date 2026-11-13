@@ -2,7 +2,6 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
-import "@/components/ledger/zod-jitless";
 import { CloseIcon, SearchIcon } from "@/components/ledger/icons";
 import { focusSoon } from "@/components/ledger/focus";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";

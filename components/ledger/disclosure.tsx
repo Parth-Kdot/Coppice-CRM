@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatCount } from "@/lib/format";
 import { ChevronRightIcon } from "./icons";
 
 // The one collapsible. A native <details>/<summary> with a chevron, a title and an optional muted
@@ -27,7 +28,7 @@ export type DisclosureProps = {
 };
 
 export function Disclosure({ summary, count, defaultOpen = false, id, variant = "section", className = "", "data-tour": dataTour, children }: DisclosureProps) {
-  const shown = typeof count === "number" ? count.toLocaleString("en-US") : count;
+  const shown = typeof count === "number" ? formatCount(count) : count;
   return (
     <details id={id} className={`lg-disc ${className}`.trim()} data-variant={variant} data-tour={dataTour} open={defaultOpen || undefined}>
       <summary className="lg-disc-summary">

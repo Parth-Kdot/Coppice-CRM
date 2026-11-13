@@ -1,5 +1,8 @@
-// Masking phone numbers in text, pure and with no imports, so lib/ai/text.ts (everything sent to an
-// AI) and lib/research/scan.ts (page text) use one copy.
+// Masking phone numbers in text, pure and with no imports. Two maskers share one matcher:
+// maskPhones, the broad one, is for research page text (lib/research/scan.ts), where a lost number
+// costs nothing. maskInternationalPhones is the narrow one maskContactDetails (lib/ai/text.ts) uses
+// for everything else sent to an AI, where a packet's tables of small numbers ("100 200 300 400",
+// "250 500 1000") must reach the model whole.
 
 // Phone numbers in any country's format: up to 16 groups of digits joined by a space, a hyphen or
 // any other dash ("765–555–0142"), a slash ("089/1234567", the usual German,
@@ -12,8 +15,7 @@
 // match is never let through: it is two numbers side by side ("089 1234567 / 089 1234568"), split
 // where a spaced dash or slash joins them, or a number beside a date ("15.03.2027 089 1234567"),
 // which keeps the date; whatever is still longer than 15 digits is masked whole. Every repeat is
-// bounded and a match can't fail once it starts, so it runs in linear time. Everything sent to an
-// AI goes through this (maskContactDetails in lib/ai/text.ts).
+// bounded and a match can't fail once it starts, so it runs in linear time.
 const D = "\\p{Nd}";
 const SEPARATOR = `(?: ?[-\u2010-\u2015\u2212/] ?|\\.(?=${D})| )?`;
 const PHONE_LIKE = new RegExp(`\\+?\\(?${D}{1,5}\\)?(?:${SEPARATOR}\\(?${D}{1,5}\\)?){0,15}`, "gu");
@@ -63,4 +65,13 @@ function maskMatch(match: string): string {
 
 export function maskPhones(text: string): string {
   return text.replace(PHONE_LIKE, maskMatch);
+}
+
+// The narrow masker: only a match that starts with "+" or "00" (an international prefix) and has 7
+// to 15 digits, and that is not a date. "+44 20 7946 0958" and "0049 89 1234567" are masked; a row
+// of small numbers ("100 200 300 400") or a local "089/1234567" is left alone.
+const INTERNATIONAL_START = /^(?:\+|00)/;
+
+export function maskInternationalPhones(text: string): string {
+  return text.replace(PHONE_LIKE, (match) => (INTERNATIONAL_START.test(match) && looksLikePhone(match) ? "[phone]" : match));
 }

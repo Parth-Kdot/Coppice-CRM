@@ -11,6 +11,7 @@ import {
   CLAIM_WINDOW_MAX_DAYS,
   CLAIM_WINDOW_MIN_DAYS,
   COMPANY_LIMITS,
+  CONTACT_LIMITS,
   FACT_MAX,
   IMPORT_MAX_COLUMNS,
   IMPORT_MAX_ROWS,
@@ -36,6 +37,7 @@ export {
   CLAIM_WINDOW_MAX_DAYS,
   CLAIM_WINDOW_MIN_DAYS,
   COMPANY_LIMITS,
+  CONTACT_LIMITS,
   DRAFT_NOTE_MAX,
   FACT_MAX,
   IMPORT_FIELDS,
@@ -282,12 +284,12 @@ export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, ar
 export const sameCompanySchema = companyRefSchema.extend({ keepId: id });
 
 export const contactFieldsSchema = z.object({
-  name: z.string().trim().min(1, "Enter the contact's name.").max(120, "Name can be at most 120 characters.").refine(hasNoNul, NUL_MESSAGE),
+  name: z.string().trim().min(1, "Enter the contact's name.").max(CONTACT_LIMITS.name, `Name can be at most ${CONTACT_LIMITS.name} characters.`).refine(hasNoNul, NUL_MESSAGE),
   email: emailText
     .nullable()
     .transform((v) => v || null)
     .pipe(z.email(EMAIL_MESSAGE).nullable()),
-  title: optionalText(120, "Title"),
+  title: optionalText(CONTACT_LIMITS.title, "Title"),
 });
 
 export const addContactSchema = contactFieldsSchema.extend(companyRefSchema.shape);
@@ -719,11 +721,15 @@ const copilotQuestion = z
   .refine(hasNoNul, NUL_MESSAGE);
 
 // threadId null starts a new conversation.
-export const askCopilotSchema = z.object({ workspaceId: id, threadId: id.nullable(), question: copilotQuestion });
+// retryOf: the failed turn this question asks again, which the new answer replaces.
+export const askCopilotSchema = z.object({ workspaceId: id, threadId: id.nullable(), question: copilotQuestion, retryOf: id.nullable() });
 export const copilotStarterSchema = z.object({ workspaceId: id, threadId: id.nullable(), starter: z.enum(COPILOT_STARTERS) });
 // "Show again", and a chip edit when `filter` is sent.
 export const rerunTurnSchema = z.object({ workspaceId: id, turnId: id, filter: copilotFilterSchema.nullable() });
 export const openThreadSchema = z.object({ workspaceId: id, threadId: id.nullable() });
+// Taking one chip off a list: the filter as the screen shows it and the field to put back to its default.
+export const COPILOT_FILTER_KEYS = ["stages", "industry", "due", "claim", "neverContacted", "nameOrSite", "notesMention", "sort"] as const;
+export const copilotChipSchema = z.object({ workspaceId: id, turnId: id, filter: copilotFilterSchema, remove: z.enum(COPILOT_FILTER_KEYS) });
 // A next-move chip: the card for one action on one company, checked against the company as it is now.
 export const copilotMoveSchema = z.object({
   workspaceId: id,

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import type { Channel, Stage, Via } from "@/generated/prisma/enums";
 import { CHANNEL_LABELS } from "@/lib/channels";
 import type { ReplyChoice } from "@/lib/companies";
+import { TIME_ZONE } from "@/lib/dates";
 import { STAGE_LABELS } from "@/lib/stages";
 import { boardYear } from "../board-year";
 import { Disclosure } from "../disclosure";
@@ -18,8 +19,6 @@ import "../templates.css";
 
 // The outreach log and the history: dated entries, newest first, with the double rule where one
 // board's entries end and an older board's begin.
-
-const TIME_ZONE = "America/Indiana/Indianapolis";
 
 // "Nov 21", with the year when it isn't this year ("Nov 21, 2025"), and the time when two entries
 // of the same list share a day.

@@ -12,7 +12,7 @@ import type { ImportMapping } from "@/lib/validation";
 // step 2, and the rows that can't be imported (or import with a note) in step 3.
 
 // One step of the review: its number in the margin (a tick once it needs nothing more), a heading
-// and the body. The margin is dropped on a phone (pages.css).
+// and the body. The margin is dropped on a phone (import.css).
 export function Entry({ n, done, title, children }: { n: number; done: boolean; title: string; children?: ReactNode }) {
   return (
     <li className="lg-step lg-impstep" data-state={done ? "done" : "set"}>

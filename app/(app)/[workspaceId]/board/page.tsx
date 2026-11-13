@@ -12,6 +12,7 @@ import { countPossibleDuplicates, DUPLICATE_PAIR_LIMIT, listDuplicateReview } fr
 import { daysBetween, day } from "@/lib/dates";
 import { TERMINAL_STAGES } from "@/lib/stages";
 import { boardFiltersSchema, boardQuery, type BoardFilters } from "@/lib/validation";
+import { loadWorkspace } from "../load-workspace";
 import { pageTitle } from "../page-title";
 
 export async function generateMetadata({ params }: PageProps<"/[workspaceId]/board">): Promise<Metadata> {
@@ -28,6 +29,8 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
   const { workspaceId } = await params;
   const { userId, role } = await requireMembershipOr404(workspaceId);
   const tenant = { userId, workspaceId };
+  // Read once per request, shared with the layout: whether the More menu offers Ask Coppice.
+  const { workspace } = await loadWorkspace(workspaceId);
 
   // A repeated URL param (?q=a&q=b) arrives as an array; use the first.
   const raw = await searchParams;
@@ -91,6 +94,7 @@ export default async function BoardPage({ params, searchParams }: PageProps<"/[w
       <BoardView
         workspaceId={workspaceId}
         isOwner={role === "owner"}
+        askOn={workspace.aiEnabled}
         columns={columns}
         filters={filters}
         industries={industries}

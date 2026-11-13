@@ -4,7 +4,7 @@ import { draftEmail as draftAction } from "@/app/(app)/[workspaceId]/companies/d
 import type { Membership } from "@/lib/authz";
 import { changeStage, claimCompany, dbToday, logOutreach, markReply } from "@/lib/claims";
 import { composeLinks, LINK_MAX } from "@/lib/compose-links";
-import { addContact, createCompany } from "@/lib/companies";
+import { addContact, createCompany, removeContact, updateContact } from "@/lib/companies";
 import { addDays } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { draftEmail, recentDrafts } from "@/lib/drafts";
@@ -177,6 +177,50 @@ describe("draftEmail", () => {
     const prompt = promptOf();
     expect(prompt).toContain('Email: \\"{{firstName}}, a note from {{senderName}} at {{orgName}}\\"');
     expect(prompt).not.toMatch(/Hank|officerA|Org A/);
+  });
+
+  // The subject was saved with the names it was drafted with. If the contact is removed or renamed
+  // before the follow-up, unfilling with today's names would miss the old one, so no subject is sent.
+  describe("an earlier draft's subject when its contact has changed since", () => {
+    const REVEALING = "{{firstName}}, a note from {{senderName}} at {{orgName}}";
+    async function loggedDraft() {
+      fakeGemini(...drafted(variant(1, { subject: REVEALING })));
+      const first = await draftEmail(OFFICER, companyId, { kind: "FIRST_TOUCH", contactId, note: null });
+      if (!first.ok) throw new Error(first.error);
+      expect(first.data[0].subject).toBe("Hank, a note from officerA at Org A");
+      const logged = await logOutreach(OFFICER, companyId, { channel: "EMAIL", note: null, followUpOn: addDays(await dbToday(), 7), aiDraftId: first.data[0].id });
+      if (!logged.ok) throw new Error(logged.error);
+    }
+
+    it("sends no subject after the contact is removed", async () => {
+      await loggedDraft();
+      expect((await removeContact(OFFICER, contactId)).ok).toBe(true);
+      fakeGemini(...drafted(variant(2)));
+      expect((await draftEmail(OFFICER, companyId, { kind: "FOLLOW_UP", contactId: null, note: null })).ok).toBe(true);
+      const prompt = promptOf();
+      expect(prompt).toMatch(/<earlier_outreach>\\n[A-Z][a-z]{2} \d{1,2}, Email\\n<\/earlier_outreach>/);
+      expect(prompt).not.toMatch(/Hank|officerA|Org A/);
+    });
+
+    it("sends no subject after the contact is renamed", async () => {
+      await loggedDraft();
+      expect((await updateContact(OFFICER, contactId, { name: "Henry Scorpio" })).ok).toBe(true);
+      fakeGemini(...drafted(variant(2)));
+      expect((await draftEmail(OFFICER, companyId, { kind: "FOLLOW_UP", contactId, note: null })).ok).toBe(true);
+      const prompt = promptOf();
+      expect(prompt).toMatch(/<earlier_outreach>\\n[A-Z][a-z]{2} \d{1,2}, Email\\n<\/earlier_outreach>/);
+      expect(prompt).not.toMatch(/Hank|Henry|officerA|Org A/);
+    });
+
+    it("sends no subject after the workspace is renamed", async () => {
+      await loggedDraft();
+      await prisma.workspace.update({ where: { id: "a" }, data: { name: "Org Renamed" } });
+      fakeGemini(...drafted(variant(2)));
+      expect((await draftEmail(OFFICER, companyId, { kind: "FOLLOW_UP", contactId, note: null })).ok).toBe(true);
+      const prompt = promptOf();
+      expect(prompt).not.toMatch(/Hank|officerA|Org A/);
+      expect(prompt).not.toContain("a note from");
+    });
   });
 
   // Recorded case: Glasswing Hardware was Replied, its only outreach had

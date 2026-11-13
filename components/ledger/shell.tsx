@@ -3,7 +3,7 @@
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { BoardIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
+import { AiDraftIcon, BoardIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
 import { LogoMark } from "@/components/brand/logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { useNoteLane } from "./providers";
@@ -15,10 +15,10 @@ import "./shell.css";
 // Import, Facts, Settings) and the account button, one header (the workspace name as a switcher, and
 // the search that opens the palette), and the page. Feedback is written in a fixed lane at the
 // bottom that is empty when idle. On a phone the spine gives way to a bottom bar: Queue, Board,
-// Search, + Add (a small sheet: Add a company, Import) and More (Facts, Template stats, Settings and
-// the account). A company page lights the list tab you came from (queue or board).
+// Search, + Add (a small sheet: Add a company, Import) and More (Facts, Template stats, Ask Coppice when
+// AI is on, Settings and the account). A company page lights the list tab you came from (queue or board).
 
-type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "settings";
+type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "ask" | "settings";
 
 function screenOf(pathname: string, workspaceId: string): Screen {
   const rest = pathname.slice(`/${workspaceId}`.length).replace(/\/+$/, "");
@@ -29,6 +29,7 @@ function screenOf(pathname: string, workspaceId: string): Screen {
   if (rest === "/import") return "import";
   if (rest === "/facts") return "facts";
   if (rest === "/stats") return "stats";
+  if (rest === "/ask") return "ask";
   if (rest === "/settings") return "settings";
   return "queue";
 }
@@ -162,7 +163,7 @@ function Sheet({ label, onClose, children }: { label: string; onClose: () => voi
 
 type SheetLink = { key: string; label: string; path: string; icon: ReactNode; screens: Screen[] };
 
-function PhoneTabs({ workspaceId, workspaceName, screen, listTab, me, accountItems }: { workspaceId: string; workspaceName: string; screen: Screen; listTab: ListTab; me: Me; accountItems?: ReactNode }) {
+function PhoneTabs({ workspaceId, workspaceName, screen, listTab, me, accountItems, askOn }: { workspaceId: string; workspaceName: string; screen: Screen; listTab: ListTab; me: Me; accountItems?: ReactNode; askOn?: boolean }) {
   const { open } = usePalette();
   const [sheet, setSheet] = useState<"add" | "more" | null>(null);
   const [account, setAccount] = useState(false);
@@ -178,6 +179,7 @@ function PhoneTabs({ workspaceId, workspaceName, screen, listTab, me, accountIte
   const moreLinks: SheetLink[] = [
     { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, screens: ["facts"] },
     { key: "stats", label: "Template stats", path: "/stats", icon: <StatsIcon />, screens: ["stats"] },
+    ...(askOn ? [{ key: "ask", label: "Ask Coppice", path: "/ask", icon: <AiDraftIcon />, screens: ["ask" as Screen] }] : []),
     { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, screens: ["settings"] },
   ];
   const addActive = addLinks.some((l) => l.screens.includes(screen));
@@ -316,10 +318,12 @@ export type ShellProps = {
   overlay?: ReactNode;
   // Extra rows in the account menu and the phone's account row ("Replay the basics").
   accountItems?: ReactNode;
+  // AI is on for the workspace: the More sheet and the search link to Ask Coppice.
+  askOn?: boolean;
   children: ReactNode;
 };
 
-export function WorkspaceShell({ workspaceId, workspaceName, workspaces, volume, me, overlay, accountItems, children }: ShellProps) {
+export function WorkspaceShell({ workspaceId, workspaceName, workspaces, volume, me, overlay, accountItems, askOn, children }: ShellProps) {
   const pathname = usePathname();
   const screen = screenOf(pathname, workspaceId);
   const listTab = useListTab(screen);
@@ -328,7 +332,7 @@ export function WorkspaceShell({ workspaceId, workspaceName, workspaces, volume,
   useFocusHeadingOnRouteChange(pathname);
 
   return (
-    <PaletteProvider workspaceId={workspaceId}>
+    <PaletteProvider workspaceId={workspaceId} askOn={askOn}>
       <div className="lg-shell">
         <a className="lg-skip" href="#main">
           Skip to the page
@@ -354,7 +358,7 @@ export function WorkspaceShell({ workspaceId, workspaceName, workspaces, volume,
           <UserMenu me={me} placement="spine" extraItems={accountItems} />
         </nav>
 
-        <PhoneTabs workspaceId={workspaceId} workspaceName={workspaceName} screen={screen} listTab={listTab} me={me} accountItems={accountItems} />
+        <PhoneTabs workspaceId={workspaceId} workspaceName={workspaceName} screen={screen} listTab={listTab} me={me} accountItems={accountItems} askOn={askOn} />
 
         <div className="lg-pagecol">
           <header className="lg-head">

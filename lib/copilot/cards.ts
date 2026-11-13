@@ -103,7 +103,11 @@ export function buildCard(spec: ActionSpec, company: Known, key: string, ctx: Ca
       break;
     }
     case "RELEASE":
-      text = move.force ? `Force-release ${company.state.holderName}'s claim on ${name}.` : `Release your claim on ${name}. The stage and follow-up date stay as they are.`;
+      text = move.force
+        ? `Force-release ${company.state.holderName}'s claim on ${name}.`
+        : company.state.holderId === ctx.member.userId
+          ? `Release your claim on ${name}. The stage and follow-up date stay as they are.`
+          : `Release the claim on ${name}.`;
       if (move.force) label = FORCE_RELEASE_LABEL;
       break;
     case "LOG":
