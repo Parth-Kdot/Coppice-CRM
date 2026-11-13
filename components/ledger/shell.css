@@ -307,9 +307,6 @@
     padding: 14px 32px 56px 36px;
     outline: none;
   }
-  .lg-main-narrow {
-    max-width: 1100px;
-  }
 
   /* ---------- The lane for margin notes: fixed at the foot of the page column, empty when idle ---------- */
   .lg-notes-lane {

@@ -9,7 +9,7 @@ import { useConfirm, useNotify } from "@/components/ledger/providers";
 import { ReplyPrompt } from "@/components/ledger/reply-prompt";
 import type { Stage } from "@/generated/prisma/enums";
 import type { ReplyChoice } from "@/lib/companies";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { closeQuestion, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 // The stage menu is the board's own (MoveMenu); its look lives with the board.
@@ -37,7 +37,7 @@ const nextStage = (stage: Stage): Stage | null => NEXT[stage] ?? null;
 // What to ask before a move, or null to move at once.
 function moveQuestion(companyName: string, from: Stage, to: Stage): { message: string; confirmLabel: string } | null {
   if (TERMINAL_STAGES.includes(to)) {
-    return { message: `Move ${companyName} to ${STAGE_LABELS[to]}? This closes the pitch and releases any claim.`, confirmLabel: `Move to ${STAGE_LABELS[to]}` };
+    return closeQuestion(companyName, to);
   }
   if (RANK[to] < RANK[from]) {
     return TERMINAL_STAGES.includes(from)

@@ -1,0 +1,423 @@
+/* ==========================================================================================
+   Ledger, the Template Lab and "Explain these numbers": the stored explanation with its number
+   chips, the "Try a variant" panel, the Template Lab disclosure on the stats page (arms side by side,
+   the ended experiment as ruled lines, End experiment), the quiet picker line, and the note on a
+   locked arm in Settings. Built on the panels and ruled tables of pages.css and stats.css. Plain CSS
+   in a file, so the strict style-src policy allows it. No animation here: the motion kit plays the
+   finish moments (stamping a started or ended experiment, a discarded variant leaving).
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- Explain these numbers ---------- */
+  .lg-explain-text {
+    display: grid;
+    gap: 10px;
+    max-width: 66ch;
+    font-size: var(--fs-3);
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+  }
+  .lg-explain-text:focus-visible {
+    outline-offset: 4px;
+  }
+  /* A number the page's own facts hold: a button in the line of text. Pressing it says what it is. */
+  .lg-fact {
+    display: inline;
+    margin: 0 1px;
+    padding: 1px 4px;
+    border: 0;
+    border-bottom: 1px dotted var(--moss);
+    border-radius: 2px;
+    background: var(--moss-wash);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .lg-fact:hover {
+    background: var(--paper-2);
+  }
+  .lg-fact[aria-pressed="true"] {
+    border-bottom-color: var(--moss);
+    background: var(--moss);
+    color: var(--paper);
+  }
+  /* A template's name reads as a name: the display serif, outlined, not filled. */
+  .lg-fact[data-kind="name"] {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    font-family: var(--font-display);
+    font-weight: 400;
+  }
+  .lg-fact[data-kind="name"][aria-pressed="true"] {
+    border-color: var(--moss);
+    background: var(--moss);
+  }
+  .lg-explain-what,
+  .lg-explain-stale,
+  .lg-explain-intro {
+    margin-top: 10px;
+    max-width: 66ch;
+  }
+  .lg-explain-stale {
+    padding-left: 10px;
+    border-left: 2px solid var(--gilt);
+  }
+  .lg-explain-first {
+    margin: 0 0 12px;
+  }
+  .lg-explain-ask {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .lg-explain-ask .lg-error {
+    max-width: 66ch;
+  }
+
+  /* ---------- The picker line ---------- */
+  .lg-explab-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin-top: 8px;
+  }
+  .lg-explab-line strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* ---------- A template row's menu in the stats table ---------- */
+  .lg-rowmenu {
+    display: inline-block;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .lg-rowmenu .lg-omenu-btn {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  /* ---------- Try a variant ---------- */
+  .lg-variantdlg-body {
+    display: grid;
+    gap: 14px;
+    padding: 20px;
+  }
+  .lg-variantdlg-ask,
+  .lg-variantdlg-review {
+    display: grid;
+    gap: 12px;
+  }
+  .lg-variantdlg-acts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .lg-variantdlg-note {
+    text-align: right;
+  }
+  .lg-variants {
+    display: grid;
+    gap: 12px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .lg-variant {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  .lg-variant[data-picked] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-variant-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .lg-variant-pick {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    cursor: pointer;
+  }
+  .lg-variant-title {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 10px;
+  }
+  .lg-variant-run {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-variant-summary {
+    font-size: var(--fs-2);
+    overflow-wrap: anywhere;
+  }
+  /* The changed sentence set against the original: what it was, then what it is now. The tags carry
+     the meaning, the tints only help. */
+  .lg-change {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .lg-change-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-left: 3px solid var(--edge);
+  }
+  .lg-change-row[data-side="was"] {
+    border-left-color: var(--rust);
+    background: var(--rust-wash);
+  }
+  .lg-change-row[data-side="now"] {
+    border-left-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-variant[data-picked] .lg-change-row[data-side="now"] {
+    background: var(--sheet);
+  }
+  .lg-change-tag {
+    padding-top: 2px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-change-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: var(--fs-2);
+    line-height: 1.5;
+  }
+
+  /* ---------- The Template Lab on the stats page ---------- */
+  .lg-lab-body {
+    display: grid;
+    gap: 10px;
+    max-width: 1000px;
+  }
+  .lg-lab-when {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-lab-verdict {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-lab-verdict[data-verdict="ahead"] {
+    color: var(--moss);
+  }
+  .lg-lab-rule {
+    max-width: 66ch;
+  }
+  .lg-lab-empty {
+    max-width: 66ch;
+  }
+
+  .lg-arms {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .lg-arm {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+  }
+  .lg-arm-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .lg-arm-who {
+    display: grid;
+    min-width: 0;
+    font-size: var(--fs-2);
+  }
+  /* The arm's letter, set like a ledger folio. */
+  .lg-arm-letter {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--ink-2);
+    background: var(--paper);
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    line-height: 1;
+  }
+  .lg-arm-summary {
+    font-size: var(--fs-1);
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+  }
+  .lg-arm-nums {
+    display: grid;
+    margin: 0;
+  }
+  .lg-arm-nums > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-arm-nums dt {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-arm-nums dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .lg-arm .lg-rangebar {
+    width: 100%;
+  }
+  .lg-arm-standing {
+    min-height: 1.4em;
+  }
+
+  /* An ended experiment: one ruled line per arm. */
+  .lg-armlines {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--ink-2);
+  }
+  .lg-armline {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-armline-name {
+    display: grid;
+    min-width: 0;
+  }
+  .lg-armline-nums {
+    grid-column: 2 / 4;
+    font-size: var(--fs-2);
+    text-align: left;
+  }
+  .lg-armline .lg-badge {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  /* End experiment (owners): pick the arm to keep. */
+  .lg-endexp {
+    margin-top: 6px;
+  }
+  .lg-endexp-form {
+    display: grid;
+    justify-items: start;
+    gap: 10px;
+    max-width: 520px;
+  }
+  .lg-endexp-pick {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .lg-endexp-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 6px 10px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    cursor: pointer;
+  }
+  .lg-endexp-opt:has(input:checked) {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-endexp-opt .lg-check {
+    flex: none;
+  }
+
+  /* ---------- A locked arm in Settings ---------- */
+  .lg-armnote {
+    margin-top: 8px;
+    max-width: 66ch;
+    padding-left: 10px;
+    border-left: 2px solid var(--gilt);
+  }
+
+  @media (min-width: 761px) {
+    .lg-arms[data-arms="2"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lg-arms[data-arms="3"] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .lg-armline {
+      grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 2fr) auto;
+    }
+    .lg-armline-nums {
+      grid-column: 3;
+    }
+    .lg-armline .lg-badge {
+      grid-column: 4;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .lg-variantdlg-body {
+      padding: 16px;
+    }
+    .lg-variantdlg-acts {
+      justify-content: stretch;
+    }
+    .lg-variantdlg-acts .lg-btn {
+      flex: 1 1 auto;
+    }
+    .lg-variantdlg-note {
+      text-align: left;
+    }
+    .lg-change-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
+    }
+  }
+}
+
+/* The panel's size. Outside the layer on purpose: the shared .lg-dialog (ledger.css) is not in one,
+   so a layered width could never win over its 440 px. */
+.lg-dialog.lg-variantdlg {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}

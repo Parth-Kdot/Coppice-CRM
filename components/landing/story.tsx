@@ -111,19 +111,21 @@ export function Trust() {
             </ul>
           </Accordion>
 
-          <Accordion title={TRUST.comingTitle} note={TRUST.comingNote}>
-            <ul className="ld-coming">
-              {TRUST.coming.map((item) => (
-                <li key={item.title}>
-                  <span className="ld-coming-tag">{item.tag}</span>
-                  <div>
-                    <p className="ld-coming-title">{item.title}</p>
-                    <p>{item.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Accordion>
+          {TRUST.coming.length > 0 && (
+            <Accordion title={TRUST.comingTitle} note={TRUST.comingNote}>
+              <ul className="ld-coming">
+                {TRUST.coming.map((item) => (
+                  <li key={item.title}>
+                    <span className="ld-coming-tag">{item.tag}</span>
+                    <div>
+                      <p className="ld-coming-title">{item.title}</p>
+                      <p>{item.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Accordion>
+          )}
         </div>
       </div>
     </section>

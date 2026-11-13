@@ -3,6 +3,7 @@ import { releaseForArchive } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
 import { domainKey, matchReasons, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import { notFound } from "@/lib/messages";
+import { activeTemplatesIn } from "@/lib/templates";
 import type { ActionResult } from "@/lib/validation";
 import type { Channel, Prisma } from "@/generated/prisma/client";
 
@@ -283,11 +284,8 @@ export function getCompanyPage(tenant: Tenant, companyId: string, options: Detai
     const company = await readCompanyDetail(tx, tenant, companyId, options);
     if (!company) return null;
     const industries = await readIndustries(tx, tenant);
-    const templates = await tx.template.findMany({
-      where: { workspaceId: tenant.workspaceId, archivedAt: null },
-      select: { id: true, name: true, body: true },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-    });
+    // The same list the pickers read everywhere (lib/templates.ts), with the running experiment's arms marked.
+    const templates = await activeTemplatesIn(tx, tenant.workspaceId);
     let lookAlikes: LookAlike[] = [];
     if (company.archivedAt === null) {
       const where = await matchWhere(tx, tenant.workspaceId, keysFor(company), companyId);

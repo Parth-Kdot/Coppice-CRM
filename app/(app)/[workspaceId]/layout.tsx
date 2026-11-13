@@ -48,6 +48,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
       workspaceName={workspace.name}
       workspaces={workspaces}
       volume={boardYear(now).long}
+      askOn={workspace.aiEnabled}
       me={{ name: user.name, email: user.email, roleLabel: roleLabel(membership.role), claimWindowDays: workspace.claimWindowDays }}
       accountItems={<TourMenuItems aiRecommended={!progress?.aiDoneAt} />}
       overlay={

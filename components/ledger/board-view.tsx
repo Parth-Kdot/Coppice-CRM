@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { moveStage, releaseClaim } from "@/app/(app)/[workspaceId]/companies/actions";
 import { BoardSearch } from "@/components/board-search";
 import type { Stage } from "@/generated/prisma/enums";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { closeQuestion, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ReplyChoice } from "@/lib/companies";
 import type { BoardFilters } from "@/lib/validation";
 import { useBoardDrag } from "./board-drag";
@@ -52,6 +52,8 @@ type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boole
 type Props = {
   workspaceId: string;
   isOwner: boolean;
+  // AI is on for the workspace, so the More menu links to Ask Coppice.
+  askOn?: boolean;
   columns: BoardColumnData[];
   filters: BoardFilters;
   industries: string[];
@@ -207,10 +209,7 @@ export function BoardView(props: Props) {
     if (!card || card.stage === to) return;
     clearSlipError(id);
     if (TERMINAL_STAGES.includes(to)) {
-      const ok = await confirm({
-        message: `Move ${card.name} to ${STAGE_LABELS[to]}? This closes the pitch and releases any claim.`,
-        confirmLabel: `Move to ${STAGE_LABELS[to]}`,
-      });
+      const ok = await confirm(closeQuestion(card.name, to));
       if (!ok) {
         if (focus) focusSoon(() => document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(id)}"] ${SLIP_LINK}`));
         return;
@@ -512,6 +511,7 @@ export function BoardView(props: Props) {
     ...(duplicateCount > 0 ? [{ key: "dupes", label: `Possible duplicates (${duplicateLabel})`, href: dupesHref }] : []),
     ...(archivedCount > 0 ? [{ key: "archived", label: `Archived (${archivedCount.toLocaleString("en-US")})`, href: archivedHref }] : []),
     { key: "stats", label: "Template stats", href: `/${workspaceId}/stats` },
+    ...(props.askOn ? [{ key: "ask", label: "Ask Coppice", href: `/${workspaceId}/ask` }] : []),
     { key: "capsule", label: "Time Capsule", href: `/${workspaceId}/capsule` },
     ...(workspaceTotal > 0 ? [{ key: "keys", label: "Keyboard shortcuts", onSelect: () => setShortcuts(true) }] : []),
   ];

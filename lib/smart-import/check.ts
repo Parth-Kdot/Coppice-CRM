@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { matchKey } from "@/lib/ai/text";
 import { addDays, formatYmd } from "@/lib/dates";
+import { CONTACT_LIMITS } from "@/lib/limits";
 import { injectionFlags } from "@/lib/research/scan";
 import { contactFieldsSchema, SMART_NOTE_MAX } from "@/lib/validation";
 import { boardYearOf, daysIn, longDay, parseDateText, placeFollowUp, placeLastContacted, resolveDate, yearLabel, type Placed } from "./dates";
@@ -72,7 +73,7 @@ export const RowsRead = z.object({
           lastContacted: z.object(quoted).nullable().catch(null).describe("The date we last reached out or heard back"),
           followUp: z.object(quoted).nullable().catch(null).describe("The date to reach out next"),
           contact: z
-            .object({ name: z.string().max(120), title: z.string().max(120).nullable(), ...quoted })
+            .object({ name: z.string().max(CONTACT_LIMITS.name), title: z.string().max(CONTACT_LIMITS.title).nullable(), ...quoted })
             .nullable()
             .catch(null)
             .describe("A person at the company, never a member of our organization"),

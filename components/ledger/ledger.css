@@ -116,12 +116,6 @@
   }
 }
 
-@keyframes lg-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Shared by lists that settle a decision and move on (components/ledger/motion.tsx). */
 /* An item arriving or coming back: it rises into place. */
 @keyframes lg-enter-rise {
@@ -286,12 +280,6 @@
     padding: 0 10px;
     font-size: var(--fs-1);
   }
-  .lg-btn-block {
-    width: 100%;
-  }
-  .lg-btn-shake {
-    animation: lg-shake var(--dur-base) ease-in-out;
-  }
 
   /* A text link: moss, always underlined. */
   .lg-link {
@@ -405,10 +393,6 @@
     height: 5px;
     background: linear-gradient(var(--ink-2) 0 1px, transparent 1px 4px, var(--ink-2) 4px 5px);
   }
-  .lg-rule {
-    border: 0;
-    border-top: 1px solid var(--rule);
-  }
 
   /* The double rule where one board's entries end and the next board's begin. */
   .lg-turnover {
@@ -430,10 +414,6 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
-  .lg-sheet .lg-turnover-label,
-  .lg-leaf-page .lg-turnover-label {
-    background: var(--sheet);
-  }
 
   /* The board-year margin: "26-27" in the margin of a ledger table. */
   .lg-margin {
@@ -445,13 +425,6 @@
     letter-spacing: 0.04em;
     font-size: var(--fs-1);
     font-weight: 500;
-  }
-
-  /* A slip of paper: cards, panels. A hairline border and nothing floating. */
-  .lg-slip {
-    background: var(--sheet);
-    border: 1px solid var(--rule);
-    border-radius: 0;
   }
 
   /* ---------- Badges and chips ---------- */
@@ -468,18 +441,6 @@
     font-weight: 500;
     line-height: 1.4;
     max-width: 100%;
-  }
-  /* Yours: a solid ink chip. */
-  .lg-badge-mine {
-    border-color: var(--ink);
-    background: var(--ink);
-    color: var(--paper);
-  }
-  /* Held by someone else: a solid, quiet chip. */
-  .lg-badge-theirs {
-    border-color: var(--rule);
-    background: var(--paper-2);
-    color: var(--ink);
   }
   .lg-badge-stale {
     border-color: var(--edge);
@@ -650,14 +611,6 @@
   .lg-disclose > .lg-disclose-inner {
     min-height: 0;
     overflow: hidden;
-  }
-  .lg-disclose .lg-disclose-fade {
-    opacity: 0;
-    transition: opacity var(--dur-fast) ease;
-  }
-  .lg-disclose[data-open="true"] .lg-disclose-fade {
-    opacity: 1;
-    transition-delay: 60ms;
   }
 
   /* ---------- Leave and arrive (components/ledger/motion.tsx ExitCollapse) ---------- */
@@ -1336,17 +1289,9 @@
     summary,
     .lg-chipbody,
     .lg-linkbtn,
-    .lg-list a,
     .lg-omenu-item,
     .lg-seg-opt {
       min-height: 44px;
-    }
-    .lg-list a:not(.lg-trunc) {
-      display: inline-flex;
-      align-items: center;
-    }
-    .lg-list a.lg-trunc {
-      line-height: 44px;
     }
   }
 }

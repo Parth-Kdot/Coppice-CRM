@@ -3,9 +3,10 @@
 import type { ReactNode } from "react";
 import { ImportChoice } from "@/components/importer/choice";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
+import { formatYmd } from "@/lib/dates";
 import type { Quote, RowProposal } from "@/lib/smart-import";
 import { STAGE_LABELS } from "@/lib/stages";
-import { SMART_NOTE_MAX, SMART_STAGES } from "@/lib/limits";
+import { CONTACT_LIMITS, SMART_NOTE_MAX, SMART_STAGES } from "@/lib/limits";
 import type { RowEdits, SmartState } from "./use-smart-import";
 
 // One row's readings in Smart import's review (./review.tsx): each with the cell text it came
@@ -53,9 +54,6 @@ function Item({ label, row, kept, onKeep, quotes, children }: { label: string; r
     </div>
   );
 }
-
-// "Mar 2", for the line under a date that was moved.
-const shortDay = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 
 function DateItem({
   label,
@@ -111,7 +109,7 @@ export function Readings({ smart, row, p, e }: { smart: SmartState; row: number;
           // `future` with a date kept means code moved it back: in the sheet's year it would be ahead of today.
           moved={
             p.future && e.last.value === p.lastContactedOn.date
-              ? `No year was written, so this is the most recent ${shortDay(p.lastContactedOn.date)} that isn't in the future.`
+              ? `No year was written, so this is the most recent ${formatYmd(p.lastContactedOn.date)} that isn't in the future.`
               : undefined
           }
           onKeep={(keep) => edit({ last: { ...e.last!, keep } })}
@@ -136,7 +134,7 @@ export function Readings({ smart, row, p, e }: { smart: SmartState; row: number;
               className="lg-input"
               aria-label={`Contact name, row ${row}`}
               value={e.contact.value.name}
-              maxLength={120}
+              maxLength={CONTACT_LIMITS.name}
               onChange={(ev) => edit({ contact: { keep: true, value: { ...e.contact!.value, name: ev.target.value } } })}
             />
             <input
@@ -144,7 +142,7 @@ export function Readings({ smart, row, p, e }: { smart: SmartState; row: number;
               aria-label={`Contact title, row ${row}`}
               placeholder="Title"
               value={e.contact.value.title}
-              maxLength={120}
+              maxLength={CONTACT_LIMITS.title}
               onChange={(ev) => edit({ contact: { keep: true, value: { ...e.contact!.value, title: ev.target.value } } })}
             />
           </div>

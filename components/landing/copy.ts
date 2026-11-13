@@ -42,7 +42,7 @@ export const PROBLEM = {
     {
       title: "Nobody knows which pitch works",
       body: "Replies came back to six inboxes, and the sheet was not updated.",
-      fix: "Every entry records its channel, its date and who sent it. Reply rate per pitch template is the next feature being built.",
+      fix: "Every entry records its channel, its date and who sent it. The Template stats page shows the reply rate for each pitch template, with the range it likely falls in.",
       note: "which email worked?",
       sheet: { row: 31, cells: ["Intro v1, v2, v3", "Replied?", "", "last edit Oct"] },
     },
@@ -253,10 +253,24 @@ export const FEATURES = {
       detail: "Each entry shows the date, who logged it, the channel and what was said, plus the next follow-up date. The record is still there when the person who knew the contact has graduated.",
     },
     {
+      icon: "stats",
+      title: "Template stats, and one-change experiments",
+      short: "Which pitch gets replies, read out in plain words, and a way to test a small change.",
+      tag: "AI, optional",
+      detail: "The stats page shows each template's reply rate with its likely range, and says too few yet until a sample is big enough. Explain these numbers puts words around figures the page already shows. An owner can try a one-change variant of a template: code checks that it changes one thing, then it runs against the original while the log form suggests whichever has the fewest sends.",
+    },
+    {
       icon: "import",
       title: "Import, with look-alikes shown together",
       short: "Bring in last year's CSV and decide group by group.",
       detail: "Upload up to 2,000 rows and point each column at a field. Names are compared without capitals, punctuation or endings like Inc and LLC, and websites without www, so near-duplicates appear side by side.",
+    },
+    {
+      icon: "smart",
+      title: "Smart import for messy notes",
+      short: "Read the free-text cells of a sheet, and keep what you agree with.",
+      tag: "AI, optional",
+      detail: "A note like emailed 3/2 by Sam, said reach out in Aug becomes a proposed stage, dates and a contact, each with the text it came from. You use, change or leave out every proposal before anything is imported.",
     },
     {
       icon: "facts",
@@ -273,7 +287,27 @@ export const FEATURES = {
       detail: "The draft opens in your own Gmail or Outlook, or you can copy it. Under each draft the claim check marks numbers, links and history lines that no fact supports.",
     },
     {
-      icon: "log",
+      icon: "brief",
+      title: "Research briefs from approved pages",
+      short: "A brief on who to contact, quoted from pages an owner approved.",
+      tag: "AI, optional",
+      detail: "An owner lists the pages Coppice may read, such as a company's careers or giving page, in Settings. A brief on a company's page lists its official ways in, and every line quotes the page it came from.",
+    },
+    {
+      icon: "assistants",
+      title: "Your own AI assistant, if you connect one",
+      short: "An assistant that supports remote MCP servers can work in your workspace.",
+      tag: "Optional, off by default",
+      detail: "An owner turns assistants on for the workspace. Each member decides whether their assistant may only read, or also claim companies, log outreach and move stages as them. Those changes are marked via assistant, and a member can disconnect it at any time.",
+    },
+    {
+      icon: "ask",
+      title: "Ask Coppice",
+      short: "Ask about your pipeline in plain words and get the matching companies, read from your workspace.",
+      detail: "One short AI call turns your question into a filter. Coppice then reads the answer from your own workspace, so every row, date and number on screen comes from your data. Anything it suggests changing waits as a card for you to confirm.",
+    },
+    {
+      icon: "capsule",
       title: "A Time Capsule for the next board",
       short: "Your year as a keepsake, and a handoff the incoming board can read.",
       tag: "AI, optional",
@@ -310,16 +344,14 @@ export const TRUST = {
   alsoOut: "Also out of scope: payments, and public pages for companies to visit.",
   comingTitle: "Coming next",
   comingNote: "Announced, not built yet. Nothing here exists in the app today.",
-  coming: [
-    { tag: "Next", title: "Reply rate per pitch template", body: "See which version of your pitch gets answers, so the next board starts from what worked." },
-    { tag: "Later", title: "Pipeline Copilot", body: "A chat that answers questions about your pipeline. Anything it proposes changing waits for a person to confirm." },
-  ],
+  // Nothing is announced right now. The landing page hides this section while the list is empty.
+  coming: [] as { tag: string; title: string; body: string }[],
   privacyTitle: "Privacy notes",
   privacy: [
     { title: "AI is optional", body: "The owner turns it on or off for the whole workspace and sets how many AI calls the workspace may make in a 30-day period. With AI off, none of the text below is sent anywhere." },
-    { title: "What is kept from the AI", body: "The provider's free tier may use what it receives to improve its products. So a draft is written with placeholders for first name, sender name and organization name, and Coppice fills in the real names after it comes back. Email addresses and phone numbers are masked in everything sent. Other names can't be caught that way: a name in your packet, in a note, or typed into a draft you check again does reach the provider, so leave those out. The same goes for a template you base a draft on, so keep names out of templates. Smart import, if you turn it on for a CSV import, sends Gemini the sheet's headers only when they are plain spreadsheet words (like “Last contacted”), and otherwise their shape (like “2 words”), its company names and industries from columns plainly labeled as such (like “Company” or “Industry”), and only the shape of its other sample cells (like “6 words, has a date”), and sends its free-text cells, which can include names, to Groq instead, with email addresses and phone numbers masked; Groq says it doesn't keep what it's sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse. A research brief sends Gemini only the public text and addresses of pages an owner approved, with email addresses and phone numbers masked (numbers of 7 or more digits written in groups with spaces, dashes, dots, slashes or brackets, as in most countries, and numbers of 10 or more digits written in one run, in any script's digits, fullwidth ones included; a date, or a run of dates and years, standing on its own is left alone), plus the company's name and website, never your notes or contacts. An AI assistant you connect to Coppice yourself is different: whatever it reads, including contact names and emails, notes and outreach, goes to the company behind that assistant, whether or not Coppice's own AI is on. Assistants have their own switch in Settings, off by default." },
+    { title: "What is kept from the AI", body: "The provider's free tier may use what it receives to improve its products. So a draft is written with placeholders for first name, sender name and organization name, and Coppice fills in the real names after it comes back. Email addresses and phone numbers in US or international (+) format are masked in drafts, packets and claim checks. Other names can't be caught that way: a name in your packet, in a note, or typed into a draft you check again does reach the provider, so leave those out. The same goes for a template you base a draft on, so keep names out of templates. Smart import, if you turn it on for a CSV import, sends Gemini the sheet's headers only when they are plain spreadsheet words (like “Last contacted”), and otherwise their shape (like “2 words”), the company names and industries from columns plainly labeled as such (like “Company” or “Industry”), and, for up to 15 sample rows, only the shape of its other cells (like “6 words, has a date”). To spot look-alikes it also sends Gemini the sheet's company names and the names of the companies already saved in this workspace, archived ones included, each cut before any note (“Acme (ask Dana)” is sent as “Acme”) or left out if it is only a note; with more than 600 names in all, that check is skipped. It sends its free-text cells, which can include names, to Groq instead, with email addresses and phone numbers in US or international (+) format masked; Groq says it doesn't keep what it's sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse. A research brief sends Gemini only the public text and addresses of pages an owner approved, with email addresses and phone numbers masked (numbers of 7 or more digits written in groups with spaces, dashes, dots, slashes or brackets, as in most countries, and numbers of 10 or more digits written in one run, in any script's digits, fullwidth ones included; a date, or a run of dates and years, standing on its own is left alone), plus the company's name and website, never your notes or contacts. An AI assistant you connect to Coppice yourself is different: whatever it reads, including contact names and emails, notes and outreach, goes to the company behind that assistant, whether or not Coppice's own AI is on. Assistants have their own switch in Settings, off by default." },
     { title: "The Time Capsule and Ask the Archive", body: CAPSULE_PRIVACY },
-    { title: "What does go to the provider", body: "While AI is on: the text of the packet you uploaded, your verified facts, the company's name, industry and website, the contact's job title, any note you add to a draft request, the dates and subjects of earlier outreach on a follow-up, the text of each draft for the claim check, and for a research brief, the public text and addresses of the pages an owner approved. Keep anything private out of the packet and your notes. A template you base a draft on is sent as well, masked the same way." },
+    { title: "What does go to the provider", body: "While AI is on: the text of the packet you uploaded, your verified facts, the company's name, industry, website and stage, the contact's job title, any note you add to a draft request, on a follow-up the date and channel of each of the last five earlier outreach entries, whether they replied, and the subject of its AI draft with the names put back to placeholders, the text of each draft for the claim check, and for a research brief, the public text and addresses of the pages an owner approved. Keep anything private out of the packet and your notes. A template you base a draft on is sent as well, masked the same way. Explain these numbers on the stats page sends the template names and the numbers on that page, never a note, a company or a contact. The Template Lab sends the text of the one template an owner tries a variant of, masked the same way, and up to 40 verified facts. Ask Coppice sends Groq your question, your last few questions in that conversation, and the names of companies it just showed you, and Groq keeps them as described above. Notes, contacts and outreach history are not sent; answers are read from your workspace by code." },
     { title: "Emails stay with owners", body: "Officers do not see other members' email addresses. Only owners can view them." },
     { title: "Contacts never log in", body: "Company contacts never log in and never receive anything from Coppice." },
     { title: "Archiving keeps the history", body: "An archived company leaves the board and queue, and it can be unarchived later." },

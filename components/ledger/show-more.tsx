@@ -2,6 +2,7 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { Children, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { formatCount } from "@/lib/format";
 import { focusSoon } from "./focus";
 
 // Caps every list.
@@ -31,7 +32,7 @@ export function showMoreSplit(count: number, initial: number): { shown: number; 
 }
 
 export function showAllLabel(count: number, label: string): string {
-  return `Show all ${count.toLocaleString("en-US")} ${label}`.trim();
+  return `Show all ${formatCount(count)} ${label}`.trim();
 }
 
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select, textarea, summary, [tabindex]:not([tabindex='-1'])";
@@ -137,12 +138,11 @@ export function ShowMore({
 export type MoreLinkState = { kind: "none" } | { kind: "cap"; text: string } | { kind: "more"; next: number; left: number; text: string };
 
 export function moreLinkState(shown: number, total: number, step = 50, cap = 200): MoreLinkState {
-  const n = (v: number) => v.toLocaleString("en-US");
   if (shown >= total) return { kind: "none" };
-  if (shown >= cap) return { kind: "cap", text: `Showing ${n(shown)} of ${n(total)}. Use search or filters to narrow.` };
+  if (shown >= cap) return { kind: "cap", text: `Showing ${formatCount(shown)} of ${formatCount(total)}. Use search or filters to narrow.` };
   const left = total - shown;
   const next = Math.min(step, left, cap - shown);
-  return { kind: "more", next, left, text: next === left ? `Show ${n(next)} more` : `Show ${n(next)} more (${n(left)} left)` };
+  return { kind: "more", next, left, text: next === left ? `Show ${formatCount(next)} more` : `Show ${formatCount(next)} more (${formatCount(left)} left)` };
 }
 
 function MoreLinkLabel({ text }: { text: string }) {
@@ -169,7 +169,7 @@ export function MoreLink({ href, shown, total, step = 50, cap = 200 }: { href: s
   if (state.kind !== "more")
     return (
       <p ref={line} className="lg-morelink lg-muted" tabIndex={used ? -1 : undefined}>
-        {state.kind === "cap" ? state.text : `Showing all ${total.toLocaleString("en-US")}.`}
+        {state.kind === "cap" ? state.text : `Showing all ${formatCount(total)}.`}
       </p>
     );
   return (

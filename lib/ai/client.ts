@@ -20,8 +20,8 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // owner approved, which can name people (a page's "Jane Doe leads campus outreach"); emails and
 // phone numbers are masked. Code then drops every passage and item that names a person or holds a
 // masked contact detail (lib/research/checks.ts namesPerson), so no name reaches the writing call
-// or the brief. Smart import's look-alike call gets company names cleaned the same way as the
-// column step: a cell that reads as a note is cut to the name before it, or left out.
+// or the brief. Smart import's look-alike call gets the sheet's company names and the names of the
+// workspace's saved companies, cleaned the same way as the column step: a cell that reads as a note is cut to the name before it, or left out.
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.

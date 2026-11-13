@@ -18,7 +18,8 @@ import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
 import type { FoundCompany } from "@/lib/search";
 import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
-import { BoardIcon, CapsuleIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
+import { AiDraftIcon, BoardIcon, CapsuleIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
+import { asksQuestion } from "./ask/question";
 import { OverdueMark } from "./overdue";
 
 // The command palette: an index card on paper with ruled lines. Results are grouped under two
@@ -67,7 +68,7 @@ function focusPageStart(hash = "") {
   target.focus({ preventScroll: true });
 }
 
-export function PaletteProvider({ workspaceId, children }: { workspaceId: string; children: ReactNode }) {
+export function PaletteProvider({ workspaceId, askOn = false, children }: { workspaceId: string; askOn?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const router = useRouter();
@@ -117,7 +118,7 @@ export function PaletteProvider({ workspaceId, children }: { workspaceId: string
   return (
     <PaletteContext.Provider value={api}>
       {children}
-      {open && <CommandPalette workspaceId={workspaceId} onClose={close} onNavigate={navigate} />}
+      {open && <CommandPalette workspaceId={workspaceId} askOn={askOn} onClose={close} onNavigate={navigate} />}
     </PaletteContext.Provider>
   );
 }
@@ -143,12 +144,12 @@ export function SearchBar({ className = "" }: { className?: string }) {
 type PageItem = { kind: "page"; key: string; label: string; hint: string; href: string; words: string; icon: ReactNode };
 type CompanyItem = { kind: "company"; key: string; company: FoundCompany; href: string };
 type Item = PageItem | CompanyItem;
-type Group = { id: "companies" | "pages"; title: string; items: Item[] };
+type Group = { id: "ask" | "companies" | "pages"; title: string; items: Item[] };
 
 // With nothing typed, only these three; the rest are found by typing.
 const SUGGESTED = ["yours", "board", "new"];
 
-function pageItems(workspaceId: string, query: string): PageItem[] {
+function pageItems(workspaceId: string, query: string, askOn: boolean): PageItem[] {
   const base = `/${workspaceId}`;
   const pages: PageItem[] = [
     { kind: "page", key: "yours", label: "My follow-ups", hint: "Due companies you hold", href: `${base}#yours`, words: "my mine yours follow-ups due claimed queue", icon: <QueueIcon size={18} /> },
@@ -159,6 +160,9 @@ function pageItems(workspaceId: string, query: string): PageItem[] {
     { kind: "page", key: "import", label: "Go to Import", hint: "Bring in a CSV", href: `${base}/import`, words: "import csv spreadsheet upload sheet", icon: <ImportIcon size={18} /> },
     { kind: "page", key: "facts", label: "Go to Facts", hint: "The fact sheet", href: `${base}/facts`, words: "facts fact sheet packet pdf ai verify", icon: <FactsIcon size={18} /> },
     { kind: "page", key: "stats", label: "Go to Template stats", hint: "Which templates get replies", href: `${base}/stats`, words: "stats templates reply rate", icon: <StatsIcon size={18} /> },
+    ...(askOn
+      ? [{ kind: "page" as const, key: "ask", label: "Go to Ask Coppice", hint: "Ask about your pipeline", href: `${base}/ask`, words: "ask coppice question copilot assistant ai help how", icon: <AiDraftIcon size={18} /> }]
+      : []),
     { kind: "page", key: "capsule", label: "Go to Time Capsule", hint: "Your year, and the handoff", href: `${base}/capsule`, words: "time capsule year recap wrapped handoff turnover archive playbook", icon: <CapsuleIcon size={18} /> },
     { kind: "page", key: "settings", label: "Go to Settings", hint: "Members and claim window", href: `${base}/settings`, words: "settings members invite claim window ai owner", icon: <SettingsIcon size={18} /> },
     { kind: "page", key: "workspaces", label: "Switch workspace", hint: "Your workspaces", href: "/workspaces", words: "switch workspace workspaces club team", icon: <UserIcon size={18} /> },
@@ -182,6 +186,20 @@ function pageItems(workspaceId: string, query: string): PageItem[] {
     });
   }
   return found;
+}
+
+// The first row for a question: Enter opens Ask Coppice with it already asked.
+function askItem(workspaceId: string, query: string): PageItem {
+  const text = query.trim();
+  return {
+    kind: "page",
+    key: "ask-question",
+    label: `Ask Coppice: ${text.slice(0, 100)}`,
+    hint: "Ask a question",
+    href: `/${workspaceId}/ask?q=${encodeURIComponent(text.slice(0, 500))}`,
+    words: "",
+    icon: <AiDraftIcon size={18} />,
+  };
 }
 
 // A phone or tablet: no keyboard legend, a short placeholder and a "Cancel" button.
@@ -210,7 +228,7 @@ function countOpen(): number {
   }
 }
 
-function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: string; onClose: () => void; onNavigate: (href: string) => void }) {
+function CommandPalette({ workspaceId, askOn, onClose, onNavigate }: { workspaceId: string; askOn: boolean; onClose: () => void; onNavigate: (href: string) => void }) {
   const shortcut = useShortcutLabel();
   const coarse = useCoarsePointer();
   // Read once when the palette opens (it only ever renders in the browser).
@@ -257,14 +275,15 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
       text && found?.query === text
         ? found.companies.map((company) => ({ kind: "company", key: `c-${company.id}`, company, href: `/${workspaceId}/companies/${company.id}` }))
         : [];
-    const pages = pageItems(workspaceId, query);
+    const pages = pageItems(workspaceId, query, askOn);
     // On the board, "Filter the board" is the first thing offered for typed text.
     const ordered = onBoard ? [...pages.filter((p) => p.key === "board-filter"), ...pages.filter((p) => p.key !== "board-filter")] : pages;
     const out: Group[] = [];
+    if (askOn && asksQuestion(query)) out.push({ id: "ask", title: "Ask", items: [askItem(workspaceId, query)] });
     if (companies.length > 0) out.push({ id: "companies", title: "Companies", items: companies });
     if (ordered.length > 0) out.push({ id: "pages", title: "Go to", items: ordered });
     return out;
-  }, [found, text, query, workspaceId, onBoard]);
+  }, [found, text, query, workspaceId, onBoard, askOn]);
 
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const optionId = (index: number) => `${id}-opt-${index}`;

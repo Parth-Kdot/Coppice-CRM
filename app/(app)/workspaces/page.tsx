@@ -9,7 +9,9 @@ import { Empty } from "@/components/ledger/shared";
 import { canCreateWorkspace } from "@/lib/auth";
 import { requireUser, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { WORKSPACE_NAME_MAX } from "@/lib/limits";
+import { WORKSPACE_NAME_MAX, WORKSPACES_SHOWN } from "@/lib/limits";
+import { toRole } from "@/lib/roles";
+import { listMyWorkspaces } from "@/lib/workspaces";
 import { acceptInvitation, createWorkspace } from "./actions";
 import "@/components/ledger/ledger.css";
 import "@/components/ledger/auth.css";
@@ -30,16 +32,11 @@ function initials(name: string): string {
   return letters.toUpperCase();
 }
 
-const asRole = (role: string): Role => (role.split(",").includes("owner") ? "owner" : "member");
-
 export default async function WorkspacesPage() {
   const user = await requireUser();
 
-  const memberships = await prisma.membership.findMany({
-    where: { userId: user.id },
-    select: { role: true, workspace: { select: { id: true, name: true } } },
-    orderBy: { createdAt: "asc" },
-  });
+  // Oldest membership first, up to WORKSPACES_SHOWN, the same cap as the header's switcher.
+  const memberships = await listMyWorkspaces(user.id);
 
   // Only invitations addressed to this user's own verified email. Workspaces are never
   // listed or searchable, and there is no form to look up other emails.
@@ -102,7 +99,7 @@ export default async function WorkspacesPage() {
                     </span>
                     <span className="lg-wscard-text">
                       <span className="lg-wscard-name">{workspace.name}</span>
-                      <span className="lg-wscard-role">{roleLabel(asRole(role))}</span>
+                      <span className="lg-wscard-role">{roleLabel(toRole(role))}</span>
                     </span>
                     <span className="lg-wscard-open" aria-hidden="true">
                       Open
@@ -111,6 +108,7 @@ export default async function WorkspacesPage() {
                 </li>
               ))}
             </ul>
+            {memberships.length === WORKSPACES_SHOWN && <p className="lg-hint mt-3">Showing your first {WORKSPACES_SHOWN} workspaces.</p>}
           </>
         )}
 
@@ -121,7 +119,7 @@ export default async function WorkspacesPage() {
             </h2>
             <ul className="lg-invites">
               {invitations.map((invite) => {
-                const role = asRole(invite.role ?? "member");
+                const role = toRole(invite.role ?? "member");
                 return (
                   <li key={invite.id}>
                     <div className="lg-invites-text">

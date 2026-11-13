@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ActionForm } from "@/components/action-form";
+import { CONTACT_LIMITS } from "@/lib/limits";
 import { Disclosure, LazyDisclosure, useLazyDisclosure } from "../disclosure";
 import { focusSoon } from "../focus";
 import { CopyLinkIcon } from "../icons";
@@ -19,11 +20,11 @@ function ContactInputs({ name, email, title }: { name?: string; email?: string |
     <div className="lg-row3">
       <label className="lg-label">
         Name
-        <input name="name" required maxLength={120} defaultValue={name} className="lg-input mt-1" />
+        <input name="name" required maxLength={CONTACT_LIMITS.name} defaultValue={name} className="lg-input mt-1" />
       </label>
       <label className="lg-label">
         Title
-        <input name="title" maxLength={120} defaultValue={title ?? ""} className="lg-input mt-1" />
+        <input name="title" maxLength={CONTACT_LIMITS.title} defaultValue={title ?? ""} className="lg-input mt-1" />
       </label>
       <label className="lg-label">
         Email
