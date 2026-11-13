@@ -4,6 +4,7 @@ import { SOURCE_LABEL_MAX, type ActionResult } from "@/lib/validation";
 import { SOURCE_URL_MAX } from "@/lib/research/urls";
 import { day } from "@/lib/dates";
 import "./pages.css";
+import "./settings.css";
 import "./research.css";
 
 type Action = (prev: ActionResult | null, form: FormData) => Promise<ActionResult>;

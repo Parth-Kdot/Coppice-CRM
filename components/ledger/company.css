@@ -117,12 +117,6 @@
   .lg-followon {
     margin-top: 6px;
   }
-  .lg-logfoot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px 14px;
-  }
 
   /* ---------- The ruled calendar ---------- */
   .lg-cal {
@@ -929,18 +923,6 @@
   .lg-newform {
     display: grid;
     gap: 14px;
-  }
-  .lg-readonly {
-    display: grid;
-    grid-template-columns: 90px minmax(0, 1fr);
-    gap: 6px 12px;
-  }
-  .lg-readonly dt {
-    color: var(--ink-2);
-  }
-  .lg-readonly dd {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .lg-matches {
     list-style: none;

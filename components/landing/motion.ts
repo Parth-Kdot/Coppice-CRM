@@ -7,10 +7,9 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 // kinds are not: the self-drawing pen strokes and the stool animate SVG stroke-dashoffset (a paint
 // property, kept to small SVGs), and the cut sweep clips an SVG rectangle.
 //
-// Three durations and two eases, the same as the app: fast feedback 0.12 s, base 0.22 s, slow 0.48 s;
-// "lgOut" is the app's ease-out and "power2.inOut" stands in for its in-out. Nothing overshoots.
-
-export const DUR = { fast: 0.12, base: 0.22, slow: 0.48 } as const;
+// Three durations and two eases, the same as the app (the durations live in components/ledger/motion-kit.ts):
+// fast feedback 0.12 s, base 0.22 s, slow 0.48 s; "lgOut" is the app's ease-out and "power2.inOut" stands in
+// for its in-out. Nothing overshoots.
 
 let ready = false;
 
