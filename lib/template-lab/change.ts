@@ -1,4 +1,4 @@
-import { align, LINE, PARAGRAPH, runsOf, splitUnits } from "@/lib/template-lab/check";
+import { align, LINE, PARAGRAPH, runsOf, splitUnits, visible } from "@/lib/template-lab/check";
 
 // What a variant changed, for the "Try a variant" panel: the sentences that were in the template and
 // the sentences that took their place, so the one change is plain to see. It uses the same units and
@@ -24,7 +24,7 @@ const text = (units: readonly string[]): string => {
 // A variant that passed the checks has exactly one run; if somehow there are more, the first is
 // returned (the checks, not this, are what keep a variant to one change).
 export function describeChange(original: string, variant: string): Change | null {
-  const ops = align(splitUnits(original), splitUnits(variant));
+  const ops = align(splitUnits(visible(original)), splitUnits(visible(variant)));
   const [run] = runsOf(ops);
   if (!run) return null;
   return {

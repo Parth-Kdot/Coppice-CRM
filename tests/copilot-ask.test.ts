@@ -16,8 +16,8 @@ import {
   startThread,
   type CopilotAnswer,
 } from "@/lib/copilot";
-import { DEFAULT_FILTER } from "@/lib/copilot/intent";
-import { KEEP_DAYS } from "@/lib/copilot/memory";
+import { CODE_REPLIES, DEFAULT_FILTER } from "@/lib/copilot/intent";
+import { KEEP_DAYS, readThread, readTurn } from "@/lib/copilot/memory";
 import type { CopilotFilter, CopilotIntent } from "@/lib/validation";
 import { answer, calls, fakeGemini, reply } from "./helpers/gemini";
 import { groqAnswer, groqError } from "./helpers/groq";
@@ -72,9 +72,13 @@ const sent = (n = 0) => {
 };
 
 describe("the route and the usage line", () => {
-  it("is Groq's model that Smart import's row pass proved live, at low reasoning with a small reply budget", () => {
+  it("is Groq's model that Smart import's row pass proved live, at low reasoning with room for reasoning plus the answer", () => {
     expect(providerOf("COPILOT")).toBe("groq");
-    expect(ROUTES.COPILOT).toEqual({ provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 700 });
+    expect(ROUTES.COPILOT).toEqual({ provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 1500 });
+    // Groq counts reasoning inside the cap, and a reply cut off by it fails as json_validate_failed: 700 was too tight.
+    const budget = (route: unknown) => (route as { maxTokens: number }).maxTokens;
+    expect(budget(ROUTES.COPILOT)).toBeGreaterThan(700);
+    expect(budget(ROUTES.COPILOT)).toBeLessThanOrEqual(budget(ROUTES.IMPORT_ROWS));
   });
 
   it("counts under its own name in the workspace's AI usage", async () => {
@@ -90,14 +94,14 @@ describe("one question, one AI call", () => {
     fakeGemini(groqAnswer(list({ due: "overdue" }, { reply: "These are overdue." })));
     const result = ok(await askCopilot(OFFICER, { threadId: null, question: "Who's overdue?" }));
     expect(calls).toHaveLength(1);
-    expect(result).toMatchObject({ view: "companies", reply: "These are overdue.", question: "Who's overdue?", showStarters: false });
+    expect(result).toMatchObject({ view: "companies", reply: CODE_REPLIES.companies, question: "Who's overdue?", showStarters: false });
     // Bramblewick, Globex and Aperture are the open companies whose follow-up date has arrived.
     expect(names(result)).toEqual([NAMES.bramble, NAMES.globex, NAMES.aperture]);
     expect(result.total).toBe(3);
     expect(result.summary).toBe("3 companies match. Most overdue: Bramblewick Consulting, 12 days.");
     expect(result.chips.map((c) => c.label)).toContain("Overdue");
     expect(await turnsOf()).toEqual([
-      { id: result.turnId, question: "Who's overdue?", reply: "These are overdue.", status: "ANSWERED", error: null, shown: [p.id.bramble, p.id.globex, p.id.aperture], threadId: result.threadId },
+      { id: result.turnId, question: "Who's overdue?", reply: CODE_REPLIES.companies, status: "ANSWERED", error: null, shown: [p.id.bramble, p.id.globex, p.id.aperture], threadId: result.threadId },
     ]);
     // The row's data is never stored: only ids.
     expect(JSON.stringify(await turnsOf())).not.toContain("days overdue");
@@ -110,7 +114,7 @@ describe("one question, one AI call", () => {
     expect(calls[0].body).toMatchObject({
       model: "openai/gpt-oss-120b",
       reasoning_effort: "low",
-      max_completion_tokens: 700,
+      max_completion_tokens: 1500,
       response_format: { type: "json_schema", json_schema: { name: "result", strict: true } },
     });
     expect(calls[0].body).not.toHaveProperty("tools");
@@ -241,15 +245,43 @@ describe("the model's answer is checked by code", () => {
     expect((await turnsOf())[0].reply).toBe("Here are the companies that match.");
   });
 
-  it("keeps a number the person typed themselves, and turns away a link or an email address", async () => {
+  it("shows Coppice's own sentence for every list, company, plan and stats answer, whatever the model wrote", async () => {
     fakeGemini(
-      groqAnswer(list({}, { reply: "Here are the top 5 you asked about." })),
-      groqAnswer(list({}, { reply: "See https://evil.example for more." })),
-      groqAnswer(list({}, { reply: "Write to boss@evil.example." })),
+      groqAnswer(list({}, { reply: "Twelve companies are overdue; Bramblewick is the worst." })),
+      groqAnswer(intent({ view: "plan", minutes: 30, reply: "Call Dana Whitfield before next Friday." })),
+      groqAnswer(intent({ view: "stats", reply: "Your best template got 40 percent." })),
     );
-    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "show my top 5" })).reply).toBe("Here are the top 5 you asked about.");
-    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "anything else" })).reply).toBe("Here are the companies that match.");
-    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "and another" })).reply).toBe("Here are the companies that match.");
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "who is overdue?" })).reply).toBe(CODE_REPLIES.companies);
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "plan some time" })).reply).toBe(CODE_REPLIES.plan);
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "how are templates doing?" })).reply).toBe(CODE_REPLIES.stats);
+  });
+
+  it("keeps the model's sentence for a guide or none answer when it passes, and turns away a hostile one", async () => {
+    fakeGemini(
+      groqAnswer(intent({ view: "none", reply: "Coppice never sends email, so I can't do that." })),
+      groqAnswer(intent({ view: "none", reply: "Dana Whitfield will email them next Friday." })),
+      groqAnswer(intent({ view: "guide", guideTopics: ["claims"], reply: "Claims last about two weeks." })),
+      groqAnswer(intent({ view: "guide", guideTopics: ["claims"], reply: "A claim marks a company you are pitching." })),
+      groqAnswer(intent({ view: "none", reply: "See https://evil.example for more." })),
+      groqAnswer(intent({ view: "none", reply: "Visit acme dot com." })),
+    );
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "email them all" })).reply).toBe("Coppice never sends email, so I can't do that.");
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "what next" })).reply).toBe(CODE_REPLIES.none);
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "how do claims work?" })).reply).toBe(CODE_REPLIES.guide);
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "how do claims work again?" })).reply).toBe("A claim marks a company you are pitching.");
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "anything else" })).reply).toBe(CODE_REPLIES.none);
+    expect(ok(await askCopilot(OFFICER, { threadId: null, question: "and another" })).reply).toBe(CODE_REPLIES.none);
+  });
+
+  it("a company's name from the shown list is allowed in a sentence, one the model made up is not", async () => {
+    fakeGemini(
+      groqAnswer(list({ due: "overdue" })),
+      groqAnswer(intent({ view: "none", reply: `Coppice can't email ${NAMES.bramble} for you.` })),
+      groqAnswer(intent({ view: "none", reply: "Coppice can't email Initrode for you." })),
+    );
+    const first = ok(await askCopilot(OFFICER, { threadId: null, question: "who is overdue?" }));
+    expect(ok(await askCopilot(OFFICER, { threadId: first.threadId, question: "email the first one" })).reply).toBe(`Coppice can't email ${NAMES.bramble} for you.`);
+    expect(ok(await askCopilot(OFFICER, { threadId: first.threadId, question: "email another one" })).reply).toBe(CODE_REPLIES.none);
   });
 
   it("drops an industry the workspace doesn't use, says so, and runs the rest of the filter", async () => {
@@ -374,6 +406,9 @@ describe("when the call can't be made or fails", () => {
     ["a refused request", () => groqError(400, "Bad request", "invalid_request"), "rejected", false],
     ["a reply that broke the schema", () => groqError(400, "Failed to validate JSON", "json_validate_failed"), "invalid_output", true],
     ["a cut-off reply", () => groqAnswer('{"view": "comp', "length"), "truncated", true],
+    // Groq reports a reply the token cap ended as a 400, with the unfinished text attached.
+    ["a reply the token cap ended, sent back as a 400", () => groqError(400, "Failed to validate JSON", "json_validate_failed", '{"view":"companies","reply":"","filter":{"stages":[],"indus'), "truncated", true],
+    ["a whole reply that broke the schema, sent back as a 400", () => groqError(400, "Failed to validate JSON", "json_validate_failed", '{"view":"everything"}'), "invalid_output", true],
     ["a reply that is not JSON", () => groqAnswer("Sure, here you go"), "invalid_output", true],
     ["JSON of the wrong shape", () => groqAnswer({ view: "everything" }), "invalid_output", true],
     ["a content filter stop", () => groqAnswer(list(), "content_filter"), "blocked", false],
@@ -384,6 +419,24 @@ describe("when the call can't be made or fails", () => {
     expect(calls).toHaveLength(1);
     expect(await turnsOf()).toMatchObject([{ status: "FAILED", error: code, reply: AI_ERROR_MESSAGES[code] }]);
     expect(await aiRuns()).toMatchObject([{ status: "FAILED", error: code }]);
+  });
+
+  it("a 400 json_validate_failed logs how long the failed reply was and whether it was cut off, never its text", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const secret = '{"view":"companies","reply":"Bramblewick Consulting is the worst","filter":{"stages":[],"indus';
+      fakeGemini(groqError(400, "Failed to validate JSON", "json_validate_failed", secret));
+      await ask();
+      const logged = warn.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(logged).toContain("json_validate_failed");
+      expect(logged).toContain("max_tokens=1500");
+      expect(logged).toContain(`failed_generation_chars=${secret.length}`);
+      expect(logged).toContain("cut_off=true");
+      expect(logged).not.toContain("Bramblewick");
+      expect(logged).not.toContain(secret);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("a reply with nothing usable (a company view naming no company) fails as one that broke the rules", async () => {
@@ -643,8 +696,8 @@ describe("conversations", () => {
     const opened = await openThread(OFFICER);
     expect(opened.threadId).toBe(first.threadId);
     expect(opened.turns.map((t) => [t.question, t.reply, t.status, t.view])).toEqual([
-      ["Who's overdue?", "First answer.", "ANSWERED", "companies"],
-      ["Which do I hold?", "Second answer.", "ANSWERED", "companies"],
+      ["Who's overdue?", CODE_REPLIES.companies, "ANSWERED", "companies"],
+      ["Which do I hold?", CODE_REPLIES.companies, "ANSWERED", "companies"],
     ]);
     expect(opened.turns[0].chips.map((c) => c.label)).toContain("Overdue");
     expect(opened.turns[1].chips.map((c) => c.label)).toContain("Held by me");
@@ -724,6 +777,31 @@ describe("expiry", () => {
     expect(await turnsOf(OWNER)).toHaveLength(1);
   });
 
+  it("does not show a turn past the window when the conversation is opened, even before any clean-up has run", async () => {
+    fakeGemini();
+    const old = ok(await runStarter(OFFICER, { threadId: null, starter: "overdue" }));
+    const recent = ok(await runStarter(OFFICER, { threadId: old.threadId, starter: "claims" }));
+    await backdate(old.turnId, KEEP_DAYS + 1);
+    // Nothing has been asked since: the old row is still in the table, but not on the screen.
+    expect(await turnsOf()).toHaveLength(2);
+    const opened = await openThread(OFFICER);
+    expect(opened.turns.map((t) => t.turnId)).toEqual([recent.turnId]);
+    expect(opened.latest?.turnId).toBe(recent.turnId);
+    const reread = await readThread(OFFICER, old.threadId);
+    expect(reread?.turns.map((t) => t.id)).toEqual([recent.turnId]);
+  });
+
+  it("opens an empty conversation when every turn is past the window, and an expired turn can't be shown again", async () => {
+    fakeGemini();
+    const old = ok(await runStarter(OFFICER, { threadId: null, starter: "overdue" }));
+    await backdate(old.turnId, KEEP_DAYS + 1);
+    const opened = await openThread(OFFICER);
+    expect(opened.turns).toEqual([]);
+    expect(opened.latest).toBeNull();
+    expect(await readTurn(OFFICER, old.turnId)).toBeNull();
+    expect(await rerunTurn(OFFICER, old.turnId)).toMatchObject({ ok: false });
+  });
+
   it("uses the database's clock, not the server's", async () => {
     fakeGemini();
     const turn = ok(await runStarter(OFFICER, { threadId: null, starter: "overdue" }));
@@ -783,7 +861,7 @@ describe("replies recorded from the real model", () => {
     fakeGemini(groqAnswer(list({ due: "overdue" })), groqAnswer(LIVE_ONLY_MINE));
     const first = ok(await askCopilot(OFFICER, { threadId: null, question: "who's overdue?" }));
     const second = ok(await askCopilot(OFFICER, { threadId: first.threadId, question: "only mine" }));
-    expect(second).toMatchObject({ view: "companies", reply: "Showing only your companies." });
+    expect(second).toMatchObject({ view: "companies", reply: CODE_REPLIES.companies });
     expect(second.filter).toEqual({ ...DEFAULT_FILTER, claim: "mine" });
     expect(second.chips.map((c) => c.label)).toEqual(["Open stages", "Held by me", "Sorted by most overdue"]);
     expect(names(second)).toEqual([NAMES.bramble]);

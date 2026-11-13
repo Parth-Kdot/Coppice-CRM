@@ -27,13 +27,15 @@ type Props = {
   written: string | null;
   // Today's numbers differ from the ones it was written about.
   changed: boolean;
+  // How many sentences the checks left out before it was stored (a quiet line shows only when above 0).
+  dropped?: number;
   // AI is set up and on for the workspace: without it the button is not drawn at all.
   canAsk: boolean;
   // The workspace has used its AI calls for the window, so the click would be refused.
   limitLine: string | null;
 };
 
-export function ExplainPanel({ workspaceId, paragraphs, written, changed, canAsk, limitLine }: Props) {
+export function ExplainPanel({ workspaceId, paragraphs, written, changed, dropped = 0, canAsk, limitLine }: Props) {
   const id = useId();
   const [state, action, pending] = useActionState((prev: ActionResult | null, form: FormData) => explainStats(prev, form), null);
   const button = useRef<HTMLButtonElement>(null);
@@ -86,6 +88,11 @@ export function ExplainPanel({ workspaceId, paragraphs, written, changed, canAsk
               </p>
             ))}
           </div>
+        )}
+        {hasText && dropped > 0 && (
+          <p className="lg-hint lg-explain-dropped">
+            {dropped === 1 ? "1 sentence was left out by the checks." : `${dropped} sentences were left out by the checks.`}
+          </p>
         )}
         {shownFact?.kind === "fact" && (
           <p className="lg-hint lg-explain-what" role="status">

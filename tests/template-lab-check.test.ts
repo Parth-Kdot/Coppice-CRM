@@ -2,6 +2,7 @@ import { describe, expect, it, test } from "vitest";
 import { factNumbers } from "@/lib/claim-rules";
 import {
   align,
+  checkContext,
   checkVariant,
   checkVariants,
   CONTACT_IN_TEMPLATE,
@@ -9,12 +10,15 @@ import {
   normaliseVariant,
   PARAGRAPH,
   placeholderKeys,
+  plain,
   runsOf,
   splitUnits,
   templateProblem,
+  visible,
   type LabVariant,
   type VariantProblem,
 } from "@/lib/template-lab/check";
+import { describeChange } from "@/lib/template-lab/change";
 import { TEMPLATE_LIMITS, type VariantKind } from "@/lib/validation";
 
 // The Template Lab's checks, pure: a table of variants that must be dropped (each for its own
@@ -115,6 +119,21 @@ describe("checkVariant: variants that pass", () => {
     expect(problem).toBeNull();
   });
 
+  test.each([
+    ["a place written in capitals", "Could we talk about students in DC?"],
+    ["a document abbreviation", "Could we talk? Send your CV first."],
+    ["a sentence in another script on its own", "Могли бы мы поговорить?"],
+    ["a name in another script next to English words", "Could we talk about the Привет team?"],
+  ])("passes %s", (_name, text) => {
+    expect(checkVariant(ORIGINAL, variant("ask", swap(ASK, text)), context)).toBeNull();
+    expect(checkVariant(ORIGINAL, variant("ask", swap(ASK, "Could we talk soon?"), "Mentions DC and a CV."), context)).toBeNull();
+  });
+
+  it("allows a mixed-alphabet word the template already holds", () => {
+    const original = ORIGINAL.replace("hackathon", "hackathon b\u0435st");
+    expect(checkVariant(original, variant("ask", swap(ASK, "Could we talk soon?", original)), context)).toBeNull();
+  });
+
   it("passes a shorter version that really is shorter by condensing one sentence", () => {
     const body = swap(PITCH, "We run a hackathon and need sponsors.");
     expect(checkVariant(ORIGINAL, variant("shorter", body), context)).toBeNull();
@@ -132,6 +151,69 @@ describe("checkVariant: variants that pass", () => {
   });
 });
 
+describe("checkVariant: numbers written in words and in other scripts", () => {
+  it("allows a number word the template already has, and refuses the ones it lacks", () => {
+    const original = ORIGINAL.replace("an annual hackathon", "a two day hackathon");
+    expect(checkVariant(original, variant("ask", swap(ASK, "Could we talk for a bit? The hackathon runs two days.", original)), context)).toBeNull();
+    expect(checkVariant(original, variant("ask", swap(ASK, "Could we talk for a bit? The hackathon runs three days.", original)), context)).toBe("number");
+  });
+
+  it("allows a number word a verified fact has, and not otherwise", () => {
+    const ctx = checkContext([{ text: "Over a thousand students attend each year." }, { text: "The hackathon draws 1,200 attendees." }]);
+    expect(ctx).toMatchObject({ factNumbers: ["1200"], factWords: ["thousand"] });
+    const v = variant("ask", swap(ASK, "Could we talk about our thousand students?"));
+    expect(checkVariant(ORIGINAL, v, ctx)).toBeNull();
+    expect(checkVariant(ORIGINAL, v, context)).toBe("number");
+    // A different number word from the same fact is not allowed.
+    expect(checkVariant(ORIGINAL, variant("ask", swap(ASK, "Could we talk about our million students?")), ctx)).toBe("number");
+  });
+
+  it("reads a fact's digits in any script, and the template's, as the numbers they are", () => {
+    expect(checkContext([{ text: "Draws １，２００ attendees and ٣٠ teams." }]).factNumbers).toEqual(["1200", "30"]);
+    // The same number in another script is the number the template holds: it is not an invented one.
+    expect(checkVariant(ORIGINAL, variant("ask", swap(ASK, "Do you have １０ minutes this month to talk?")), context)).toBeNull();
+  });
+
+  it("applies the same check to the summary: words, fullwidth and Arabic-Indic digits", () => {
+    const ok = (summary: string) => checkVariant(ORIGINAL, variant("ask", swap(ASK, "Could we talk soon?"), summary), context);
+    expect(ok("Asks in a plainer way, which may feel less like a sales pitch.".replace("less", "lighter"))).toBeNull();
+    expect(ok("Reaches ten readers")).toBe("summary");
+    expect(ok("Reaches 10 readers")).toBeNull();
+    // "one" is an ordinary word in a summary ("swaps one sentence") and is not counted.
+    expect(ok("Swaps one sentence for a softer one.")).toBeNull();
+    expect(checkVariant(ORIGINAL, variant("ask", swap(ASK, "Could we talk about one idea?")), context)).toBeNull();
+    expect(checkVariant(ORIGINAL, variant("ask", swap(ASK, "Could we talk about one thousand ideas?")), context)).toBe("number");
+  });
+});
+
+describe("plain and visible", () => {
+  it("read a text the way a person does", () => {
+    expect(visible("a\u200bb\u00adc\u200dd\ufeffe")).toBe("abcde");
+    expect(plain("５０００ ٥٠٠٠ ५००० 𝟓 ² ① ½ Ⅳ ｆｉｖｅ")).toBe("5000 5000 5000 5 2 1 1⁄2 IV five");
+    expect(plain("Plain 123, and 4.5")).toBe("Plain 123, and 4.5");
+  });
+});
+
+describe("a change that is one sentence swapped for a long unpunctuated block in a long template", () => {
+  // Thirty sentences: twelve lines is under two thirds of them, so only the added length catches it.
+  const long = `Hi {{firstName}},\n\n${Array.from({ length: 30 }, (_, i) => `Sentence ${String.fromCharCode(97 + (i % 26))}${"z".repeat(i)} is here.`).join(" ")}\n\n{{senderName}}\n{{orgName}}`;
+  const sentence = "Sentence bz is here.";
+  const lines = Array.from({ length: 12 }, (_, i) => `Another invented line number ${"w".repeat(i + 1)} about nothing at all in here`).join("\n");
+
+  it("is a rewrite, and a plain one-sentence swap in the same template still passes", () => {
+    expect(long).toContain(sentence);
+    expect(checkVariant(long, variant("ask", long.replace(sentence, lines)), context)).toBe("rewrite");
+    expect(checkVariant(long, variant("ask", long.replace(sentence, "Sentence replaced by a short one.")), context)).toBeNull();
+  });
+});
+
+describe("describeChange", () => {
+  it("shows the same text for a template that holds invisible characters as for one that doesn't", () => {
+    expect(describeChange(ORIGINAL.replace(ASK, `${ASK}\u200b`), swap(ASK, "Could we talk soon?"))).toEqual(describeChange(ORIGINAL, swap(ASK, "Could we talk soon?")));
+    expect(describeChange(ORIGINAL, ORIGINAL.replace(ASK, `${ASK}\u200b`))).toBeNull();
+  });
+});
+
 describe("checkVariant: variants that are dropped", () => {
   const cases: [string, LabVariant, VariantProblem][] = [
     ["a lost placeholder", variant("closing", swap("{{orgName}}", "Riverbend", swap(ASK, "Could we talk?"))), "placeholders"],
@@ -142,6 +224,22 @@ describe("checkVariant: variants that are dropped", () => {
     ["an invented number", variant("opening", swap(OPENER, "I'm {{senderName}} from {{orgName}}, and 800 students came last year.")), "number"],
     ["a number changed in place", variant("ask", swap(ASK, "Would you be open to a 15 minute call this month?")), "number"],
     ["a number that only a different fact would allow", variant("ask", swap(ASK, "Could we talk about our 1,300 attendees?")), "number"],
+    ["number words in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our five thousand students?")), "number"],
+    ["number words in capitals in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our FIVE THOUSAND students?")), "number"],
+    ["a Roman numeral in the body", variant("ask", swap(ASK, "Would your team sponsor the prize for edition IV?")), "number"],
+    ["fullwidth digits in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our ５０００ students?")), "number"],
+    ["Arabic-Indic digits in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our ٥٠٠٠ students?")), "number"],
+    ["Devanagari digits in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our ५००० students?")), "number"],
+    ["a mathematical bold digit in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our 𝟓𝟎𝟎𝟎 students?")), "number"],
+    ["a superscript digit in the body", variant("ask", swap(ASK, "Would your team sponsor a prize for our 5² students?")), "number"],
+    ["fullwidth letters spelling a number", variant("ask", swap(ASK, "Would your team sponsor a prize for our ｆｉｖｅ students?")), "number"],
+    ["a number word the model hid with a zero-width space, once normalised", normaliseVariant(variant("ask", swap(ASK, "Would your team sponsor a prize for our fi\u200bve students?"))), "number"],
+    ["a number word in a fraction of the pitch", variant("ask", swap(ASK, "Would you give half of a minute to talk?")), "number"],
+    ["a Cyrillic look-alike inside a word in the body", variant("ask", swap(ASK, "Could we talk about the b\u0435st way to help?")), "mixed_script"],
+    ["a Greek look-alike inside a word in the body", variant("ask", swap(ASK, "Could we talk about the b\u03b5st way to help?")), "mixed_script"],
+    ["a fullwidth number word thrice", variant("ask", swap(ASK, "Could we talk about it ｔｈｒｉｃｅ?")), "number"],
+    ["the number word single in the body", variant("ask", swap(ASK, "Could we talk about every single student?")), "number"],
+    ["a Cyrillic look-alike inside a word in the summary", variant("ask", swap(ASK, "Could we talk soon?"), "Asks in a b\u0435tter way."), "summary"],
     ["an email address", variant("ask", swap(ASK, "Could you email dana@riverbend.org?")), "contact"],
     ["a phone number", variant("ask", swap(ASK, "Could you call 765-555-0142?")), "contact"],
     ["a masked contact token", variant("ask", swap(ASK, "Could you write to [email]?")), "contact"],
@@ -150,13 +248,23 @@ describe("checkVariant: variants that are dropped", () => {
     ["a claim about a past relationship", variant("opening", swap(OPENER, "Since you sponsored us before, I'm {{senderName}} from {{orgName}}.")), "claim"],
     ["a summary with an invented number", variant("ask", swap(ASK, "Could we talk soon?"), "Cuts the ask so replies rise by 40 percent."), "summary"],
     ["a summary with a link", variant("ask", swap(ASK, "Could we talk soon?"), "Based on www.example.com research."), "summary"],
+    ["a summary with number words", variant("ask", swap(ASK, "Could we talk soon?"), "Doubles replies for five thousand readers"), "summary"],
+    ["a summary with a number word alone", variant("ask", swap(ASK, "Could we talk soon?"), "Asks for a call twice as politely."), "summary"],
+    ["a summary with fullwidth digits", variant("ask", swap(ASK, "Could we talk soon?"), "Reaches ５０００ readers."), "summary"],
+    ["a summary with Arabic-Indic digits", variant("ask", swap(ASK, "Could we talk soon?"), "Reaches ٥٠٠٠ readers."), "summary"],
+    ["a summary with a Roman numeral", variant("ask", swap(ASK, "Could we talk soon?"), "Follows the IV step plan."), "summary"],
     ["two separate changes", variant("ask", swap(ASK, "Could we talk soon?", swap(OPENER, "I'm {{senderName}} of {{orgName}}."))), "not_one_change"],
     ["a change in the middle and a change at the end", variant("ask", swap(ASK, "Could we talk soon?", swap(PITCH, "We run a hackathon."))), "not_one_change"],
     ["a paragraph break moved elsewhere", variant("ask", ORIGINAL.replace(`${OPENER} `, `${OPENER}\n\n`).replace("\n\nWould", " Would")), "not_one_change"],
     ["a full rewrite", variant("opening", "Hi {{firstName}},\n\nThis is {{senderName}}. Students from {{orgName}} put on a hackathon this spring. Sponsors get a table and a talk slot. Want to help? Reply to me.\n\nThanks,\n{{senderName}}\n{{orgName}}"), "rewrite"],
     ["a rewrite of every sentence, paragraph by paragraph", variant("opening", swap(ASK, "Interested?", swap(PITCH, "We host a hackathon.", swap(OPENER, "We are {{orgName}} and I am {{senderName}}.")))), "not_one_change"],
     ["a short rewrite that keeps only the greeting and signature", variant("shorter", "Hi {{firstName}},\n\nI'm {{senderName}} from {{orgName}}, short note.\n\nThanks,\n{{senderName}}\n{{orgName}}"), "rewrite"],
+    ["one sentence replaced by twelve unpunctuated lines", variant("ask", swap(ASK, Array.from({ length: 12 }, (_, i) => `Line ${"x".repeat(50)} ${"y".repeat(i)}`.replace(/\d/g, "")).join("\n"))), "rewrite"],
+    ["one sentence replaced by a long unpunctuated paragraph", variant("ask", swap(ASK, `${"word ".repeat(120)}`.trim())), "rewrite"],
     ["an identical variant", variant("ask", ORIGINAL), "identical"],
+    ["a variant that only adds a zero-width space, once normalised", normaliseVariant(variant("ask", ORIGINAL.replace(ASK, `${ASK}\u200b`))), "identical"],
+    ["a variant that only adds a zero-width space, not normalised", variant("ask", ORIGINAL.replace(ASK, `${ASK}\u200b`)), "hidden"],
+    ["a variant that only adds a soft hyphen and a joiner, once normalised", normaliseVariant(variant("ask", ORIGINAL.replace("hackathon", "hack\u00adathon\u200d"))), "identical"],
     ["a variant that only changes spacing", variant("ask", ORIGINAL.replace("We run an annual", "We   run an annual").replace("\n\nWould", "\n\n\n\nWould") + "\n"), "identical"],
     ["an empty variant", variant("ask", "   "), "empty"],
     ["a variant that says shorter but is longer", variant("shorter", swap(ASK, `${ASK} We would be glad to tell you more about the event.`)), "not_shorter"],
@@ -233,6 +341,10 @@ describe("templateProblem", () => {
 });
 
 describe("normaliseVariant", () => {
+  it("takes invisible characters out of the body and the summary", () => {
+    expect(normaliseVariant({ kind: "ask", summary: " Sh\u200bort. ", body: "a\u200bb\u00ad\ufeff\r\nc\u200d" })).toEqual({ kind: "ask", summary: "Short.", body: "ab\nc" });
+  });
+
   it("turns line endings into line feeds and trims", () => {
     expect(normaliseVariant({ kind: "ask", summary: "  Short.  ", body: "  a\r\nb\r\n\r\nc  \n" })).toEqual({ kind: "ask", summary: "Short.", body: "a\nb\n\nc" });
   });

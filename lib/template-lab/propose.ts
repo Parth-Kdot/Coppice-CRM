@@ -1,9 +1,9 @@
 import type { Membership } from "@/lib/authz";
 import { runAi, type AiRunError } from "@/lib/ai/run";
-import { factNumbers } from "@/lib/claim-rules";
 import { withTenant } from "@/lib/db";
 import { verifiedFacts } from "@/lib/facts";
-import { checkVariants, normaliseVariant, templateProblem, type LabVariant } from "@/lib/template-lab/check";
+import { describeChange, type Change } from "@/lib/template-lab/change";
+import { checkContext, checkVariants, normaliseVariant, templateProblem, type LabVariant } from "@/lib/template-lab/check";
 import { LAB_FACTS_SHOWN, LAB_SYSTEM, labPrompt } from "@/lib/template-lab/prompt";
 import { labReplySchema, type ActionResult, type LabReply } from "@/lib/validation";
 
@@ -23,6 +23,10 @@ export type Proposal = {
   variants: LabVariant[];
   // How many the model proposed that were dropped by a check.
   dropped: number;
+  // What each kept variant changed against the template body the checks ran on, in the same order as
+  // `variants` (null if the two texts are the same). Read here, with the checks, so the panel never
+  // describes a change against a template an owner edited while the model was answering.
+  changes: (Change | null)[];
   model: string;
 };
 
@@ -44,8 +48,8 @@ export async function proposeVariants(owner: Membership, templateId: string): Pr
   const contact = templateProblem(body);
   if (contact) return { ok: false, error: contact };
 
-  const facts = (await verifiedFacts(owner)).slice(0, LAB_FACTS_SHOWN);
-  const context = { factNumbers: factNumbers(facts) };
+  const facts = await verifiedFacts(owner, LAB_FACTS_SHOWN);
+  const context = checkContext(facts);
   const fix = restore(body);
   const prepared = (reply: LabReply) => reply.variants.map((v) => normaliseVariant({ ...v, body: fix(v.body) }));
   const accept = (reply: LabReply): AiRunError | null => (checkVariants(body, prepared(reply), context).kept.length > 0 ? null : "broke_rules");
@@ -55,5 +59,6 @@ export async function proposeVariants(owner: Membership, templateId: string): Pr
 
   const all = prepared(result.data);
   const { kept } = checkVariants(body, all, context);
-  return { ok: true, data: { templateId, templateName: name, variants: kept, dropped: all.length - kept.length, model: result.model } };
+  const changes = kept.map((v) => describeChange(body, v.body));
+  return { ok: true, data: { templateId, templateName: name, variants: kept, dropped: all.length - kept.length, changes, model: result.model } };
 }

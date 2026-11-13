@@ -1,11 +1,10 @@
 import type { Membership } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
 import { advisoryXactLock, withTenant, type Tenant } from "@/lib/db";
-import { factNumbers } from "@/lib/claim-rules";
 import { verifiedFacts } from "@/lib/facts";
 import { rate, tally, type OutreachRow } from "@/lib/stats-math";
 import { archiveTemplatesIn, experimentLockKey } from "@/lib/templates";
-import { checkVariants, normaliseVariant, PROBLEM_TEXT, templateProblem, type LabVariant } from "@/lib/template-lab/check";
+import { checkContext, checkVariants, normaliseVariant, PROBLEM_TEXT, templateProblem, type LabVariant } from "@/lib/template-lab/check";
 import { ARM_LABELS, experimentVerdict, suggestArm, type ArmView, type ExperimentView } from "@/lib/template-lab/experiment";
 import { EXPERIMENT_ALREADY_RUNNING, TEMPLATE_GONE } from "@/lib/template-lab/propose";
 import { LAB_FACTS_SHOWN } from "@/lib/template-lab/prompt";
@@ -40,8 +39,8 @@ export type StartedExperiment = { experimentId: string; arms: { templateId: stri
 export async function startExperiment(owner: Membership, baseTemplateId: string, picks: LabVariant[]): Promise<ActionResult<StartedExperiment>> {
   if (owner.role !== "owner") return ownersOnly;
   if (picks.length < 1 || picks.length > ARM_LABELS.length - 1) return { ok: false, error: "Pick one or two variants to try." };
-  const facts = (await verifiedFacts(owner)).slice(0, LAB_FACTS_SHOWN);
-  const context = { factNumbers: factNumbers(facts) };
+  const facts = await verifiedFacts(owner, LAB_FACTS_SHOWN);
+  const context = checkContext(facts);
 
   return withTenant(owner, async (tx): Promise<ActionResult<StartedExperiment>> => {
     const { workspaceId } = owner;

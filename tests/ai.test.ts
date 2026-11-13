@@ -2,7 +2,7 @@ import { globSync, readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { z } from "zod";
 import { updateAiSettings } from "@/app/(app)/[workspaceId]/settings/actions";
-import { generate, ROUTES } from "@/lib/ai/client";
+import { generate, isCutOffJson, ROUTES } from "@/lib/ai/client";
 import { AI_ERROR_MESSAGES, aiUsage, DAILY_DRAFTS_PER_PERSON, draftsToday, isRetryableAiError, releaseAi, reserveAi, runAi } from "@/lib/ai/run";
 import { clamped, clampText, droppedItems, keptItems, toGeminiSchema } from "@/lib/ai/schema";
 import { dbNow } from "@/lib/claims";
@@ -709,5 +709,22 @@ describe("runAi: reserving each call before it is made", () => {
     for (const code of ["rate_limited", "timeout", "unavailable", "truncated", "invalid_output"] as const) expect(isRetryableAiError(AI_ERROR_MESSAGES[code])).toBe(true);
     for (const code of ["bad_key", "rejected", "not_configured", "blocked"] as const) expect(isRetryableAiError(AI_ERROR_MESSAGES[code])).toBe(false);
     expect(isRetryableAiError("This workspace has used its 300 AI calls for the last 30 days. An owner can raise the limit in Settings.")).toBe(false);
+  });
+});
+
+describe("telling a reply the token cap cut off from one that is whole but wrong", () => {
+  test.for([
+    ["an object that stops mid-key", '{"view":"companies","filter":{"stages":[],"indus', true],
+    ["an object that stops mid-string", '{"view":"companies","reply":"These are over', true],
+    ["an object that stops after a comma", '{"view":"companies",', true],
+    ["an array still open", '{"actions":[{"type":"CLAIM"', true],
+    ["a closed string holding braces is not counted", '{"reply":"a { b [ c","view":"none"', true],
+    ["whole and valid", '{"view":"none"}', false],
+    ["whole but with a stray word", '{"view":"none"} extra', false],
+    ["closed but with a bad comma", '{"view":"none",}', false],
+    ["not JSON at all", "Sure, here you go", false],
+    ["empty", "   ", false],
+  ] as const)("%s", ([, text, cut]) => {
+    expect(isCutOffJson(text)).toBe(cut);
   });
 });

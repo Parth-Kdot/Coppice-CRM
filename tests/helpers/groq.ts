@@ -17,8 +17,9 @@ export const groqAnswer = (content: unknown, finishReason = "stop") =>
 
 // An error the way Groq sends one. A 429 carries retry-after, which the app must not act on by
 // retrying.
-export const groqError = (status: number, message: string, code = "rate_limit_exceeded") =>
-  new Response(JSON.stringify({ error: { message, type: status === 429 ? "tokens" : "invalid_request_error", code } }), {
+// A 400 json_validate_failed carries the reply it could not validate as `failed_generation`.
+export const groqError = (status: number, message: string, code = "rate_limit_exceeded", failedGeneration?: string) =>
+  new Response(JSON.stringify({ error: { message, type: status === 429 ? "tokens" : "invalid_request_error", code, ...(failedGeneration === undefined ? {} : { failed_generation: failedGeneration }) } }), {
     status,
     headers: { "content-type": "application/json", ...(status === 429 ? { "retry-after": "7" } : {}) },
   });
