@@ -69,6 +69,8 @@ describe("checkBullet: a bullet is kept only if code can prove it", () => {
     ["a quote over 300 characters", bullet({ quote: "got a reply the next day".padEnd(305, "x") }), "quote_long"],
     ["an invented number", bullet({ text: "They offered $5,000 after a reply.", quote: "offered $2,500" , noteId: "n2" }), "number"],
     ["a number only in the note, not the quote", bullet({ text: "The 500 student reach won them over.", quote: "got a reply the next day" }), "number"],
+    ["a month named in the text but not in the quote", bullet({ text: "Send the packet by end of October.", quote: "got a reply the next day" }), "month"],
+    ["a month in the note but not in the quote", bullet({ noteId: "n1", text: "Follow up in August with Priya.", quote: "Priya Rao is our champion" }), "month"],
     ["an email address in the text", bullet({ text: "Write to priya@atlas.com for the packet." }), "contact"],
     ["a phone number in the text", bullet({ text: "Call 765-555-0142 after the reply." }), "contact"],
     ["a masked placeholder in the text", bullet({ text: "Reach her at [email] after the reply." }), "contact"],
@@ -85,6 +87,25 @@ describe("checkBullet: a bullet is kept only if code can prove it", () => {
   it("compares numbers the way the stats do: $2,500 and 2500 are one number, 2,500 and 25 are not", () => {
     expect(checkBullet(bullet({ text: "They offered 2500.", quote: "offered $2,500." }), "c-a", NOTES).ok).toBe(true);
     expect(checkBullet(bullet({ text: "They offered 25.", quote: "offered $2,500." }), "c-a", NOTES)).toEqual({ ok: false, reason: "number" });
+  });
+
+  it("keeps a month in the text when the quote names it, and never reads the verb may as a month", () => {
+    expect(checkBullet(bullet({ section: "next", noteId: "n1", text: "Follow up in August.", quote: "follow up in August about the fall career fair", month: 8 }), "c-a", NOTES).ok).toBe(true);
+    expect(checkBullet(bullet({ text: "They may reply the next day." }), "c-a", NOTES).ok).toBe(true);
+  });
+
+  // A reply as Groq sent it in the live check: "by end of October" and "end of November" were not
+  // in the notes the quotes came from. The others are plain restatements and stay.
+  it("drops the bullets of a recorded live reply that invented a month, and keeps the rest", () => {
+    const notes = new Map<string, SentNote>([["n7", note("n7", "c-a", "Lucas confirmed. They are in at the bronze tier, invoice to follow from the treasurer.")]]);
+    const recorded: BulletReadOutput[] = [
+      { section: "worked", text: "Lucas confirmed bronze tier sponsorship.", noteId: "n7", quote: "Lucas confirmed. They are in at the bronze tier, invoice to follow from the treasurer.", month: null },
+      { section: "promises", text: "Treasurer will send invoice after confirmation.", noteId: "n7", quote: "invoice to follow from the treasurer", month: null },
+      { section: "next", text: "Send invoice to Lucas by end of October.", noteId: "n7", quote: "invoice to follow from the treasurer", month: null },
+    ];
+    const result = checkBullets(recorded, "c-a", notes);
+    expect(result.bullets.map((b) => b.section)).toEqual(["worked", "promises"]);
+    expect(result.dropped).toEqual({ month: 1 });
   });
 
   it("ignores case, spacing and smart quotes when it looks for the quote", () => {
@@ -115,7 +136,9 @@ describe("checkBullet: a bullet is kept only if code can prove it", () => {
       expect(monthOf(next({ section: "timing" }))).toBeNull();
     });
     it("is read from the quote, never from text the model wrote", () => {
-      expect(monthOf(next({ text: "Follow up in October.", quote: "follow up in August about the fall career fair", month: 10 }))).toBeNull();
+      expect(monthOf(next({ text: "Follow up later.", quote: "follow up in August about the fall career fair", month: 10 }))).toBeNull();
+      // Naming that month in the text, with no October in the quote, drops the bullet.
+      expect(monthOf(next({ text: "Follow up in October.", quote: "follow up in August about the fall career fair", month: 10 }))).toBe("dropped");
     });
   });
 
@@ -409,6 +432,10 @@ describe("checkSentence / checkSentences: an answer sentence is kept only if cod
     });
   });
 
+  it("accepts a month that is in a cited note even when the quote is elsewhere", () => {
+    expect(checkSentence(sentence({ text: "Priya asked for a follow up in August.", noteIds: ["n1"], quote: "Priya Rao is our champion" }), NOTES).ok).toBe(true);
+  });
+
   it("accepts a number that is in a cited note even when the quote is elsewhere", () => {
     expect(checkSentence(sentence({ text: "Atlas has a champion and offered $2,500.", noteIds: ["n1", "n2"], quote: "Priya Rao is our champion" }), NOTES)).toMatchObject({ ok: true, sentence: { quoteNoteId: "n1" } });
   });
@@ -421,6 +448,7 @@ describe("checkSentence / checkSentences: an answer sentence is kept only if cod
     ["a quote under 8 characters", sentence({ quote: "offered" }), "quote_short"],
     ["a number in no cited note", sentence({ text: "Atlas offered $9,999 after a reply." }), "number"],
     ["a number only in a note that is not cited", sentence({ text: "They said no until 2027.", noteIds: ["n2"] }), "number"],
+    ["a month in no cited note", sentence({ text: "Atlas offered $2,500 in October." }), "month"],
     ["an email", sentence({ text: "Mail priya@atlas.com about it." }), "contact"],
     ["a phone number", sentence({ text: "Call 765-555-0142 about it." }), "contact"],
     ["a link", sentence({ text: "Read www.atlas.com about it." }), "link"],

@@ -385,7 +385,7 @@ describe("2b: reading a chunk of cards (recorded Groq replies)", () => {
       ["next", "Follow up in August about the fall career fair.", 8],
       ["worked", "Priya replied within a day to the packet.", null],
       ["next", "Send Priya a booth quote by March 15.", 3],
-      ["next", "Ask again in October.", null],
+      ["next", "Ask again later.", null],
     ]);
     expect(body.bullets[0].source).toEqual({ kind: "company" });
     expect(body.bullets[2].source).toEqual({ kind: "outreach", outreachId: "o-a1", sentAt: inYear(year, 10, 5).toISOString() });

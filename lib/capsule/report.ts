@@ -130,7 +130,7 @@ Every bullet has "noteId" (the id of the note it comes from, which must be one o
 
 Rules:
 - Use only what the notes say. Never guess or add anything they don't say.
-- Every number or date in "text" must appear in the quote.
+- Every number or date in "text" must appear in the quote, and so must every month name: write "by October" only when the quote says October.
 - Never write an email address, phone number or link. "[email]" and "[phone]" are masked on purpose.
 - "month" is only for "next" bullets, and only when the quote names that month or a date in it. Otherwise null.
 - Write fewer bullets, or none, when the notes don't support more.

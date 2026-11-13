@@ -163,6 +163,7 @@ function CalendarRows({ workspaceId, reportId, rows, today, locked, report }: { 
           <p className="lg-cap-done">
             {applied.set.length === 0 ? "No follow-up date was set." : `Set ${plural(applied.set.length, "follow-up date", "follow-up dates")}.`}
             {applied.refused.length > 0 && ` ${plural(applied.refused.length, "company was", "companies were")} refused.`}
+            {applied.skippedClosed > 0 && ` ${plural(applied.skippedClosed, "company", "companies")} skipped as closed.`}
           </p>
           {applied.refused.length > 0 && (
             <ul className="lg-cap-refusals">

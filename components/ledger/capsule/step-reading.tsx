@@ -117,6 +117,8 @@ export function StepReading({ workspaceId, year, view, locked }: { workspaceId: 
     }
     setBusy(false);
     setCurrent(null);
+    // The button that started the call is gone while the message shows; Continue takes the focus.
+    if (paused && !stop.current) focusSoon(".lg-cap-readerror [data-cap-primary]");
     // Refresh once reading stops, so the review step has every card.
     if (!paused || stop.current) router.refresh();
     return paused;
@@ -175,6 +177,9 @@ export function StepReading({ workspaceId, year, view, locked }: { workspaceId: 
   const finished = !remaining;
   const noAiReason = !ai?.on ? "AI is turned off for this workspace. An owner can turn it on in Settings." : !ai.configured ? "AI isn't set up on this server yet." : null;
 
+  // When a call failed, the one Continue under the message is the way on, so the page does not show a second one.
+  const retryHere = Boolean(readError && (readError.retryable || readError.rateLimited) && !busy);
+
   return (
     <div>
       <h3 className="lg-cap-steph">Relationship cards</h3>
@@ -216,9 +221,11 @@ export function StepReading({ workspaceId, year, view, locked }: { workspaceId: 
                   Pause after this call
                 </button>
               ) : (
-                <button type="button" data-cap-primary="" className="lg-btn lg-btn-primary" disabled={skip.pending} onClick={() => next(view.report.id)}>
-                  {doneChunks > 0 ? "Continue reading" : "Read the notes with AI"}
-                </button>
+                !retryHere && (
+                  <button type="button" data-cap-primary="" className="lg-btn lg-btn-primary" disabled={skip.pending} onClick={() => next(view.report.id)}>
+                    {doneChunks > 0 ? "Continue reading" : "Read the notes with AI"}
+                  </button>
+                )
               )}
               <button type="button" className="lg-btn" disabled={busy || skip.pending} onClick={onSkip}>
                 Skip the AI
@@ -237,8 +244,8 @@ export function StepReading({ workspaceId, year, view, locked }: { workspaceId: 
       {readError && (
         <div className="lg-cap-readerror">
           <ErrorLine>{readError.error}</ErrorLine>
-          {readError.retryable && !busy && (
-            <button type="button" className="lg-btn lg-btn-sm" onClick={() => next(view.report.id)}>
+          {retryHere && (
+            <button type="button" data-cap-primary="" className="lg-btn lg-btn-primary" onClick={() => next(view.report.id)}>
               Continue
             </button>
           )}

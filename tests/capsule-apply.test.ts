@@ -104,17 +104,15 @@ describe("Apply: each saved date goes through setFollowUp", () => {
     expect((await company("co-cedar")).claimedById).toBe("officerA");
   });
 
-  it("leaves a Declined company alone and refuses a Committed one, each with its reason", async () => {
+  it("leaves a Declined company alone with its reason and skips a Committed one quietly, counting it as closed", async () => {
     const reportId = await approvedHandoff();
     // Atlas (Committed) holds a date from the handoff: its bullets are none, so give it one by hand.
     await withTenant(OWNER, (tx) => tx.relationshipCard.updateMany({ where: { reportId, companyId: { in: ["co-atlas", "co-fjord"] } }, data: { recontactOn: addDays(today, 40) } }));
     const before = { atlas: await company("co-atlas"), fjord: await company("co-fjord") };
     const result = ok(await call("ownerA", applyCalendar, { reportId }));
     expect(result.set).toEqual([]);
-    expect(result.refused.map((r) => [r.companyId, r.reason])).toEqual([
-      ["co-atlas", "This company is Committed, so its follow-up can't change."],
-      ["co-fjord", "This company declined, so it is left alone."],
-    ]);
+    expect(result.skippedClosed).toBe(1);
+    expect(result.refused.map((r) => [r.companyId, r.reason])).toEqual([["co-fjord", "This company declined, so it is left alone."]]);
     expect(await company("co-atlas")).toEqual(before.atlas);
     expect(await company("co-fjord")).toEqual(before.fjord);
   });
@@ -147,7 +145,7 @@ describe("Apply: each saved date goes through setFollowUp", () => {
       await tx.relationshipCard.updateMany({ where: { id: echo.id }, data: { approvedAt: null } });
     });
     const result = ok(await call("ownerA", applyCalendar, { reportId: started.reportId }));
-    expect(result).toEqual({ set: [], refused: [], blank: 0 });
+    expect(result).toEqual({ set: [], refused: [], blank: 0, skippedClosed: 0 });
   });
 
   it("works on a published handoff too: it is the companies' dates, not the report's", async () => {
@@ -216,7 +214,10 @@ describe("Reopen for next year: one Committed company, through changeStage", () 
     const atlas = await cardOf(reportId, "co-atlas");
     const date = addDays(today, 60);
     await withTenant(OWNER, (tx) => tx.relationshipCard.update({ where: { id: atlas.id }, data: { recontactOn: date } }));
-    expect(ok(await call("ownerA", applyCalendar, { reportId })).refused.map((r) => r.companyId)).toContain("co-atlas");
+    const closed = ok(await call("ownerA", applyCalendar, { reportId }));
+    expect(closed.skippedClosed).toBe(1);
+    expect(closed.refused.map((r) => r.companyId)).not.toContain("co-atlas");
+    expect(closed.set.map((s) => s.companyId)).not.toContain("co-atlas");
     ok(await call("ownerA", reopenForNextYear, { cardId: atlas.id }));
     const rows = ok(await capsule.loadCalendar(OWNER, reportId));
     expect(rows.find((r) => r.companyId === "co-atlas")).toMatchObject({ closed: null, date, followUp: null });

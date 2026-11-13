@@ -101,7 +101,7 @@ export const CHUNK0_REPLY = {
         { section: "avoid", text: "Cedar's tier was too small.", noteId: "n4", quote: "Asked about a $2,000 gold tier", month: null },
         { section: "timing", text: "They pay late in the winter.", noteId: "n2", quote: "they pay in the winter", month: null },
         { section: "timing", text: "Answers on weekends.", noteId: "n99", quote: "answers on weekends", month: null },
-        { section: "next", text: "Ask again in October.", noteId: "n2", quote: "Priya replied", month: 10 },
+        { section: "next", text: "Ask again later.", noteId: "n2", quote: "Priya replied", month: 10 },
       ],
     },
     {

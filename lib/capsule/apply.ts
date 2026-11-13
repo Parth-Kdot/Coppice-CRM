@@ -14,14 +14,17 @@ export type AppliedDates = {
   refused: { companyId: string; name: string; reason: string }[];
   // Approved cards with no date: nothing to apply.
   blank: number;
+  // Committed companies with a date, skipped quietly: a closed deal can't take a follow-up, and its
+  // row has its own "Reopen for next year" button. Counted here, never listed as refusals.
+  skippedClosed: number;
 };
 
 const DECLINED_LEFT_ALONE = "This company declined, so it is left alone.";
 
 // Applies every saved date of the handoff's approved, unhidden cards, one company after another
 // (each is its own database call, never inside another transaction). A Declined company is listed
-// as left alone without being touched. A Committed company is asked like any other and refused by
-// setFollowUp, because a closed deal can't take a date: its row has "Reopen for next year".
+// as left alone without being touched. A Committed company is skipped quietly and counted in
+// skippedClosed: a closed deal can't take a date, and its row has "Reopen for next year".
 // Applying again is fine: it sets the same dates again.
 export async function applyCalendar(actor: Membership, reportId: string): Promise<Done<AppliedDates>> {
   if (!isOwner(actor)) return fail(OWNER_ONLY);
@@ -37,11 +40,12 @@ export async function applyCalendar(actor: Membership, reportId: string): Promis
   });
   if (!cards) return fail(NO_HANDOFF);
 
-  const data: AppliedDates = { set: [], refused: [], blank: 0 };
+  const data: AppliedDates = { set: [], refused: [], blank: 0, skippedClosed: 0 };
   for (const card of cards) {
     const { companyId, recontactOn: date } = card;
     const name = card.company.name;
     if (date === null) data.blank += 1;
+    else if (card.company.stage === "COMMITTED") data.skippedClosed += 1;
     else if (card.company.stage === "DECLINED") data.refused.push({ companyId, name, reason: DECLINED_LEFT_ALONE });
     else {
       const result = await setFollowUp(actor, companyId, date);

@@ -62,7 +62,7 @@ export function ArchiveAsk({ workspaceId, perDay }: { workspaceId: string; perDa
             {pending ? "Looking..." : "Ask"}
           </button>
           <p id={`${id}-hint`} className="lg-hint">
-            Answers come only from your companies&apos; notes, with the quote that backs each one. Up to {perDay} questions a day each.
+            Answers come only from your companies&apos; notes, with the quote that backs each one. Each person can ask up to {perDay} questions a day.
           </p>
         </div>
       </form>

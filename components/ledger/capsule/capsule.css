@@ -148,9 +148,10 @@
     display: flex;
     flex: 1;
     flex-direction: column;
-    justify-content: center;
+    /* Every page starts at the same height, so the label and the figure stay put as the pages turn. */
+    justify-content: flex-start;
     min-height: 0;
-    padding: 12px 22px 12px 52px;
+    padding: clamp(28px, 17dvh, 150px) 22px 12px 52px;
     overflow-y: auto;
     /* A horizontal swipe turns the page; a vertical one still scrolls a tall page. */
     touch-action: pan-y;
@@ -529,9 +530,15 @@
     color: var(--ink);
     font-size: var(--fs-2);
   }
+  /* The slanted closing quote mark leans into the text after it. */
+  .lg-cap-quote .lg-hint {
+    margin-left: 0.5em;
+  }
   .lg-cap-hide {
     grid-column: 2;
     justify-self: start;
+    /* The quiet button's own padding and border, so its word lines up with the text above. */
+    margin-left: -11px;
   }
   .lg-cap-bullet[data-hidden] {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -628,7 +635,17 @@
   /* Publish */
   .lg-cap-summary {
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    max-width: 640px;
+    max-width: 760px;
+  }
+  /* Labels wrap to different lengths, so the numbers sit on one line at the foot of each cell. */
+  .lg-cap-summary > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .lg-cap-summary dt {
+    font-size: var(--fs-1);
   }
   .lg-cap-summary dd {
     font-size: var(--fs-5);
@@ -753,6 +770,9 @@
   .lg-cap-footnotes .lg-quote {
     font-size: var(--fs-2);
   }
+  .lg-cap-footnotes .lg-quote + .lg-hint {
+    margin-left: 0.5em;
+  }
   .lg-cap-footnotes li {
     overflow-wrap: anywhere;
   }
@@ -801,6 +821,22 @@
     }
     .lg-cap-calrow {
       grid-template-columns: minmax(0, 1fr);
+    }
+    /* Two figures a row, ruled between, the odd one out across the foot. */
+    .lg-cap-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .lg-cap-summary > div {
+      border-right: 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .lg-cap-summary > div:nth-child(odd) {
+      border-right: 1px solid var(--rule);
+    }
+    .lg-cap-summary > div:last-child {
+      grid-column: 1 / -1;
+      border-right: 0;
+      border-bottom: 0;
     }
     .lg-cap-date {
       width: 100%;

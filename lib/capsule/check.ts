@@ -87,6 +87,14 @@ export const numbersFound = (text: string, source: string) => {
   return numbersIn(text).every((n) => known.includes(n));
 };
 
+// Every month the text names (or dates in it) is also named in `source`. "May" the verb never
+// counts (lib/smart-import/dates.ts monthsMentioned). A text that names no month passes. This is
+// what stops "send the invoice by end of October" when the quote says nothing about October.
+export const monthsFound = (text: string, source: string) => {
+  const known = monthsMentioned(source);
+  return monthsMentioned(text).every((m) => known.includes(m));
+};
+
 // ----- Relationship cards -----
 
 export type DropReason =
@@ -99,6 +107,7 @@ export type DropReason =
   | "quote_long"
   | "quote_missing"
   | "number"
+  | "month"
   | TextProblem
   | "repeat";
 
@@ -119,6 +128,7 @@ export function checkBullet(bullet: BulletReadOutput, companyId: string, notes: 
   if (badQuote) return { ok: false, reason: badQuote };
   const quote = bullet.quote.replace(/\s+/g, " ").trim();
   if (!numbersFound(text, quote)) return { ok: false, reason: "number" };
+  if (!monthsFound(text, quote)) return { ok: false, reason: "month" };
   // A month is kept only on a "next" bullet, and only if code finds that month, or a date in it,
   // in the quote.
   const month = bullet.section === "next" && bullet.month !== null && monthsMentioned(quote).includes(bullet.month) ? bullet.month : null;
@@ -159,7 +169,7 @@ export function checkBullets(read: readonly (BulletReadOutput | null)[], company
 
 // ----- Ask the Archive -----
 
-export type SentenceDrop = "malformed" | "empty" | "too_long" | "no_note" | "unknown_note" | "quote_short" | "quote_long" | "quote_missing" | "number" | TextProblem;
+export type SentenceDrop = "malformed" | "empty" | "too_long" | "no_note" | "unknown_note" | "quote_short" | "quote_long" | "quote_missing" | "number" | "month" | TextProblem;
 
 export type SentenceCheck =
   | { ok: true; sentence: { text: string; noteIds: string[]; quote: string; quoteNoteId: string } }
@@ -195,7 +205,9 @@ export function checkSentence(item: { text: string; noteIds: string[]; quote: st
     if (p !== "quote_missing") problem = p;
   }
   if (problem || !quoteNote) return { ok: false, reason: problem ?? "quote_missing" };
-  if (!numbersFound(text, cited.map((n) => n.text).join("\n"))) return { ok: false, reason: "number" };
+  const citedText = cited.map((n) => n.text).join("\n");
+  if (!numbersFound(text, citedText)) return { ok: false, reason: "number" };
+  if (!monthsFound(text, citedText)) return { ok: false, reason: "month" };
   return { ok: true, sentence: { text, noteIds: ids, quote, quoteNoteId: quoteNote.id } };
 }
 
