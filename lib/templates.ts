@@ -1,6 +1,8 @@
 import type { Membership } from "@/lib/authz";
-import { withTenant, type Tenant } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
+import { advisoryXactLock, withTenant, type Tenant } from "@/lib/db";
 import { notFound } from "@/lib/messages";
+import { suggestArm } from "@/lib/template-lab/experiment";
 import type { ActionResult } from "@/lib/validation";
 
 // Outreach templates: the emails a workspace sends again and again, so stats can say
@@ -14,17 +16,66 @@ const NOT_FOUND = notFound("Template");
 
 export type TemplateFields = { name: string; body: string };
 
-// What the pickers show: the templates that can still be used, by name.
-export type TemplateOption = { id: string; name: string; body: string };
+// What the pickers show: the templates that can still be used, by name. A template taking part in
+// the running experiment (lib/template-lab/) also says which arm it is and whether it is the one
+// to suggest: the arm with the fewest sends, ties to A, then B, then C. `arm` is left out of every
+// other template, and nothing is ever preselected: the picker shows one quiet line.
+export type TemplateArm = { experimentId: string; label: string; suggested: boolean; sends: number };
+export type TemplateOption = { id: string; name: string; body: string; arm?: TemplateArm };
 
 export function activeTemplates(tenant: Tenant): Promise<TemplateOption[]> {
-  return withTenant(tenant, (tx) =>
-    tx.template.findMany({
+  return withTenant(tenant, async (tx) => {
+    const templates: TemplateOption[] = await tx.template.findMany({
       where: { workspaceId: tenant.workspaceId, archivedAt: null },
       select: { id: true, name: true, body: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
-    }),
-  );
+    });
+    const running = await tx.templateExperiment.findFirst({
+      where: { workspaceId: tenant.workspaceId, status: "RUNNING" },
+      select: { id: true, startedAt: true, arms: { select: { templateId: true, label: true } } },
+    });
+    if (!running) return templates;
+    // Sends since the experiment started, every one of them: the point is to even the arms out, so
+    // an email too young to count toward a rate yet still counts here.
+    const sent = await tx.outreach.groupBy({
+      by: ["templateId"],
+      where: { workspaceId: tenant.workspaceId, templateId: { in: running.arms.map((a) => a.templateId) }, sentAt: { gte: running.startedAt } },
+      _count: { _all: true },
+    });
+    const sends = new Map(sent.map((g) => [g.templateId, g._count._all]));
+    const arms = running.arms.map((a) => ({ ...a, sends: sends.get(a.templateId) ?? 0 }));
+    const suggested = suggestArm(arms);
+    return templates.map((t) => {
+      const arm = arms.find((a) => a.templateId === t.id);
+      return arm ? { ...t, arm: { experimentId: running.id, label: arm.label, suggested: arm.label === suggested, sends: arm.sends } } : t;
+    });
+  });
+}
+
+// ----- The Template Lab's lock -----
+
+// While an experiment runs, the bodies of its templates can't change (that would spoil the
+// comparison) and none of them can be archived (ending the experiment does that). Renaming is
+// fine. Both the lock check and starting or ending an experiment take this advisory lock first,
+// so an edit can't slip in between an experiment starting and its templates being locked.
+export const EXPERIMENT_LOCKED = "End the experiment first.";
+export const experimentLockKey = (workspaceId: string) => `experiment:${workspaceId}`;
+
+async function inRunningExperiment(tx: Prisma.TransactionClient, workspaceId: string, templateId: string): Promise<boolean> {
+  await advisoryXactLock(tx, experimentLockKey(workspaceId));
+  const arm = await tx.experimentArm.findFirst({
+    where: { workspaceId, templateId, experiment: { status: "RUNNING" } },
+    select: { id: true },
+  });
+  return arm !== null;
+}
+
+// Archives these templates inside the caller's transaction, the same change archiveTemplate makes
+// (an archived template is hidden from the pickers and keeps its history in the stats). Ending an
+// experiment uses it, so the experiment and the archiving commit together. Returns how many it archived.
+export async function archiveTemplatesIn(tx: Prisma.TransactionClient, workspaceId: string, templateIds: string[], at: Date): Promise<number> {
+  const { count } = await tx.template.updateMany({ where: { id: { in: templateIds }, workspaceId, archivedAt: null }, data: { archivedAt: at } });
+  return count;
 }
 
 export type TemplateRow = TemplateOption & { archivedAt: Date | null; uses: number };
@@ -79,6 +130,11 @@ export function createTemplate(owner: Membership, fields: TemplateFields): Promi
 export function updateTemplate(owner: Membership, templateId: string, fields: TemplateFields): Promise<ActionResult> {
   return withTenant(owner, async (tx) => {
     if (owner.role !== "owner") return ownersOnly;
+    // A template in the running experiment can be renamed, but its body is fixed.
+    if (await inRunningExperiment(tx, owner.workspaceId, templateId)) {
+      const current = await tx.template.findFirst({ where: { id: templateId, workspaceId: owner.workspaceId }, select: { body: true } });
+      if (current && current.body !== fields.body) return { ok: false, error: EXPERIMENT_LOCKED };
+    }
     const clash = await tx.template.findFirst({
       where: { workspaceId: owner.workspaceId, name: sameName(fields.name), id: { not: templateId } },
       select: { archivedAt: true },
@@ -95,6 +151,7 @@ export function updateTemplate(owner: Membership, templateId: string, fields: Te
 export function archiveTemplate(owner: Membership, templateId: string): Promise<ActionResult> {
   return withTenant(owner, async (tx) => {
     if (owner.role !== "owner") return ownersOnly;
+    if (await inRunningExperiment(tx, owner.workspaceId, templateId)) return { ok: false, error: EXPERIMENT_LOCKED };
     const { count } = await tx.template.updateMany({
       where: { id: templateId, workspaceId: owner.workspaceId, archivedAt: null },
       data: { archivedAt: new Date() },

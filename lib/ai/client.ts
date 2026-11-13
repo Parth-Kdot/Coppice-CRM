@@ -115,6 +115,23 @@ export const ROUTES: Record<AiFeature, Route> = {
   // model Smart import's row pass proved live with strict json_schema. The reply is small JSON, so
   // 700 tokens leave room for low reasoning without letting one call take a minute's free quota.
   COPILOT: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 700 },
+  // The stats page's "Explain these numbers" (lib/scorecard/explain.ts): a few short paragraphs
+  // around numbers code already worked out. Routed like the claim check, but with LOW thinking
+  // on Flash-Lite too.
+  SCORECARD_EXPLAIN: {
+    model: "gemini-3.5-flash-lite",
+    thinkingLevel: ThinkingLevel.LOW,
+    firstTryMs: 15_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
+  // The Template Lab (lib/template-lab/propose.ts): rewriting an email takes the drafter's route
+  // without its last resort. The owner is not waiting on a click mid-task, and can ask again.
+  TEMPLATE_LAB: {
+    model: "gemini-3.6-flash",
+    thinkingLevel: ThinkingLevel.LOW,
+    firstTryMs: 20_000,
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
 };
 
 export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";

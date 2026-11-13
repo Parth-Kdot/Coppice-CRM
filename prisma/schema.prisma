@@ -17,56 +17,59 @@ datasource db {
 }
 
 model User {
-  id               String                @id
-  name             String
-  email            String
-  emailVerified    Boolean               @default(false)
-  image            String?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  sessions         Session[]
-  accounts         Account[]
-  memberships      Membership[]
-  invitations      Invitation[]
+  id                  String                @id
+  name                String
+  email               String
+  emailVerified       Boolean               @default(false)
+  image               String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  sessions            Session[]
+  accounts            Account[]
+  memberships         Membership[]
+  invitations         Invitation[]
   // App relations (not from the generator).
-  claimedCompanies Company[]             @relation("CompanyClaims")
-  outreach         Outreach[]
-  stageChanges     StageChange[]
-  pairDecisions    CompanyPairDecision[]
-  aiRuns           AiRun[]
-  factSheets       FactSheet[]
-  factsCreated     FactSheetItem[]       @relation("FactCreatedBy")
-  factsVerified    FactSheetItem[]       @relation("FactVerifiedBy")
-  aiDrafts         AiDraft[]
-  importSessions   ImportSession[]
-  researchSources  ResearchSource[]
-  companyBriefs    CompanyBrief[]
-  onboarding       OnboardingProgress[]
-  copilotThreads   CopilotThread[]
-  copilotTurns     CopilotTurn[]
+  claimedCompanies    Company[]             @relation("CompanyClaims")
+  outreach            Outreach[]
+  stageChanges        StageChange[]
+  pairDecisions       CompanyPairDecision[]
+  aiRuns              AiRun[]
+  factSheets          FactSheet[]
+  factsCreated        FactSheetItem[]       @relation("FactCreatedBy")
+  factsVerified       FactSheetItem[]       @relation("FactVerifiedBy")
+  aiDrafts            AiDraft[]
+  importSessions      ImportSession[]
+  researchSources     ResearchSource[]
+  companyBriefs       CompanyBrief[]
+  onboarding          OnboardingProgress[]
+  copilotThreads      CopilotThread[]
+  copilotTurns        CopilotTurn[]
+  // App relations (not from the generator): AI feature 7.
+  scorecardNarratives ScorecardNarrative[]
+  startedExperiments  TemplateExperiment[]
   // From the MCP plugin (lib/auth.ts), via the generator.
-  oauthclients       OauthClient[]
-  oauthrefreshtokens OauthRefreshToken[]
-  oauthaccesstokens  OauthAccessToken[]
-  oauthconsents      OauthConsent[]
+  oauthclients        OauthClient[]
+  oauthrefreshtokens  OauthRefreshToken[]
+  oauthaccesstokens   OauthAccessToken[]
+  oauthconsents       OauthConsent[]
   // App relation (not from the generator): the MCP rate limit.
-  mcpRateLimits      McpRateLimit[]
+  mcpRateLimits       McpRateLimit[]
 
   @@unique([email])
   @@map("user")
 }
 
 model Session {
-  id                String   @id
-  expiresAt         DateTime
-  token             String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  ipAddress         String?
-  userAgent         String?
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activeWorkspaceId String?
+  id                 String              @id
+  expiresAt          DateTime
+  token              String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  ipAddress          String?
+  userAgent          String?
+  userId             String
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeWorkspaceId  String?
   oauthrefreshtokens OauthRefreshToken[]
   oauthaccesstokens  OauthAccessToken[]
 
@@ -108,41 +111,44 @@ model Verification {
 }
 
 model Workspace {
-  id              String                @id
-  name            String
-  slug            String
-  logo            String?
-  createdAt       DateTime
-  metadata        String?
-  claimWindowDays Int                   @default(14)
+  id                  String                @id
+  name                String
+  slug                String
+  logo                String?
+  createdAt           DateTime
+  metadata            String?
+  claimWindowDays     Int                   @default(14)
   // AI features (owner settings). Off until an owner turns it on; the limit counts AI calls in
   // the last 30 days across the workspace (lib/ai/run.ts).
-  aiEnabled       Boolean               @default(false)
-  aiMonthlyLimit  Int                   @default(300)
+  aiEnabled           Boolean               @default(false)
+  aiMonthlyLimit      Int                   @default(300)
   // MCP (outside AI assistants, app/api/mcp). Off until an owner turns it on in Settings.
-  mcpEnabled      Boolean               @default(false)
-  memberships     Membership[]
-  invitations     Invitation[]
+  mcpEnabled          Boolean               @default(false)
+  memberships         Membership[]
+  invitations         Invitation[]
   // App relations (not from the generator).
-  companies       Company[]
-  contacts        Contact[]
-  templates       Template[]
-  outreach        Outreach[]
-  stageChanges    StageChange[]
-  pairDecisions   CompanyPairDecision[]
-  aiRuns          AiRun[]
-  factSheets      FactSheet[]
-  factSheetPages  FactSheetPage[]
-  factSheetItems  FactSheetItem[]
-  aiDrafts        AiDraft[]
-  importSessions  ImportSession[]
-  importChunks    ImportChunk[]
-  researchSources ResearchSource[]
-  companyBriefs   CompanyBrief[]
-  briefPages      CompanyBriefPage[]
-  onboarding      OnboardingProgress[]
-  copilotThreads  CopilotThread[]
-  copilotTurns    CopilotTurn[]
+  companies           Company[]
+  contacts            Contact[]
+  templates           Template[]
+  outreach            Outreach[]
+  stageChanges        StageChange[]
+  pairDecisions       CompanyPairDecision[]
+  aiRuns              AiRun[]
+  factSheets          FactSheet[]
+  factSheetPages      FactSheetPage[]
+  factSheetItems      FactSheetItem[]
+  aiDrafts            AiDraft[]
+  importSessions      ImportSession[]
+  importChunks        ImportChunk[]
+  researchSources     ResearchSource[]
+  companyBriefs       CompanyBrief[]
+  briefPages          CompanyBriefPage[]
+  onboarding          OnboardingProgress[]
+  copilotThreads      CopilotThread[]
+  copilotTurns        CopilotTurn[]
+  scorecardNarratives ScorecardNarrative[]
+  templateExperiments TemplateExperiment[]
+  experimentArms      ExperimentArm[]
 
   @@unique([slug])
   @@map("workspace")
@@ -542,11 +548,24 @@ model Template {
   archivedAt  DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  // The Template Lab (AI feature 7): a variant's base template (same workspace, composite key) and
+  // the one-line summary of what it changes. Both null for an ordinary template.
+  familyId    String?
+  variantNote String?
 
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  outreach  Outreach[]
+  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  outreach          Outreach[]
+  // NoAction (checked at the end of the statement), so deleting a whole workspace can cascade
+  // through a template and its variants together.
+  family            Template?            @relation("TemplateFamily", fields: [familyId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  variants          Template[]           @relation("TemplateFamily")
+  experimentsAsBase TemplateExperiment[] @relation("ExperimentBase")
+  experimentsKept   TemplateExperiment[] @relation("ExperimentKept")
+  experimentArms    ExperimentArm[]
 
+  @@unique([id, workspaceId])
   @@index([workspaceId])
+  @@index([familyId, workspaceId])
 }
 
 model Outreach {
@@ -578,6 +597,7 @@ model Outreach {
   // workspace or company can cascade through drafts and outreach together.
   aiDraft   AiDraft?  @relation(fields: [aiDraftId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
 
+  @@unique([workspaceId, clientKey])
   @@index([workspaceId, templateId])
   @@index([aiDraftId, workspaceId])
   @@index([companyId, workspaceId])
@@ -585,7 +605,6 @@ model Outreach {
   @@index([companyId, workspaceId, sentAt(sort: Desc)])
   @@index([senderId])
   @@index([templateId])
-  @@unique([workspaceId, clientKey])
 }
 
 // ----- AI: fact sheet and Pitch Drafter -----
@@ -604,6 +623,9 @@ enum AiFeature {
   RESEARCH_BRIEF
   // Ask Coppice (AI feature 6): one Groq call turns a question into an intent; code does the rest.
   COPILOT
+  // The stats page's numbers explanation, and the Template Lab's variants.
+  SCORECARD_EXPLAIN
+  TEMPLATE_LAB
 }
 
 enum AiRunStatus {
@@ -897,23 +919,23 @@ model CompanyBriefPage {
 // Only that person can read or write their own row, owners included (row-level security in the
 // migration). Steps are indexes into lib/onboarding-steps.ts and only ever move forward.
 model OnboardingProgress {
-  id            String    @id @default(cuid())
-  workspaceId   String
-  userId        String
+  id             String    @id @default(cuid())
+  workspaceId    String
+  userId         String
   // The next basics card not yet seen, so a reload or another device picks up where they left off.
-  basicsStep    Int       @default(0)
-  basicsDoneAt  DateTime? @db.Timestamptz(3)
+  basicsStep     Int       @default(0)
+  basicsDoneAt   DateTime? @db.Timestamptz(3)
   // "owner" or "member": the role the basics were finished as. An officer made owner later sees
   // only the invite card once.
-  basicsRole    String?
-  aiStep        Int       @default(0)
-  aiDoneAt      DateTime? @db.Timestamptz(3)
+  basicsRole     String?
+  aiStep         Int       @default(0)
+  aiDoneAt       DateTime? @db.Timestamptz(3)
   // "Later" on the offer, or the AI tour ended early. It stays in the account menu.
-  aiDismissedAt DateTime? @db.Timestamptz(3)
+  aiDismissedAt  DateTime? @db.Timestamptz(3)
   // "Hide" on the basics: later page loads show only the Resume pill. Cleared on Resume.
   basicsHiddenAt DateTime? @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -976,4 +998,81 @@ model CopilotTurn {
   @@index([threadId, workspaceId, createdAt])
   @@index([workspaceId, userId, createdAt])
   @@index([userId])
+}
+
+// ----- Scorecard explanation and the Template Lab -----
+
+// The words around the stats page's numbers, written by the AI and checked by code. The numbers
+// are never the model's: each is a fact chip rendered from `facts`, the fact table the narrative
+// was written about. One current narrative per workspace; a new one replaces it (lib/scorecard/).
+model ScorecardNarrative {
+  id          String   @id @default(cuid())
+  workspaceId String
+  // A hash of the fact table's keys and values when this was written. If today's differs, the
+  // page says the numbers have changed since.
+  statsHash   String
+  facts       Json
+  paragraphs  Json
+  model       String
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId])
+  @@index([createdById])
+}
+
+enum ExperimentStatus {
+  RUNNING
+  ENDED
+}
+
+// A template tested against one or two one-change variants of itself (lib/template-lab/). One
+// RUNNING per workspace: the migration adds a partial unique index on (workspaceId) where the
+// status is RUNNING, which Prisma can't express here. Nothing is ever deleted when it ends.
+model TemplateExperiment {
+  id             String           @id @default(cuid())
+  workspaceId    String
+  baseTemplateId String
+  status         ExperimentStatus @default(RUNNING)
+  startedById    String
+  startedAt      DateTime         @default(now()) @db.Timestamptz(3)
+  endedAt        DateTime?        @db.Timestamptz(3)
+  keptTemplateId String?
+
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  startedBy    User            @relation(fields: [startedById], references: [id], onDelete: Restrict)
+  // NoAction like Outreach's draft: a template is archived, never deleted.
+  baseTemplate Template        @relation("ExperimentBase", fields: [baseTemplateId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  keptTemplate Template?       @relation("ExperimentKept", fields: [keptTemplateId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  arms         ExperimentArm[]
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, status])
+  @@index([startedById])
+  @@index([baseTemplateId, workspaceId])
+  @@index([keptTemplateId, workspaceId])
+}
+
+// One template taking part in an experiment: "A" is the original, then "B" and "C".
+model ExperimentArm {
+  id           String @id @default(cuid())
+  workspaceId  String
+  experimentId String
+  templateId   String
+  label        String
+  // "original", or the kind of change: opening, ask, closing or shorter.
+  kind         String
+  summary      String
+
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  experiment TemplateExperiment @relation(fields: [experimentId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  template   Template           @relation(fields: [templateId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+
+  @@unique([experimentId, templateId])
+  @@index([experimentId, workspaceId])
+  @@index([templateId, workspaceId])
+  @@index([workspaceId])
 }
