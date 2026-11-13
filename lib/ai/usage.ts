@@ -21,6 +21,7 @@ const GROUPS: { key: string; one: string; many: string; features: AiFeature[] }[
   { key: "research", one: "research brief call", many: "research brief calls", features: ["RESEARCH_READ", "RESEARCH_BRIEF"] },
   { key: "ask-coppice", one: "Ask Coppice call", many: "Ask Coppice calls", features: ["COPILOT"] },
   { key: "template-stats", one: "Template stats call", many: "Template stats calls", features: ["SCORECARD_EXPLAIN", "TEMPLATE_LAB"] },
+  { key: "time-capsule", one: "Time Capsule call", many: "Time Capsule calls", features: ["CAPSULE_CARDS", "ARCHIVE_ASK"] },
 ];
 export const GROUPED_FEATURES: readonly AiFeature[] = GROUPS.flatMap((g) => g.features);
 

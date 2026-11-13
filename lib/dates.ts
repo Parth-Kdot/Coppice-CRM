@@ -60,3 +60,7 @@ export function overdueText(days: number, dueOn?: string): string {
   if (days >= -7 || !dueOn) return `Due in ${-days} days`;
   return `Due ${dueOn}`;
 }
+
+// The calendar date in West Lafayette for a moment ("2026-10-25"), for code that groups rows by day
+// or month (Time Capsule's recap).
+export const dayString = (date: Date) => localDay(date);

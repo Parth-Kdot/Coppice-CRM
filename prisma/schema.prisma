@@ -54,6 +54,10 @@ model User {
   oauthconsents       OauthConsent[]
   // App relation (not from the generator): the MCP rate limit.
   mcpRateLimits       McpRateLimit[]
+  // Time Capsule.
+  handoffReports      HandoffReport[]
+  cardsApproved       RelationshipCard[]    @relation("CardApprovedBy")
+  redactionsMade      ArchiveRedaction[]
 
   @@unique([email])
   @@map("user")
@@ -149,6 +153,10 @@ model Workspace {
   scorecardNarratives ScorecardNarrative[]
   templateExperiments TemplateExperiment[]
   experimentArms      ExperimentArm[]
+  // Time Capsule.
+  handoffReports      HandoffReport[]
+  relationshipCards   RelationshipCard[]
+  archiveRedactions   ArchiveRedaction[]
 
   @@unique([slug])
   @@map("workspace")
@@ -162,6 +170,9 @@ model Membership {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   role        String    @default("member")
   createdAt   DateTime
+  // Time Capsule: set by an owner for a member who is leaving at the next turnover. Better Auth
+  // never reads or writes it (lib/auth.ts maps only the fields it knows). Nothing is removed by it.
+  departingAt DateTime? @db.Timestamptz(3)
 
   // One membership per person per workspace, even if two joins race.
   @@unique([workspaceId, userId])
@@ -456,15 +467,17 @@ model Company {
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
 
-  workspace    Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  claimedBy    User?                 @relation("CompanyClaims", fields: [claimedById], references: [id], onDelete: SetNull)
-  contacts     Contact[]
-  outreach     Outreach[]
-  stageChanges StageChange[]
-  pairsAsA     CompanyPairDecision[] @relation("PairCompanyA")
-  pairsAsB     CompanyPairDecision[] @relation("PairCompanyB")
-  aiDrafts     AiDraft[]
-  briefs       CompanyBrief[]
+  workspace         Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  claimedBy         User?                 @relation("CompanyClaims", fields: [claimedById], references: [id], onDelete: SetNull)
+  contacts          Contact[]
+  outreach          Outreach[]
+  stageChanges      StageChange[]
+  pairsAsA          CompanyPairDecision[] @relation("PairCompanyA")
+  pairsAsB          CompanyPairDecision[] @relation("PairCompanyB")
+  aiDrafts          AiDraft[]
+  briefs            CompanyBrief[]
+  // Time Capsule.
+  relationshipCards RelationshipCard[]
 
   // Lets contacts and outreach point at (company, workspace) together, so a row can never
   // link to a company in a different workspace.
@@ -626,6 +639,9 @@ enum AiFeature {
   // The stats page's numbers explanation, and the Template Lab's variants.
   SCORECARD_EXPLAIN
   TEMPLATE_LAB
+  // Time Capsule (Groq): relationship cards read from notes, and Ask the Archive.
+  CAPSULE_CARDS
+  ARCHIVE_ASK
 }
 
 enum AiRunStatus {
@@ -1075,4 +1091,100 @@ model ExperimentArm {
   @@index([experimentId, workspaceId])
   @@index([templateId, workspaceId])
   @@index([workspaceId])
+}
+
+// ----- Time Capsule: the yearly handoff (lib/capsule/) -----
+
+enum HandoffStatus {
+  // Being built by owners. Officers see nothing of it.
+  DRAFT
+  // Published: every member reads the approved cards, the playbook and the calendar.
+  PUBLISHED
+}
+
+enum CardSource {
+  // Bullets the model wrote, each kept only after code found its quote in the note it cites.
+  AI
+  // Facts read by code alone (no model call, or none of the model's bullets passed its checks).
+  CODE
+}
+
+// One handoff for one board year in one workspace. companyIds is the ordered selection (stage,
+// then outreach count), fixed when the report is started, so reading its chunks always walks the
+// same list. chunkCount is how many model calls reading the AI-read cards takes.
+model HandoffReport {
+  id             String        @id @default(cuid())
+  workspaceId    String
+  // The year the board year starts in: 2026 is 2026-27 (boards turn over in July).
+  boardYearStart Int
+  status         HandoffStatus @default(DRAFT)
+  companyIds     Json
+  chunkCount     Int
+  createdById    String
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  publishedAt    DateTime?     @db.Timestamptz(3)
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // Restrict: a person who started a handoff can't vanish from under it.
+  createdBy User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  cards     RelationshipCard[]
+
+  @@unique([workspaceId, boardYearStart])
+  @@unique([id, workspaceId])
+  @@index([createdById])
+}
+
+// What one company looked like for the handoff: the code-read facts and, for an AI card, the
+// bullets that passed the checks (each with the quote that proves it). Bullets are never edited; an
+// owner approves a card, or hides a bullet or the whole card (ArchiveRedaction). recontactOn is
+// the proposed follow-up date as YYYY-MM-DD text, blank until proposed or set.
+model RelationshipCard {
+  id           String     @id @default(cuid())
+  workspaceId  String
+  reportId     String
+  companyId    String
+  source       CardSource
+  // { facts, bullets } (lib/capsule/types.ts).
+  bullets      Json
+  // Which model wrote the bullets; null for a code-only card.
+  model        String?
+  approvedAt   DateTime?  @db.Timestamptz(3)
+  approvedById String?
+  recontactOn  String?
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  report     HandoffReport      @relation(fields: [reportId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  company    Company            @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  approvedBy User?              @relation("CardApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  redactions ArchiveRedaction[]
+
+  @@unique([reportId, companyId])
+  @@unique([id, workspaceId])
+  @@index([reportId, workspaceId])
+  @@index([companyId, workspaceId])
+  @@index([workspaceId])
+  @@index([approvedById])
+}
+
+// An owner hid one bullet of a card (bulletIndex) or the whole card (bulletIndex null). Undoing
+// deletes the row. At most one row per bullet, and one for the whole card: the unique index on
+// (cardId, bulletIndex) plus a partial unique index on cardId where bulletIndex is null (in the
+// migration, since a unique index alone treats nulls as different).
+model ArchiveRedaction {
+  id          String   @id @default(cuid())
+  workspaceId String
+  cardId      String
+  bulletIndex Int?
+  hiddenById  String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  card      RelationshipCard @relation(fields: [cardId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  hiddenBy  User             @relation(fields: [hiddenById], references: [id], onDelete: Restrict)
+
+  @@unique([cardId, bulletIndex])
+  @@index([cardId, workspaceId])
+  @@index([workspaceId])
+  @@index([hiddenById])
 }
