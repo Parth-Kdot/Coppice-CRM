@@ -802,5 +802,3 @@ export const startExperimentSchema = z.object({
   ),
 });
 export const endExperimentSchema = z.object({ workspaceId: id, experimentId: id, keepTemplateId: id });
-
-// Kept down here, with the schemas that use it, so this round touches no line above (move it up when merging).

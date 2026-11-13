@@ -157,6 +157,7 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
           paragraphs={explained.narrative?.paragraphs ?? null}
           written={explained.narrative ? `Written by ${explained.narrative.createdByName} on ${day(explained.narrative.createdAt)}` : null}
           changed={explained.changed}
+          dropped={explained.narrative?.dropped ?? 0}
           canAsk={aiOn}
           limitLine={aiOn && usage.used >= usage.limit ? `This workspace has used its ${usage.limit} AI calls for the last ${AI_WINDOW_DAYS} days.` : null}
         />

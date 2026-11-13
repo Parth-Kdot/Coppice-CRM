@@ -55,6 +55,7 @@
     background: var(--moss);
   }
   .lg-explain-what,
+  .lg-explain-dropped,
   .lg-explain-stale,
   .lg-explain-intro {
     margin-top: 10px;

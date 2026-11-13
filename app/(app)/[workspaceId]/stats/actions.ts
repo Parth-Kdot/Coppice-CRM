@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { failure } from "@/lib/action-failure";
 import { requireMembership, requireOwner } from "@/lib/authz";
-import { withTenant } from "@/lib/db";
 import { explainScorecard } from "@/lib/scorecard/explain";
-import { describeChange, type Change } from "@/lib/template-lab/change";
+import type { Change } from "@/lib/template-lab/change";
 import { endExperiment as endLabExperiment, startExperiment as startLabExperiment, type StartedExperiment } from "@/lib/template-lab/lab";
 import { proposeVariants as proposeLabVariants, type Proposal } from "@/lib/template-lab/propose";
 import { endExperimentSchema, explainStatsSchema, proposeVariantsSchema, startExperimentSchema, type ActionResult } from "@/lib/validation";
@@ -44,7 +43,7 @@ export async function explainStats(_prev: ActionResult | null, form: FormData): 
 
 // A checked variant and what it changed against the template (the changed sentences, before and after).
 export type ProposedVariant = Proposal["variants"][number] & { change: Change | null };
-export type ProposalView = Omit<Proposal, "variants"> & { variants: ProposedVariant[] };
+export type ProposalView = Omit<Proposal, "variants" | "changes"> & { variants: ProposedVariant[] };
 
 // "Try a variant": 2 or 3 checked variants of one template, shown read-only, each with the sentences
 // it changed set against the original. Saves nothing.
@@ -55,11 +54,10 @@ export async function proposeVariants(_prev: ActionResult<ProposalView> | null, 
     const owner = await requireOwner(parsed.data.workspaceId);
     const result = await proposeLabVariants(owner, parsed.data.templateId);
     if (!result.ok) return result;
-    const original = await withTenant(owner, (tx) =>
-      tx.template.findFirst({ where: { id: parsed.data.templateId, workspaceId: owner.workspaceId }, select: { body: true } }),
-    );
-    const variants = result.data.variants.map((v) => ({ ...v, change: original ? describeChange(original.body, v.body) : null }));
-    return { ok: true, data: { ...result.data, variants } };
+    // What each variant changed was worked out against the body the checks ran on (lib/template-lab/propose.ts).
+    const { changes, ...proposal } = result.data;
+    const variants = proposal.variants.map((v, i) => ({ ...v, change: changes[i] ?? null }));
+    return { ok: true, data: { ...proposal, variants } };
   } catch (e) {
     return failure(e);
   }

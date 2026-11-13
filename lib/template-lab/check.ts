@@ -1,4 +1,5 @@
 import { maskContactDetails, numbersIn } from "@/lib/ai/text";
+import { mixedScriptWords, numberWordsIn } from "@/lib/ai/words";
 import { checkRules } from "@/lib/claim-rules";
 import { placeholderProblem } from "@/lib/placeholders";
 import { TEMPLATE_LIMITS, type VariantKind } from "@/lib/validation";
@@ -16,7 +17,9 @@ export type VariantProblem =
   | "too_long"
   | "placeholders"
   | "placeholder_syntax"
+  | "hidden"
   | "number"
+  | "mixed_script"
   | "contact"
   | "link"
   | "claim"
@@ -34,11 +37,13 @@ export const PROBLEM_TEXT: Record<VariantProblem, string> = {
   too_long: "The variant was longer than a template can be.",
   placeholders: "The variant lost, added or changed a placeholder.",
   placeholder_syntax: "The variant broke a placeholder.",
-  number: "The variant used a number the template and your verified facts don't have.",
+  hidden: "The variant held invisible characters.",
+  number: "The variant used a number, in digits or in words, that the template and your verified facts don't have.",
+  mixed_script: "The variant had a word that mixes alphabets, such as a Cyrillic letter inside an English word.",
   contact: "The variant held an email address or phone number.",
   link: "The variant added a link.",
   claim: "The variant added a claim about a past relationship.",
-  summary: "The variant's summary used a number, link or contact detail it should not.",
+  summary: "The variant's summary used a number (in digits or in words), link or contact detail it should not.",
   identical: "The variant was the same as the template.",
   not_one_change: "The variant changed more than one place.",
   rewrite: "The variant rewrote too much of the template to be one change.",
@@ -48,11 +53,58 @@ export const PROBLEM_TEXT: Record<VariantProblem, string> = {
 };
 
 export type CheckContext = {
-  // Every number in a verified fact (factNumbers in lib/claim-rules.ts): a variant may use these.
+  // Every number in a verified fact (checkContext below): a variant may use these.
   factNumbers: readonly string[];
+  // Every number written as a word in a verified fact ("thousand"): a variant may use these too.
+  factWords?: readonly string[];
   // The longest a template may be.
   limit?: number;
 };
+
+// ----- Reading a text the way a person does -----
+
+// Characters with no width (a zero-width space, a joiner, a soft hyphen): invisible, so a variant that
+// differs from the template only by one is not a different variant.
+const INVISIBLE = /\p{Cf}/gu;
+export const visible = (text: string): string => text.replace(INVISIBLE, "");
+
+// A digit of any script becomes the ASCII digit with the same value, so fullwidth, Arabic-Indic and
+// other digits are read as the numbers they are. The decimal digits of a script are blocks of ten
+// consecutive code points starting at a zero, with a non-digit just before the first block, so a
+// digit's value is its distance from the first code point of its run of digits, modulo ten.
+const DECIMAL = /^\p{Nd}$/u;
+const isDecimal = (code: number) => code >= 0 && DECIMAL.test(String.fromCodePoint(code));
+function asciiDigits(text: string): string {
+  return [...text]
+    .map((char) => {
+      if (!DECIMAL.test(char)) return char;
+      const code = char.codePointAt(0) as number;
+      let start = code;
+      while (isDecimal(start - 1)) start--;
+      return String((code - start) % 10);
+    })
+    .join("");
+}
+
+// The form the number checks read: no invisible characters, compatibility forms folded (fullwidth
+// letters and digits, superscripts, fractions, Roman numeral characters), every digit ASCII.
+export const plain = (text: string): string => asciiDigits(visible(text).normalize("NFKC"));
+
+// Every number in a text, in digits or ASCII after `plain`.
+const numbersOf = (text: string): string[] => numbersIn(plain(text));
+
+// The number words the Lab refuses. "one" is left out: it is the ordinary English word ("changes one
+// sentence", "one more look") as much as a number, a summary can hardly describe a change without it,
+// and any figure that matters ("one thousand", "one in three") still has another number word in it.
+const countedWords = (text: string): string[] => numberWordsIn(plain(text)).filter((word) => word !== "one");
+
+// What a template and its verified facts allow a variant to say: their numbers and their number words.
+// `facts` are the verified facts' texts. A year or a price in a fact may be used, so may "thousand".
+export function checkContext(facts: readonly { text: string }[], limit?: number): CheckContext {
+  const numbers = new Set(facts.flatMap((f) => numbersOf(f.text)));
+  const words = new Set(facts.flatMap((f) => countedWords(f.text)));
+  return { factNumbers: [...numbers], factWords: [...words], ...(limit === undefined ? {} : { limit }) };
+}
 
 // ----- Placeholders -----
 
@@ -163,6 +215,9 @@ export function runsOf(ops: readonly Op[]): Op[][] {
 // One change may touch at most this share of the template's sentences (and always at least one
 // sentence), so rewriting everything and calling it one contiguous run is refused.
 export const MAX_CHANGED_SHARE = 2 / 3;
+// And it may add at most this many times the characters it removes, or this many in all if that is more.
+export const MAX_ADDED_FACTOR = 2;
+export const MIN_ADDED_ALLOWANCE = 300;
 
 // ----- The checks -----
 
@@ -177,8 +232,12 @@ export function templateProblem(body: string): string | null {
 
 // The first problem with one variant, or null if it passes every check. `original` is the
 // template's body as stored.
-export function checkVariant(original: string, variant: LabVariant, context: CheckContext): VariantProblem | null {
+export function checkVariant(originalAsStored: string, variant: LabVariant, context: CheckContext): VariantProblem | null {
   const { body, kind, summary } = variant;
+  // Invisible characters are taken out by normaliseVariant before any check; one left means the
+  // variant was not normalised, and the checks below would not be looking at what is stored.
+  if (body !== visible(body)) return "hidden";
+  const original = visible(originalAsStored);
   if (!body.trim()) return "empty";
   if (body.length > (context.limit ?? TEMPLATE_LIMITS.body)) return "too_long";
 
@@ -192,9 +251,17 @@ export function checkVariant(original: string, variant: LabVariant, context: Che
   // the Lab would have refused it, see templateProblem).
   if (maskContactDetails(body) !== body || /\[(?:email|phone)\]/i.test(body)) return "contact";
 
-  // Numbers: only ones the template or a verified fact already holds.
-  const allowed = new Set([...numbersIn(original), ...context.factNumbers]);
-  if (numbersIn(body).some((n) => !allowed.has(n))) return "number";
+  // Numbers: only ones the template or a verified fact already holds, in digits of any script and
+  // in words ("five thousand"). The numbers are read after `plain`, so fullwidth or Arabic-Indic
+  // digits count as the numbers they are.
+  const allowed = new Set([...numbersOf(original), ...context.factNumbers]);
+  const allowedWords = new Set([...countedWords(original), ...(context.factWords ?? [])]);
+  const invented = (text: string) => numbersOf(text).some((n) => !allowed.has(n)) || countedWords(text).some((w) => !allowedWords.has(w));
+  if (invented(body)) return "number";
+
+  // Look-alike letters: a word that mixes Latin letters with another script, unless the template has that word already.
+  const mixedBefore = new Set(mixedScriptWords(plain(original)));
+  if (mixedScriptWords(plain(body)).some((word) => !mixedBefore.has(word))) return "mixed_script";
 
   // Links and past-relationship claims the template didn't already make.
   const rules = { factNumbers: [], website: null };
@@ -205,7 +272,7 @@ export function checkVariant(original: string, variant: LabVariant, context: Che
   }
 
   // The summary is shown to the owner next to the variant, so it can't promise a number either.
-  if (numbersIn(summary).some((n) => !allowed.has(n)) || maskContactDetails(summary) !== summary || checkRules(summary, rules).some((f) => f.kind === "link")) {
+  if (invented(summary) || mixedScriptWords(plain(summary)).length > 0 || maskContactDetails(summary) !== summary || checkRules(summary, rules).some((f) => f.kind === "link")) {
     return "summary";
   }
 
@@ -223,10 +290,16 @@ export function checkVariant(original: string, variant: LabVariant, context: Che
 
   // Not most of the template: at most two thirds of its sentences, and always at least one. A
   // sentence is a unit that ends one; a template with none (no full stops at all) counts every line.
+  // What the run removes and adds is counted as sentences whatever its punctuation (every unit that
+  // is not a line or paragraph break), so a sentence swapped for a dozen unpunctuated lines is a
+  // rewrite, and so is added text far longer than what it replaced.
   const isSentence = was.some(isContent) ? isContent : (unit: string) => unit !== PARAGRAPH && unit !== LINE;
   const sentences = was.filter(isSentence).length;
-  const changed = Math.max(removed.filter((op) => isSentence(op.unit)).length, added.filter((op) => isSentence(op.unit)).length);
+  const isText = (op: Op) => op.unit !== PARAGRAPH && op.unit !== LINE;
+  const changed = Math.max(removed.filter(isText).length, added.filter(isText).length);
   if (changed > Math.max(1, Math.floor(sentences * MAX_CHANGED_SHARE))) return "rewrite";
+  const chars = (ops: readonly Op[]) => ops.filter(isText).reduce((total, op) => total + op.unit.length, 0);
+  if (chars(added) > Math.max(MAX_ADDED_FACTOR * chars(removed), MIN_ADDED_ALLOWANCE)) return "rewrite";
 
   // Where it happened, for the kinds that name a place: the run must include the first (opening)
   // or last (closing) sentence, as removed from the template or as added to the variant. An
@@ -258,7 +331,7 @@ export function checkVariants(
   variants.forEach((variant, index) => {
     const problem = checkVariant(original, variant, context);
     if (problem) return dropped.push({ index, problem });
-    const key = splitUnits(variant.body).join("\u0001");
+    const key = splitUnits(visible(variant.body)).join("\u0001");
     if (seen.has(key)) return dropped.push({ index, problem: "duplicate" });
     seen.add(key);
     kept.push(variant);
@@ -266,9 +339,10 @@ export function checkVariants(
   return { kept, dropped };
 }
 
-// A variant as it will be stored: line breaks as \n and no space around it. The checks run on this form.
+// A variant as it will be stored: line breaks as \n, no space around it and no invisible
+// characters. The checks run on this form.
 export const normaliseVariant = (variant: LabVariant): LabVariant => ({
   ...variant,
-  summary: variant.summary.trim(),
-  body: variant.body.replace(/\r\n?/g, "\n").trim(),
+  summary: visible(variant.summary).trim(),
+  body: visible(variant.body).replace(/\r\n?/g, "\n").trim(),
 });

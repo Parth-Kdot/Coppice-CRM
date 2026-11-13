@@ -135,8 +135,9 @@ export function getFactSheet(tenant: Tenant) {
 
 export type FactSheetView = Awaited<ReturnType<typeof getFactSheet>>;
 
-// The facts the drafter may use: verified ones only.
-export function verifiedFacts(tenant: Tenant) {
+// The facts the drafter may use: verified ones only. `limit` reads only that many (oldest first),
+// for a caller that shows a few.
+export function verifiedFacts(tenant: Tenant, limit?: number) {
   return withTenant(tenant, (tx) =>
     tx.factSheetItem.findMany({
       where: {
@@ -147,6 +148,7 @@ export function verifiedFacts(tenant: Tenant) {
       },
       select: { id: true, text: true, verifiedAt: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      ...(limit === undefined ? {} : { take: limit }),
     }),
   );
 }

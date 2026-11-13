@@ -1006,16 +1006,18 @@ model CopilotTurn {
 // are never the model's: each is a fact chip rendered from `facts`, the fact table the narrative
 // was written about. One current narrative per workspace; a new one replaces it (lib/scorecard/).
 model ScorecardNarrative {
-  id          String   @id @default(cuid())
-  workspaceId String
+  id               String   @id @default(cuid())
+  workspaceId      String
   // A hash of the fact table's keys and values when this was written. If today's differs, the
   // page says the numbers have changed since.
-  statsHash   String
-  facts       Json
-  paragraphs  Json
-  model       String
-  createdById String
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  statsHash        String
+  facts            Json
+  paragraphs       Json
+  // How many sentences of the model's reply the checks left out before `paragraphs` was stored.
+  droppedSentences Int      @default(0)
+  model            String
+  createdById      String
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User      @relation(fields: [createdById], references: [id], onDelete: Restrict)

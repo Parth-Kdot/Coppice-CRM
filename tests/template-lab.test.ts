@@ -6,9 +6,10 @@ import { dbNow } from "@/lib/claims";
 import { prisma, withTenant } from "@/lib/db";
 import { aiBreakdown } from "@/lib/ai/run";
 import { toGeminiSchema } from "@/lib/ai/schema";
-import { addFact } from "@/lib/facts";
+import { addFact, verifiedFacts } from "@/lib/facts";
 import { rate, type Tally } from "@/lib/stats-math";
 import * as templates from "@/lib/templates";
+import { describeChange } from "@/lib/template-lab/change";
 import { CONTACT_IN_TEMPLATE, type LabVariant } from "@/lib/template-lab/check";
 import { experimentVerdict, suggestArm } from "@/lib/template-lab/experiment";
 import { endExperiment, getExperimentView, startExperiment, VARIANTS_FAILED } from "@/lib/template-lab/lab";
@@ -91,7 +92,7 @@ describe("proposeVariants", () => {
     await addFact(OWNER, "Gold sponsors get a booth.");
     fakeGemini(recorded(B, closing("Reply to this email if you want the packet."), C));
     const result = await proposeVariants(OWNER, base);
-    expect(result).toEqual({ ok: true, data: { templateId: base, templateName: "Alumni angle", variants: [B, closing("Reply to this email if you want the packet."), C], dropped: 0, model: "gemini-3.6-flash" } });
+    expect(result).toEqual({ ok: true, data: { templateId: base, templateName: "Alumni angle", variants: [B, closing("Reply to this email if you want the packet."), C], dropped: 0, model: "gemini-3.6-flash", changes: [B, closing("Reply to this email if you want the packet."), C].map((v) => describeChange(BODY, v.body)) } });
 
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toContain("models/gemini-3.6-flash:generateContent");
@@ -108,6 +109,30 @@ describe("proposeVariants", () => {
     await proposeVariants(OWNER, base);
     const prompt = (calls[0].body.contents as { parts: { text: string }[] }[])[0].parts[0].text;
     expect(prompt.match(/^\d+\. /gm)).toHaveLength(40);
+  });
+
+  it("reads no more than 40 verified facts from the database", async () => {
+    for (let i = 0; i < 45; i++) await addFact(OWNER, `Fact number ${i} about the group.`);
+    expect(await verifiedFacts(OWNER, 40)).toHaveLength(40);
+    expect(await verifiedFacts(OWNER)).toHaveLength(46);
+    // The first 40 oldest are the ones shown: the fact added in beforeEach comes first.
+    expect((await verifiedFacts(OWNER, 3)).map((f) => f.text)).toEqual(["The hackathon draws 1,200 attendees.", "Fact number 0 about the group.", "Fact number 1 about the group."]);
+  });
+
+  it("describes each change against the template body the checks ran on, even if an owner edits it while the model answers", async () => {
+    fakeGemini(recorded(B));
+    const inner = globalThis.fetch;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      await withTenant(OWNER, (tx) =>
+        tx.template.update({ where: { id: base }, data: { body: "Hi {{firstName}},\n\nA different template now.\n\n{{senderName}}\n{{orgName}}" } }),
+      );
+      return inner(...args);
+    });
+    const result = await asUser("ownerA", () => proposeAction(null, form({ workspaceId: "a", templateId: base })));
+    expect(result).toMatchObject({ ok: true, data: { variants: [{ kind: "ask", change: { was: ASK, now: "Could we set up a short call?" } }] } });
+    // The result holds no `changes` list of its own: each variant carries its change.
+    if (result.ok) expect(result.data).not.toHaveProperty("changes");
+
   });
 
   it("drops each variant a check fails and keeps the rest", async () => {
@@ -137,6 +162,32 @@ describe("proposeVariants", () => {
     await withTenant(OWNER, (tx) => tx.factSheetItem.deleteMany());
     fakeGemini(recorded(withFact));
     expect(await proposeVariants(OWNER, base)).toMatchObject({ ok: false });
+  });
+
+  it("drops variants that state a number in words, in another script, or with invisible characters", async () => {
+    const words = ask("Would your team sponsor a prize for our five thousand students?");
+    const fullwidth = ask("Would your team sponsor a prize for our ５０００ students?");
+    const arabic = ask("Would your team sponsor a prize for our ٥٠٠٠ students?");
+    const summary = { ...ask("Could we talk soon?"), summary: "Doubles replies for five thousand readers" };
+    const invisible = ask(`${ASK}\u200b`);
+    // The model's reply is cut to its first three variants, so each call holds three at most.
+    for (const bad of [[words, fullwidth], [arabic, summary], [invisible]]) {
+      fakeGemini(recorded(...bad, B));
+      expect(await proposeVariants(OWNER, base)).toMatchObject({ ok: true, data: { variants: [B], dropped: bad.length } });
+    }
+    // Nothing but those: the call is logged FAILED broke_rules.
+    for (const bad of [[words, fullwidth, arabic], [summary, invisible]]) {
+      fakeGemini(recorded(...bad));
+      expect(await proposeVariants(OWNER, base)).toEqual({ ok: false, error: "The AI's answer didn't pass Coppice's checks. Try again." });
+      expect((await runs()).at(-1)).toEqual({ userId: "ownerA", model: "gemini-3.6-flash", status: "FAILED", error: "broke_rules" });
+    }
+  });
+
+  it("starting an experiment checks the same: a number in words is refused again from the browser's picks", async () => {
+    const words = ask("Would your team sponsor a prize for our five thousand students?");
+    const result = await startExperiment(OWNER, base, [words]);
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining(VARIANTS_FAILED) });
+    expect(await experiments()).toEqual([]);
   });
 
   it("drops a variant of an invented kind or over the limit on its own, and cuts a long summary", async () => {
