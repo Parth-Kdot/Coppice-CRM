@@ -1,6 +1,5 @@
 import { dayString } from "@/lib/dates";
 import { runAi } from "@/lib/ai/run";
-import { promptSafe } from "@/lib/ai/text";
 import { AI_OFF_MESSAGE } from "@/lib/ai/run";
 import { withTenant, type Tenant } from "@/lib/db";
 import { plantedInstruction } from "@/lib/smart-import/check";
@@ -160,7 +159,7 @@ export async function askArchive(tenant: Tenant, question: string): Promise<Acti
   const read = await runAi(tenant, {
     feature: "ARCHIVE_ASK",
     system: SYSTEM,
-    prompt: `<question>${promptSafe(question)}</question>\n\n<notes>\n${notesXml}\n</notes>`,
+    prompt: `<question>${maskedNote(question)}</question>\n\n<notes>\n${notesXml}\n</notes>`,
     schema: ArchiveRead,
   });
   if (!read.ok) return { ok: false, error: read.error };

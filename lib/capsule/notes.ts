@@ -76,7 +76,7 @@ export function promptCompanies(companies: readonly CompanyNotes[]): { companies
   return { companies: out, planted };
 }
 
-const attr = (text: string) => promptSafe(text).replace(/"/g, "'").slice(0, 120);
+const attr = (text: string) => maskedNote(text).replace(/"/g, "'").slice(0, 120);
 
 // A company's name as the prompt shows it. A name is text a person typed, so one that reads as an
 // instruction to an AI is not sent: the model is shown "Company" in its place.

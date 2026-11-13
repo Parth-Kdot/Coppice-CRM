@@ -146,12 +146,12 @@ export function checkBullet(bullet: BulletReadOutput, companyId: string, notes: 
 // What the text may not add to its proof (`proof` is the quote for a bullet, the cited notes for a
 // sentence; `context` is what else it may draw its plain words from; `names` are the company names
 // it may use). The reason, or null.
-function unprovenProblem(text: string, proof: string, context: readonly string[], names: readonly string[]): "number" | "month" | "name" | "timing" | "negation" | "unsupported" | null {
+function unprovenProblem(text: string, proof: string, context: readonly string[], names: readonly string[], quote: string = proof): "number" | "month" | "name" | "timing" | "negation" | "unsupported" | null {
   if (!numbersFound(text, proof)) return "number";
   if (!monthsFound(text, proof)) return "month";
-  if (inventedName(text, proof, names)) return "name";
+  if (inventedName(text, proof, names, context)) return "name";
   if (unsupportedTiming(text, proof)) return "timing";
-  if (!negationFound(text, proof)) return "negation";
+  if (!negationFound(text, proof, quote)) return "negation";
   if (!wordsSupported(text, [proof, ...context, ...names])) return "unsupported";
   return null;
 }
@@ -244,7 +244,7 @@ export function checkSentence(item: { text: string; noteIds: string[]; quote: st
   // A sentence may draw on every note it cites, and name the companies they belong to.
   const citedText = cited.map((n) => n.text).join("\n");
   const names = [...new Set(cited.flatMap((n) => (n.companyName ? [n.companyName] : [])))];
-  const unproven = unprovenProblem(text, citedText, [], names);
+  const unproven = unprovenProblem(text, citedText, [], names, quote);
   if (unproven) return { ok: false, reason: unproven };
   return { ok: true, sentence: { text, noteIds: ids, quote, quoteNoteId: quoteNote.id } };
 }

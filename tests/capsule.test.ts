@@ -741,10 +741,14 @@ describe("2c: review and redact, approve", () => {
     expect(await dateOf()).toBe(late);
     ok(await hide(atlas.id, lateIndex));
     expect(await dateOf()).toBeNull();
-    // Show them again and the dates come back.
+    // Show them again: the date was gone, so there is no proposal to follow and it stays gone (a
+    // date the owner cleared is indistinguishable from one the bullets removed).
     ok(await hide(atlas.id, lateIndex, false));
-    expect(await dateOf()).toBe(late);
+    expect(await dateOf()).toBeNull();
     ok(await hide(atlas.id, earlyIndex, false));
+    expect(await dateOf()).toBeNull();
+    // Saving the proposal back makes it a date that follows the bullets again.
+    ok(await call("ownerA", saveRecontactDates, { reportId: started.reportId, dates: JSON.stringify([{ companyId: "co-atlas", date: early }]) }));
     expect(await dateOf()).toBe(early);
     // Hiding a bullet that isn't a next bullet changes nothing.
     ok(await hide(atlas.id, 0));
@@ -757,6 +761,24 @@ describe("2c: review and redact, approve", () => {
     expect(await dateOf()).toBe(chosen);
     ok(await hide(atlas.id, earlyIndex, false));
     expect(await dateOf()).toBe(chosen);
+  });
+
+  it("never brings back a date the owner cleared on purpose when a bullet is shown again", async () => {
+    const started = await readBoth();
+    const today = await dbToday();
+    const aug = nextFirstOf(8, today)!;
+    const mar = nextFirstOf(3, today)!;
+    const earlyIndex = [aug, mar].sort()[0] === aug ? 1 : 3;
+    const atlas = await cardOf(started.reportId, "co-atlas");
+    const dateOf = async () => (await cardOf(started.reportId, "co-atlas")).recontactOn;
+    ok(await approve(atlas.id));
+    expect(await dateOf()).not.toBeNull();
+    ok(await call("ownerA", saveRecontactDates, { reportId: started.reportId, dates: JSON.stringify([{ companyId: "co-atlas", date: null }]) }));
+    expect(await dateOf()).toBeNull();
+    ok(await hide(atlas.id, earlyIndex));
+    expect(await dateOf()).toBeNull();
+    ok(await hide(atlas.id, earlyIndex, false));
+    expect(await dateOf()).toBeNull();
   });
 
   it("can't approve a hidden card, and 'approve the rest' approves every card that is not hidden", async () => {
@@ -1231,7 +1253,7 @@ describe("Ask the Archive", () => {
     });
 
     it("keeps at most five sentences", async () => {
-      fakeGemini(reply(...Array.from({ length: 7 }, (_, i) => sentence({ text: `Point ${"abcdefg"[i]} in August.` }))));
+      fakeGemini(reply(...Array.from({ length: 7 }, (_, i) => sentence({ text: `Atlas has point ${"abcdefg"[i]} in August.` }))));
       expect((ok(await ask("career fair")) as { sentences: unknown[] }).sentences).toHaveLength(5);
     });
 
@@ -1400,6 +1422,14 @@ describe("what the privacy wording says reaches Groq", () => {
     expect(prompt).toMatch(/date="\d{4}-\d{2}-\d{2}"/);
     expect(prompt).toContain("What did Atlas say about the career fair? Mail [email]");
     expect(prompt).not.toContain("dana@atlas.com");
+  });
+
+  it("masks a phone number in a local format in the question and in a company's name, as it does in the notes", async () => {
+    fakeGemini(groqAnswer({ found: false, sentences: [] }));
+    ok(await call("ownerA", askArchive, { question: "Who answers at 0171 5550142 for the career fair?" }));
+    const prompt = promptOf(0);
+    expect(prompt).toContain("Who answers at [phone] for the career fair?");
+    expect(prompt).not.toContain("5550142");
   });
 });
 
