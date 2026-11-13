@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeEach, describe, expect, it, test } from "vitest";
 import { AI_WINDOW_DAYS, DAILY_BRIEFS_PER_PERSON, DAILY_COPILOT_PER_PERSON, DAILY_DRAFTS_PER_PERSON } from "@/lib/ai/run";
+import { TRUST } from "@/components/landing/copy";
 import { PDF_MAX_PAGES } from "@/lib/ai/pdf-limits";
 import { DEFAULT_AI_LIMIT, DEFAULT_CLAIM_WINDOW_DAYS, GUIDE, GUIDE_IDS, guideIndex, guideSections } from "@/lib/copilot/guide";
 import { prisma } from "@/lib/db";
@@ -118,6 +119,16 @@ describe("numbers come from the constants the code uses", () => {
     expect(text("research")).toContain(`${DAILY_BRIEFS_PER_PERSON} briefs in 24 hours`);
     expect(text("research")).toContain(`up to ${BRIEF_SOURCES_MAX} for a brief`);
     expect(text("ai-limits")).toContain(`${DAILY_DRAFTS_PER_PERSON} drafts, ${DAILY_BRIEFS_PER_PERSON} research briefs and ${DAILY_COPILOT_PER_PERSON} questions to Ask Coppice`);
+  });
+
+  it("AI limits: says Ask Coppice sends the industry names, as the landing page and Settings do", () => {
+    const wording = "your question, your last few questions in that conversation, the names of companies it just showed you and the industry names your workspace uses";
+    expect(text("ai-limits")).toContain(wording);
+    const landing = TRUST.privacy.find((p) => p.title === "What does go to the provider")!.body;
+    expect(landing).toContain("the names of companies it just showed you, and the industry names your workspace uses");
+    // Settings is a page, so its source is read.
+    const settings = readFileSync("app/(app)/[workspaceId]/settings/page.tsx", "utf8").replace(/\s+/g, " ");
+    expect(settings).toContain("the names of companies it just showed you, and the industry names your workspace uses");
   });
 
   it("AI limits: the workspace's default and range, and the window", () => {

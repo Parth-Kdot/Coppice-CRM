@@ -112,9 +112,12 @@ export const ROUTES: Record<AiFeature, Route> = {
   },
   // Ask Coppice (lib/copilot): one short call per question that turns it into an intent. The
   // question and the names of companies just shown can hold names, so Groq (never Gemini), the same
-  // model Smart import's row pass proved live with strict json_schema. The reply is small JSON, so
-  // 700 tokens leave room for low reasoning without letting one call take a minute's free quota.
-  COPILOT: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 700 },
+  // model Smart import's row pass proved live with strict json_schema. The intent is small JSON (about
+  // 100 to 300 tokens), but Groq's cap counts the model's reasoning too, and an unclear question can
+  // reason for several hundred tokens at low effort. A reply cut off by the cap comes back as a 400
+  // json_validate_failed, not as a length stop, so 700 failed live on such questions. 1,500 is half of
+  // Smart import's budget on the same model.
+  COPILOT: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 1500 },
   // The stats page's "Explain these numbers" (lib/scorecard/explain.ts): a few short paragraphs
   // around numbers code already worked out. Routed like the claim check, but with LOW thinking
   // on Flash-Lite too.
@@ -301,15 +304,57 @@ async function callModel<S extends z.ZodType>(
 
 // ----- Groq -----
 
+// The text of the reply Groq says it could not validate, from a 400 json_validate_failed. The SDK
+// keeps the response body on `error.error`, and the text sits under its own `error` key.
+export function failedGeneration(error: unknown): string | null {
+  const body = error instanceof Groq.APIError ? (error.error as { error?: { failed_generation?: unknown }; failed_generation?: unknown } | undefined) : undefined;
+  const text = body?.error?.failed_generation ?? body?.failed_generation;
+  return typeof text === "string" ? text : null;
+}
+
+// Whether text is JSON that stops before it is complete: an object or array still open, or a string
+// still open, at the end. That is what the token cap does to a reply; a reply that is wrong but whole
+// (a stray word, an extra comma) is not cut off.
+export function isCutOffJson(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed === "") return false;
+  try {
+    JSON.parse(trimmed);
+    return false;
+  } catch {
+    // Fall through to look at where it ends.
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const char of trimmed) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+  }
+  return trimmed.startsWith("{") && (inString || depth > 0);
+}
+
 // What went wrong with a thrown Groq SDK error. The SDK's errors carry a numeric status; a reply
-// that broke the JSON schema comes back as a 400 with code json_validate_failed.
-function groqErrorCode(error: unknown): AiErrorCode {
+// that broke the JSON schema comes back as a 400 with code json_validate_failed. When that reply is
+// cut off, the token cap ended it, so that is "truncated". The length of the text is logged, never
+// the text, so the cause can be confirmed without keeping what people asked.
+function groqErrorCode(error: unknown, route?: GroqRoute): AiErrorCode {
   if (error instanceof Groq.APIConnectionTimeoutError || (error instanceof Error && error.name === "AbortError")) return "timeout";
   if (error instanceof Groq.APIUserAbortError) return "timeout";
   if (error instanceof Groq.APIError && typeof error.status === "number") {
     if (error.status === 429) return "rate_limited";
     if (error.status === 401 || error.status === 403) return "bad_key";
-    if (error.status === 400 && /json_validate_failed/i.test(JSON.stringify(error.error ?? "") + error.message)) return "invalid_output";
+    if (error.status === 400 && /json_validate_failed/i.test(JSON.stringify(error.error ?? "") + error.message)) {
+      const failed = failedGeneration(error);
+      const cut = failed !== null && isCutOffJson(failed);
+      console.warn(`groq json_validate_failed model=${route?.model ?? "?"} max_tokens=${route?.maxTokens ?? "?"} failed_generation_chars=${failed === null ? "none" : failed.length} cut_off=${cut}`);
+      return cut ? "truncated" : "invalid_output";
+    }
     if (error.status >= 400 && error.status < 500) return "rejected";
   }
   return "unavailable";
@@ -336,7 +381,7 @@ async function callGroq<S extends z.ZodType>(route: GroqRoute, request: Generate
       max_completion_tokens: route.maxTokens,
     });
   } catch (error) {
-    return { ok: false, error: groqErrorCode(error), model, usage: null };
+    return { ok: false, error: groqErrorCode(error, route), model, usage: null };
   }
 
   const details = completion.usage as { completion_tokens_details?: { reasoning_tokens?: number } } | undefined;

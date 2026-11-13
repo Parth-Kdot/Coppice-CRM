@@ -8,6 +8,7 @@ import { preloadMotion } from "@/components/ledger/motion-kit";
 import { OverflowMenu } from "@/components/ledger/overflow-menu";
 import { ErrorLine, PageHead } from "@/components/ledger/shared";
 import { StarterChips } from "./answer-parts";
+import { handedOverDraft } from "./question";
 import { announcement, collapse, failedEntry, fromAnswer, initialEntries, pendingEntry, withAnswer } from "./entries";
 import { Turn } from "./turn";
 import type { ActionCard, CopilotAnswer, Entry, FilterChip, Starter, TurnView } from "./types";
@@ -142,13 +143,14 @@ export function AskScreen({
     void ask(text);
   };
 
-  // A question handed over by the search palette (?q=): asked once, then the address is cleaned so a
-  // reload doesn't ask it again.
+  // A question handed over by the search palette (?q=) goes into the box and the box gets focus; the
+  // person presses Ask. Nothing is asked on its own, so a link anyone pasted can't spend a call. The
+  // address is cleaned so a reload doesn't fill the box again.
   const pathname = usePathname();
   const handedOver = useSearchParams().get("q");
   const lastHanded = useRef<string | null>(null);
   useEffect(() => {
-    const text = handedOver?.trim() ?? "";
+    const text = handedOverDraft(handedOver, QUESTION_MAX);
     if (!text) {
       lastHanded.current = null;
       return;
@@ -156,8 +158,9 @@ export function AskScreen({
     if (lastHanded.current === text) return;
     lastHanded.current = text;
     window.history.replaceState(null, "", pathname);
-    if (text.length <= QUESTION_MAX) void ask(text);
-  }, [handedOver, pathname, ask]);
+    setDraft(text);
+    focusSoon(() => input.current);
+  }, [handedOver, pathname]);
 
   const starter = useCallback(
     (pick: Starter) =>

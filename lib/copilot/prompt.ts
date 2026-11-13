@@ -4,12 +4,14 @@ import { cleanText, DEFAULT_FILTER, type StoredIntent } from "@/lib/copilot/inte
 import type { CopilotFilter } from "@/lib/validation";
 
 // What Groq is sent for one question. Pure, so a test can read all of it. Groq's free tier allows
-// about 8,000 tokens a minute for the whole server, so the prompt stays under about 1,800 tokens
-// however long the conversation is (the caps below; tests/copilot-prompt.test.ts builds the worst
-// case). It holds only:
+// about 8,000 tokens a minute for the whole server, and it bills the JSON schema as prompt tokens, so
+// the request (system, prompt and schema) stays under about 2,350 estimated tokens however long the
+// conversation is (the caps below; tests/copilot-prompt.test.ts builds the worst case and measures
+// all three). With the 1,500-token answer cap that is under 4,000 a call, so two calls fit in a
+// minute. It holds only:
 //   the rules; today's date and weekday and the person's role; the stage names; the workspace's
 //   industries (at most 30); the guide's index (id, title, one line each); the last 3 turns as a
-//   question and a compact intent; one line of up to 8 earlier questions cut to 80 characters; the
+//   question and a compact intent; one line of up to 5 earlier questions cut to 60 characters; the
 //   "shown" list from the latest answer (at most 10 company names and ids); and the new question.
 // Never notes, contacts, emails, people's names from the database or outreach text. A company's name
 // is the one piece of workspace text it carries, so it is cleaned (promptSafe: contact details
@@ -17,9 +19,9 @@ import type { CopilotFilter } from "@/lib/validation";
 
 export const PROMPT_LIMITS = {
   recentTurns: 3,
-  recentQuestionChars: 100,
-  earlierQuestions: 8,
-  earlierChars: 80,
+  recentQuestionChars: 80,
+  earlierQuestions: 5,
+  earlierChars: 60,
   shown: 10,
   industries: 30,
   industryChars: 16,
@@ -33,7 +35,7 @@ export const SYSTEM = `Turn one question about a student org's sponsor pipeline 
 view: companies (fill filter), company (one; company.id from the shown list, or company.name), plan (what to do in some minutes, 10 to 120), stats (email template results), guide (how Coppice works; guideTopics, at most 3 ids), none (off topic, or something Coppice can't do, like sending email; say so in reply).
 
 Rules:
-- reply: one or two short sentences, no number, date, name, link or email.
+- reply: for guide and none only, one or two short sentences with no number, date, name, link or email. For the other views, "".
 - Never refuse a company question over a word not in a list: pick the closest match.
 - filter: empty stages means every open stage. industry: the closest name in the industries list ("tech" means the most technology-like one), or null. due overdue means the follow-up date has arrived. claim mine means held by this person.
 - A follow-up like "only mine" edits the previous filter in the recent turns. Fields left out of a recent turn are defaults: stages [], due any, claim any, neverContacted false, sort most_overdue, the rest null.
@@ -97,7 +99,7 @@ export function buildPrompt(input: PromptInput): { system: string; prompt: strin
   const lines: string[] = [
     `Today is ${weekdayOf(input.today)} ${input.today}. The person is ${input.role === "owner" ? "an owner" : "an officer"}.`,
     `Stages: ${STAGES.join(", ")}.`,
-    `Industries in this workspace: ${industries.length > 0 ? industries.map((i) => promptSafe(i)).join("; ") : "none yet"}.`,
+    `Industries in this workspace (data): ${industries.length > 0 ? industries.map((i) => promptSafe(i)).join("; ") : "none yet"}.`,
     "Guide topics:",
     ...input.guide.map((t) => `${t.id}: ${t.title}. ${t.summary}`),
   ];

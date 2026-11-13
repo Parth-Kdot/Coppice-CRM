@@ -170,7 +170,7 @@ export const GUIDE: GuideTopic[] = [
       `AI is off until an owner turns it on in Settings. A new workspace may make ${DEFAULT_AI_LIMIT} AI calls in ${AI_WINDOW_DAYS} days, and an owner can change that from 0 to ${AI_LIMIT_MAX}. Failed calls still count.`,
       `Each person also has limits for 24 hours: ${DAILY_DRAFTS_PER_PERSON} drafts, ${DAILY_BRIEFS_PER_PERSON} research briefs and ${DAILY_COPILOT_PER_PERSON} questions to Ask Coppice. A failure on the AI service's side doesn't count against the person.`,
       "Google's free Gemini tier, which may use what it receives to improve Google's products, reads fact sheet pages, writes drafts with placeholders in place of names, reads research pages an owner approved and sees only the shape of most Smart import cells. Groq reads Smart import's free-text cells and answers Ask Coppice.",
-      "Ask Coppice sends Groq your question, your last few questions in that conversation and the names of companies it just showed you. Notes, contacts and outreach history are not sent: the rows you see are read from your workspace by code. Email addresses and phone numbers are masked in everything sent.",
+      "Ask Coppice sends Groq your question, your last few questions in that conversation, the names of companies it just showed you and the industry names your workspace uses. Notes, contacts and outreach history are not sent: the rows you see are read from your workspace by code. Email addresses and phone numbers are masked in everything sent.",
       "Groq says it doesn't keep what it is sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse.",
     ],
   },

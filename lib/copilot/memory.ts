@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { CopilotTurnStatus } from "@/generated/prisma/enums";
 import type { Membership } from "@/lib/authz";
+import { dbNow } from "@/lib/claims";
 import { withTenant } from "@/lib/db";
 import { PROMPT_LIMITS } from "@/lib/copilot/prompt";
 import type { StoredIntent } from "@/lib/copilot/intent";
@@ -13,7 +14,9 @@ import { copilotIntentSchema } from "@/lib/validation";
 // Rows themselves are never stored; they are read again from the workspace when a turn is shown.
 //
 // Expiry: whenever a person starts a turn, their turns older than 30 days (by the database clock)
-// and their empty threads are deleted, in the same transaction that opens the thread.
+// and their empty threads are deleted, in the same transaction that opens the thread. Reading a
+// thread or a turn leaves out anything past the window too, so someone who comes back after two
+// months doesn't see old turns before the clean-up has run.
 
 type Tx = Prisma.TransactionClient;
 
@@ -22,6 +25,8 @@ export const SHOWN_STORED_MAX = 25;
 // How many turns of a reloaded thread the screen reads at most.
 export const THREAD_TURNS_MAX = 50;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Turns made before this are past the keep window, whether or not the clean-up has run yet.
+const keptSince = (now: Date) => new Date(now.getTime() - KEEP_DAYS * DAY_MS);
 
 export type Turn = {
   id: string;
@@ -56,7 +61,7 @@ const toTurn = (row: Prisma.CopilotTurnGetPayload<{ select: typeof TURN_SELECT }
 // Deletes this person's turns past the keep window and their empty threads, except the thread being
 // used. `now` is the database's clock (dbNow).
 async function expire(tx: Tx, member: Membership, now: Date, keepThreadId: string | null) {
-  const cutoff = new Date(now.getTime() - KEEP_DAYS * DAY_MS);
+  const cutoff = keptSince(now);
   await tx.copilotTurn.deleteMany({ where: { workspaceId: member.workspaceId, userId: member.userId, createdAt: { lt: cutoff } } });
   await tx.copilotThread.deleteMany({
     where: { workspaceId: member.workspaceId, userId: member.userId, turns: { none: {} }, ...(keepThreadId ? { id: { not: keepThreadId } } : {}) },
@@ -141,7 +146,8 @@ export function newThread(member: Membership): Promise<string> {
 
 // A thread with its turns (oldest first), for the screen. Without an id, the person's most recently
 // used thread. Null when there is none.
-export function readThread(member: Membership, threadId: string | null): Promise<{ threadId: string; turns: Turn[] } | null> {
+export async function readThread(member: Membership, threadId: string | null): Promise<{ threadId: string; turns: Turn[] } | null> {
+  const since = keptSince(await dbNow());
   return withTenant(member, async (tx) => {
     const scope = { workspaceId: member.workspaceId, userId: member.userId };
     const thread = await tx.copilotThread.findFirst({
@@ -151,7 +157,7 @@ export function readThread(member: Membership, threadId: string | null): Promise
     });
     if (!thread) return null;
     const rows = await tx.copilotTurn.findMany({
-      where: { threadId: thread.id, ...scope },
+      where: { threadId: thread.id, ...scope, createdAt: { gte: since } },
       select: TURN_SELECT,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: THREAD_TURNS_MAX,
@@ -161,10 +167,11 @@ export function readThread(member: Membership, threadId: string | null): Promise
 }
 
 // One of this person's turns, with the thread it is in.
-export function readTurn(member: Membership, turnId: string): Promise<(Turn & { threadId: string }) | null> {
+export async function readTurn(member: Membership, turnId: string): Promise<(Turn & { threadId: string }) | null> {
+  const since = keptSince(await dbNow());
   return withTenant(member, async (tx) => {
     const row = await tx.copilotTurn.findFirst({
-      where: { id: turnId, workspaceId: member.workspaceId, userId: member.userId },
+      where: { id: turnId, workspaceId: member.workspaceId, userId: member.userId, createdAt: { gte: since } },
       select: { ...TURN_SELECT, threadId: true },
     });
     return row ? { ...toTurn(row), threadId: row.threadId } : null;

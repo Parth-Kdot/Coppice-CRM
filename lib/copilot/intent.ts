@@ -1,5 +1,6 @@
 import { isCalendarDate } from "@/lib/claims";
 import { addDays } from "@/lib/dates";
+import { STAGE_LABELS } from "@/lib/stages";
 import { COPILOT_QUESTION_MAX, type CopilotFilter, type CopilotIntent } from "@/lib/validation";
 
 // Checking what the model said. The model's reply to a question is one JSON intent; it passed the
@@ -8,8 +9,12 @@ import { COPILOT_QUESTION_MAX, type CopilotFilter, type CopilotIntent } from "@/
 // today and the guide's ids go in; a cleaned intent and a list of plain notes come out.
 //
 // Each check drops only the part that fails, never the whole answer:
-// - the reply sentence is replaced by a fixed one if it holds a digit that isn't in the person's own
-//   question, a link or an email address (a model can't state a number, a date or a contact);
+// - the reply sentence is the model's only for the guide and none views, where nothing on screen says
+//   it for them; the other views show a fixed sentence, because their rows and summary line already
+//   say everything and a model must not state a number, a date or a name there. A model sentence
+//   that stays is replaced by the fixed one if it holds a digit or number word, a date or a
+//   weekday, a link or an email address, or a capitalised name, that isn't in the person's own
+//   question (or a name Coppice itself listed);
 // - a company id, and every id in an action, must be one that was in the "shown" list sent in this
 //   very request, so an id the model made up (or one from another workspace) goes nowhere;
 // - an industry must be one the workspace uses, a follow-up date must be a real day from the
@@ -45,6 +50,9 @@ export type CheckContext = {
   // The database's today in West Lafayette, "2026-11-13".
   today: string;
   guideIds: readonly string[];
+  // Names a model sentence may use besides the question's own words: the companies just shown and the
+  // guide's titles. Industries and stage names are always allowed.
+  names?: readonly string[];
 };
 
 export type Checked = { intent: StoredIntent; notes: string[]; usable: boolean };
@@ -59,7 +67,7 @@ export const CODE_REPLIES: Record<StoredIntent["view"], string> = {
   plan: "Here is a plan.",
   stats: "Here are your template stats.",
   guide: "Here is what the Coppice guide says.",
-  none: "I can't help with that here. Try one of these.",
+  none: "I can't help with that here. Try a starter instead.",
 };
 
 const NOTE_INDUSTRY = "Coppice couldn't match that industry, so the list isn't filtered by it.";
@@ -70,14 +78,59 @@ const NOTE_ACTIONS = "Some suggested actions were left out because they didn't p
 const NUMBERS = /\p{Nd}+/gu;
 const EMAIL = /[^\s@]+@[^\s@]+/;
 const LINK = /(?:https?|ftp):\/\/|\bwww\.|\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|edu|net|io|co|us|ai|dev|app|gov|info|me|biz|ly|to|uk|ca|de)\b|\b[\w-]+\.[a-z]{2,}\//i;
+// An address spelled out to get past a check: "acme dot com".
+const SPELLED_LINK = /(?:\bdot|[(\[]dot[)\]])\s*(?:com|org|edu|net|io|co|us|ai|dev|app|gov|info|me|biz)\b/i;
+// A number in words, which is as much a number as a digit is. "May" and "March" are left to the
+// capital-letter check, because in lower case they are ordinary words.
+const NUMBER_WORDS = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?)\b/giu;
+const DATE_WORDS = new RegExp(
+  [
+    "\\b(?:january|february|april|june|july|august|september|october|november|december|jan|feb|apr|jun|jul|aug|sept?|oct|nov|dec)\\b",
+    "\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\\b",
+    "\\b(?:today|tomorrow|yesterday|tonight|weekends?)\\b",
+    "\\b(?:next|last|this|every|each)\\s+(?:week|month|year|quarter|day|weekend|semester)\\b",
+  ].join("|"),
+  "giu",
+);
+const WORD = /\p{L}[\p{L}\p{M}'\u2019-]*/gu;
+const ALWAYS_ALLOWED = ["coppice", "groq", "gemini", "ai", "csv", "ok", "id"];
 
 export const cleanText = (text: string) => text.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 
-// Whether a reply states a number the person didn't ask about, or holds a link or an email address.
-export function replyProblem(reply: string, question: string): boolean {
+const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{M}]+/u).filter(Boolean);
+
+// Whether a model sentence breaks a rule: a number (in digits or words) or a date the person's own
+// question didn't use, a link or an email address, or a capitalised word that is not the start of a
+// sentence, not in the question, not a stage or industry name, not "Coppice", and not one of the
+// `names` Coppice listed. A model can't state a number, a date or a name that is not Coppice's own.
+export function replyProblem(reply: string, question: string, names: readonly string[] = [], industries: readonly string[] = []): boolean {
   const asked = new Set(question.match(NUMBERS) ?? []);
   if ((reply.match(NUMBERS) ?? []).some((n) => !asked.has(n))) return true;
-  return EMAIL.test(reply) || LINK.test(reply);
+  if (EMAIL.test(reply) || LINK.test(reply) || SPELLED_LINK.test(reply)) return true;
+
+  const askedText = ` ${wordsOf(question).join(" ")} `;
+  const inQuestion = (phrase: string) => askedText.includes(` ${wordsOf(phrase).join(" ")} `);
+  const unasked = (pattern: RegExp) => (reply.match(pattern) ?? []).some((found) => !inQuestion(found));
+  if (unasked(NUMBER_WORDS) || unasked(DATE_WORDS)) return true;
+
+  const allowed = new Set([
+    ...ALWAYS_ALLOWED,
+    ...wordsOf(question),
+    ...names.flatMap(wordsOf),
+    ...industries.flatMap(wordsOf),
+    ...Object.values(STAGE_LABELS).flatMap(wordsOf),
+  ]);
+  for (const match of reply.matchAll(WORD)) {
+    const token = match[0];
+    if (!/^\p{Lu}/u.test(token) || /^I(?:['\u2019][a-z]+)?$/.test(token)) continue;
+    // The start of a sentence: nothing before it, or a full stop, question mark or exclamation mark.
+    const before = reply.slice(0, match.index).replace(/[\s"'\u201c\u2018(\[]+$/u, "");
+    if (before === "" || /[.!?]$/.test(before)) continue;
+    const parts = token.toLowerCase().replace(/['\u2019]s$/, "").split(/[-'\u2019]/).filter(Boolean);
+    if (parts.every((part) => allowed.has(part))) continue;
+    return true;
+  }
+  return false;
 }
 
 // ----- Filters -----
@@ -196,8 +249,10 @@ export function checkIntent(raw: CopilotIntent, ctx: CheckContext): Checked {
   const checkedActions = usable ? checkActions(raw.actions, ctx) : { actions: [], dropped: false };
   if (checkedActions.dropped) notes.push(NOTE_ACTIONS);
 
+  // The model's sentence stands only where nothing else on screen says it (see the top of this file).
   const said = cleanText(raw.reply);
-  const reply = said === "" || replyProblem(said, ctx.question) ? CODE_REPLIES[view] : said;
+  const modelSpeaks = view === "guide" || view === "none";
+  const reply = modelSpeaks && said !== "" && !replyProblem(said, ctx.question, ctx.names, ctx.industries) ? said : CODE_REPLIES[view];
 
   return {
     intent: { view, reply, filter, company, minutes, guideTopics, actions: checkedActions.actions },
@@ -213,7 +268,11 @@ export function recheckStored(stored: StoredIntent, ctx: Omit<CheckContext, "sho
   const shownIds = new Set(stored.actions.flatMap((a) => a.companyIds));
   const company = stored.company?.id ? { id: stored.company.id, name: stored.company.name } : stored.company;
   if (company?.id) shownIds.add(company.id);
-  return checkIntent({ ...stored, company }, { ...ctx, shownIds });
+  const checked = checkIntent({ ...stored, company }, { ...ctx, shownIds });
+  // The reply was written or checked when the turn was made (or is a starter's fixed sentence), and the
+  // names it was allowed then are not known now, so it is kept as it was unless the view changed.
+  if (checked.intent.view === stored.view && stored.reply.trim() !== "") return { ...checked, intent: { ...checked.intent, reply: stored.reply } };
+  return checked;
 }
 
 // ----- The question -----
