@@ -8,7 +8,11 @@ import { ClaimPanel } from "@/components/claim-panel";
 import { CompanyForm } from "@/components/company-form";
 import { DraftPanel } from "@/components/draft-panel";
 import { MoveToButton, StageMover } from "@/components/stage-form";
-import { ArchivedContacts, Block, CompanyHeader, ContactsBlock, HistoryBlock, LogHashFocus, OutreachBlock } from "@/components/ledger/company-blocks";
+import { Block } from "@/components/ledger/company/block";
+import { ArchivedContacts, ContactsBlock } from "@/components/ledger/company/contacts";
+import { HistoryBlock, OutreachBlock } from "@/components/ledger/company/entries";
+import { CompanyHeader } from "@/components/ledger/company/header";
+import { LogHashFocus } from "@/components/ledger/company/log-hash-focus";
 import { LazyDisclosure } from "@/components/ledger/disclosure";
 import { ChevronLeftIcon, ReleaseIcon } from "@/components/ledger/icons";
 import { LogOutreachForm } from "@/components/ledger/log-form";
@@ -121,14 +125,16 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
   const showAi = !archived && !closed && !heldByOther;
   const canDraft = showAi && claim !== "theirs";
   const configured = isConfigured();
-  // Read one after another, and only when the AI tools will show.
+  // Read only when the AI tools will show. The usage comes first (it says whether AI is on); then
+  // the drafting reads together, then the research reads together, so at most three run at once.
   const ai = showAi && configured ? await aiUsage(tenant) : null;
   const researchOn = showAi && configured && ai !== null && ai.enabled;
-  const facts = canDraft && ai?.enabled ? await verifiedFacts(tenant) : [];
-  const drafts = canDraft && ai?.enabled ? await recentDrafts(tenant, companyId) : [];
-  const draftedToday = canDraft && ai?.enabled ? await draftsToday(tenant) : 0;
-  const sources = researchOn ? await listSources(tenant) : [];
-  const brief = researchOn ? await latestBrief(tenant, companyId) : null;
+  const [facts, drafts, draftedToday] = await Promise.all([
+    canDraft && ai?.enabled ? verifiedFacts(tenant) : [],
+    canDraft && ai?.enabled ? recentDrafts(tenant, companyId) : [],
+    canDraft && ai?.enabled ? draftsToday(tenant) : 0,
+  ]);
+  const [sources, brief] = await Promise.all([researchOn ? listSources(tenant) : [], researchOn ? latestBrief(tenant, companyId) : null]);
   const companyDomain = domainKey(company.website);
 
   const href = websiteHref(company.website);

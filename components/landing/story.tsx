@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { SHOOTS_FIVE, Stool } from "../ledger/stool";
+import { SHOOTS_FIVE, Stool } from "../brand/stool";
 import { AUDIENCE, NAME, TRUST } from "./copy";
 
 // Who it is for, then the name: four kinds of team as a ruled column, then the old woodland

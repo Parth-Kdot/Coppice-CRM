@@ -1,13 +1,11 @@
-"use client";
-
 import { Fragment } from "react";
-import { ImportChoice } from "@/components/csv-importer-choice";
+import { ImportChoice } from "@/components/importer/choice";
 import { ExternalIcon, WarningIcon } from "@/components/ledger/icons";
 import type { ExistingMatch } from "@/lib/csv";
 import { nameIn, type ReviewGroup } from "@/lib/import-review";
 import type { Quote } from "@/lib/smart-import";
 
-// The cards inside a duplicate group (components/csv-importer-duplicates.tsx): a company already
+// The cards inside a duplicate group (components/importer/duplicates.tsx): a company already
 // in Coppice, and a row of the file with its own switch when the group is decided row by row.
 
 // A website that can break after its dots and slashes, so a long one wraps between its parts.

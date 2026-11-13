@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { WarningIcon } from "@/components/ledger/icons";
@@ -7,9 +5,10 @@ import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import { Tick } from "@/components/ledger/marks";
 import { ShowMore } from "@/components/ledger/show-more";
 import type { ImportPreview } from "@/lib/csv";
-import { IMPORT_FIELDS, type ImportField, type ImportMapping } from "@/lib/validation";
+import { IMPORT_FIELDS, type ImportField } from "@/lib/limits";
+import type { ImportMapping } from "@/lib/validation";
 
-// The import's pieces (components/csv-importer.tsx): a step of the review, the column check of
+// The import's pieces (components/importer/importer.tsx): a step of the review, the column check of
 // step 2, and the rows that can't be imported (or import with a note) in step 3.
 
 // One step of the review: its number in the margin (a tick once it needs nothing more), a heading
@@ -31,7 +30,7 @@ export function Entry({ n, done, title, children }: { n: number; done: boolean; 
   );
 }
 
-export const FIELD_LABELS: Record<ImportField, string> = {
+const FIELD_LABELS: Record<ImportField, string> = {
   name: "Company name",
   industry: "Industry",
   website: "Website",
@@ -40,7 +39,7 @@ export const FIELD_LABELS: Record<ImportField, string> = {
   contactEmail: "Contact email",
 };
 
-export const columnName = (headers: string[], index: number | null) => (index === null ? "Not in this file" : headers[index]?.trim() || `Column ${index + 1}`);
+const columnName = (headers: string[], index: number | null) => (index === null ? "Not in this file" : headers[index]?.trim() || `Column ${index + 1}`);
 
 const SHORT_LABELS: Record<ImportField, string> = {
   name: "Company",
@@ -51,15 +50,14 @@ const SHORT_LABELS: Record<ImportField, string> = {
   contactEmail: "Email",
 };
 
-// Step 2 as one line: "Company → Name, Website → Site", and Change for the full grid.
+// Step 2 as one line: "Company: column Name, Website: column Site", and Change for the full grid.
 export function ColumnsLine({ view }: { view: ImportPreview }) {
   const used = IMPORT_FIELDS.filter((f) => view.mapping[f] !== null);
   return (
     <span className="lg-colsline">
       {used.map((f, i) => (
         <span key={f} className="lg-colpair">
-          {SHORT_LABELS[f]} <span aria-hidden="true">→</span>
-          <span className="sr-only"> from </span> <strong className="lg-wrap-any">{columnName(view.headers, view.mapping[f])}</strong>
+          {SHORT_LABELS[f]}: column <strong className="lg-wrap-any">{columnName(view.headers, view.mapping[f])}</strong>
           {i < used.length - 1 ? ", " : ""}
         </span>
       ))}

@@ -21,7 +21,7 @@ export const initialsOf = (name: string) =>
     .join("") || "?";
 
 // "Owner · claims last 14 days"
-export function roleLine(me: Me): string | null {
+function roleLine(me: Me): string | null {
   const parts = [me.roleLabel, me.claimWindowDays ? `claims last ${me.claimWindowDays} ${me.claimWindowDays === 1 ? "day" : "days"}` : null].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }

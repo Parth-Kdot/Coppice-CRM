@@ -10,18 +10,18 @@ import {
   basicsSteps,
   resumeIndex,
   ROUTE_LABELS,
-  type Illustration,
   type TourName,
   type TourRole,
   type TourRoute,
   type TourStep,
 } from "@/lib/onboarding-steps";
-import { STAGE_LABELS } from "@/lib/stages";
 import { focusSoon } from "./focus";
 import { Tick } from "./marks";
 import { celebrate, completeStamp } from "./motion-kit";
 import { useNotify } from "./providers";
-import { autoOpenView, isEditable, placeCard, scrollTarget } from "./tour-logic";
+import { Drawing } from "./tour-art";
+import { dropTourParam, FOCUSABLE, hasUnsavedInput, matches, PHONE, pickAnchor, scrollIntoBand } from "./tour-dom";
+import { autoOpenView, isEditable, placeCard } from "./tour-logic";
 import "./tour.css";
 
 // The onboarding tours, drawn over the real app (the card lists are lib/onboarding-steps.ts).
@@ -87,83 +87,11 @@ type Run = {
 
 type View = "waiting" | "card" | "pill" | "closed";
 
-const PHONE = "(max-width: 760px)";
 // Alt+T (Option+T on a Mac) moves focus back to the card, or opens it from the pill.
 const isTourKey = (event: KeyboardEvent) => event.altKey && !event.ctrlKey && !event.metaKey && event.code === "KeyT";
-const REDUCED = "(prefers-reduced-motion: reduce)";
-const matches = (query: string) => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 
 let navCounter = 0;
 const nextNav = () => ++navCounter;
-
-const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex='-1'])";
-
-function visible(el: HTMLElement): boolean {
-  const r = el.getBoundingClientRect();
-  return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
-}
-
-// The collapsed <details> an element is hidden in (not counting one whose summary holds it).
-// Checked directly: browsers can report a size for content inside a closed <details>.
-function closedAround(el: HTMLElement): HTMLDetailsElement | null {
-  const closed = el.parentElement?.closest<HTMLDetailsElement>("details:not([open])") ?? null;
-  return closed && !closed.querySelector(":scope > summary")?.contains(el) ? closed : null;
-}
-
-// The first anchor on the page that can be seen (a phone tries its own first). One hidden only by
-// collapsed <details> (a Settings section) is revealed by opening them.
-function pickAnchor(step: TourStep): HTMLElement | null {
-  const anchors = matches(PHONE) && step.phoneAnchors ? [...step.phoneAnchors, ...step.anchors] : step.anchors;
-  for (const anchor of anchors) {
-    for (const el of document.querySelectorAll<HTMLElement>(anchorSelector(anchor))) {
-      if (el.closest("[data-tour-card]")) continue;
-      for (let closed = closedAround(el), guard = 0; closed && guard < 5; closed = closedAround(el), guard++) closed.open = true;
-      if (!closedAround(el) && visible(el)) return el;
-    }
-  }
-  return null;
-}
-
-// Inside something fixed or sticky (the tab bar, the spine, the header): scrolling won't move it.
-function pinned(el: HTMLElement): boolean {
-  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
-    const position = getComputedStyle(node).position;
-    if (position === "fixed" || position === "sticky") return true;
-  }
-  return false;
-}
-
-function scrollIntoBand(el: HTMLElement, card: HTMLElement | null) {
-  if (pinned(el)) return;
-  const head = document.querySelector<HTMLElement>(".lg-head");
-  const headPos = head ? getComputedStyle(head).position : "";
-  const viewTop = (head && (headPos === "sticky" || headPos === "fixed") ? head.getBoundingClientRect().bottom : 0) + 8;
-  // On a phone the card is a sheet at the bottom: the control goes in the space above it.
-  const viewBottom = matches(PHONE) && card ? card.getBoundingClientRect().top - 8 : window.innerHeight - 8;
-  const r = el.getBoundingClientRect();
-  const top = scrollTarget({ top: r.top, height: r.height, scrollY: window.scrollY, viewTop, viewBottom });
-  if (top !== null) window.scrollTo({ top, behavior: matches(REDUCED) ? "auto" : "smooth" });
-}
-
-// Typed-in text the person hasn't saved: the tour then won't leave the page on its own. Only
-// fields people type into count; a select or a checkbox drawn on the client looks "changed" to the
-// DOM even when nobody touched it.
-function hasUnsavedInput(): boolean {
-  const main = document.getElementById("main");
-  if (!main) return false;
-  for (const field of main.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")) {
-    if (isEditable(field) && field.value !== field.defaultValue) return true;
-  }
-  return false;
-}
-
-// ?tour= off the address, without a round trip (Next keeps its router in step with replaceState).
-function dropTourParam() {
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has("tour")) return;
-  url.searchParams.delete("tour");
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-}
 
 export function Tour(props: TourProps) {
   const { workspaceId, workspaceName, role, empty, aiConfigured, aiOn, mcpOn, claimWindowDays, request } = props;
@@ -738,81 +666,6 @@ export function Tour(props: TourProps) {
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-// Small static drawings of a control the page can't show right now (an empty workspace, or no row
-// to claim). Decorative: the sentence above says everything.
-function Drawing({ kind }: { kind: Illustration }) {
-  return (
-    <div className="lg-tour-art" data-art={kind} aria-hidden="true">
-      {kind === "queue" &&
-        [0, 1, 2].map((i) => (
-          <span key={i} className="lg-tour-art-row">
-            <span className="lg-tour-art-bar" />
-            <span className="lg-tour-art-chip">{i === 0 ? "3d late" : "Due today"}</span>
-          </span>
-        ))}
-      {kind === "claim" && (
-        <span className="lg-tour-art-row">
-          <span className="lg-tour-art-bar" />
-          <span className="lg-tour-art-btn">Claim</span>
-        </span>
-      )}
-      {kind === "log" && (
-        <>
-          <span className="lg-tour-art-label">Log outreach</span>
-          <span className="lg-tour-art-row">
-            <span className="lg-tour-art-chip">3 days</span>
-            <span className="lg-tour-art-chip" data-on="">
-              7 days
-            </span>
-            <span className="lg-tour-art-chip">Pick</span>
-          </span>
-        </>
-      )}
-      {kind === "board" && (
-        <span className="lg-tour-art-cols">
-          {[STAGE_LABELS.CONTACTED, STAGE_LABELS.REPLIED, STAGE_LABELS.IN_CONVERSATION].map((label) => (
-            <span key={label} className="lg-tour-art-col">
-              <span className="lg-tour-art-label">{label}</span>
-              <span className="lg-tour-art-slip" />
-              <span className="lg-tour-art-slip" />
-            </span>
-          ))}
-        </span>
-      )}
-      {kind === "draft" && (
-        <span className="lg-tour-art-cols" data-two="">
-          {["Draft 1", "Draft 2"].map((label) => (
-            <span key={label} className="lg-tour-art-col">
-              <span className="lg-tour-art-label">{label}</span>
-              <span className="lg-tour-art-bar" />
-              <span className="lg-tour-art-bar" />
-            </span>
-          ))}
-        </span>
-      )}
-      {kind === "brief" && (
-        <>
-          <span className="lg-tour-art-label">Suggested doors</span>
-          {["University relations", "Community giving"].map((label) => (
-            <span key={label} className="lg-tour-art-row">
-              <span className="lg-tour-art-bar" />
-              <span className="lg-tour-art-chip">{label}</span>
-            </span>
-          ))}
-        </>
-      )}
-      {kind === "check" && (
-        <>
-          <span className="lg-tour-art-label">Claim check: 1 line to check</span>
-          <span className="lg-tour-art-line">
-            We have <span className="lg-tour-art-flag">40 members</span> and meet weekly.
-          </span>
-        </>
-      )}
     </div>
   );
 }

@@ -10,14 +10,14 @@ import { ShowMore } from "@/components/ledger/show-more";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportResult } from "@/lib/csv";
 
-// The importer's result (components/csv-importer.tsx): three tallies, the names behind them
+// The importer's result (components/importer/importer.tsx): three tallies, the names behind them
 // (folded), the rows that couldn't be imported with why and a download of just those rows, and
 // where to go next. The tally takes focus, so it is read out and the keyboard starts from there.
 // Finishing an import is a moment: the tally gets the motion kit's celebrate, and the seal in the
 // line above it settles down onto the page.
 
-export type Named = { row: number; name: string };
-export type Failed = Named & { reason: string };
+type Named = { row: number; name: string };
+type Failed = Named & { reason: string };
 export type Done = { data: ImportResult; imported: Named[]; skipped: Named[]; failed: Failed[]; file: File };
 
 const shownName = (n: Named, repeated: ReadonlySet<string>) => (repeated.has(n.name.trim().toLowerCase()) ? `${n.name} (row ${n.row})` : n.name || `Row ${n.row}`);

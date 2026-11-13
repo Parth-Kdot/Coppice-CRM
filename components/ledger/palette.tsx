@@ -36,7 +36,7 @@ export const usePalette = (): PaletteApi => useContext(PaletteContext);
 const subscribeNothing = () => () => undefined;
 
 // Whether to print the Command key or Ctrl in the keycaps. Server and first paint say Ctrl.
-export function useShortcutLabel(): string {
+function useShortcutLabel(): string {
   const apple = useSyncExternalStore(
     subscribeNothing,
     () => /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent),

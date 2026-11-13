@@ -4,15 +4,15 @@ import Link from "next/link";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import "@/components/ledger/zod-jitless";
 import { ActionForm } from "@/components/action-form";
-import { QuillWait } from "@/components/draft-panel";
 import { focusSoon } from "@/components/ledger/focus";
 import { AiDraftIcon, ExternalIcon, WarningIcon } from "@/components/ledger/icons";
-import { Tick } from "@/components/ledger/marks";
+import { QuillWait, Tick } from "@/components/ledger/marks";
 import { ErrorLine } from "@/components/ledger/shared";
 import { when } from "@/lib/dates";
+import { BRIEF_SOURCES_MAX } from "@/lib/limits";
 import type { BriefView } from "@/lib/research/brief";
 import { DOOR_LABELS } from "@/lib/research/doors";
-import { BRIEF_SOURCES_MAX, type ActionResult } from "@/lib/validation";
+import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 import "@/components/ledger/research.css";
 

@@ -7,7 +7,7 @@ import { CloseIcon, SearchIcon } from "@/components/ledger/icons";
 import { focusSoon } from "@/components/ledger/focus";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import type { OverflowItem } from "@/components/ledger/overflow-menu";
-import { boardQuery, type BoardFilters } from "@/lib/validation";
+import { boardQuery, type BoardFilters } from "@/lib/limits";
 
 type Props = {
   filters: BoardFilters;

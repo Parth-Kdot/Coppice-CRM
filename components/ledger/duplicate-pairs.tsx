@@ -13,16 +13,16 @@ import { archivedNote, initialPairList, openPairs, pairLabel, pairListReducer, s
 // The pairs in the board's "Possible duplicates" sheet (app/(app)/[workspaceId]/board/page.tsx).
 // The page renders the list on the server; this keeps a resolved pair on screen until it has
 // slid away and its space has closed (the motion kit's removeAway, the same move as the import's
-// duplicate review in components/csv-importer-duplicates.tsx), and the last one ends on a stamp. Each pair has two answers: "Same company..." asks which
+// duplicate review in components/importer/duplicates.tsx), and the last one ends on a stamp. Each pair has two answers: "Same company..." asks which
 // one to keep (the one with a website, else the older one, is picked to start) and archives the
 // other; "Different companies" remembers they are separate. The same server actions as always
 // (archiveDuplicate, keepSeparate); a refusal leaves the pair where it is with the reason under it.
 
-export type PairCompany = { id: string; name: string; website: string | null };
-export type PairData = { key: string; a: PairCompany; b: PairCompany; matchedOn: string[]; keepId?: string };
+type PairCompany = { id: string; name: string; website: string | null };
+type PairData = { key: string; a: PairCompany; b: PairCompany; matchedOn: string[]; keepId?: string };
 
 // "example.com" from "https://www.example.com/about": the host is enough to compare two websites.
-export function siteHost(website: string | null): string | null {
+function siteHost(website: string | null): string | null {
   if (!website) return null;
   try {
     const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(website) ? website : `https://${website}`);

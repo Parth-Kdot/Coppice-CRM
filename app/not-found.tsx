@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LogoMark } from "@/components/ledger/logo";
+import { LogoMark } from "@/components/brand/logo";
 
 // The tab title for an unknown address. The <title> element below covers a layout calling notFound()
 // in the production build, where this export did not reach the head.

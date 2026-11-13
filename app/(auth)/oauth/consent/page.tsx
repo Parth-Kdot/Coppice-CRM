@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { WarningIcon } from "@/components/ledger/icons";
-import { SHOOTS_THREE, Stool } from "@/components/ledger/stool";
+import { SHOOTS_THREE, Stool } from "@/components/brand/stool";
 import { ConsentButtons } from "@/components/oauth-consent";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";

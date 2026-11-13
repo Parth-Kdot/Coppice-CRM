@@ -1,6 +1,6 @@
 "use client";
 
-import { ImportChoice } from "@/components/csv-importer-choice";
+import { ImportChoice } from "@/components/importer/choice";
 import { WarningIcon } from "@/components/ledger/icons";
 import { useNotify } from "@/components/ledger/providers";
 import type { ImportPreview } from "@/lib/csv";

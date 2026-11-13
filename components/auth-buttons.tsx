@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ErrorLine } from "@/components/ledger/shared";
-import { authClient } from "@/lib/auth-client";
 
 // The Google mark, in Google's own colors, as the sign-in button shows it.
 function GoogleMark() {
@@ -27,6 +26,9 @@ export function GoogleSignInButton({ className = "", next = "/workspaces" }: { c
     setGoing(true);
     setError(null);
     try {
+      // Loaded on the click: the auth client is only needed here and at sign-out, so it stays out
+      // of every page's first load.
+      const { authClient } = await import("@/lib/auth-client");
       const result = await authClient.signIn.social({ provider: "google", callbackURL: next });
       // On success the browser is already on its way to Google; only a refusal comes back here.
       if (result?.error) {
@@ -57,6 +59,7 @@ export function SignOutButton({ label = "Sign out", className = "lg-btn" }: { la
       type="button"
       className={className}
       onClick={async () => {
+        const { authClient } = await import("@/lib/auth-client");
         await authClient.signOut();
         router.push("/signin");
       }}

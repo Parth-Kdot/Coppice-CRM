@@ -5,7 +5,7 @@ import { Disclosure } from "@/components/ledger/disclosure";
 import { WarningIcon } from "@/components/ledger/icons";
 import type { CheckedRow } from "@/lib/csv";
 
-// Step 3 of the importer (components/csv-importer.tsx): the first rows of the file, with their
+// Step 3 of the importer (components/importer/importer.tsx): the first rows of the file, with their
 // problems, folded unless there is a reason to look (a file read as Windows text).
 
 const COLUMNS = ["Row", "Name", "Industry", "Website", "Contact", "Notes"] as const;

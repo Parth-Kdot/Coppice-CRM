@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { SHOOTS_FIVE, SHOOTS_THREE, ShootSet, Stump, STOOL_VIEWBOX, pointOnShoot, shootTips } from "../ledger/stool";
+import { SHOOTS_FIVE, SHOOTS_THREE, ShootSet, Stump, STOOL_VIEWBOX, pointOnShoot, shootTips } from "../brand/stool";
 import { SEASONS } from "./copy";
 
 // The stump with its shoots, the claim tags of winter and spring, and the names that hang from the

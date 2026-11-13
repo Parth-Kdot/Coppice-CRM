@@ -136,7 +136,7 @@ export function moveSpan(parts: Record<string, { at: number; dur: number }>): nu
 
 /* ---------- Pure helpers (tested in tests/motion-kit.test.ts) ---------- */
 
-export type Direction = "left" | "right" | "up" | "down";
+type Direction = "left" | "right" | "up" | "down";
 
 /** Where a leaving item slides to. */
 export function exitOffset(direction: Direction = "left", distance = 16): { x: number; y: number } {

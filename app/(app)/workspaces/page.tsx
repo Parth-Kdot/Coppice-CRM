@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { SignOutButton } from "@/components/auth-buttons";
 import { Disclosure } from "@/components/ledger/disclosure";
-import { LogoMark } from "@/components/ledger/logo";
+import { LogoMark } from "@/components/brand/logo";
 import { Empty } from "@/components/ledger/shared";
 import { canCreateWorkspace } from "@/lib/auth";
 import { requireUser, roleLabel, type Role } from "@/lib/authz";
@@ -161,7 +161,7 @@ export default async function WorkspacesPage() {
             </section>
           ) : (
             <div className="lg-wssect">
-              <Disclosure variant="inline" summary="+ New workspace">
+              <Disclosure variant="inline" summary="New workspace">
                 <p className="lg-sub">You become its Owner. Next: import your spreadsheet and invite officers.</p>
                 {createForm}
               </Disclosure>
