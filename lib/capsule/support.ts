@@ -1,5 +1,6 @@
 import { matchKey, numbersIn } from "@/lib/ai/text";
 import { monthsMentioned } from "@/lib/smart-import/dates";
+import { numberWordsIn } from "@/lib/ai/words";
 import { SECTIONS, SECTION_LABELS } from "./limits";
 
 // What ties the words of a bullet or an answer sentence to the quote or notes it cites (pure; table
@@ -51,19 +52,26 @@ export const monthsFound = (text: string, source: string) => {
 
 // ----- Numbers, in digits or in words -----
 
-const NUMBER_WORDS: Record<string, number> = {
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+// The shared list of number words (lib/ai/words.ts) decides what counts as a number written as a
+// word. Two words are left out here: "one" ("One company is in at the bronze tier" is plain speech,
+// not a figure) and "quarter" (a term word, which the timing check reads).
+const NOT_FIGURES = new Set(["one", "quarter", "quarters"]);
+const NUMBER_VALUES: Record<string, number> = {
+  zero: 0, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
   sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
   dozen: 12, hundred: 100, thousand: 1000, million: 1_000_000,
 };
-const NUMBER_WORD = new RegExp(`\\b(?:${Object.keys(NUMBER_WORDS).join("|")})\\b`, "gi");
+
+// A number word as the figure it stands for ("five" is 5, "dozens" is 12); a word with no single
+// value ("half", "double", "IV") stands for itself.
+const figureOf = (word: string) => String(NUMBER_VALUES[word] ?? NUMBER_VALUES[word.replace(/s$/, "")] ?? word);
 
 // The figures a text holds, as lib/ai/text.ts numbersIn reads digit runs ("$2,500" is 2500), plus
 // "5k" and "2.5k" (5000, 2500) and number words ("five" is 5, "dozen" is 12), so a spelled-out figure
 // counts like a digit run.
 export function figuresIn(text: string): string[] {
   const thousands = text.replace(/(\d[\d,]*(?:\.\d+)?)\s?k\b/gi, (_, n: string) => String(Math.round(Number(n.replace(/,/g, "")) * 1000)));
-  const words = (thousands.match(NUMBER_WORD) ?? []).map((w) => String(NUMBER_WORDS[w.toLowerCase()]));
+  const words = numberWordsIn(thousands).filter((w) => !NOT_FIGURES.has(w)).map(figureOf);
   return [...numbersIn(thousands), ...words];
 }
 
@@ -89,17 +97,34 @@ export function stem(word: string): string {
   return w;
 }
 
-// Every capitalised word of the text except the first, the common words, the section names and the
-// company's own name must be a word of `source`. This is what drops "Lucas" when the quote says
-// nothing about a Lucas, and a person's name the note never gave. Returns the first word that fails,
-// or null.
-export function inventedName(text: string, source: string, companyNames: readonly string[]): string | null {
+// Common verbs that open a sentence ("Confirmed the tier", "Send the invoice"): ordinary words, not
+// names, even when the quote and note use another form of them.
+const OPENING_WORDS = new Set(
+  (
+    "confirmed confirm replied reply agreed agree said say asked ask told tell wants want wanted sent send emailed email called call offered offer loved love liked like declined decline " +
+    "requested request promised promise noted note mentioned mention suggested suggest prefers prefer plans plan expects expect needs need follow followed contact contacted thank thanked invite invited " +
+    "remind reminded check checked share shared reach reached keep kept give gave get got make made use used try tried bring brought come came go went pick book set let wait avoid never always don " +
+    "pledged pledge committed commit approved approve signed sign paid pay booked reserved invoice invoiced pitch pitched meet met visit visited spoke speak talked talk thought think hoped hope"
+  )
+    .split(" ")
+    .map((w) => stem(w)),
+);
+
+// Every capitalised word of the text, the first included, except the common words, the section
+// names and the company's own name, must be a word of `source` (or of `context`, the note a quote
+// comes from, for a sentence's opening word). This is what drops "Lucas" when the quote says nothing
+// about a Lucas, and a person's name the note never gave. The first word is where the model puts a
+// name ("Maria confirmed ..."), so it counts too; an opening verb passes when it is an ordinary verb
+// or is in the quote or note in any case, by root. Returns the first word that fails, or null.
+export function inventedName(text: string, source: string, companyNames: readonly string[], context: readonly string[] = []): string | null {
   const known = new Set([...words(source), ...companyNames.flatMap(words)]);
+  const knownStems = new Set([...known, ...context.flatMap(words)].map(stem));
   const first = text.search(/\p{L}/u);
   for (const m of text.matchAll(/\p{Lu}\p{L}*/gu)) {
-    if (m.index === first || m[0].length < 2) continue;
+    if (m[0].length < 2) continue;
     const word = m[0].toLowerCase();
     if (STOP.has(word) || SECTION_WORDS.has(word) || MONTH_NAMES.has(word) || known.has(word)) continue;
+    if (m.index === first && (OPENING_WORDS.has(stem(word)) || knownStems.has(stem(word)) || numberWordsIn(word).length > 0)) continue;
     return m[0];
   }
   return null;
@@ -142,9 +167,12 @@ export function unsupportedTiming(text: string, source: string): string | null {
 
 const NEGATION = /\b(?:never|not|no|none|nothing|nobody|without|cannot)\b|n['’]t\b/i;
 
-// A "never", "not", "don't", "no" in the text needs one in `source`. Dropping the negation from a
-// note is easy to miss; adding one reverses what it says.
-export const negationFound = (text: string, source: string) => !NEGATION.test(text) || NEGATION.test(source);
+// Both ways. A "never", "not", "don't", "no" in the text needs one in `source` (adding one reverses
+// what a note says), and a negation in the `quote` the text rests on needs one in the text
+// (dropping one reverses it as well). For a bullet the quote is the source; for a sentence the source
+// is every note it cites and the quote is the one that proves it.
+export const negationFound = (text: string, source: string, quote: string = source) =>
+  (!NEGATION.test(text) || NEGATION.test(source)) && (!NEGATION.test(quote) || NEGATION.test(text));
 
 // ----- The quote, as the note wrote it -----
 

@@ -46,14 +46,15 @@ export async function setHidden(actor: Membership, cardId: string, bulletIndex: 
     }
     // An approved card whose date is still its own proposal follows its bullets: hide the "next"
     // bullet that made the date and the date goes (or moves to the next visible one); show it again
-    // and it comes back. A date the owner changed, or cleared on purpose, is left alone.
+    // and it comes back. A date the owner changed, or cleared on purpose, is left alone: it only follows when the saved
+    // date equals a proposal that exists.
     if (bulletIndex !== null && card.approvedAt) {
       const after = new Set(before);
       if (hidden) after.add(bulletIndex);
       else after.delete(bulletIndex);
       const was = proposal(before);
       const now = proposal(after);
-      if (card.recontactOn === was && was !== now) await tx.relationshipCard.updateMany({ where: { id: cardId, workspaceId: actor.workspaceId }, data: { recontactOn: now } });
+      if (was !== null && card.recontactOn === was && was !== now) await tx.relationshipCard.updateMany({ where: { id: cardId, workspaceId: actor.workspaceId }, data: { recontactOn: now } });
     }
     return { ok: true, data: undefined };
   });
