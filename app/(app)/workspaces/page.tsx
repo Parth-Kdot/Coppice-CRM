@@ -9,7 +9,7 @@ import { Empty } from "@/components/ledger/shared";
 import { canCreateWorkspace } from "@/lib/auth";
 import { requireUser, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { WORKSPACE_NAME_MAX } from "@/lib/limits";
+import { WORKSPACE_NAME_MAX, WORKSPACES_SHOWN } from "@/lib/limits";
 import { toRole } from "@/lib/roles";
 import { listMyWorkspaces } from "@/lib/workspaces";
 import { acceptInvitation, createWorkspace } from "./actions";
@@ -108,6 +108,7 @@ export default async function WorkspacesPage() {
                 </li>
               ))}
             </ul>
+            {memberships.length === WORKSPACES_SHOWN && <p className="lg-hint mt-3">Showing your first {WORKSPACES_SHOWN} workspaces.</p>}
           </>
         )}
 
