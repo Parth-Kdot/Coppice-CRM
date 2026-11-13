@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
+import { clamped } from "@/lib/ai/schema";
 import { domainKey } from "@/lib/duplicates";
 import { placeholderProblem } from "@/lib/placeholders";
 import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
@@ -654,3 +655,80 @@ export const tourProgressSchema = z.object({
 })
   .refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.")
   .refine((v) => (v.event !== "hide" && v.event !== "show") || v.tour === "basics", "Only the basics can be hidden.");
+
+// ----- Follow-up dates (lib/claims.ts setFollowUp) -----
+
+// A calendar date ("2026-11-21"); lib/claims.ts checks it is from today to a year out, by the
+// database's idea of "today".
+export const setFollowUpSchema = companyRefSchema.extend({ followUpOn: z.iso.date("Pick a follow-up date.") });
+
+// ----- Ask Coppice (AI feature 6, lib/copilot) -----
+
+export const COPILOT_QUESTION_MAX = 500;
+// The four starter chips (lib/copilot/starters.ts). Each is a fixed intent and makes no AI call.
+export const COPILOT_STARTERS = ["overdue", "plan", "claims", "how-claims-work"] as const;
+export const COPILOT_VIEWS = ["companies", "company", "plan", "stats", "guide", "none"] as const;
+export const COPILOT_ACTION_TYPES = ["CLAIM", "RELEASE", "LOG", "MOVE_STAGE", "SET_FOLLOW_UP"] as const;
+export const COPILOT_DUE = ["overdue", "due_this_week", "no_date", "any"] as const;
+export const COPILOT_CLAIMS = ["mine", "free", "held_by_others", "any"] as const;
+export const COPILOT_SORTS = ["most_overdue", "name", "recently_contacted"] as const;
+
+// What the model's intent says to look for among the companies. Also what a person's chip edit
+// sends back. Strict-JSON friendly (every key present, nullable not optional), and long text is cut
+// rather than refused (lib/ai/schema.ts clamped), so a wordy reply never costs the call. No
+// descriptions: the rules are in the prompt (lib/copilot/prompt.ts), and a schema's text is sent too.
+export const copilotFilterSchema = z.object({
+  stages: z.array(z.enum(Stage)),
+  industry: clamped(80).nullable(),
+  due: z.enum(COPILOT_DUE),
+  claim: z.enum(COPILOT_CLAIMS),
+  neverContacted: z.boolean(),
+  nameOrSite: clamped(100).nullable(),
+  notesMention: clamped(100).nullable(),
+  sort: z.enum(COPILOT_SORTS),
+});
+export type CopilotFilter = z.infer<typeof copilotFilterSchema>;
+
+export const copilotActionSchema = z.object({
+  type: z.enum(COPILOT_ACTION_TYPES),
+  companyIds: z.array(clamped(64)),
+  stage: z.enum(Stage).nullable(),
+  followUpOn: clamped(12).nullable(),
+});
+
+// The one JSON answer the model gives per question (sent to Groq as a strict schema). Code checks
+// every part of it afterwards (lib/copilot/intent.ts); none of it is shown or run as it arrives.
+export const copilotIntentSchema = z.object({
+  view: z.enum(COPILOT_VIEWS),
+  reply: clamped(240),
+  filter: copilotFilterSchema.nullable(),
+  company: z.object({ id: clamped(64).nullable(), name: clamped(120).nullable() }).nullable(),
+  // An integer: Zod writes a nullable plain number as a type list, but a nullable integer as anyOf, the
+  // form Smart import's strict schema was proven live with.
+  minutes: z.number().int().nullable(),
+  guideTopics: z.array(clamped(40)),
+  actions: z.array(copilotActionSchema),
+});
+export type CopilotIntent = z.infer<typeof copilotIntentSchema>;
+
+const copilotQuestion = z
+  .string()
+  .trim()
+  .min(1, "Ask a question.")
+  .max(COPILOT_QUESTION_MAX, `A question can be at most ${COPILOT_QUESTION_MAX} characters.`)
+  .refine(hasNoNul, NUL_MESSAGE);
+
+// threadId null starts a new conversation.
+export const askCopilotSchema = z.object({ workspaceId: id, threadId: id.nullable(), question: copilotQuestion });
+export const copilotStarterSchema = z.object({ workspaceId: id, threadId: id.nullable(), starter: z.enum(COPILOT_STARTERS) });
+// "Show again", and a chip edit when `filter` is sent.
+export const rerunTurnSchema = z.object({ workspaceId: id, turnId: id, filter: copilotFilterSchema.nullable() });
+export const openThreadSchema = z.object({ workspaceId: id, threadId: id.nullable() });
+// A next-move chip: the card for one action on one company, checked against the company as it is now.
+export const copilotMoveSchema = z.object({
+  workspaceId: id,
+  companyId: id,
+  type: z.enum(COPILOT_ACTION_TYPES),
+  stage: z.enum(Stage).nullable(),
+  followUpOn: z.iso.date("Pick a follow-up date.").nullable(),
+});
