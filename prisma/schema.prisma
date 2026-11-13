@@ -49,6 +49,9 @@ model User {
   oauthconsents      OauthConsent[]
   // App relation (not from the generator): the MCP rate limit.
   mcpRateLimits      McpRateLimit[]
+  // App relations (not from the generator): AI feature 7.
+  scorecardNarratives ScorecardNarrative[]
+  startedExperiments  TemplateExperiment[]
 
   @@unique([email])
   @@map("user")
@@ -139,6 +142,9 @@ model Workspace {
   companyBriefs   CompanyBrief[]
   briefPages      CompanyBriefPage[]
   onboarding      OnboardingProgress[]
+  scorecardNarratives ScorecardNarrative[]
+  templateExperiments TemplateExperiment[]
+  experimentArms      ExperimentArm[]
 
   @@unique([slug])
   @@map("workspace")
@@ -538,11 +544,24 @@ model Template {
   archivedAt  DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  // The Template Lab (AI feature 7): a variant's base template (same workspace, composite key) and
+  // the one-line summary of what it changes. Both null for an ordinary template.
+  familyId    String?
+  variantNote String?
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   outreach  Outreach[]
+  // NoAction (checked at the end of the statement), so deleting a whole workspace can cascade
+  // through a template and its variants together.
+  family    Template?  @relation("TemplateFamily", fields: [familyId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  variants  Template[] @relation("TemplateFamily")
+  experimentsAsBase TemplateExperiment[] @relation("ExperimentBase")
+  experimentsKept   TemplateExperiment[] @relation("ExperimentKept")
+  experimentArms    ExperimentArm[]
 
   @@index([workspaceId])
+  @@unique([id, workspaceId])
+  @@index([familyId, workspaceId])
 }
 
 model Outreach {
@@ -598,6 +617,9 @@ enum AiFeature {
   // AI feature 2, the Research Agent: reading the fetched pages, then writing the brief.
   RESEARCH_READ
   RESEARCH_BRIEF
+  // AI feature 7: the stats page's numbers explanation, and the Template Lab's variants.
+  SCORECARD_EXPLAIN
+  TEMPLATE_LAB
 }
 
 enum AiRunStatus {
@@ -912,4 +934,81 @@ model OnboardingProgress {
 
   @@unique([workspaceId, userId])
   @@index([userId])
+}
+
+// ----- AI (feature 7: Scorecard explanation and the Template Lab) -----
+
+// The words around the stats page's numbers, written by the AI and checked by code. The numbers
+// are never the model's: each is a fact chip rendered from `facts`, the fact table the narrative
+// was written about. One current narrative per workspace; a new one replaces it (lib/scorecard/).
+model ScorecardNarrative {
+  id          String   @id @default(cuid())
+  workspaceId String
+  // A hash of the fact table's keys and values when this was written. If today's differs, the
+  // page says the numbers have changed since.
+  statsHash   String
+  facts       Json
+  paragraphs  Json
+  model       String
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId])
+  @@index([createdById])
+}
+
+enum ExperimentStatus {
+  RUNNING
+  ENDED
+}
+
+// A template tested against one or two one-change variants of itself (lib/template-lab/). One
+// RUNNING per workspace: the migration adds a partial unique index on (workspaceId) where the
+// status is RUNNING, which Prisma can't express here. Nothing is ever deleted when it ends.
+model TemplateExperiment {
+  id             String           @id @default(cuid())
+  workspaceId    String
+  baseTemplateId String
+  status         ExperimentStatus @default(RUNNING)
+  startedById    String
+  startedAt      DateTime         @default(now()) @db.Timestamptz(3)
+  endedAt        DateTime?        @db.Timestamptz(3)
+  keptTemplateId String?
+
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  startedBy    User            @relation(fields: [startedById], references: [id], onDelete: Restrict)
+  // NoAction like Outreach's draft: a template is archived, never deleted.
+  baseTemplate Template        @relation("ExperimentBase", fields: [baseTemplateId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  keptTemplate Template?       @relation("ExperimentKept", fields: [keptTemplateId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  arms         ExperimentArm[]
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, status])
+  @@index([startedById])
+  @@index([baseTemplateId, workspaceId])
+  @@index([keptTemplateId, workspaceId])
+}
+
+// One template taking part in an experiment: "A" is the original, then "B" and "C".
+model ExperimentArm {
+  id           String @id @default(cuid())
+  workspaceId  String
+  experimentId String
+  templateId   String
+  label        String
+  // "original", or the kind of change: opening, ask, closing or shorter.
+  kind         String
+  summary      String
+
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  experiment TemplateExperiment @relation(fields: [experimentId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  template   Template           @relation(fields: [templateId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+
+  @@unique([experimentId, templateId])
+  @@index([experimentId, workspaceId])
+  @@index([templateId, workspaceId])
+  @@index([workspaceId])
 }

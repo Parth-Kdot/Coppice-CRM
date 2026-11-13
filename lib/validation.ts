@@ -658,3 +658,71 @@ export const tourProgressSchema = z.object({
 })
   .refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.")
   .refine((v) => (v.event !== "hide" && v.event !== "show") || v.tour === "basics", "Only the basics can be hidden.");
+
+// ----- Scorecard explanation and the Template Lab (AI feature 7) -----
+
+// What the model sends back for "Explain these numbers": up to three paragraphs, each a list of
+// segments. A segment is either words (`text`) or one fact key (`fact`), never both and never
+// neither; lib/scorecard/explain.ts checks that, and everything else, in code.
+export const SCORECARD_MAX_PARAGRAPHS = 3;
+export const SCORECARD_MAX_SEGMENTS = 14;
+export const SCORECARD_TEXT_MAX = 900;
+export const scorecardReplySchema = z.object({
+  paragraphs: z
+    .array(
+      z.object({
+        segments: z
+          .array(
+            z.object({
+              text: z.string().nullable().describe("Plain words with no numbers in them, or null when this segment is a fact"),
+              fact: z.string().nullable().describe("The key of one fact from the list, or null when this segment is words"),
+            }),
+          )
+          .min(1)
+          .max(SCORECARD_MAX_SEGMENTS),
+      }),
+    )
+    .min(1)
+    .max(SCORECARD_MAX_PARAGRAPHS),
+});
+export type ScorecardReply = z.output<typeof scorecardReplySchema>;
+
+// The Template Lab's variants. A variant over its limits is dropped on its own (a summary is cut
+// to fit) instead of losing the whole reply; code checks each one that is left (lib/template-lab/check.ts).
+export const VARIANT_KINDS = ["opening", "ask", "closing", "shorter"] as const;
+export type VariantKind = (typeof VARIANT_KINDS)[number];
+export const LAB_SUMMARY_MAX = 140;
+export const LAB_MAX_VARIANTS = 3;
+export const labVariantSchema = z.object({
+  kind: z.enum(VARIANT_KINDS).describe("What this variant changes: opening, ask, closing or shorter"),
+  summary: clamped(LAB_SUMMARY_MAX).describe(`What changed and why it might help, at most ${LAB_SUMMARY_MAX} characters`),
+  body: z.string().min(1).max(TEMPLATE_LIMITS.body).describe("The whole template text with exactly one change, plain text"),
+});
+export const labReplySchema = z.object({ variants: keptItems(labVariantSchema, LAB_MAX_VARIANTS).min(1).describe("2 or 3 variants") });
+export type LabReply = z.output<typeof labReplySchema>;
+
+// The stats page's server actions. A variant the owner picked comes back from the browser, so
+// startExperiment checks it again against the template as it is now (lib/template-lab/lab.ts).
+export const explainStatsSchema = z.object({ workspaceId: id });
+export const proposeVariantsSchema = z.object({ workspaceId: id, templateId: id });
+export const startExperimentSchema = z.object({
+  workspaceId: id,
+  templateId: id,
+  variants: json(
+    z
+      .array(
+        z.object({
+          kind: z.enum(VARIANT_KINDS),
+          summary: z.string().max(LAB_SUMMARY_MAX),
+          body: z.string().min(1).max(TEMPLATE_LIMITS.body).refine(hasNoNul, NUL_MESSAGE),
+        }),
+      )
+      .min(1)
+      .max(2),
+    "Pick one or two variants to try.",
+  ),
+});
+export const endExperimentSchema = z.object({ workspaceId: id, experimentId: id, keepTemplateId: id });
+
+// Kept down here, with the schemas that use it, so this round touches no line above (move it up when merging).
+import { clamped, keptItems } from "@/lib/ai/schema";
