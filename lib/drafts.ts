@@ -88,6 +88,31 @@ export const usableVariants = (data: z.output<typeof Variants>) => data.variants
 // still waiting, and "Check with AI" on each draft is there if it doesn't answer in time.
 export const DRAFT_CHECK_DEADLINE_MS = 20_000;
 
+type EarlierDraft = {
+  subject: string;
+  body: string;
+  contact: { name: string } | null;
+  createdBy: { name: string };
+  workspace: { name: string };
+};
+
+// An earlier draft's subject, with its names turned back into placeholders, or null when that can't
+// be done safely. The subject was saved with the names it was drafted with, and unfill() looks for
+// the names as they are now. A contact who was removed or renamed, or a renamed sender or workspace,
+// would leave the old name in the subject. The saved body greets "Hi <first name>," and has the
+// sender's name and the workspace's name on their own lines, so the subject is used only when the
+// body still shows today's three names. Otherwise no subject is sent.
+function earlierSubject(draft: EarlierDraft): string | null {
+  const firstName = draft.contact?.name.trim().split(/\s+/)[0];
+  if (!firstName) return null;
+  const sender = draft.createdBy.name.trim();
+  const org = draft.workspace.name.trim();
+  const lines = draft.body.split("\n").map((line) => line.trim());
+  const sameNames = draft.body.startsWith(`Hi ${firstName},`) && lines.includes(sender) && lines.includes(org);
+  if (!sameNames) return null;
+  return promptSafe(unfill(draft.subject, { firstName, senderName: draft.createdBy.name, orgName: draft.workspace.name }));
+}
+
 export async function draftEmail(tenant: Tenant, companyId: string, request: DraftRequest): Promise<ActionResult<DraftView[]>> {
   const contact = request.contactId
     ? await withTenant(tenant, (tx) =>
@@ -129,7 +154,7 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
         sentAt: true,
         channel: true,
         gotReply: true,
-        aiDraft: { select: { subject: true, contact: { select: { name: true } }, createdBy: { select: { name: true } }, workspace: { select: { name: true } } } },
+        aiDraft: { select: { subject: true, body: true, contact: { select: { name: true } }, createdBy: { select: { name: true } }, workspace: { select: { name: true } } } },
       },
       orderBy: { sentAt: "desc" },
       take: EARLIER_OUTREACH_SHOWN,
@@ -151,15 +176,7 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
     // into placeholders first, as the Claim Checker does (lib/claim-check.ts); the outreach's own
     // note is never sent.
     const earlier = context.earlier.map((o) => {
-      const subject = o.aiDraft
-        ? promptSafe(
-            unfill(o.aiDraft.subject, {
-              firstName: o.aiDraft.contact?.name.trim().split(/\s+/)[0] ?? null,
-              senderName: o.aiDraft.createdBy.name,
-              orgName: o.aiDraft.workspace.name,
-            }),
-          )
-        : null;
+      const subject = o.aiDraft ? earlierSubject(o.aiDraft) : null;
       return `${day(o.sentAt)}, ${CHANNEL_LABELS[o.channel]}${subject !== null ? `: "${subject}"` : ""}${o.gotReply ? ", they replied" : ""}`;
     });
     lines.push(`<earlier_outreach>\n${earlier.length ? earlier.join("\n") : "(none logged)"}\n</earlier_outreach>`);

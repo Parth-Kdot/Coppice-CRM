@@ -188,9 +188,6 @@
 
   /* ---------- Narrow screens ---------- */
   @media (max-width: 1100px) {
-    .lg-o-brief {
-      order: 6;
-    }
     .lg-brief-items {
       grid-template-columns: minmax(0, 1fr);
     }

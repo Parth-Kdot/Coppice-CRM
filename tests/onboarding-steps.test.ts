@@ -105,7 +105,7 @@ describe("aiSteps", () => {
   it("with AI off, owners are sent to Settings and officers told everything else works", () => {
     const owner = aiSteps({ role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }).find((s) => s.key === "ai-off")!;
     const officer = aiSteps({ role: "member", aiConfigured: true, aiOn: false, mcpOn: false }).find((s) => s.key === "ai-off")!;
-    expect(owner.body).toBe("AI is off for this workspace. Turn it on in Settings > AI.");
+    expect(owner.body).toBe("AI is off for this workspace. Turn it on in Settings, under AI.");
     expect(owner.link?.route).toBe("settings");
     expect(officer.body).toBe("AI is not available here yet. Everything else works.");
     expect(officer.link).toBeUndefined();

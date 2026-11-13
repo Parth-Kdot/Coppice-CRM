@@ -95,8 +95,10 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
               To suggest the columns, Google&apos;s Gemini gets the headers only when they are plain spreadsheet words (otherwise their shape, like
               &ldquo;2 words&rdquo;), the company names and industries from columns plainly labeled as such (like &ldquo;Company&rdquo; or
               &ldquo;Industry&rdquo;), and for up to 15 sample rows only the shape of the other cells (like &ldquo;6 words, has a date&rdquo;), not their
-              words. To spot look-alikes, Gemini gets the company names, from the sheet and from companies already saved in this workspace, cut before any note in the cell (&ldquo;Acme (ask Dana)&rdquo; is sent as
-              &ldquo;Acme&rdquo;). The free-text cells, which can include names, go to Groq, with email addresses and phone numbers masked.
+              words. To spot look-alikes, Gemini also gets the sheet&apos;s company names and the names of the companies already saved in this workspace, archived ones
+              included, each cut before any note (&ldquo;Acme (ask Dana)&rdquo; is sent as &ldquo;Acme&rdquo;) or left out if it is only a note; with more than 600
+              names in all, that check is skipped. The free-text cells, which can include names, go to Groq, with email addresses and phone numbers in US or
+              international (+) format masked.
             </p>
           </Disclosure>
           {smart.mappingNote && (

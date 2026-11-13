@@ -8,6 +8,7 @@ import { NOT_A_PDF, PDF_MAX_BYTES, PDF_TOO_BIG, pdfFileProblem } from "@/lib/ai/
 import { maskContactDetails, matchKey, numbersIn, quoteFound } from "@/lib/ai/text";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import * as facts from "@/lib/facts";
+import { maskPage } from "@/lib/research/scan";
 import { form, redirectTo } from "./helpers/form";
 import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
@@ -80,16 +81,24 @@ describe("text helpers", () => {
     expect(maskContactDetails(input)).toBe(output);
   });
 
-  // Everything sent to the AI is masked the same way, so numbers in other countries' formats go too.
+  // Drafts, packets, claim checks and Smart import mask emails, North-American numbers and
+  // international numbers that start with "+" or "00".
   test.for([
-    ["Call +44 20 7946 0958 today", "Call [phone] today"],
-    ["Call +91 98765 43210 today", "Call [phone] today"],
-    ["Call 089/1234567 today", "Call [phone] today"],
-    ["Call +49 (0)89 1234567 today", "Call [phone] today"],
-    ["Call 765\u2013555\u20130142 today", "Call [phone] today"],
-    ["Call 7655550142 today", "Call [phone] today"],
-  ] as const)("masks international numbers: %j", ([input, output]) => {
-    expect(maskContactDetails(input)).toBe(output);
+    "+44 20 7946 0958",
+    "0049 89 1234567",
+    "(765) 555-0142",
+    "765-555-0142",
+    "+91 98765 43210",
+    "+49 (0)89 1234567",
+  ])("masks the phone number %j", (phone) => {
+    expect(maskContactDetails(`Call ${phone} today`)).toBe("Call [phone] today");
+  });
+
+  // Research page text is masked more broadly, because a number lost from a web page costs nothing.
+  // A number in a local style with no "+" is masked there but left alone in a draft or a packet.
+  test.for(["089/1234567", "7655550142", "765\u2013555\u20130142"])("masks %j on a research page but not in a draft", (phone) => {
+    expect(maskPage(`Call ${phone} today`)).toBe("Call [phone] today");
+    expect(maskContactDetails(`Call ${phone} today`)).toBe(`Call ${phone} today`);
   });
 
   // Figures a packet is full of, which look a little like numbers but are not phone numbers.
@@ -109,8 +118,18 @@ describe("text helpers", () => {
     "Oct 25, 2026, 1:15 AM",
     "Seasons 2025 2026 2027.",
     "Open 24/7, split 50/50.",
+    // Rows of small numbers in a packet's tables are not phone numbers.
+    "100 200 300 400",
+    "Level 1 2 3 4 5 6 7",
+    "5000 20 4",
   ])("leaves %j alone", (text) => {
     expect(maskContactDetails(text)).toBe(text);
+  });
+
+  // Three groups of 3, 3 and 4 digits are a US number, whatever they were meant as: "765 555 0142"
+  // and "250 500 1000" have the same shape. Masking the first matters more than keeping the second.
+  it("masks a 3-3-4 group of digits as a US number even when it was a table row", () => {
+    expect(maskContactDetails("250 500 1000")).toBe("[phone]");
   });
 
   it("matches text however the PDF set it", () => {

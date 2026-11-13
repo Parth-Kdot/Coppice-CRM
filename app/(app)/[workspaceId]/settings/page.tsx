@@ -18,8 +18,9 @@ import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS, WORKSPACE_N
 import { mcpResourceUrl } from "@/lib/mcp/config";
 import { accessLabel, listConnections } from "@/lib/mcp/connections";
 import { listSources } from "@/lib/research/sources";
+import { toRole } from "@/lib/roles";
 import { listTemplates } from "@/lib/templates";
-import { ONLY_OWNER_MESSAGE } from "@/lib/workspaces";
+import { ONLY_OWNER_MESSAGE, workspaceRow } from "@/lib/workspaces";
 import {
   cancelInvitation,
   changeMemberRole,
@@ -68,10 +69,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   // Separate queries (and separate withTenant transactions) side by side, in two rounds of at most
   // four connections each, so one render never asks for more than the pool's default of five.
   const [workspace, members, invitations, connections] = await Promise.all([
-    prisma.workspace.findUniqueOrThrow({
-      where: { id: workspaceId },
-      select: { name: true, claimWindowDays: true, mcpEnabled: true },
-    }),
+    workspaceRow(workspaceId),
     prisma.membership.findMany({
       where: { workspaceId },
       // Emails are only loaded for owners, so they never reach an officer's browser at all.
@@ -102,7 +100,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
       id: m.id,
       name: m.user.name,
       email: m.user.email ?? null,
-      role: m.role.split(",").includes("owner") ? ("owner" as const) : ("member" as const),
+      role: toRole(m.role),
       joined: day(m.createdAt),
       isMe: m.userId === me.userId,
     }))
@@ -150,7 +148,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                       <div className="lg-invite-text">
                         <p className="lg-invite-email">{invite.email}</p>
                         <p className="lg-hint">
-                          {roleLabel(invite.role === "owner" ? "owner" : "member")} · pending until {day(invite.expiresAt)}
+                          {roleLabel(toRole(invite.role ?? "member"))} · pending until {day(invite.expiresAt)}
                         </p>
                       </div>
                       <ActionForm
@@ -205,7 +203,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
         )}
 
         <Disclosure summary="AI" count={aiSummary} data-tour="ai-usage">
-          <p className="lg-set-note">AI drafts emails from your verified facts. Emails and phone numbers are masked.</p>
+          <p className="lg-set-note">AI drafts emails from your verified facts. Email addresses and phone numbers in US or international (+) format are masked.</p>
           {state === "unavailable" &&
             (isOwner ? (
               <p className="lg-error">
@@ -240,20 +238,22 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
             <p className="max-w-[66ch]">
               Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
               it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
-              phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out. A
-              template you base a draft on is sent too, masked the same way, so keep names out of templates. A draft also
-              carries the company&apos;s stage and, for a follow-up, each earlier outreach&apos;s date and channel, whether they replied, and
-              the subject of its AI draft.
+              phone numbers in US or international (+) format are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out. A
+              template you base a draft on is sent too, masked the same way, so keep names out of templates. A draft request carries
+              your verified facts, the company&apos;s name, industry, website and stage, the contact&apos;s job title and any note you add. For a
+              follow-up it also carries the date and channel of each of the last five earlier outreach entries, whether they replied, and the
+              subject of its AI draft with the names put back to placeholders.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
               addresses and phone numbers masked, plus the company&apos;s name and website; never your notes or contacts.
             </p>
             <p className="max-w-[66ch]">
               Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers only when they are plain spreadsheet words (like
-              &ldquo;Last contacted&rdquo;), and otherwise their shape (like &ldquo;2 words&rdquo;), its company names and industries from columns plainly
-              labeled as such (like &ldquo;Company&rdquo; or &ldquo;Industry&rdquo;), and only the shape of its other sample cells (like &ldquo;6 words, has a
-              date&rdquo;), not their words. To spot look-alikes it also sends Gemini the names of the companies already saved in this
-              workspace, cut before any note in the name. Its free-text cells, which can include names, go to Groq instead, with
-              email addresses and phone numbers masked. Groq says it doesn&apos;t keep what it&apos;s sent by default, apart from logs it may hold for up to 30 days to
+              &ldquo;Last contacted&rdquo;), and otherwise their shape (like &ldquo;2 words&rdquo;), the company names and industries from columns plainly
+              labeled as such (like &ldquo;Company&rdquo; or &ldquo;Industry&rdquo;), and, for up to 15 sample rows, only the shape of its other cells (like
+              &ldquo;6 words, has a date&rdquo;), not their words. To spot look-alikes it also sends Gemini the sheet&apos;s company names and the names of the
+              companies already saved in this workspace, archived ones included, each cut before any note (&ldquo;Acme (ask Dana)&rdquo; is sent as
+              &ldquo;Acme&rdquo;) or left out if it is only a note; with more than 600 names in all, that check is skipped. Its free-text cells, which can include
+              names, go to Groq instead, with email addresses and phone numbers in US or international (+) format masked. Groq says it doesn&apos;t keep what it&apos;s sent by default, apart from logs it may hold for up to 30 days to
               look into errors or abuse.
               Ask Coppice sends Groq your question, your last few questions in that conversation, and the names of companies it just showed you,
               and Groq keeps them as described above. Notes, contacts and outreach history are not sent; answers are read from your workspace by code.

@@ -18,7 +18,7 @@ import "./seasons.css";
 //   Autumn, Import: three rows of the old sheet are read and a shoot grows with each, the columns are
 //     mapped, a look-alike pair is flagged and skipped, and the summary lands.
 //   Winter, Claim: company names hang from the stems; the ticket's Claim button becomes the solid
-//     "Yours until" chip as the gilt ribbon drops on Kestrel; a second officer is held off and the
+//     "Yours until" chip as the gilt ribbon drops on Dunmore Engineering; a second officer is held off and the
 //     held tag shakes.
 //   Spring, Log and follow up: a log entry fills in and is saved into the first ledger row; the
 //     company comes back as due today and its stage glyph fills from Contacted to Replied.

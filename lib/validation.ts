@@ -11,6 +11,7 @@ import {
   CLAIM_WINDOW_MAX_DAYS,
   CLAIM_WINDOW_MIN_DAYS,
   COMPANY_LIMITS,
+  CONTACT_LIMITS,
   FACT_MAX,
   IMPORT_MAX_COLUMNS,
   IMPORT_MAX_ROWS,
@@ -36,6 +37,7 @@ export {
   CLAIM_WINDOW_MAX_DAYS,
   CLAIM_WINDOW_MIN_DAYS,
   COMPANY_LIMITS,
+  CONTACT_LIMITS,
   DRAFT_NOTE_MAX,
   FACT_MAX,
   IMPORT_FIELDS,
@@ -282,12 +284,12 @@ export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, ar
 export const sameCompanySchema = companyRefSchema.extend({ keepId: id });
 
 export const contactFieldsSchema = z.object({
-  name: z.string().trim().min(1, "Enter the contact's name.").max(120, "Name can be at most 120 characters.").refine(hasNoNul, NUL_MESSAGE),
+  name: z.string().trim().min(1, "Enter the contact's name.").max(CONTACT_LIMITS.name, `Name can be at most ${CONTACT_LIMITS.name} characters.`).refine(hasNoNul, NUL_MESSAGE),
   email: emailText
     .nullable()
     .transform((v) => v || null)
     .pipe(z.email(EMAIL_MESSAGE).nullable()),
-  title: optionalText(120, "Title"),
+  title: optionalText(CONTACT_LIMITS.title, "Title"),
 });
 
 export const addContactSchema = contactFieldsSchema.extend(companyRefSchema.shape);

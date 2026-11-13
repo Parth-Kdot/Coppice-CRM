@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { moveStage, releaseClaim } from "@/app/(app)/[workspaceId]/companies/actions";
 import { BoardSearch } from "@/components/board-search";
 import type { Stage } from "@/generated/prisma/enums";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { closeQuestion, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ReplyChoice } from "@/lib/companies";
 import type { BoardFilters } from "@/lib/validation";
 import { useBoardDrag } from "./board-drag";
@@ -209,10 +209,7 @@ export function BoardView(props: Props) {
     if (!card || card.stage === to) return;
     clearSlipError(id);
     if (TERMINAL_STAGES.includes(to)) {
-      const ok = await confirm({
-        message: `Move ${card.name} to ${STAGE_LABELS[to]}? This closes the pitch and releases any claim.`,
-        confirmLabel: `Move to ${STAGE_LABELS[to]}`,
-      });
+      const ok = await confirm(closeQuestion(card.name, to));
       if (!ok) {
         if (focus) focusSoon(() => document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(id)}"] ${SLIP_LINK}`));
         return;

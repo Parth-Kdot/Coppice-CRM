@@ -449,7 +449,7 @@ describe("reading files in other encodings", () => {
   });
 
   it("refuses text with a NUL character instead of sending it to the database", async () => {
-    const error = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File > Download > CSV.";
+    const error = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File, Download, Comma-separated values.";
     expect(parseCsv("Company,Notes\nNul Co,bad\u0000cell\n")).toEqual({ ok: false, error });
     expect(await asUser("ownerA", () => previewAction(null, formOf(bytesFile(new TextEncoder().encode("Company\nNul\u0000 Co\n")))))).toEqual({ ok: false, error });
     // A UTF-16 file without its byte-order mark reads as UTF-8 full of NULs: refused, not a crash.

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type DragEvent } from "react";
-import "@/components/ledger/zod-jitless";
 import { fileProblem } from "@/lib/csv-file";
 import { DuplicateGroups, groupHeadingId } from "@/components/importer/duplicates";
 import { ImportDone, type Done } from "@/components/importer/result";
@@ -23,6 +22,7 @@ import type { Quote } from "@/lib/smart-import";
 import type { ActionResult, ImportField, ImportMapping } from "@/lib/validation";
 import "@/components/ledger/company.css";
 import "@/components/ledger/pages.css";
+import "@/components/ledger/import.css";
 
 type Props = {
   workspaceId: string;

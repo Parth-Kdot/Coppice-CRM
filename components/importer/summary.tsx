@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { formatCount } from "@/lib/format";
 
 // The importer's summary, stuck at the top while the review scrolls: one line saying what the
 // import will do as the choices stand, and the one Import button. When nothing can be imported the
@@ -28,7 +29,7 @@ export function ImportSummary({
   disabled: boolean;
   pending: boolean;
 }) {
-  // What the review scrolls to sits under the bar (scroll-margin in pages.css), so the room the bar
+  // What the review scrolls to sits under the bar (scroll-margin in import.css), so the room the bar
   // takes is measured and kept up to date.
   const bar = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -45,9 +46,8 @@ export function ImportSummary({
     };
   }, []);
 
-  const n = (v: number) => v.toLocaleString("en-US");
   const companies = importing === 1 ? "company" : "companies";
-  const parts = [`Importing ${n(importing)}`, ...(skipping > 0 ? [`Skipping ${n(skipping)}`] : [])];
+  const parts = [`Importing ${formatCount(importing)}`, ...(skipping > 0 ? [`Skipping ${formatCount(skipping)}`] : [])];
 
   return (
     <section className="lg-importbar" aria-label="Import summary" ref={bar}>
@@ -60,12 +60,12 @@ export function ImportSummary({
           <p className="lg-importbar-line" role="status">
             <span>{parts.join(" · ")}</span>
             {/* On a phone the bar stays one line; the problems are listed in the review. */}
-            {errored > 0 && <span className="lg-importbar-long">{` · ${n(errored)} with problems`}</span>}
+            {errored > 0 && <span className="lg-importbar-long">{` · ${formatCount(errored)} with problems`}</span>}
             {onJump && toReview > 0 && (
               <span className="lg-importbar-review">
                 {" · "}
                 <button type="button" className="lg-linkbtn" onClick={onJump}>
-                  {n(toReview)} to review
+                  {formatCount(toReview)} to review
                 </button>
               </span>
             )}
@@ -75,7 +75,7 @@ export function ImportSummary({
               "Working..."
             ) : (
               <span>
-                Import {n(importing)}
+                Import {formatCount(importing)}
                 <span className="lg-importbar-long"> {companies}</span>
               </span>
             )}

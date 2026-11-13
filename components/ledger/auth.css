@@ -53,12 +53,6 @@
     padding: 48px clamp(24px, 7vw, 112px);
     outline: none;
   }
-  .lg-auth-word {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--moss);
-  }
   .lg-auth-title {
     font-family: var(--font-display);
     font-weight: 400;
