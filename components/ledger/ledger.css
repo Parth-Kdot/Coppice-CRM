@@ -1112,6 +1112,41 @@
     font-weight: 400;
     overflow-wrap: anywhere;
   }
+  /* A choice (OverflowItem group + checked): a small label over radio rows, the current one ticked. */
+  .lg-omenu-group {
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-omenu-group:first-child {
+    margin-top: 0;
+    padding-top: 2px;
+    border-top: 0;
+  }
+  .lg-omenu-heading {
+    display: block;
+    padding: 2px 14px 4px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lg-omenu-choice {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .lg-omenu-choice[aria-checked="true"] {
+    font-weight: 600;
+  }
+  .lg-omenu-mark {
+    display: inline-flex;
+    flex: none;
+    width: 16px;
+    color: var(--moss);
+  }
   /* Destructive: rust words below a rule, never a filled button. */
   .lg-omenu-danger {
     color: var(--rust);

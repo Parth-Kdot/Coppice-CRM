@@ -354,6 +354,21 @@
     align-items: center;
     gap: 8px;
   }
+  /* Phones: a page whose only action is a lone ⋯ button (Template stats) keeps it on the title's
+     line, at the right, instead of on a line of its own. */
+  @media (max-width: 760px) {
+    .lg-pagehead:has(> .lg-actions > .lg-omenu-icononly:only-child) {
+      flex-wrap: nowrap;
+      align-items: flex-start;
+    }
+    .lg-pagehead:has(> .lg-actions > .lg-omenu-icononly:only-child) > div:first-child {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    .lg-pagehead:has(> .lg-actions > .lg-omenu-icononly:only-child) > .lg-actions {
+      flex: none;
+    }
+  }
 
   /* ---------- The search bar in the page header ---------- */
   .lg-searchbar {

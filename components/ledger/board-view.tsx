@@ -546,6 +546,25 @@ export function BoardView(props: Props) {
   ];
   const empty = workspaceTotal === 0;
   const moreLabel = `More board actions${duplicateCount > 0 ? `, ${duplicateLabel} possible duplicates to review` : ""}`;
+  // The end of the toolbar: the ⋯ menu and Add a company. BoardSearch draws it (so that on a phone
+  // the industry filter can be a choice in the menu) and hands over those items, and a note for
+  // the menu button's name while an industry filter is on.
+  const renderEnd = ({ items, note }: { items: OverflowItem[]; note: string }) => (
+    <div className="lg-btools-end">
+      {(!empty || archivedCount > 0) && (
+        <span className="lg-bmore" data-badge={duplicateCount > 0 || undefined}>
+          <OverflowMenu label={note ? `${moreLabel}, ${note}` : moreLabel} items={[...moreItems, ...items]} data-tour="board-more" />
+          {duplicateCount > 0 && <span className="lg-bmore-badge" aria-hidden="true" title={`${duplicateLabel} possible duplicates to review, under More`} />}
+        </span>
+      )}
+      {!empty && (
+        <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary lg-btop-add" aria-label="Add a company">
+          <PlusIcon size={16} />
+          <span className="lg-btop-addword">Add a company</span>
+        </Link>
+      )}
+    </div>
+  );
 
   return (
     <div className="lg-board" data-empty={empty || undefined}>
@@ -558,21 +577,8 @@ export function BoardView(props: Props) {
             </span>
           )}
         </h1>
-        {!empty && <BoardSearch filters={filters} industries={industries} showFilter={workspaceTotal >= FILTER_FROM || filters.industry !== ""} />}
-        <div className="lg-btools-end">
-          {(!empty || archivedCount > 0) && (
-            <span className="lg-bmore" data-badge={duplicateCount > 0 || undefined}>
-              <OverflowMenu label={moreLabel} items={moreItems} data-tour="board-more" />
-              {duplicateCount > 0 && <span className="lg-bmore-badge" aria-hidden="true" title={`${duplicateLabel} possible duplicates to review, under More`} />}
-            </span>
-          )}
-          {!empty && (
-            <Link href={`/${workspaceId}/companies/new`} className="lg-btn lg-btn-primary lg-btop-add" aria-label="Add a company">
-              <PlusIcon size={16} />
-              <span className="lg-btop-addword">Add a company</span>
-            </Link>
-          )}
-        </div>
+        {!empty && <BoardSearch filters={filters} industries={industries} showFilter={workspaceTotal >= FILTER_FROM || filters.industry !== ""} renderEnd={renderEnd} />}
+        {empty && renderEnd({ items: [], note: "" })}
       </div>
 
       {empty ? (
