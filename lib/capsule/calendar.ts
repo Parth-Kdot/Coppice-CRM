@@ -2,7 +2,7 @@ import type { Stage } from "@/generated/prisma/enums";
 import { dbToday } from "@/lib/claims";
 import type { Membership } from "@/lib/authz";
 import { withTenant } from "@/lib/db";
-import { addDays } from "@/lib/dates";
+import { addDays, dayString } from "@/lib/dates";
 import { RECONTACT_MAX_DAYS } from "./limits";
 import { fail, findReport, isOwner, NO_HANDOFF, OWNER_ONLY, PUBLISHED_LOCK, type Done } from "./shared";
 import { cardBody, type CardBullet } from "./types";
@@ -11,8 +11,8 @@ import { daysFromTo } from "./year";
 // Step 2e: the re-contact calendar. A card with a "next" bullet whose month code verified proposes
 // the first day of that month's next occurrence after today, never more than a year out; any other
 // card proposes nothing. The owner may change any date, set every blank to one date, and apply them
-// (applying calls setFollowUp in lib/claims.ts, which is the next stage's job: nothing here writes
-// to a company). What is saved here is only RelationshipCard.recontactOn, the handoff's own date.
+// (applying calls setFollowUp in lib/claims.ts, in apply.ts: nothing here writes to a company).
+// What is saved here is only RelationshipCard.recontactOn, the handoff's own date.
 //
 // Proposals are made when a card is approved (redact.ts) from the bullets then visible; the
 // calendar shows each next to the date saved, so a bullet hidden later doesn't change a date quietly.
@@ -53,6 +53,8 @@ export type CalendarRow = {
   // What the card proposes now, from its visible bullets, and the date saved (null is blank).
   proposed: string | null;
   date: string | null;
+  // The company's own next follow-up day right now (what Apply sets), or null for none.
+  followUp: string | null;
   // Closed deals can't take a date while closed: Committed needs "Reopen for next year", and
   // Declined is listed but left alone.
   closed: "COMMITTED" | "DECLINED" | null;
@@ -68,7 +70,7 @@ export async function loadCalendar(actor: Membership, reportId: string): Promise
     const order = new Map((report.companyIds as string[]).map((id, i) => [id, i]));
     const cards = await tx.relationshipCard.findMany({
       where: { reportId, workspaceId: actor.workspaceId, approvedAt: { not: null } },
-      select: { id: true, companyId: true, bullets: true, recontactOn: true, company: { select: { name: true, stage: true } }, redactions: { select: { bulletIndex: true } } },
+      select: { id: true, companyId: true, bullets: true, recontactOn: true, company: { select: { name: true, stage: true, nextFollowUpAt: true } }, redactions: { select: { bulletIndex: true } } },
     });
     const rows = cards
       .filter((c) => !c.redactions.some((r) => r.bulletIndex === null))
@@ -83,6 +85,7 @@ export async function loadCalendar(actor: Membership, reportId: string): Promise
           stage,
           proposed: proposeRecontact(visible, stage, today),
           date: c.recontactOn,
+          followUp: c.company.nextFollowUpAt ? dayString(c.company.nextFollowUpAt) : null,
           closed: stage === "COMMITTED" || stage === "DECLINED" ? stage : null,
         };
       })

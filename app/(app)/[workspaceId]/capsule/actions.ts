@@ -36,8 +36,10 @@ import {
 //   publishHandoff, unpublishHandoff (2f)
 //   askArchive               a question answered from past notes, for every member (3)
 //
-// Applying the calendar to companies (setFollowUp) and reopening a Committed company are separate
-// owner clicks that the next stage adds.
+//   applyCalendar            put each saved date on its company through setFollowUp (2e)
+//   reopenForNextYear        move one Committed company back to Contacted through changeStage (2e)
+//
+// Those last two are the only steps that change a company, each on an explicit owner click.
 
 const page = (workspaceId: string) => revalidatePath(`/${workspaceId}/capsule`);
 const first = (parsed: { error: { issues: { message: string }[] } }) => parsed.error.issues[0].message;
@@ -187,6 +189,47 @@ export async function fillBlankDates(_prev: ActionResult<{ set: number }> | null
     return result;
   } catch (e) {
     return failure(e, "fillBlankDates");
+  }
+}
+
+// Puts every saved date on its company (lib/claims.ts setFollowUp) and says what was set and what
+// was refused, with the reason for each. Nothing else about a company changes.
+export async function applyCalendar(_prev: ActionResult<capsule.AppliedDates> | null, form: FormData): Promise<ActionResult<capsule.AppliedDates>> {
+  const parsed = handoffRefSchema.safeParse({ workspaceId: form.get("workspaceId"), reportId: form.get("reportId") });
+  if (!parsed.success) return { ok: false, error: first(parsed) };
+  const { workspaceId, reportId } = parsed.data;
+  try {
+    const owner = await requireOwner(workspaceId);
+    const result = await capsule.applyCalendar(owner, reportId);
+    // Follow-up dates show in the queue, the board and on the company pages.
+    if (result.ok && result.data.set.length > 0) {
+      page(workspaceId);
+      revalidatePath(`/${workspaceId}`);
+      revalidatePath(`/${workspaceId}/board`);
+    }
+    return result;
+  } catch (e) {
+    return failure(e, "applyCalendar");
+  }
+}
+
+// One Committed company back to Contacted. The page asks "are you sure?" first; never in bulk.
+export async function reopenForNextYear(_prev: ActionResult<capsule.Reopened> | null, form: FormData): Promise<ActionResult<capsule.Reopened>> {
+  const parsed = cardRefSchema.safeParse({ workspaceId: form.get("workspaceId"), cardId: form.get("cardId") });
+  if (!parsed.success) return { ok: false, error: first(parsed) };
+  const { workspaceId, cardId } = parsed.data;
+  try {
+    const owner = await requireOwner(workspaceId);
+    const result = await capsule.reopenForNextYear(owner, cardId);
+    if (result.ok) {
+      page(workspaceId);
+      revalidatePath(`/${workspaceId}`);
+      revalidatePath(`/${workspaceId}/board`);
+      revalidatePath(`/${workspaceId}/companies/${result.data.companyId}`);
+    }
+    return result;
+  } catch (e) {
+    return failure(e, "reopenForNextYear");
   }
 }
 

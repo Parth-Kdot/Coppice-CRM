@@ -70,6 +70,14 @@ Built on Better Auth's MCP and OAuth provider plugins (`lib/auth.ts`) and the of
 
 While the Google OAuth app is in Testing mode, only the Google accounts listed as test users can sign in, through an assistant or otherwise.
 
+### The Time Capsule
+
+`/<workspace>/capsule`, open to every member, reached from the phone's More sheet, the search palette and the board's more menu. It has three parts. The recap, "Your year in Coppice", is counted by code from the board year's outreach (`lib/capsule/recap.ts`, which reuses the arithmetic of `lib/stats-math.ts`) and is shown as a run of full-height pages. The handoff is built by an owner in six steps (who is leaving, relationship cards, review, playbook, re-contact calendar, publish) and read by officers only after it is published. Ask the Archive answers a question from the workspace's notes, with a footnote quoting the note behind each sentence. Nothing in it changes a company until an owner presses Apply (follow-up dates, through `setFollowUp`) or Reopen for next year (through `changeStage`).
+
+- The cards and the archive answers are read by Groq (`openai/gpt-oss-120b`), so they need `GROQ_API_KEY` and AI switched on for the workspace. With AI off an owner can still build and publish a handoff from cards made of facts alone. Every bullet is kept only if code finds its quote in the note it cites. Notes are sent with email addresses and phone numbers masked, and the privacy wording in Settings and on the landing page says so.
+- The server side is in `lib/capsule/`, the actions in `app/(app)/[workspaceId]/capsule/actions.ts`, the screens in `components/ledger/capsule/`. Four migrations add the two AI features, `Membership.departingAt` and the `HandoffReport`, `RelationshipCard` and `ArchiveRedaction` tables with row-level security.
+- Boards turn over in July, so "this year" is the board year the database's today falls in. A published handoff for each year stays readable from the year switcher.
+
 ## Checks
 
 ```bash
@@ -80,4 +88,4 @@ npm test                      # needs the local Postgres running
 
 ## Status
 
-The core workflow works end to end: import (with Smart import for messy notes), claims, the queue and board, the fact sheet, drafts, the claim checker, logging outreach, reply rates for each pitch template, and research briefs from approved pages. Members can also connect their own AI assistant through the MCP server. Next up are a pipeline assistant that only acts after you approve, and a turnover summary for each incoming board.
+The core workflow works end to end: import (with Smart import for messy notes), claims, the queue and board, the fact sheet, drafts, the claim checker, logging outreach, reply rates for each pitch template, and research briefs from approved pages. Members can also connect their own AI assistant through the MCP server. The Time Capsule gives every member a recap of the board year and lets owners hand it to the next board. Next up is a pipeline assistant that only acts after you approve.

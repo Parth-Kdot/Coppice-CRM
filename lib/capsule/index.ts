@@ -13,9 +13,11 @@
 //   view.ts       what an owner sees, and what officers see once it is published (2c, 2f)
 //   playbook.ts   the playbook page (2d)
 //   calendar.ts   proposed re-contact dates and the owner's saved ones (2e)
+//   apply.ts      applying the dates (setFollowUp) and reopening a Committed company (2e)
 //   publish.ts    publish and unpublish (2f)
 //   archive.ts    Ask the Archive (3)
 
+export { applyCalendar, reopenForNextYear, type AppliedDates, type Reopened } from "./apply";
 export { askArchive, archiveTerms, type ArchiveAnswer, type Footnote } from "./archive";
 export { fillBlankDates, loadCalendar, proposeRecontact, saveRecontactDates, type CalendarRow, type SavedDates } from "./calendar";
 export * from "./limits";

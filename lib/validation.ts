@@ -846,3 +846,9 @@ export const askArchiveSchema = z.object({
     .max(ARCHIVE_QUESTION_MAX, `Keep the question to ${ARCHIVE_QUESTION_MAX} characters or fewer.`)
     .refine(hasNoNul, NUL_MESSAGE),
 });
+
+// The Time Capsule page's URL: ?year=2025 picks the board year that starts in July of that year.
+// Anything else is dropped, and the page opens on a year it can show.
+export const capsulePageSchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2200).nullable().catch(null),
+});

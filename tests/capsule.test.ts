@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import {
+  applyCalendar,
   approveCard,
   approveRest,
   askArchive,
@@ -8,6 +9,7 @@ import {
   publishHandoff,
   readHandoffChunk,
   releaseDepartingClaims,
+  reopenForNextYear,
   saveRecontactDates,
   setCardHidden,
   setDeparting,
@@ -119,6 +121,8 @@ describe("owner-only: every step of the handoff", () => {
       ["approveRest", approveRest, { reportId }],
       ["saveRecontactDates", saveRecontactDates, { reportId, dates: JSON.stringify([{ companyId: "co-atlas", date: null }]) }],
       ["fillBlankDates", fillBlankDates, { reportId, date: addDays("2999-01-01", 0) }],
+      ["applyCalendar", applyCalendar, { reportId }],
+      ["reopenForNextYear", reopenForNextYear, { cardId }],
       ["publishHandoff", publishHandoff, { reportId }],
       ["unpublishHandoff", unpublishHandoff, { reportId }],
     ] as const;
@@ -172,6 +176,8 @@ describe("owner-only: every step of the handoff", () => {
       await capsule.loadCalendar(OFFICER, started.reportId),
       await capsule.saveRecontactDates(OFFICER, started.reportId, [{ companyId: "co-atlas", date: null }]),
       await capsule.fillBlankDates(OFFICER, started.reportId, addDays(await dbToday(), 5)),
+      await capsule.applyCalendar(OFFICER, started.reportId),
+      await capsule.reopenForNextYear(OFFICER, card.id),
       await capsule.publishReport(OFFICER, started.reportId),
       await capsule.unpublishReport(OFFICER, started.reportId),
       await capsule.ownerView(OFFICER, year),

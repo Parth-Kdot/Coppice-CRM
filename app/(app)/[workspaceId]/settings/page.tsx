@@ -1,3 +1,4 @@
+import { CAPSULE_PRIVACY } from "@/lib/capsule/limits";
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
 import { Disclosure } from "@/components/ledger/disclosure";
@@ -258,6 +259,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               An AI assistant a member connects is separate (see AI assistants below): what it reads, contact names included, goes to
               the company behind it.
             </p>
+            <p className="max-w-[66ch]">{CAPSULE_PRIVACY}</p>
           </Disclosure>
           {isOwner && (
             <ActionForm

@@ -18,7 +18,7 @@ import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
 import type { FoundCompany } from "@/lib/search";
 import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
-import { BoardIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
+import { BoardIcon, CapsuleIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
 import { OverdueMark } from "./overdue";
 
 // The command palette: an index card on paper with ruled lines. Results are grouped under two
@@ -159,6 +159,7 @@ function pageItems(workspaceId: string, query: string): PageItem[] {
     { kind: "page", key: "import", label: "Go to Import", hint: "Bring in a CSV", href: `${base}/import`, words: "import csv spreadsheet upload sheet", icon: <ImportIcon size={18} /> },
     { kind: "page", key: "facts", label: "Go to Facts", hint: "The fact sheet", href: `${base}/facts`, words: "facts fact sheet packet pdf ai verify", icon: <FactsIcon size={18} /> },
     { kind: "page", key: "stats", label: "Go to Template stats", hint: "Which templates get replies", href: `${base}/stats`, words: "stats templates reply rate", icon: <StatsIcon size={18} /> },
+    { kind: "page", key: "capsule", label: "Go to Time Capsule", hint: "Your year, and the handoff", href: `${base}/capsule`, words: "time capsule year recap wrapped handoff turnover archive playbook", icon: <CapsuleIcon size={18} /> },
     { kind: "page", key: "settings", label: "Go to Settings", hint: "Members and claim window", href: `${base}/settings`, words: "settings members invite claim window ai owner", icon: <SettingsIcon size={18} /> },
     { kind: "page", key: "workspaces", label: "Switch workspace", hint: "Your workspaces", href: "/workspaces", words: "switch workspace workspaces club team", icon: <UserIcon size={18} /> },
   ];

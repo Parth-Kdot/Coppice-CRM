@@ -1,0 +1,828 @@
+/* ==========================================================================================
+   Ledger, the Time Capsule. Built on the panels, tables and buttons of pages.css and ledger.css.
+   The recap is a keepsake page: paper ruled like the ledger, a rust margin line, a moss ink stamp,
+   one big serif figure and one line. The handoff is a stepper whose cards are slips of the same
+   paper. Plain CSS in a file, so the strict style-src policy allows it. Nothing here animates on
+   its own; the few moves (a stamp, a card sliding away) are the motion kit's.
+   ========================================================================================== */
+
+@layer components {
+  .lg-page-capsule {
+    max-width: 1100px;
+  }
+  .lg-page-capsule .lg-panel {
+    margin-top: 14px;
+  }
+  .lg-page-capsule .lg-panel-head {
+    padding: 10px 20px 8px;
+  }
+  .lg-page-capsule .lg-panel-body {
+    padding: 12px 20px 18px;
+  }
+  .lg-cap-kicker {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ---------- The cover of the recap, at the top of the page ---------- */
+  .lg-cap-hero {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding: 20px 24px;
+    background-color: var(--sheet);
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--pitch) - 1px), color-mix(in srgb, var(--rule) 60%, transparent) calc(var(--pitch) - 1px), color-mix(in srgb, var(--rule) 60%, transparent) var(--pitch));
+  }
+  .lg-cap-herostamp {
+    flex: none;
+    color: var(--moss);
+  }
+  .lg-cap-herobody {
+    min-width: 0;
+  }
+  .lg-cap-herotitle {
+    margin: 2px 0 4px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-5);
+    line-height: 1.1;
+  }
+  .lg-cap-heroact {
+    margin-top: 12px;
+  }
+  .lg-cap-board {
+    margin-bottom: 8px;
+  }
+  .lg-cap-how {
+    margin-top: 14px;
+  }
+
+  /* ---------- The stamp ---------- */
+  .lg-cap-stamp {
+    display: block;
+    transform: rotate(-9deg);
+    color: var(--moss);
+  }
+
+  /* ---------- The recap dialog: full height on a phone, a tall sheet on a desktop ---------- */
+  dialog.lg-cap-recap {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+  }
+  dialog.lg-cap-recap::backdrop {
+    background: rgb(31 27 20 / 0.62);
+  }
+  .lg-cap-sheet {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    background-color: var(--paper);
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--pitch) - 1px), color-mix(in srgb, var(--rule) 70%, transparent) calc(var(--pitch) - 1px), color-mix(in srgb, var(--rule) 70%, transparent) var(--pitch));
+  }
+  /* The ruled margin: a double line, like the ledger's. */
+  .lg-cap-sheet::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 26px;
+    width: 4px;
+    border-left: 1px solid color-mix(in srgb, var(--rust) 55%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--rust) 55%, transparent);
+    pointer-events: none;
+  }
+  .lg-cap-top {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 14px 0 46px;
+  }
+  .lg-cap-pips {
+    display: flex;
+    flex: 1;
+    gap: 3px;
+    min-width: 0;
+  }
+  .lg-cap-pips > span {
+    display: block;
+    flex: 1 1 0;
+    max-width: 26px;
+    height: 4px;
+    border: 1px solid var(--edge);
+    border-radius: 1px;
+    background: var(--paper-2);
+  }
+  .lg-cap-pips > span[data-state="done"] {
+    border-color: var(--moss);
+    background: var(--moss);
+  }
+  .lg-cap-pips > span[data-state="now"] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-cap-count {
+    flex: none;
+    margin-left: auto;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-cap-close {
+    flex: none;
+  }
+  .lg-cap-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+    padding: 12px 22px 12px 52px;
+    overflow-y: auto;
+    /* A horizontal swipe turns the page; a vertical one still scrolls a tall page. */
+    touch-action: pan-y;
+  }
+  .lg-cap-page {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .lg-cap-stampwrap {
+    margin: 4px 0 6px -6px;
+    color: var(--moss);
+  }
+  .lg-cap-value {
+    margin-top: 2px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(5.5rem, 34vw, 9.5rem);
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    color: var(--moss);
+    font-variant-numeric: lining-nums tabular-nums;
+    overflow-wrap: anywhere;
+    /* The double rule under the figure, like a total in the ledger. */
+    padding-bottom: 12px;
+    border-bottom: 3px double var(--ink-2);
+    align-self: stretch;
+  }
+  .lg-cap-value[data-word] {
+    font-size: clamp(2.6rem, 14vw, 4.4rem);
+    line-height: 1.04;
+    letter-spacing: normal;
+  }
+  .lg-cap-line {
+    max-width: 24em;
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.3;
+    color: var(--ink);
+    text-wrap: pretty;
+  }
+  .lg-cap-nav {
+    position: relative;
+    display: flex;
+    gap: 12px;
+    padding: 10px 16px 18px 46px;
+  }
+  .lg-cap-nav .lg-btn {
+    flex: 1;
+    min-height: 48px;
+    font-size: var(--fs-3);
+  }
+  /* Holds Back's place on the first page so Next never moves under the thumb. */
+  .lg-cap-hold {
+    visibility: hidden;
+  }
+  @media (min-width: 761px) {
+    dialog.lg-cap-recap {
+      width: min(540px, 92vw);
+      max-width: 540px;
+      height: min(780px, 92dvh);
+      max-height: 92dvh;
+      margin: auto;
+    }
+    .lg-cap-sheet {
+      border: 1px solid var(--ink-2);
+      outline: 1px solid var(--edge);
+      outline-offset: 5px;
+    }
+    .lg-cap-value {
+      font-size: clamp(6rem, 22vw, 9.5rem);
+    }
+    .lg-cap-value[data-word] {
+      font-size: clamp(3rem, 8vw, 4.6rem);
+    }
+  }
+  @media (max-height: 560px) {
+    .lg-cap-value {
+      font-size: 4.5rem;
+    }
+    .lg-cap-value[data-word] {
+      font-size: 2.4rem;
+    }
+    .lg-cap-stampwrap {
+      display: none;
+    }
+  }
+
+  /* ---------- The stepper ---------- */
+  .lg-cap-steps {
+    display: flex;
+    gap: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--edge);
+    background: var(--paper);
+  }
+  .lg-cap-steps > li {
+    flex: 1 1 0;
+    min-width: 0;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-cap-steps > li:last-child {
+    border-right: 0;
+  }
+  .lg-cap-steps > li[data-state="now"] {
+    background: var(--moss);
+  }
+  .lg-cap-stepbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-1);
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .lg-cap-stepbtn:hover {
+    background: var(--paper-2);
+  }
+  .lg-cap-steps > li[data-state="now"] .lg-cap-stepbtn {
+    color: var(--paper);
+  }
+  .lg-cap-steps > li[data-state="now"] .lg-cap-stepbtn:hover {
+    background: var(--moss-2);
+  }
+  .lg-cap-stepbtn:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -4px;
+  }
+  .lg-cap-steps > li[data-state="now"] .lg-cap-stepbtn:focus-visible {
+    outline-color: var(--paper);
+  }
+  .lg-cap-stepnum {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: var(--fs-1);
+    line-height: 1;
+  }
+  .lg-cap-steps > li[data-state="done"] .lg-cap-stepnum {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+  .lg-cap-stepof {
+    display: none;
+    margin-top: 6px;
+  }
+  .lg-cap-locked {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-cap-step {
+    margin-top: 16px;
+    min-height: 220px;
+  }
+  .lg-cap-steph {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-cap-stepsub {
+    max-width: 66ch;
+    margin: 4px 0 12px;
+  }
+  .lg-cap-stepnav {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-cap-stepnav .lg-btn {
+    white-space: normal;
+    text-align: center;
+  }
+  .lg-cap-actionrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 12px;
+  }
+  .lg-cap-actionrow > .lg-hint {
+    max-width: 52ch;
+  }
+  .lg-cap-done {
+    margin-top: 10px;
+    font-weight: 500;
+  }
+  .lg-cap-inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+  }
+
+  /* Who is leaving */
+  .lg-cap-people {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--ink-2);
+  }
+  .lg-cap-people > li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px 14px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cap-person {
+    min-width: 0;
+    align-items: flex-start;
+  }
+  .lg-cap-pname {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-cap-pname .lg-hint {
+    display: block;
+    font-weight: 400;
+  }
+  .lg-cap-pclaims {
+    padding-left: 30px;
+  }
+
+  /* Reading */
+  .lg-cap-progress {
+    margin-top: 6px;
+  }
+  .lg-cap-tally {
+    max-width: 66ch;
+    margin-top: 8px;
+  }
+  .lg-cap-wait {
+    margin-top: 6px;
+  }
+  .lg-cap-readerror {
+    margin-top: 10px;
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+  }
+
+  /* Cards, by stage */
+  .lg-cap-group {
+    margin-top: 16px;
+  }
+  .lg-cap-grouph {
+    padding: 6px 0 4px;
+    border-bottom: 1px solid var(--ink-2);
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-3);
+  }
+  .lg-cap-cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .lg-cap-card {
+    padding: 12px 0 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cap-card[data-hidden] {
+    padding: 8px 0;
+    color: var(--ink-2);
+  }
+  .lg-cap-cardhead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .lg-cap-name {
+    margin: 0;
+    min-width: 0;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  .lg-cap-stage {
+    gap: 5px;
+  }
+  .lg-cap-pending {
+    border-style: dashed;
+    background: transparent;
+    color: var(--ink-2);
+  }
+  .lg-cap-approved {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px 2px 7px;
+    border: 1.5px solid var(--moss);
+    border-radius: 2px;
+    color: var(--moss);
+    font-size: var(--fs-1);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transform: rotate(-2deg);
+  }
+  .lg-cap-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    margin-top: 4px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-cap-factsonly {
+    margin-top: 8px;
+  }
+  .lg-cap-bullets {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  .lg-cap-bullet {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    gap: 2px 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-cap-bullet:first-child {
+    border-top: 0;
+  }
+  .lg-cap-btag {
+    grid-row: 1 / span 2;
+    color: var(--moss);
+  }
+  .lg-cap-btext {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-cap-month {
+    margin-left: 4px;
+    padding: 0 6px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    font-size: var(--fs-1);
+    color: var(--ink-2);
+  }
+  .lg-cap-quote {
+    min-width: 0;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    overflow-wrap: anywhere;
+  }
+  .lg-cap-quote .lg-quote {
+    color: var(--ink);
+    font-size: var(--fs-2);
+  }
+  .lg-cap-hide {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .lg-cap-bullet[data-hidden] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    color: var(--ink-2);
+  }
+  .lg-cap-hiddenlist {
+    margin-top: 6px;
+  }
+  .lg-cap-cardactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 10px;
+  }
+
+  /* The calendar */
+  .lg-cap-caltools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px 24px;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--edge);
+    background: var(--paper);
+  }
+  .lg-cap-fillrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .lg-cap-date {
+    width: auto;
+    min-width: 11.5rem;
+  }
+  .lg-cap-applybox {
+    display: grid;
+    gap: 4px;
+    justify-items: start;
+  }
+  .lg-cap-refused,
+  .lg-cap-applied {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--edge);
+    background: var(--paper);
+  }
+  .lg-cap-refused ul,
+  .lg-cap-refusals {
+    display: grid;
+    gap: 4px;
+    margin-top: 6px;
+    padding-left: 18px;
+    list-style: disc;
+  }
+  .lg-cap-refusals strong,
+  .lg-cap-refused strong {
+    color: var(--rust);
+  }
+  .lg-cap-calrows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--ink-2);
+  }
+  .lg-cap-calrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    gap: 4px 18px;
+    align-items: start;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cap-calname {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    overflow-wrap: anywhere;
+  }
+  .lg-cap-calctl {
+    display: grid;
+    gap: 4px;
+    justify-items: start;
+  }
+  .lg-cap-calrow[data-closed] .lg-cap-calname {
+    color: var(--ink-2);
+  }
+
+  /* Publish */
+  .lg-cap-summary {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    max-width: 640px;
+  }
+  .lg-cap-summary dd {
+    font-size: var(--fs-5);
+  }
+
+  /* The published capsule and the playbook */
+  .lg-cap-more {
+    margin-top: 14px;
+  }
+  .lg-cap-dates {
+    display: grid;
+    gap: 2px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .lg-cap-dates > li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cap-datetxt {
+    min-width: 9rem;
+    color: var(--ink-2);
+  }
+  .lg-cap-playbook {
+    display: grid;
+    gap: 18px;
+    margin-top: 10px;
+  }
+  .lg-cap-pbh {
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--ink-2);
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-3);
+  }
+  .lg-cap-playbook .lg-tally {
+    grid-template-columns: 1fr;
+    max-width: 640px;
+  }
+  .lg-cap-playbook .lg-tally > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-cap-playbook .lg-tally > div:last-child {
+    border-bottom: 0;
+  }
+  .lg-cap-playbook .lg-tally dd {
+    font-size: var(--fs-3);
+  }
+
+  /* Ask the Archive */
+  .lg-cap-ask {
+    max-width: 72ch;
+  }
+  .lg-cap-q {
+    min-height: 64px;
+    resize: vertical;
+  }
+  .lg-cap-askrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 8px;
+  }
+  .lg-cap-answer-slot {
+    margin-top: 6px;
+    min-height: 1px;
+  }
+  .lg-cap-answer {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--edge);
+    border-left: 3px solid var(--moss);
+    background: var(--paper);
+  }
+  .lg-cap-answerq {
+    margin-bottom: 8px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-cap-sentences {
+    font-family: var(--font-display);
+    font-size: var(--fs-3);
+    line-height: 1.45;
+  }
+  .lg-cap-fnref {
+    margin: 0 1px;
+    padding: 0 2px;
+    font-family: var(--font-sans, inherit);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-cap-footnotes {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--rule);
+    list-style: none;
+    font-size: var(--fs-1);
+  }
+  .lg-cap-footnotes > li {
+    display: grid;
+    grid-template-columns: 1.6rem minmax(0, 1fr);
+  }
+  .lg-cap-fnnum {
+    color: var(--moss);
+    font-weight: 600;
+  }
+  .lg-cap-footnotes .lg-quote {
+    font-size: var(--fs-2);
+  }
+  .lg-cap-footnotes li {
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- A phone ---------- */
+  @media (max-width: 760px) {
+    .lg-page-capsule .lg-panel-head {
+      padding: 10px 14px 8px;
+    }
+    .lg-page-capsule .lg-panel-body {
+      padding: 10px 14px 16px;
+    }
+    .lg-cap-hero {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 16px 14px 18px;
+    }
+    .lg-cap-herostamp {
+      margin-bottom: -4px;
+    }
+    .lg-cap-herotitle {
+      font-size: var(--fs-5);
+    }
+    /* Six steps in one row would be too narrow to read: numbers only, the name of the step in hand under them. */
+    .lg-cap-steplabel {
+      display: none;
+    }
+    .lg-cap-stepof {
+      display: block;
+    }
+    .lg-cap-stepbtn {
+      min-height: 46px;
+    }
+    .lg-cap-bullet {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-cap-btag {
+      grid-row: auto;
+    }
+    .lg-cap-hide {
+      grid-column: 1;
+    }
+    .lg-cap-bullet[data-hidden] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-cap-calrow {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-cap-date {
+      width: 100%;
+    }
+    .lg-cap-caltools {
+      align-items: stretch;
+    }
+    .lg-cap-stepnav .lg-btn {
+      flex: 1;
+    }
+    .lg-cap-stepnav > span {
+      display: none;
+    }
+    .lg-cap-stepnav:has(> .lg-btn:only-child) {
+      justify-content: stretch;
+    }
+  }
+}
+
+@media (pointer: coarse) {
+  .lg-cap-stepbtn,
+  .lg-cap-close {
+    min-height: 44px;
+  }
+}

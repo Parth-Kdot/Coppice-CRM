@@ -93,13 +93,23 @@ describe("basicsSteps", () => {
 
 describe("aiSteps", () => {
   test.each<[string, AiContext, string[]]>([
-    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
+    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "capsule", "mcp", "usage", "done"]],
     ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
-    ["AI off for the workspace", { role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
-    ["AI not set up on the server", { role: "owner", aiConfigured: false, aiOn: true, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
+    ["AI off for the workspace", { role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }, ["facts", "ai-off", "capsule", "mcp", "done"]],
+    ["AI not set up on the server", { role: "owner", aiConfigured: false, aiOn: true, mcpOn: false }, ["facts", "ai-off", "capsule", "mcp", "done"]],
     ["AI not set up, officer", { role: "member", aiConfigured: false, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
   ])("%s", (_, ctx, expected) => {
     expect(keys(aiSteps(ctx))).toEqual(expected);
+  });
+
+  it("the Time Capsule card is for owners only, points at the handoff, and reads right with AI off", () => {
+    const on = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false }).find((s) => s.key === "capsule")!;
+    const off = aiSteps({ role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }).find((s) => s.key === "capsule")!;
+    expect(on.route).toBe("capsule");
+    expect(on.anchors[0]).toBe("capsule-handoff");
+    expect(on.body).toMatch(/AI reads notes into cards/);
+    expect(off.body).toMatch(/cards made from facts/);
+    for (const ai of [true, false]) expect(aiSteps({ role: "member", aiConfigured: true, aiOn: ai, mcpOn: false }).some((s) => s.key === "capsule")).toBe(false);
   });
 
   it("with AI off, owners are sent to Settings and officers told everything else works", () => {
@@ -145,7 +155,7 @@ describe("aiSteps", () => {
 
   it("grouped by page: each page is visited once, and the tour ends back on the queue", () => {
     const routes = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false }).map((s) => s.route);
-    expect(routes).toEqual(["facts", "import", "company", "company", "company", "settings", "settings", "queue"]);
+    expect(routes).toEqual(["facts", "import", "company", "company", "company", "capsule", "settings", "settings", "queue"]);
     expect(basicsSteps({ role: "owner", empty: false, basicsRole: null }).at(-1)?.route).toBe("queue");
   });
 

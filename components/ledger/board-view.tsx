@@ -512,6 +512,7 @@ export function BoardView(props: Props) {
     ...(duplicateCount > 0 ? [{ key: "dupes", label: `Possible duplicates (${duplicateLabel})`, href: dupesHref }] : []),
     ...(archivedCount > 0 ? [{ key: "archived", label: `Archived (${archivedCount.toLocaleString("en-US")})`, href: archivedHref }] : []),
     { key: "stats", label: "Template stats", href: `/${workspaceId}/stats` },
+    { key: "capsule", label: "Time Capsule", href: `/${workspaceId}/capsule` },
     ...(workspaceTotal > 0 ? [{ key: "keys", label: "Keyboard shortcuts", onSelect: () => setShortcuts(true) }] : []),
   ];
   const empty = workspaceTotal === 0;

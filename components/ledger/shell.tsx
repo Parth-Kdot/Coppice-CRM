@@ -3,7 +3,7 @@
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { BoardIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
+import { BoardIcon, CapsuleIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
 import { LogoMark } from "@/components/brand/logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { useNoteLane } from "./providers";
@@ -15,10 +15,10 @@ import "./shell.css";
 // Import, Facts, Settings) and the account button, one header (the workspace name as a switcher, and
 // the search that opens the palette), and the page. Feedback is written in a fixed lane at the
 // bottom that is empty when idle. On a phone the spine gives way to a bottom bar: Queue, Board,
-// Search, + Add (a small sheet: Add a company, Import) and More (Facts, Template stats, Settings and
+// Search, + Add (a small sheet: Add a company, Import) and More (Facts, Template stats, Time Capsule, Settings and
 // the account). A company page lights the list tab you came from (queue or board).
 
-type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "settings";
+type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "capsule" | "settings";
 
 function screenOf(pathname: string, workspaceId: string): Screen {
   const rest = pathname.slice(`/${workspaceId}`.length).replace(/\/+$/, "");
@@ -29,6 +29,7 @@ function screenOf(pathname: string, workspaceId: string): Screen {
   if (rest === "/import") return "import";
   if (rest === "/facts") return "facts";
   if (rest === "/stats") return "stats";
+  if (rest === "/capsule") return "capsule";
   if (rest === "/settings") return "settings";
   return "queue";
 }
@@ -178,6 +179,7 @@ function PhoneTabs({ workspaceId, workspaceName, screen, listTab, me, accountIte
   const moreLinks: SheetLink[] = [
     { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, screens: ["facts"] },
     { key: "stats", label: "Template stats", path: "/stats", icon: <StatsIcon />, screens: ["stats"] },
+    { key: "capsule", label: "Time Capsule", path: "/capsule", icon: <CapsuleIcon />, screens: ["capsule"] },
     { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, screens: ["settings"] },
   ];
   const addActive = addLinks.some((l) => l.screens.includes(screen));
