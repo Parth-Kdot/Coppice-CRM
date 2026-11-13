@@ -18,6 +18,7 @@ import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS, WORKSPACE_N
 import { mcpResourceUrl } from "@/lib/mcp/config";
 import { accessLabel, listConnections } from "@/lib/mcp/connections";
 import { listSources } from "@/lib/research/sources";
+import { getExperimentView } from "@/lib/template-lab/lab";
 import { listTemplates } from "@/lib/templates";
 import { ONLY_OWNER_MESSAGE } from "@/lib/workspaces";
 import {
@@ -91,6 +92,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
   ]);
   // aiUsageDetail makes two queries of its own.
   const [ai, templates, ownerSources] = await Promise.all([aiUsageDetail(me), listTemplates(me), isOwner ? listSources(me) : null]);
+  // The running experiment's templates are locked in the list below (their text, and archiving them).
+  const experiment = await getExperimentView(me);
   const state = aiState(ai.enabled);
   const aiOn = state === "on";
   // Research pages: owners always manage them; officers see them only while the feature is on.
@@ -176,7 +179,16 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
       </section>
 
       <div className="lg-set-more">
-        <TemplatesSection isOwner={isOwner} workspaceId={workspaceId} templates={templates} />
+        <TemplatesSection
+          isOwner={isOwner}
+          workspaceId={workspaceId}
+          templates={templates}
+          lab={{
+            aiOn,
+            running: experiment?.status === "RUNNING",
+            arms: experiment?.status === "RUNNING" ? Object.fromEntries(experiment.arms.map((a) => [a.templateId, a.label])) : {},
+          }}
+        />
 
         {isOwner ? (
           <Disclosure summary="Claim window" count={claimLine} data-tour="settings-claim-window">
@@ -246,6 +258,12 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               the subject of its AI draft.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
               addresses and phone numbers masked, plus the company&apos;s name and website; never your notes or contacts.
+            </p>
+            <p className="max-w-[66ch]">
+              &ldquo;Explain these numbers&rdquo; on the stats page sends Gemini your template names and the numbers on that page (sends, replies and
+              rates), never a note, a company or a contact. The Template Lab, which proposes one-change variants of a template, sends Gemini that
+              template&apos;s text, masked like a draft&apos;s, and up to 40 of your verified facts. A template with an email address or phone number in
+              it is not sent: take contact details out first.
             </p>
             <p className="max-w-[66ch]">
               Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers only when they are plain spreadsheet words (like

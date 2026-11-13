@@ -360,3 +360,34 @@ describe("the explain action", () => {
     expect(await action("officerA")).toEqual({ ok: false, error: "The AI's answer didn't pass Coppice's checks. Try again." });
   });
 });
+
+describe("a reply recorded from the live model", () => {
+  // What gemini-3.5-flash-lite sent back on the first live check: it wrote the word "best" around the
+  // verdict chip ("which template works best"), which the checks refuse, and the sentence reads badly
+  // with a verdict chip inside it. The prompt now asks for a lead-in, the chip and a full stop.
+  const RECORDED = reply(
+    [words("It is currently "), chip("verdict.best"), words(" to tell which template works best. Some options have too few sends yet.")],
+    [words("There are gaps in the data, including "), chip("gaps.noTemplate"), words(" sends logged with no template and "), chip("gaps.maturing"), words(" sends still too young to count.")],
+  );
+
+  it("is refused for the ranking word, and for nothing else", () => {
+    expect(narrativeProblems(RECORDED, table)).toEqual([{ code: "ranking_word", detail: "best" }]);
+    expect(acceptNarrative(table)(RECORDED)).toBe("broke_rules");
+  });
+
+  it("is accepted once the verdict stands as its own clause, the way the prompt now says to write it", () => {
+    const fixed = reply(
+      [words("Right now the verdict is: "), chip("verdict.best"), words(". Some templates have too few sends yet.")],
+      [words("Gaps in the data: "), chip("gaps.noTemplate"), words(" sends logged with no template and "), chip("gaps.maturing"), words(" sends still too young to count.")],
+    );
+    expect(narrativeProblems(fixed, table)).toEqual([]);
+  });
+
+  it("is told the rules it broke: no ranking word even in a plain phrase, and the verdict stands alone", async () => {
+    fakeGemini(answer(JSON.stringify(GOOD)));
+    await explainScorecard(OWNER);
+    const system = (calls[0].body.systemInstruction as { parts: { text: string }[] }).parts[0].text;
+    expect(system).toContain('such as "which template works best"');
+    expect(system).toContain("Right now the verdict is: ");
+  });
+});

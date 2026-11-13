@@ -8,7 +8,8 @@ import { TEMPLATE_LIMITS } from "@/lib/limits";
 
 const PLACEHOLDER_HINT = "Use {{firstName}}, {{senderName}} and {{orgName}} for the names. No other {{...}} is allowed.";
 
-export function TemplateInputs({ idPrefix, name = "", body = "" }: { idPrefix: string; name?: string; body?: string }) {
+// `bodyLocked`: the text can be read but not changed (a template in a running experiment).
+export function TemplateInputs({ idPrefix, name = "", body = "", bodyLocked = false }: { idPrefix: string; name?: string; body?: string; bodyLocked?: boolean }) {
   const [nameValue, setName] = useState(name);
   const [bodyValue, setBody] = useState(body);
   return (
@@ -39,11 +40,12 @@ export function TemplateInputs({ idPrefix, name = "", body = "" }: { idPrefix: s
           rows={6}
           value={bodyValue}
           onChange={(e) => setBody(e.target.value)}
+          readOnly={bodyLocked}
           aria-describedby={`${idPrefix}-hint`}
           className="lg-textarea"
         />
         <p id={`${idPrefix}-hint`} className="lg-hint mt-1">
-          {PLACEHOLDER_HINT}
+          {bodyLocked ? "The text is fixed while its experiment runs. The name can still change." : PLACEHOLDER_HINT}
         </p>
       </div>
     </>

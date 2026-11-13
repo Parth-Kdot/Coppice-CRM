@@ -3,10 +3,18 @@ import { Disclosure } from "@/components/ledger/disclosure";
 import { OverflowMenu } from "@/components/ledger/overflow-menu";
 import { Segmented } from "@/components/ledger/segmented";
 import { PageHead } from "@/components/ledger/shared";
+import { ExplainPanel } from "@/components/ledger/lab/explain-panel";
+import { TemplateLab } from "@/components/ledger/lab/lab-section";
+import { TryVariantMenu } from "@/components/ledger/lab/variant-menu";
 import { CompareTable, RULES_NOTE, TemplatesTable } from "@/components/ledger/stats-blocks";
+import { isConfigured } from "@/lib/ai/client";
+import { AI_WINDOW_DAYS, aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
+import { day } from "@/lib/dates";
+import { NOTHING_TO_EXPLAIN, readNarrative } from "@/lib/scorecard/explain";
 import { workspaceStats } from "@/lib/stats";
 import { formatCount, formatPct, formatRange, MIN_SENDS, type ActiveVerdict, type Rated, type TemplateLine } from "@/lib/stats-math";
+import { getExperimentView } from "@/lib/template-lab/lab";
 import { statsFiltersSchema } from "@/lib/validation";
 import "@/components/ledger/pages.css";
 import "@/components/ledger/stats.css";
@@ -86,7 +94,11 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
   const raw = await searchParams;
   const { by } = statsFiltersSchema.parse({ by: [raw.by].flat()[0] ?? null });
   const split = by ?? "none";
-  const stats = await workspaceStats({ userId, workspaceId }, split);
+  const tenant = { userId, workspaceId };
+  const [stats, usage, experiment] = await Promise.all([workspaceStats(tenant, split), aiUsage(tenant), getExperimentView(tenant)]);
+  // The stored explanation is read, never written, here: the AI is only ever asked by its button.
+  const explained = await readNarrative(tenant, split === "none" ? stats : undefined);
+  const aiOn = isConfigured() && usage.enabled;
   const base = `/${workspaceId}/stats`;
   const { ai, hand, lead } = stats.authorship;
   const sent = stats.templates.reduce((sum, t) => sum + t.stat.sent, stats.noTemplate.stat.sent);
@@ -104,6 +116,7 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
       <div className="lg-page-stats">
         <PageHead title="Template stats">{more}</PageHead>
         <p className="lg-stats-empty">Stats appear after about {MIN_SENDS} emails are logged with a template.</p>
+        {aiOn && <p className="lg-hint lg-stats-nothing">{NOTHING_TO_EXPLAIN}</p>}
       </div>
     );
   }
@@ -138,6 +151,17 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
 
       <Verdict templates={stats.templates} verdict={stats.activeVerdict} />
 
+      {(aiOn || explained.narrative) && (
+        <ExplainPanel
+          workspaceId={workspaceId}
+          paragraphs={explained.narrative?.paragraphs ?? null}
+          written={explained.narrative ? `Written by ${explained.narrative.createdByName} on ${day(explained.narrative.createdAt)}` : null}
+          changed={explained.changed}
+          canAsk={aiOn}
+          limitLine={aiOn && usage.used >= usage.limit ? `This workspace has used its ${usage.limit} AI calls for the last ${AI_WINDOW_DAYS} days.` : null}
+        />
+      )}
+
       <section className="lg-panel" aria-labelledby="stats-templates">
         <div className="lg-panel-head">
           <h2 id="stats-templates" className="lg-panel-title">
@@ -160,10 +184,22 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
             best={stats.activeVerdict.best}
             worst={stats.activeVerdict.worst}
             split={split}
+            rowMenu={
+              role === "owner" && aiOn
+                ? (line) =>
+                    line.archived ? null : (
+                      <span className="lg-rowmenu">
+                        <TryVariantMenu workspaceId={workspaceId} templateId={line.key} templateName={line.name} running={experiment?.status === "RUNNING"} />
+                      </span>
+                    )
+                : undefined
+            }
           />
           {split === "touch" && <p className="lg-hint mt-2">Split by whether it was the 1st, 2nd, or 3rd-or-later outreach to that company.</p>}
         </div>
       </section>
+
+      <TemplateLab view={experiment} isOwner={role === "owner"} canStart={aiOn} workspaceId={workspaceId} />
 
       {ai.sent + hand.sent > 0 && (
         <Disclosure summary={authorship} className="lg-stats-more">

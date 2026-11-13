@@ -93,8 +93,8 @@ describe("basicsSteps", () => {
 
 describe("aiSteps", () => {
   test.each<[string, AiContext, string[]]>([
-    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
-    ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
+    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "stats", "mcp", "usage", "done"]],
+    ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "stats", "mcp", "usage", "done"]],
     ["AI off for the workspace", { role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
     ["AI not set up on the server", { role: "owner", aiConfigured: false, aiOn: true, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
     ["AI not set up, officer", { role: "member", aiConfigured: false, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
@@ -145,7 +145,7 @@ describe("aiSteps", () => {
 
   it("grouped by page: each page is visited once, and the tour ends back on the queue", () => {
     const routes = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false }).map((s) => s.route);
-    expect(routes).toEqual(["facts", "import", "company", "company", "company", "settings", "settings", "queue"]);
+    expect(routes).toEqual(["facts", "import", "company", "company", "company", "stats", "settings", "settings", "queue"]);
     expect(basicsSteps({ role: "owner", empty: false, basicsRole: null }).at(-1)?.route).toBe("queue");
   });
 
@@ -163,6 +163,21 @@ describe("aiSteps", () => {
     const off = aiSteps({ role: "owner", aiConfigured: true, aiOn: false, mcpOn: false })[0];
     expect(off.body).toMatch(/Add facts by hand here; turn AI on to read a packet/);
     expect(off.anchors[0]).toBe("facts-add");
+  });
+
+  it("the stats card points at the Explain button, on the stats page, for officers and owners alike", () => {
+    for (const role of ["owner", "member"] as const) {
+      const card = aiSteps({ role, aiConfigured: true, aiOn: true, mcpOn: false }).find((s) => s.key === "stats")!;
+      expect(card).toMatchObject({ kind: "coach", route: "stats", title: "Explain these numbers" });
+      expect(card.anchors[0]).toBe("explain-stats");
+      expect(card.body).toMatch(/one AI call/);
+    }
+  });
+
+  it("with AI off or not set up, there is no stats card", () => {
+    for (const ctx of [{ aiConfigured: true, aiOn: false }, { aiConfigured: false, aiOn: true }]) {
+      expect(keys(aiSteps({ role: "owner", mcpOn: false, ...ctx }))).not.toContain("stats");
+    }
   });
 
   it("the assistants and usage cards point inside their sections, so the section opens", () => {

@@ -23,33 +23,38 @@ export type TemplateFields = { name: string; body: string };
 export type TemplateArm = { experimentId: string; label: string; suggested: boolean; sends: number };
 export type TemplateOption = { id: string; name: string; body: string; arm?: TemplateArm };
 
-export function activeTemplates(tenant: Tenant): Promise<TemplateOption[]> {
-  return withTenant(tenant, async (tx) => {
-    const templates: TemplateOption[] = await tx.template.findMany({
-      where: { workspaceId: tenant.workspaceId, archivedAt: null },
-      select: { id: true, name: true, body: true },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-    });
-    const running = await tx.templateExperiment.findFirst({
-      where: { workspaceId: tenant.workspaceId, status: "RUNNING" },
-      select: { id: true, startedAt: true, arms: { select: { templateId: true, label: true } } },
-    });
-    if (!running) return templates;
-    // Sends since the experiment started, every one of them: the point is to even the arms out, so
-    // an email too young to count toward a rate yet still counts here.
-    const sent = await tx.outreach.groupBy({
-      by: ["templateId"],
-      where: { workspaceId: tenant.workspaceId, templateId: { in: running.arms.map((a) => a.templateId) }, sentAt: { gte: running.startedAt } },
-      _count: { _all: true },
-    });
-    const sends = new Map(sent.map((g) => [g.templateId, g._count._all]));
-    const arms = running.arms.map((a) => ({ ...a, sends: sends.get(a.templateId) ?? 0 }));
-    const suggested = suggestArm(arms);
-    return templates.map((t) => {
-      const arm = arms.find((a) => a.templateId === t.id);
-      return arm ? { ...t, arm: { experimentId: running.id, label: arm.label, suggested: arm.label === suggested, sends: arm.sends } } : t;
-    });
+// Inside the caller's transaction, so a page that already holds one (the company page) reads the
+// same list, with the same `arm` fields, as everything else. This is the one place the pickers'
+// templates are read.
+export async function activeTemplatesIn(tx: Prisma.TransactionClient, workspaceId: string): Promise<TemplateOption[]> {
+  const templates: TemplateOption[] = await tx.template.findMany({
+    where: { workspaceId, archivedAt: null },
+    select: { id: true, name: true, body: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
   });
+  const running = await tx.templateExperiment.findFirst({
+    where: { workspaceId, status: "RUNNING" },
+    select: { id: true, startedAt: true, arms: { select: { templateId: true, label: true } } },
+  });
+  if (!running) return templates;
+  // Sends since the experiment started, every one of them: the point is to even the arms out, so
+  // an email too young to count toward a rate yet still counts here.
+  const sent = await tx.outreach.groupBy({
+    by: ["templateId"],
+    where: { workspaceId, templateId: { in: running.arms.map((a) => a.templateId) }, sentAt: { gte: running.startedAt } },
+    _count: { _all: true },
+  });
+  const sends = new Map(sent.map((g) => [g.templateId, g._count._all]));
+  const arms = running.arms.map((a) => ({ ...a, sends: sends.get(a.templateId) ?? 0 }));
+  const suggested = suggestArm(arms);
+  return templates.map((t) => {
+    const arm = arms.find((a) => a.templateId === t.id);
+    return arm ? { ...t, arm: { experimentId: running.id, label: arm.label, suggested: arm.label === suggested, sends: arm.sends } } : t;
+  });
+}
+
+export function activeTemplates(tenant: Tenant): Promise<TemplateOption[]> {
+  return withTenant(tenant, (tx) => activeTemplatesIn(tx, tenant.workspaceId));
 }
 
 // ----- The Template Lab's lock -----

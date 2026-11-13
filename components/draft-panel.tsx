@@ -5,6 +5,7 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { AiDraftIcon, CheckIcon, CopyLinkIcon, ExternalIcon } from "@/components/ledger/icons";
 import { ChipGroup, type ChipOption } from "@/components/ledger/chips";
 import { ClaimCheck } from "@/components/ledger/draft-check";
+import { ExperimentLine } from "@/components/ledger/lab/experiment-line";
 import { LogOutreachForm } from "@/components/ledger/log-form";
 import { focusSoon } from "@/components/ledger/focus";
 import { QuillWait } from "@/components/ledger/marks";
@@ -83,6 +84,8 @@ export function DraftPanel(props: Props) {
   }, [state]);
   const drafts = state?.ok ? state.data : props.initialDrafts;
   const [kind, setKind] = useState<DraftKind>(props.hasOutreach ? "FOLLOW_UP" : "FIRST_TOUCH");
+  // The template picked in "Base it on" (nothing at first), so the running experiment's "Use it" can pick one.
+  const [baseOn, setBaseOn] = useState("");
   const limitReached = props.usage.used >= props.usage.limit;
   // The server refuses the 41st draft of the day too; this says so before the click.
   const dailyReached = props.daily.used >= props.daily.limit;
@@ -129,7 +132,7 @@ export function DraftPanel(props: Props) {
               <label className="lg-label" htmlFor={`${id}-tpl`}>
                 Base it on
               </label>
-              <select id={`${id}-tpl`} name="templateId" defaultValue="" className="lg-select">
+              <select id={`${id}-tpl`} name="templateId" value={baseOn} onChange={(e) => setBaseOn(e.target.value)} className="lg-select">
                 <option value="">No template, just the facts</option>
                 {props.templates?.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -137,6 +140,7 @@ export function DraftPanel(props: Props) {
                   </option>
                 ))}
               </select>
+              <ExperimentLine templates={props.templates ?? []} selectedId={baseOn} onUse={setBaseOn} />
             </div>
           )}
         </div>
