@@ -138,7 +138,6 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           workspaceId={workspaceId}
           actions={{ changeRole: changeMemberRole, remove: removeMember, leave: leaveWorkspace }}
         />
-        {/* Reserved for the onboarding round: <section id="tours"> (replay the basics and the AI tour) goes here. */}
         {isOwner && (
           <>
             <InviteForm workspaceId={workspaceId} workspaceName={workspace.name} action={inviteMember} />
@@ -242,7 +241,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               Drafts pitch emails from facts your workspace has verified. AI runs on Google&apos;s free Gemini tier, which may use what
               it&apos;s sent to improve Google&apos;s products. Contact names are filled in after a draft comes back, and email addresses and
               phone numbers are masked. A name in your packet, a note or an edited draft can still reach it, so leave those out. A
-              template you base a draft on is sent too, masked the same way, so keep names out of templates.
+              template you base a draft on is sent too, masked the same way, so keep names out of templates. A draft also
+              carries the company&apos;s stage and, for a follow-up, each earlier outreach&apos;s date and channel, whether they replied, and
+              the subject of its AI draft.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
               addresses and phone numbers masked, plus the company&apos;s name and website; never your notes or contacts.
             </p>
@@ -250,7 +251,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               Smart import, an option on the CSV importer, sends Gemini a sheet&apos;s headers only when they are plain spreadsheet words (like
               &ldquo;Last contacted&rdquo;), and otherwise their shape (like &ldquo;2 words&rdquo;), its company names and industries from columns plainly
               labeled as such (like &ldquo;Company&rdquo; or &ldquo;Industry&rdquo;), and only the shape of its other sample cells (like &ldquo;6 words, has a
-              date&rdquo;), not their words. Its free-text cells, which can include names, go to Groq instead, with
+              date&rdquo;), not their words. To spot look-alikes it also sends Gemini the names of the companies already saved in this
+              workspace, cut before any note in the name. Its free-text cells, which can include names, go to Groq instead, with
               email addresses and phone numbers masked. Groq says it doesn&apos;t keep what it&apos;s sent by default, apart from logs it may hold for up to 30 days to
               look into errors or abuse.
               An AI assistant a member connects is separate (see AI assistants below): what it reads, contact names included, goes to

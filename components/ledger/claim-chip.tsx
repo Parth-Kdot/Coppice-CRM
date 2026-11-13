@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { ClaimIcon } from "./icons";
 import { Ribbon } from "./marks";
+import { prefersReducedMotion } from "./motion-kit";
 import type { ClaimState } from "@/lib/claims";
 import "./claims.css";
 
@@ -15,7 +16,7 @@ import "./claims.css";
 // The ribbon drops into the chip once, when a claim becomes yours.
 
 // "Priya Raman" becomes "Priya R."
-export function shortName(name: string | null): string {
+function shortName(name: string | null): string {
   if (!name) return "Someone";
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return parts[0];
@@ -23,7 +24,7 @@ export function shortName(name: string | null): string {
 }
 
 // "Priya Raman" becomes "PR"
-export function initials(name: string | null): string {
+function initials(name: string | null): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return parts[0].slice(0, 2).toUpperCase();
@@ -71,7 +72,7 @@ export function ClaimChip({ claim, companyName, pending = false, compact = false
     const was = before.current;
     before.current = claim.state;
     if (was === claim.state || claim.state !== "mine") return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (prefersReducedMotion()) return;
     wrap.current?.querySelector(".lg-ribbon")?.animate([{ transform: "translateY(-100%)" }, { transform: "translateY(0)" }], {
       duration: 220,
       easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",

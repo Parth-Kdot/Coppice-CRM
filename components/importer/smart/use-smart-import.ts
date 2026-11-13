@@ -7,7 +7,7 @@ import type { ColumnSuggestion, RowProposal, SmartChunk, SmartChunkResult, Smart
 import { SMART_STAGES } from "@/lib/limits";
 import type { ActionResult, ImportMapping, SmartDecision } from "@/lib/validation";
 
-// Smart import, the optional half of the CSV importer (components/csv-importer.tsx). The AI only
+// Smart import, the optional half of the CSV importer (components/importer/importer.tsx). The AI only
 // proposes: every reading shows the cell text it came from, and the person keeps, edits or drops
 // each one before anything is imported. The browser sends the free-text rows one chunk at a time
 // (lib/smart-import/), so a long sheet never needs one long server call; a rate limit pauses the

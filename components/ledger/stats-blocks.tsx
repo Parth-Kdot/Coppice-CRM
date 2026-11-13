@@ -37,7 +37,7 @@ function RangeBar({ stat }: { stat: Rated }) {
 export type Standing = "best" | "worst" | null;
 
 // "880 counted sends, 264 replies, 12 still maturing".
-export function countsText(stat: Rated): string {
+function countsText(stat: Rated): string {
   const parts = [
     `${formatCount(stat.counted)} counted ${stat.counted === 1 ? "send" : "sends"}`,
     `${formatCount(stat.replies)} ${stat.replies === 1 ? "reply" : "replies"}`,

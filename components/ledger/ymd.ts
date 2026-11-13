@@ -5,8 +5,3 @@
 export function formatYmd(ymd: string): string {
   return new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 }
-
-// "Wed, Nov 4"
-export function formatYmdLong(ymd: string): string {
-  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
-}

@@ -3,7 +3,7 @@ import { formatCount } from "@/lib/format";
 import { IMPORT_FIELDS, type ImportField } from "@/lib/limits";
 import type { ImportMapping } from "@/lib/validation";
 
-// The import's duplicate review as plain data (components/csv-importer-duplicates.tsx shows it).
+// The import's duplicate review as plain data (components/importer/duplicates.tsx shows it).
 // Nothing here talks to the server: every answer is still just which rows are skipped, the same
 // `skip` list the import sends (lib/csv.ts runImport), so the server's checks stay the only ones
 // that count.

@@ -3,14 +3,14 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type DragEvent } from "react";
 import "@/components/ledger/zod-jitless";
 import { fileProblem } from "@/lib/csv-file";
-import { DuplicateGroups, groupHeadingId } from "@/components/csv-importer-duplicates";
-import { ImportDone, type Done } from "@/components/csv-importer-result";
-import { SampleRows } from "@/components/csv-importer-sample";
-import { ColumnsGrid, ColumnsLine, Entry, RowProblems, RowWarnings, swapColumn, UnusedColumns } from "@/components/csv-importer-steps";
-import { ImportSummary } from "@/components/csv-importer-summary";
-import { SmartColumns } from "@/components/csv-importer-smart/columns";
-import { SmartReview } from "@/components/csv-importer-smart/review";
-import { readingMatches, useSmartImport, type SmartActions } from "@/components/csv-importer-smart/use-smart-import";
+import { DuplicateGroups, groupHeadingId } from "@/components/importer/duplicates";
+import { ImportDone, type Done } from "@/components/importer/result";
+import { SampleRows } from "@/components/importer/sample";
+import { ColumnsGrid, ColumnsLine, Entry, RowProblems, RowWarnings, swapColumn, UnusedColumns } from "@/components/importer/steps";
+import { ImportSummary } from "@/components/importer/summary";
+import { SmartColumns } from "@/components/importer/smart/columns";
+import { SmartReview } from "@/components/importer/smart/review";
+import { readingMatches, useSmartImport, type SmartActions } from "@/components/importer/smart/use-smart-import";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { focusSoon } from "@/components/ledger/focus";
 import { ImportIcon, WarningIcon } from "@/components/ledger/icons";
@@ -28,7 +28,7 @@ type Props = {
   workspaceId: string;
   preview: (prev: ActionResult<ImportPreview> | null, form: FormData) => Promise<ActionResult<ImportPreview>>;
   run: (prev: ActionResult<ImportResult> | null, form: FormData) => Promise<ActionResult<ImportResult>>;
-  // Smart import (AI feature 3), offered only while AI is on for the workspace.
+  // Smart import, offered only while AI is on for the workspace.
   smart?: SmartActions;
 };
 

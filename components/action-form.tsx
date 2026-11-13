@@ -33,7 +33,7 @@ import type { ActionResult } from "@/lib/validation";
 // ActionFormPending / useActionFormPending(): children read whether the action is in flight, so a
 // keyboard shortcut (log-form's Ctrl+Enter) can refuse to requestSubmit() while it is.
 
-export const ActionFormPending = createContext<boolean>(false);
+const ActionFormPending = createContext<boolean>(false);
 export function useActionFormPending(): boolean {
   return useContext(ActionFormPending);
 }
@@ -66,7 +66,7 @@ type Props = {
 };
 
 // The row after (else before) `li`, its first button: where focus goes when `li` leaves.
-export function nextRowControl(li: Element | null | undefined): HTMLElement | null {
+function nextRowControl(li: Element | null | undefined): HTMLElement | null {
   const sibling = li?.nextElementSibling ?? li?.previousElementSibling;
   return sibling?.querySelector<HTMLElement>("button:not([disabled]), a[href]") ?? null;
 }

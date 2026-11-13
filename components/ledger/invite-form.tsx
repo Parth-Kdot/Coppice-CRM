@@ -23,7 +23,7 @@ type Action<T = undefined> = (prev: ActionResult<T> | null, form: FormData) => P
 export type InviteResult = { email: string; renewed: boolean; until: string };
 
 // No email is sent, so after an invite the owner gets the words to pass on.
-export function inviteMessage(origin: string, email: string, workspaceName: string): string {
+function inviteMessage(origin: string, email: string, workspaceName: string): string {
   return `${origin}/signin\nSign in with ${email} and click Join on ${workspaceName}.`;
 }
 
@@ -130,7 +130,7 @@ export type MemberRow = {
 const roleName = (role: "owner" | "member") => (role === "owner" ? "Owner" : "Officer");
 
 // Past this many members the list shows the first ten, "Show all", and a filter box.
-export const MEMBERS_SHOWN = 10;
+const MEMBERS_SHOWN = 10;
 
 export function MemberList({
   members,

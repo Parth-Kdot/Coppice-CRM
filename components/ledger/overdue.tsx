@@ -1,7 +1,7 @@
 import { HourglassIcon, type HourglassFill } from "./icons";
 
 // How late a follow-up is, in one place. Every screen that shows overdue text (queue, board slips,
-// company page, palette results, focus mode, the landing mini app) calls overdueLevel() and draws
+// company page, palette results, the landing mini app) calls overdueLevel() and draws
 // the result with <OverdueMark>, so the thresholds and the treatments never drift apart.
 //
 //   upcoming  due in the future            ink-2 text, plain hourglass

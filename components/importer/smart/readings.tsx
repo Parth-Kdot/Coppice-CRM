@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ImportChoice } from "@/components/csv-importer-choice";
+import { ImportChoice } from "@/components/importer/choice";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import type { Quote, RowProposal } from "@/lib/smart-import";
 import { STAGE_LABELS } from "@/lib/stages";

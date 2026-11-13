@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type FocusEvent, type KeyboardEvent } from "react";
 import { moveStage, releaseClaim } from "@/app/(app)/[workspaceId]/companies/actions";
 import { BoardSearch } from "@/components/board-search";
 import type { Stage } from "@/generated/prisma/enums";
@@ -9,7 +9,10 @@ import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ReplyChoice } from "@/lib/companies";
 import type { BoardFilters } from "@/lib/validation";
 import { useBoardDrag } from "./board-drag";
+import { inBoardView, rove, settleRoving, SLIP_LINK, slipOf, stripButton } from "./board-dom";
+import { ShortcutsDialog } from "./board-shortcuts";
 import { Slip, type BoardCardData } from "./board-slip";
+import { BoardStrip, GROUPS } from "./board-strip";
 import { focusSoon } from "./focus";
 import { completeStamp, prefersReducedMotion, preloadMotion, restore, sendTo } from "./motion-kit";
 import { CloseIcon, ImportIcon, PlusIcon, StageGlyph } from "./icons";
@@ -39,27 +42,12 @@ import "./board.css";
 
 export type BoardColumnData = { stage: Stage; count: number; shown: number; moreHref: string; cards: BoardCardData[] };
 
-const GROUPS: readonly (readonly Stage[])[] = [["NOT_CONTACTED"], ["CONTACTED"], ["REPLIED"], ["IN_CONVERSATION"], ["COMMITTED", "DECLINED"]];
-
-// A column head prints the stage's own name (the same one the company page, the Move to menu and
-// search use); in a narrow column it wraps onto two lines instead of being shortened.
-const groupLabel = (group: readonly Stage[]) => (group.length > 1 ? "Closed" : STAGE_LABELS[group[0]]);
-
 const FILTER_FROM = 10;
 
 type Menu = { id: string; anchor: HTMLButtonElement };
 // A move on its way: `flew` when the slip flew there (menu, keyboard) rather than being dropped;
 // `away` when its new column is out of view (a phone shows one column), so the board stays put.
 type Landing = { id: string; from: Stage; to: Stage; rect: DOMRect; focus: boolean; flew: boolean; away: boolean };
-
-// Whether `el` is inside the board's horizontal view (on a phone only one column is).
-function inBoardView(el: Element | null, root: HTMLElement | null): boolean {
-  if (!el || !root) return false;
-  const r = el.getBoundingClientRect();
-  const v = root.getBoundingClientRect();
-  return r.width > 0 && r.left >= v.left - 1 && r.right <= v.right + 1;
-}
-const stripButton = (stage: Stage) => document.querySelector<HTMLElement>(`[data-strip-stages~="${stage}"]`);
 
 type Props = {
   workspaceId: string;
@@ -76,24 +64,6 @@ type Props = {
   dupesHref: string;
   archivedHref: string;
 };
-
-// Roving tabindex: one tab stop per column. The slip links carry no tabIndex prop, so React never
-// touches the attribute; this sets it after each render and when focus moves.
-const SLIP_LINK = "[data-slip-link]";
-function rove(link: HTMLElement) {
-  const list = link.closest("ul");
-  list?.querySelectorAll<HTMLElement>(SLIP_LINK).forEach((el) => el.setAttribute("tabindex", el === link ? "0" : "-1"));
-}
-const slipOf = (id: string) => document.querySelector<HTMLElement>(`[data-slip="${CSS.escape(id)}"]`);
-
-function settleRoving(root: HTMLElement | null) {
-  root?.querySelectorAll("ul.lg-slips").forEach((list) => {
-    const links = [...list.querySelectorAll<HTMLElement>(SLIP_LINK)];
-    if (links.length === 0) return;
-    const stop = links.find((el) => el.getAttribute("tabindex") === "0") ?? links[0];
-    for (const el of links) el.setAttribute("tabindex", el === stop ? "0" : "-1");
-  });
-}
 
 export function BoardView(props: Props) {
   const {
@@ -671,116 +641,5 @@ export function BoardView(props: Props) {
 
       {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
     </div>
-  );
-}
-
-// The phone's stage strip: one button per column (glyph, short name, count), sticky above the
-// columns. Pressing one scrolls the board to that column; the column in view is marked. Hidden on
-// wider screens, where every column shows at once.
-function BoardStrip({ scroller, counts }: { scroller: RefObject<HTMLDivElement | null>; counts: number[] }) {
-  const [inView, setInView] = useState(0);
-
-  useEffect(() => {
-    const root = scroller.current;
-    if (!root || typeof IntersectionObserver === "undefined") return;
-    const cols = [...root.querySelectorAll<HTMLElement>(":scope > .lg-bcol")];
-    const ratios = new Map<Element, number>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) ratios.set(entry.target, entry.intersectionRatio);
-        let best = 0;
-        cols.forEach((col, i) => {
-          if ((ratios.get(col) ?? 0) > (ratios.get(cols[best]) ?? 0)) best = i;
-        });
-        setInView(best);
-      },
-      { root, threshold: [0, 0.25, 0.5, 0.75, 1] },
-    );
-    cols.forEach((col) => observer.observe(col));
-    return () => observer.disconnect();
-  }, [scroller]);
-
-  const jump = (index: number) => {
-    const root = scroller.current;
-    const col = root?.querySelectorAll<HTMLElement>(":scope > .lg-bcol")[index];
-    if (!root || !col) return;
-    root.scrollTo({ left: col.offsetLeft, behavior: prefersReducedMotion() ? "auto" : "smooth" });
-    setInView(index);
-  };
-
-  return (
-    <div className="lg-bstrip" role="group" aria-label="Jump to a stage" data-tour="board-strip">
-      {GROUPS.map((group, i) => (
-        <button
-          key={group.join("-")}
-          type="button"
-          className="lg-bstrip-btn"
-          data-strip-stages={group.join(" ")}
-          aria-current={inView === i ? "true" : undefined}
-          onClick={() => jump(i)}
-        >
-          <StageGlyph stage={group[0]} size={15} />
-          <span>{groupLabel(group)}</span>
-          <span className="lg-bstrip-n">{counts[i].toLocaleString("en-US")}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const SHORTCUTS: [string, string][] = [
-  ["Tab", "Next column"],
-  ["Up, Down", "Previous or next company in a column"],
-  ["Left, Right", "The column beside it"],
-  ["Enter", "Open the company"],
-  ["m", "Move it to another stage, or claim it"],
-  ["c", "Claim it"],
-  ["Drag", "Drop a slip on another stage to move it"],
-];
-
-// "Keyboard shortcuts" from the More menu: a small dialog, so the keys are never a permanent line on
-// the board. Escape or Close shuts it and focus goes back to the More button.
-function ShortcutsDialog({ onClose }: { onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const el = dialog.current;
-    if (el && !el.open) el.showModal();
-    return () => {
-      el?.close();
-      focusSoon('[data-tour="board-more"]');
-    };
-  }, []);
-  return (
-    <dialog
-      ref={dialog}
-      className="lg-dialog lg-bkeys"
-      aria-labelledby="board-keys-h"
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-    >
-      <div className="lg-bkeys-body">
-        <h2 id="board-keys-h" className="lg-h3">
-          Keyboard shortcuts
-        </h2>
-        <p className="lg-hint">On a focused company slip:</p>
-        <dl className="lg-bkeys-list">
-          {SHORTCUTS.map(([key, what]) => (
-            <div key={key}>
-              <dt>
-                <kbd>{key}</kbd>
-              </dt>
-              <dd>{what}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="lg-bkeys-acts">
-          <button type="button" className="lg-btn" onClick={onClose} autoFocus>
-            Close
-          </button>
-        </div>
-      </div>
-    </dialog>
   );
 }

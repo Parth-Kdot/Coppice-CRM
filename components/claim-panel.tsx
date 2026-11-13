@@ -1,4 +1,4 @@
-import { ClaimButton, TicketRelease } from "@/components/ledger/company-blocks";
+import { ClaimButton, TicketRelease } from "@/components/ledger/company/claim-buttons";
 import { ClaimIcon } from "@/components/ledger/icons";
 import { Ribbon } from "@/components/ledger/marks";
 import type { Stage, Via } from "@/generated/prisma/enums";
@@ -35,7 +35,7 @@ type Props = {
 // (Committed, Declined) has no ticket: it can't be claimed and the header says why.
 //
 // Rendered on the server; only the buttons run in the browser. Claiming stamps the new ticket and
-// drops the ribbon onto it; releasing tears the body off along the perforation (company-blocks.tsx).
+// drops the ribbon onto it; releasing tears the body off along the perforation (components/ledger/company/claim-buttons.tsx).
 // Releasing your own claim asks nothing first (it is easy to take back): the note says so and offers
 // Undo, which claims it again. An owner's Force release still asks.
 // The section is keyed by state, so a new ticket is a new element and never inherits a torn one.

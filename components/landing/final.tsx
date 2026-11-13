@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { LogoMark } from "../ledger/logo";
-import { SHOOTS_MANY, Stool } from "../ledger/stool";
+import { LogoMark } from "../brand/logo";
+import { SHOOTS_MANY, Stool } from "../brand/stool";
 import { FINAL, FOOTER } from "./copy";
 import { MOTION_OK, setupGsap } from "./motion";
 

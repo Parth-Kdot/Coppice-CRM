@@ -10,7 +10,8 @@ import { Tick } from "@/components/ledger/marks";
 import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { SaveResult } from "@/lib/companies";
-import { COMPANY_LIMITS, type ActionResult } from "@/lib/validation";
+import { COMPANY_LIMITS } from "@/lib/limits";
+import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 
 export type CompanyValues = { name: string; industry: string; website: string; notes: string };

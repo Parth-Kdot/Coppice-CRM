@@ -46,7 +46,7 @@ export function LogoMark({ size = 40, title, ...rest }: MarkProps) {
 type WordmarkProps = { className?: string };
 
 // "Coppice" in Libre Caslon Text bold, slightly tracked.
-export function Wordmark({ className = "" }: WordmarkProps) {
+function Wordmark({ className = "" }: WordmarkProps) {
   return <span className={`font-display font-bold tracking-[0.01em] ${className}`}>Coppice</span>;
 }
 

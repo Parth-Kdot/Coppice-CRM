@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ImportChoice } from "@/components/csv-importer-choice";
-import { ExistingCard, RowCard } from "@/components/csv-importer-dupcards";
+import { ImportChoice } from "@/components/importer/choice";
+import { ExistingCard, RowCard } from "@/components/importer/duplicate-cards";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { focusSoon } from "@/components/ledger/focus";
 import { Tick } from "@/components/ledger/marks";
@@ -13,7 +13,7 @@ import { ShowMore } from "@/components/ledger/show-more";
 import { bulkAnswers, chosenOption, choiceEffects, groupOptions, groupOutcome, groupsLeft, kindOf, nameIn, type ReviewGroup } from "@/lib/import-review";
 import type { Quote } from "@/lib/smart-import";
 
-// The import's duplicate review (components/csv-importer.tsx), one group at a time: "Group 2 of 6",
+// The import's duplicate review (components/importer/importer.tsx), one group at a time: "Group 2 of 6",
 // its question and answers, Confirm, and Back / Next to move between the groups still open. When
 // five or more open groups share a kind, one line above decides them all ("Skip all 12 already in
 // Coppice"). Confirmed groups fold into "Decided", where Change brings one back. Every answer only
@@ -41,7 +41,7 @@ type Props = {
   doNotContact: Map<number, Quote>;
 };
 
-export const groupDomId = (idPrefix: string, key: string) => `${idPrefix}-grp-${key}`;
+const groupDomId = (idPrefix: string, key: string) => `${idPrefix}-grp-${key}`;
 export const groupHeadingId = (idPrefix: string, key: string) => `${groupDomId(idPrefix, key)}-h`;
 
 function GroupCard({
