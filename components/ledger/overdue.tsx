@@ -1,3 +1,4 @@
+import { overdueText } from "@/lib/dates";
 import { HourglassIcon, type HourglassFill } from "./icons";
 
 // How late a follow-up is, in one place. Every screen that shows overdue text (queue, board slips,
@@ -34,14 +35,8 @@ const FILL: Record<OverdueLevel, HourglassFill> = {
   long: "drained",
 };
 
-// "Due in 4 days" for the coming week, "Due Nov 2" after that. `dueOn` is the short date ("Nov 2").
-export function overdueText(days: number, dueOn?: string): string {
-  if (days > 0) return days === 1 ? "1 day overdue" : `${days} days overdue`;
-  if (days === 0) return "Due today";
-  if (days === -1) return "Due tomorrow";
-  if (days >= -7 || !dueOn) return `Due in ${-days} days`;
-  return `Due ${dueOn}`;
-}
+// The words for how late a follow-up is live in lib/dates.ts, so server code can say them too.
+export { overdueText };
 
 // The compact form for tight places (the queue between 760 and 1100 px, board slips): "Due today",
 // "9d late", "In 3d". Same `days` as overdueText (positive is overdue). Callers keep the full words,
