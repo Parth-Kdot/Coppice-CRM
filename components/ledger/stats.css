@@ -68,6 +68,9 @@
     color: var(--ink-2);
     font-size: var(--fs-3);
   }
+  .lg-stats-empty-act {
+    margin-top: 14px;
+  }
   .lg-stats-how {
     margin-top: 4px;
   }

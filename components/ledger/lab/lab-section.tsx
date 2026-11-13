@@ -119,8 +119,7 @@ export function TemplateLab({ view, isOwner, canStart, workspaceId }: { view: Ex
     <Disclosure summary="Template Lab" count={count} className="lg-stats-more lg-lab" id="template-lab">
       {!view && (
         <p className="lg-hint lg-lab-empty">
-          No experiment yet. Open the ⋯ menu on a template and choose Try a variant: Coppice proposes versions that each change one thing, and the one or
-          two you pick run against the original while the log form suggests whichever has the fewest sends.
+          No experiment yet. To start one, open the ⋯ menu on a template and choose Try a variant.
         </p>
       )}
       {view && (

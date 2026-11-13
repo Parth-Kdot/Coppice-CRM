@@ -1213,15 +1213,73 @@
   /* ---------- RowsSkeleton (components/ledger/skeleton.tsx) ---------- */
   .lg-skel {
     min-width: 0;
-    padding-top: 8px;
   }
+  /* The title bar is as tall as a page's h1 (--fs-5 on phones, --fs-6 from 900px, line height 1.12)
+     and sits where the h1 sits, so the real heading lands on it. */
   .lg-skel-title {
     width: min(40%, 280px);
-    height: 30px;
-    margin-bottom: 18px;
+    height: calc(var(--fs-5) * 1.12);
+    margin: 0 0 18px;
     border-radius: 2px;
     background: var(--paper-2);
     animation: lg-skel-pulse 1200ms ease-in-out infinite alternate;
+  }
+  /* The board's heading is smaller than the others (board.css). */
+  .lg-skel[data-cols] .lg-skel-title {
+    height: 36px;
+    margin: 4px 0 18px;
+  }
+  @media (min-width: 900px) {
+    .lg-skel-title {
+      height: calc(var(--fs-6) * 1.12);
+    }
+  }
+  .lg-skel-title[data-sub] {
+    margin-bottom: 8px;
+  }
+  .lg-skel-back {
+    width: 72px;
+    height: 16px;
+    margin: 2px 0 18px;
+    border-radius: 2px;
+    background: var(--paper-2);
+    animation: lg-skel-pulse 1200ms ease-in-out infinite alternate;
+  }
+  .lg-skel-sub {
+    width: min(60%, 420px);
+    height: 14px;
+    margin-bottom: 22px;
+    border-radius: 2px;
+    background: var(--paper-2);
+    animation: lg-skel-pulse 1200ms ease-in-out infinite alternate;
+  }
+  .lg-skel-panels {
+    display: grid;
+    gap: 20px;
+  }
+  /* A company page is one tall box with the name inside it. */
+  .lg-skel-panel.lg-skel-card {
+    min-height: 340px;
+    margin-bottom: 20px;
+    padding-top: 12px;
+  }
+  .lg-skel-card .lg-skel-title {
+    margin-bottom: 4px;
+  }
+  .lg-skel-panels[data-narrow] {
+    max-width: 920px;
+  }
+  .lg-skel-panel {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+    min-height: 120px;
+    padding: 20px 24px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+  }
+  .lg-skel-panel .lg-skel-bar[data-short] {
+    width: 40%;
   }
   .lg-skel-grid {
     display: grid;
@@ -1299,6 +1357,8 @@
 @media (prefers-reduced-motion: reduce) {
   .lg-omenu,
   .lg-skel-title,
+  .lg-skel-sub,
+  .lg-skel-back,
   .lg-skel-bar,
   .lg-seg-pend[data-pending] {
     animation: none !important;

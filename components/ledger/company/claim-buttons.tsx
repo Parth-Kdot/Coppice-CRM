@@ -3,7 +3,7 @@
 import { useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
-import { focusSoon, whenDrawn } from "../focus";
+import { focusSoon, useFocusAfterCommit, whenDrawn } from "../focus";
 import { completeStamp, removeAway, restore } from "../motion-kit";
 import { useNotify } from "../providers";
 import type { Action } from "./types";
@@ -20,6 +20,7 @@ export function ClaimButton({ action, workspaceId, companyId, companyName, label
   const [pending, startTransition] = useTransition();
   const notify = useNotify();
   const router = useRouter();
+  const schedule = useFocusAfterCommit();
   return (
     <button
       type="button"
@@ -40,8 +41,10 @@ export function ClaimButton({ action, workspaceId, companyId, companyName, label
             startTransition(() => focusSoon('#log-outreach input[name="channel"]:checked'));
           } else {
             notify(result.error, "error");
+            // The refresh redraws the ticket as a new element (its key is the claim state). Focus moves
+            // once that render commits, or when it unmounts this button.
             router.refresh();
-            startTransition(() => focusSoon(TICKET));
+            startTransition(() => schedule(TICKET));
           }
         })
       }

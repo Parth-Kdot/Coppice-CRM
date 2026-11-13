@@ -30,7 +30,7 @@ export default async function AskPage({ params }: PageProps<"/[workspaceId]/ask"
   if (!status.aiOn) {
     return (
       <div className="lg-page-ask">
-        <PageHead title="Ask Coppice" />
+        <PageHead title="Ask Coppice" sub="Ask about your pipeline or how Coppice works. Answers are read from your workspace." />
         <p className="lg-ask-off">
           {AI_OFF_MESSAGE}
           {member.role === "owner" && (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { OverflowMenu } from "@/components/ledger/overflow-menu";
 import { Segmented } from "@/components/ledger/segmented";
@@ -11,7 +12,7 @@ import { isConfigured } from "@/lib/ai/client";
 import { AI_WINDOW_DAYS, aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { day } from "@/lib/dates";
-import { NOTHING_TO_EXPLAIN, readNarrative } from "@/lib/scorecard/explain";
+import { readNarrative } from "@/lib/scorecard/explain";
 import { workspaceStats } from "@/lib/stats";
 import { formatCount, formatPct, formatRange, MIN_SENDS, type ActiveVerdict, type Rated, type TemplateLine } from "@/lib/stats-math";
 import { getExperimentView } from "@/lib/template-lab/lab";
@@ -114,9 +115,21 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
   if (sent === 0) {
     return (
       <div className="lg-page-stats">
-        <PageHead title="Template stats">{more}</PageHead>
+        <PageHead title="Template stats" sub="Which templates get replies, from outreach logged in Coppice.">
+          {more}
+        </PageHead>
         <p className="lg-stats-empty">Stats appear after about {MIN_SENDS} emails are logged with a template.</p>
-        {aiOn && <p className="lg-hint lg-stats-nothing">{NOTHING_TO_EXPLAIN}</p>}
+        <p className="lg-stats-empty-act">
+          {role === "owner" ? (
+            <Link href={`/${workspaceId}/settings#templates`} className="lg-btn lg-btn-primary">
+              Manage templates
+            </Link>
+          ) : (
+            <Link href={`/${workspaceId}`} className="lg-btn lg-btn-primary">
+              Go to the queue
+            </Link>
+          )}
+        </p>
       </div>
     );
   }
