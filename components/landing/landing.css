@@ -155,8 +155,7 @@ html.lenis body {
 .ld-nav-menu-only {
   display: none;
 }
-.ld-nav-links a,
-.ld-nav-signin {
+.ld-nav-links a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -165,8 +164,7 @@ html.lenis body {
   font-weight: 500;
   text-decoration: none;
 }
-.ld-nav-links a:hover,
-.ld-nav-signin:hover {
+.ld-nav-links a:hover {
   text-decoration: underline;
   text-underline-offset: 5px;
   text-decoration-thickness: 1px;
@@ -185,9 +183,6 @@ html.lenis body {
 @media (max-width: 1060px) {
   .ld-nav-links {
     gap: 16px;
-  }
-  .ld-nav-signin {
-    display: none;
   }
 }
 /* Below 860 px the section links move into a menu that opens under the bar. */

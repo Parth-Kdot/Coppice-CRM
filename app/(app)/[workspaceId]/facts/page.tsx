@@ -16,6 +16,7 @@ import { FactBoard } from "./fact-board";
 import { ReadOnlyFacts, type FactView } from "./fact-item";
 import { PacketFiles } from "./packet-files";
 import "@/components/ledger/pages.css";
+import "@/components/ledger/facts.css";
 import { pageTitle } from "../page-title";
 
 export async function generateMetadata({ params }: PageProps<"/[workspaceId]/facts">): Promise<Metadata> {

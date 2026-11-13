@@ -23,6 +23,7 @@ import type { Quote } from "@/lib/smart-import";
 import type { ActionResult, ImportField, ImportMapping } from "@/lib/validation";
 import "@/components/ledger/company.css";
 import "@/components/ledger/pages.css";
+import "@/components/ledger/import.css";
 
 type Props = {
   workspaceId: string;

@@ -9,6 +9,10 @@ const ICONS = {
   import: EngravedImport,
   facts: EngravedFacts,
   draft: EngravedDraft,
+  stats: EngravedLog,
+  smart: EngravedImport,
+  brief: EngravedFacts,
+  assistants: EngravedClaim,
 } as const;
 
 // Features: one ruled column. The engraved icon sits in the margin, the title and its one line in

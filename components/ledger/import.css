@@ -1,0 +1,696 @@
+/* ==========================================================================================
+   Ledger, the import page. Import is a short ledger of numbered entries: the drop zone, one-line
+   steps, the review of problems and look-alike groups, and the result. The frame, the review
+   table and the tallies it shares with Template stats are in pages.css. Plain CSS in a file, so
+   the strict style-src policy allows it.
+   ========================================================================================== */
+
+@layer components {
+  /* ---------- Import: numbered entries ---------- */
+  .lg-step {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-step:last-child {
+    border-bottom: 0;
+  }
+  .lg-step-margin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-top: 20px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-step-no {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--ink-2);
+    background: var(--sheet);
+    color: var(--ink);
+    font-size: var(--fs-2);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .lg-step[data-state="active"] .lg-step-no {
+    border-color: var(--moss);
+    background: var(--moss);
+    color: var(--paper);
+  }
+  .lg-step[data-state="done"] .lg-step-no,
+  .lg-step[data-state="set"] .lg-step-no {
+    border-color: var(--moss);
+    color: var(--moss);
+  }
+  .lg-step-body {
+    min-width: 0;
+    padding: 16px 0 24px 24px;
+  }
+  .lg-step-h {
+    margin-bottom: 10px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-mapgrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 18px;
+  }
+  .lg-maplabel {
+    margin-bottom: 4px;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .lg-table td.lg-cellnote {
+    min-width: 240px;
+    color: var(--ink-2);
+  }
+  .lg-table td.lg-c-problems {
+    min-width: 170px;
+  }
+  .lg-email {
+    display: block;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Look-alike groups: what is already in the workspace next to each row in the file. */
+  .lg-groups {
+    margin-top: 28px;
+  }
+  .lg-group {
+    margin-top: 14px;
+    padding: 12px 14px 14px;
+    border: 1px solid var(--edge);
+    background: var(--paper-2);
+  }
+  .lg-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    margin-bottom: 10px;
+  }
+  .lg-group-q {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-3);
+  }
+  .lg-group-cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+  }
+  .lg-dupcard {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px 14px 12px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+  }
+  .lg-dupcard-have {
+    background: var(--paper);
+    border-color: var(--ink-2);
+  }
+  .lg-dupname {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  /* A website breaks after its dots and slashes (<wbr> from the review), not mid-word. */
+  .lg-dupsite {
+    margin-bottom: 8px;
+    color: var(--ink-2);
+    overflow-wrap: break-word;
+  }
+  .lg-dupcard .lg-dupchoice {
+    margin-top: auto;
+  }
+
+  /* ---------- Import review: the summary bar, choices, groups that leave ---------- */
+  /* The summary sits above the steps and stays in view while the page scrolls. */
+  .lg-importer {
+    /* Where the bar sticks, and the room it takes, so a group scrolled to is never under it. */
+    --importbar-top: 0px;
+    --importbar-room: 100px;
+  }
+  .lg-importbar {
+    position: sticky;
+    top: var(--importbar-top);
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 16px;
+    margin-top: 20px;
+    padding: 10px 16px;
+    border: 1px solid var(--ink-2);
+    background: var(--sheet);
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-importbar + .lg-entries {
+    margin-top: 10px;
+  }
+  .lg-importbar-line {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  /* What the review scrolls to sits just under the bar, never behind it. */
+  .lg-importerr,
+  .lg-groups-done {
+    scroll-margin-top: calc(var(--importbar-top) + var(--importbar-room));
+  }
+  .lg-importerr:focus-visible {
+    outline-offset: 3px;
+  }
+  /* A choice: real radios drawn as one joined switch, or as a short list of answers. The chosen
+     side is the moss fill with a check; the others are flat paper with an empty ring, so it reads
+     as "which is on", not as a row of buttons. */
+  .lg-choice {
+    container-type: inline-size;
+    min-width: 0;
+  }
+  .lg-seg .lg-label {
+    margin: 0 0 6px;
+    padding: 0;
+    white-space: normal;
+    font-size: var(--fs-2);
+    font-weight: 600;
+  }
+  .lg-seg .lg-chips {
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0;
+    max-width: 100%;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+  }
+  .lg-seg .lg-chipx {
+    display: flex;
+    min-width: 0;
+  }
+  .lg-seg .lg-chipx > span {
+    flex: 1;
+    gap: 7px;
+    justify-content: flex-start;
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink-2);
+    white-space: normal;
+    text-align: left;
+  }
+  .lg-seg .lg-chipx + .lg-chipx > span {
+    border-left: 1px solid var(--edge);
+  }
+  .lg-seg .lg-chipx:first-child > span {
+    border-radius: 2px 0 0 2px;
+  }
+  .lg-seg .lg-chipx:last-child > span {
+    border-radius: 0 2px 2px 0;
+  }
+  .lg-seg .lg-chipx > span::before {
+    content: "";
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--edge);
+    border-radius: 50%;
+  }
+  .lg-seg .lg-chipx:hover > span {
+    background: var(--paper-2);
+    border-color: var(--edge);
+    color: var(--ink);
+  }
+  .lg-seg .lg-chipx input:checked + span {
+    background: var(--moss);
+    color: var(--paper);
+    cursor: default;
+  }
+  .lg-seg .lg-chipx input:checked + span::before {
+    border: 0;
+    border-radius: 0;
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.6l3.3 3.1L13 4.6' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .lg-seg .lg-chipx input:focus-visible + span {
+    outline-offset: -4px;
+    outline-color: var(--paper);
+  }
+  .lg-seg .lg-chipx input:focus-visible:not(:checked) + span {
+    outline-color: var(--moss-2);
+  }
+  /* The words inside a choice are plain text, not chips of their own. */
+  .lg-seg .lg-chipx:hover span span {
+    border: 0;
+    background: none;
+    color: inherit;
+  }
+  .lg-seg .lg-chipx span span {
+    display: inline;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    white-space: normal;
+    transition: none;
+  }
+  .lg-seg-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-seg .lg-chipx span.lg-seg-sugg {
+    margin-left: auto;
+    padding-left: 10px;
+    font-size: var(--fs-1);
+    font-weight: 500;
+    opacity: 0.85;
+    white-space: nowrap;
+  }
+  /* Too narrow to keep "Suggested" beside a long answer: it goes on its own line under it. */
+  @container (max-width: 420px) {
+    .lg-seg-list .lg-chipx > span {
+      flex-wrap: wrap;
+      row-gap: 0;
+    }
+    .lg-seg-list .lg-chipx span.lg-seg-text {
+      flex: 1 1 0;
+    }
+    .lg-seg-list .lg-chipx span.lg-seg-sugg {
+      flex-basis: 100%;
+      margin-left: 0;
+      padding-left: 21px;
+    }
+  }
+  /* A list: one answer per line, the whole width. */
+  .lg-seg-list .lg-chips {
+    display: grid;
+    grid-auto-flow: row;
+    width: 100%;
+    max-width: 560px;
+  }
+  .lg-seg-list .lg-chipx + .lg-chipx > span {
+    border-left: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .lg-seg-list .lg-chipx:first-child > span {
+    border-radius: 2px 2px 0 0;
+  }
+  .lg-seg-list .lg-chipx:last-child > span {
+    border-radius: 0 0 2px 2px;
+  }
+  .lg-seg-list .lg-chipx > span {
+    min-height: 40px;
+    padding: 6px 12px;
+  }
+  /* Too narrow for two side by side: they stack. */
+  @container (max-width: 250px) {
+    .lg-seg .lg-chips {
+      display: grid;
+      grid-auto-flow: row;
+      width: 100%;
+    }
+    .lg-seg .lg-chipx + .lg-chipx > span {
+      border-left: 0;
+      border-top: 1px solid var(--edge);
+    }
+  }
+  .lg-seg-cap {
+    margin-top: 6px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-seg-ack {
+    color: var(--moss);
+    font-weight: 600;
+    animation: lg-fade var(--dur-fast) ease both;
+  }
+  /* A duplicate group: which one it is, why it was flagged, the entries, the answer, Confirm. */
+  .lg-dupgroup {
+    scroll-margin-top: calc(var(--importbar-top) + var(--importbar-room));
+  }
+  /* The next group rises into the place of the one just confirmed (the global reduced-motion rule
+     makes it instant). */
+  .lg-dupgroup[data-rise] {
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-dupgroup .lg-group-head {
+    display: grid;
+    gap: 2px;
+  }
+  .lg-group-count {
+    color: var(--moss);
+  }
+  .lg-dupgroup .lg-group-q {
+    overflow-wrap: anywhere;
+  }
+  .lg-dupgroup .lg-group-q:focus-visible {
+    outline-offset: 4px;
+  }
+  .lg-group-why {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-groupchoice {
+    margin-top: 14px;
+  }
+  .lg-group-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-dupcard-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 8px;
+  }
+  /* What the import does with a row, in words: never color alone. */
+  .lg-dupstate {
+    padding: 0 6px;
+    border: 1px solid var(--edge);
+    border-radius: 2px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .lg-dupstate[data-on] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+  .lg-dupdnc {
+    margin-bottom: 8px;
+    color: var(--rust);
+    font-size: var(--fs-1);
+    font-weight: 600;
+  }
+  .lg-dupdnc .lg-quote {
+    font-weight: 400;
+  }
+  .lg-groups-done {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--moss);
+    background: var(--moss-wash);
+    color: var(--moss);
+    font-weight: 600;
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  .lg-groups-done:focus-visible {
+    outline-offset: 3px;
+  }
+
+  /* ---------- import (drop zone, one-line steps, notes, one group at a time, result) ---------- */
+  .lg-dropzone {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 40px 20px;
+    border: 1.5px dashed var(--edge);
+    background: var(--sheet);
+    text-align: center;
+  }
+  .lg-dropzone[data-dragging] {
+    border-color: var(--moss);
+    background: var(--moss-wash);
+  }
+  .lg-dropzone-icon {
+    color: var(--ink-2);
+  }
+  .lg-dropzone-text {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 10px;
+    min-width: 0;
+  }
+  .lg-dropzone-text .lg-filerow {
+    display: inline-flex;
+  }
+  .lg-howto {
+    display: grid;
+    gap: 4px;
+    padding-left: 18px;
+    list-style: disc;
+  }
+  .lg-filelabel {
+    cursor: pointer;
+  }
+  /* The import's steps sit tighter than the generic ledger steps: a narrower margin, less air. */
+  .lg-impsteps {
+    padding: 0 20px;
+  }
+  .lg-impsteps .lg-step {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .lg-impsteps .lg-step-margin {
+    padding-top: 14px;
+  }
+  .lg-impsteps .lg-step-body {
+    padding: 12px 0 14px 20px;
+  }
+  .lg-impsteps .lg-groups {
+    margin-top: 16px;
+  }
+  .lg-impsteps .lg-step-h {
+    margin-bottom: 6px;
+    font-size: var(--fs-3);
+  }
+  .lg-colsrow {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-colpair strong {
+    font-weight: 600;
+  }
+  .lg-mapset {
+    min-width: 0;
+    margin: 12px 0 0;
+    padding: 0;
+    border: 0;
+  }
+  .lg-mapset:disabled {
+    opacity: 0.6;
+  }
+  .lg-smartentry {
+    margin-top: 10px;
+  }
+  .lg-impwarn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    color: var(--rust);
+    font-weight: 600;
+  }
+  .lg-impwarn svg {
+    flex: none;
+    margin-top: 4px;
+  }
+  .lg-impnote + .lg-impnote {
+    margin-top: 2px;
+  }
+  .lg-rowlist {
+    display: grid;
+    gap: 4px;
+    margin-top: 6px;
+    list-style: none;
+  }
+  .lg-rowlist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .lg-rowlist li svg {
+    flex: none;
+    margin-top: 4px;
+  }
+  .lg-importbar-line {
+    min-width: 0;
+  }
+  .lg-importbar .lg-btn {
+    flex: none;
+    white-space: nowrap;
+  }
+  .lg-importerr {
+    margin-top: 10px;
+  }
+  .lg-bulkbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 10px;
+  }
+  .lg-group-nav {
+    display: inline-flex;
+    gap: 16px;
+    margin-left: auto;
+  }
+  .lg-decided {
+    margin-top: 10px;
+  }
+  .lg-decided li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 14px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-decided li:last-child {
+    border-bottom: 0;
+  }
+  .lg-decided li .lg-linkbtn {
+    flex: none;
+  }
+  .lg-importdone {
+    margin-top: 12px;
+  }
+  /* "Import finished / 12 companies are on the board", beside a round moss seal. */
+  .lg-importdone-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .lg-importdone-seal {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1.5px solid var(--moss);
+    border-radius: 50%;
+    outline: 1px solid var(--moss);
+    outline-offset: 2px;
+    background: var(--moss-wash);
+    color: var(--moss);
+  }
+  .lg-importdone-seal[data-none] {
+    border-color: var(--edge);
+    outline-color: var(--edge);
+    background: var(--paper-2);
+    color: var(--ink-2);
+  }
+  .lg-importdone-words {
+    display: grid;
+    gap: 0;
+  }
+  .lg-importdone-words .lg-tag {
+    color: var(--moss);
+  }
+  .lg-importdone-line {
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    line-height: 1.15;
+  }
+  .lg-resultlists {
+    display: grid;
+    gap: 2px;
+    max-width: 640px;
+    margin-top: 14px;
+  }
+  .lg-resultlist {
+    padding-left: 18px;
+    list-style: disc;
+  }
+  .lg-resultfail li {
+    color: var(--rust);
+  }
+  .lg-resultnext {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 20px;
+    margin-top: 16px;
+  }
+
+  /* ---------- Phones ---------- */
+  @media (max-width: 760px) {
+    .lg-mapgrid {
+      grid-template-columns: 1fr;
+    }
+    .lg-step {
+      grid-template-columns: 44px minmax(0, 1fr);
+    }
+    .lg-step-body {
+      padding-left: 14px;
+    }
+    /* Under the shell's own sticky bar. */
+    .lg-importer {
+      --importbar-top: 49px;
+      --importbar-room: 120px;
+    }
+    .lg-importbar {
+      margin-top: 14px;
+      padding: 8px 12px;
+    }
+    .lg-importbar-line {
+      font-size: var(--fs-1);
+    }
+    .lg-group {
+      padding: 10px 10px 12px;
+    }
+    .lg-dupcard {
+      padding: 10px 12px 12px;
+    }
+    .lg-email {
+      max-width: none;
+    }
+  }
+  /* Under 640 px the import drops its step margin, and the bar is one line. */
+  @media (max-width: 640px) {
+    .lg-impsteps {
+      padding: 0 14px;
+    }
+    .lg-impsteps .lg-step {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lg-impsteps .lg-step-margin {
+      display: none;
+    }
+    .lg-impsteps .lg-step-body {
+      padding-left: 0;
+    }
+    .lg-importbar {
+      flex-wrap: nowrap;
+    }
+    .lg-importbar-long,
+    .lg-importbar-review {
+      display: none;
+    }
+    .lg-dropzone {
+      padding: 28px 14px;
+    }
+  }
+}
