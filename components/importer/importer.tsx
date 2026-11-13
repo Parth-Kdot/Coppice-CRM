@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type DragEvent } from "react";
-import "@/components/ledger/zod-jitless";
 import { fileProblem } from "@/lib/csv-file";
 import { DuplicateGroups, groupHeadingId } from "@/components/importer/duplicates";
 import { ImportDone, type Done } from "@/components/importer/result";

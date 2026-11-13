@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { focusSoon } from "@/components/ledger/focus";
 import { completeStamp, preloadMotion, prefersReducedMotion, pulse, removeAway, restore, sendTo, withinReach } from "@/components/ledger/motion-kit";
 import { useConfirm, useNotify } from "@/components/ledger/providers";
+import { plural } from "@/lib/format";
 import type { ActionResult } from "@/lib/validation";
 import { groupByPage, verifyAllLabel } from "./fact-groups";
 import { FactRow, factDomId, type FactHandlers, type FactView } from "./fact-item";
@@ -28,7 +29,6 @@ type Action<T = undefined> = (prev: ActionResult<T> | null, form: FormData) => P
 
 const HEADINGS = { waiting: "facts-waiting-h", verified: "facts-verified-h" } as const;
 const COUNTS = { waiting: "facts-waiting-count", verified: "facts-verified-count" } as const;
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 

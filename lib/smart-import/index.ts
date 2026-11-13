@@ -13,7 +13,8 @@ import { PAST_YEARS } from "./shared";
 //    the cells of a column headed plainly as the company or the industry are sent as text, and only
 //    when they read as a name; every other cell as its shape (columns.ts);
 // 2. company names that look alike though the exact checks miss them, "Lilly" and "Eli Lilly"
-//    (code) or "CAT" and "Caterpillar" (Gemini, IMPORT_LOOKALIKES, names only), flagged with a
+//    (code) or "CAT" and "Caterpillar" (Gemini, IMPORT_LOOKALIKES, which gets the sheet's company
+//    names and every company already saved in the workspace, archived ones too, names only), flagged with a
 //    reason in the import's duplicate review, never merged (lookalikes.ts, lib/duplicates.ts);
 // 3. what the free-text cells say ("emailed 3/2 by Sam, said reach out in Aug"): a stage, a last
 //    contacted date, a follow-up date and a contact, each with the quote it came from. These cells

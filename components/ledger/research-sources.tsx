@@ -1,6 +1,7 @@
 import { ActionForm } from "@/components/action-form";
 import type { SourceView } from "@/lib/research/sources";
-import { SOURCE_LABEL_MAX, type ActionResult } from "@/lib/validation";
+import { SOURCE_LABEL_MAX } from "@/lib/limits";
+import type { ActionResult } from "@/lib/validation";
 import { SOURCE_URL_MAX } from "@/lib/research/urls";
 import { day } from "@/lib/dates";
 import "./pages.css";

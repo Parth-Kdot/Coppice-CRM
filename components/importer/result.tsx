@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { decodeCsvBytes } from "@/lib/csv-file";
+import { formatCount } from "@/lib/format";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { Tick } from "@/components/ledger/marks";
 import { celebrate } from "@/components/ledger/motion-kit";
@@ -107,7 +108,6 @@ export function ImportDone({ workspaceId, result, again }: { workspaceId: string
     count.set(key, (count.get(key) ?? 0) + 1);
   }
   const repeated = new Set([...count].filter(([, n]) => n > 1).map(([key]) => key));
-  const n = (v: number) => v.toLocaleString("en-US");
 
   const added = result.data.imported;
   return (
@@ -119,22 +119,22 @@ export function ImportDone({ workspaceId, result, again }: { workspaceId: string
         <span className="lg-importdone-words">
           <span className="lg-tag">Import finished</span>
           <span className="lg-importdone-line">
-            {added === 0 ? "Nothing new on the board" : `${n(added)} ${added === 1 ? "company is" : "companies are"} on the board`}
+            {added === 0 ? "Nothing new on the board" : `${formatCount(added)} ${added === 1 ? "company is" : "companies are"} on the board`}
           </span>
         </span>
       </p>
       <dl className="lg-tally" role="status" tabIndex={-1} ref={tallyRef}>
         <div>
           <dt className="lg-tag">Imported</dt>
-          <dd data-tone="ok">{n(result.data.imported)}</dd>
+          <dd data-tone="ok">{formatCount(result.data.imported)}</dd>
         </div>
         <div>
           <dt className="lg-tag">Skipped</dt>
-          <dd>{n(result.data.skipped)}</dd>
+          <dd>{formatCount(result.data.skipped)}</dd>
         </div>
         <div>
           <dt className="lg-tag">Couldn&apos;t import</dt>
-          <dd data-tone={result.data.errored > 0 ? "bad" : undefined}>{n(result.data.errored)}</dd>
+          <dd data-tone={result.data.errored > 0 ? "bad" : undefined}>{formatCount(result.data.errored)}</dd>
         </div>
       </dl>
       <div className="lg-resultlists">

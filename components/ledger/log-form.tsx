@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import "@/components/ledger/zod-jitless";
 import { ActionForm, useActionFormPending } from "@/components/action-form";
 import { CHANNEL_LABELS, CHANNELS } from "@/lib/channels";
-import { addDays } from "@/lib/dates";
+import { addDays, formatYmd } from "@/lib/dates";
 import { NOTE_MAX } from "@/lib/limits";
 import type { TemplateOption } from "@/lib/templates";
 import type { ActionResult } from "@/lib/validation";
@@ -15,7 +14,6 @@ import { CalendarPopover } from "./date-popover";
 import { Disclosure } from "./disclosure";
 import { whenDrawn } from "./focus";
 import { completeStamp } from "./motion-kit";
-import { formatYmd } from "./ymd";
 import "./company.css";
 import "./templates.css";
 
@@ -59,7 +57,7 @@ type Props = {
   initialNote?: string;
   compact?: boolean;
   label?: string;
-  // The workspace's templates that are not archived (lib/templates.ts activeTemplates).
+  // The workspace's templates that are not archived, as the company page loads them (getCompanyPage in lib/companies.ts).
   templates?: TemplateOption[];
   // The finish moment. After a save the Log button is stamped. `settleInto` (a selector for the
   // list the new entry is drawn in, e.g. "#outreach .lg-entries") stamps that entry too once the

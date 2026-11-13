@@ -9,6 +9,7 @@ import { aiUsage } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
 import { day } from "@/lib/dates";
+import { plural } from "@/lib/format";
 import { getFactSheet, hasMaskToken, isStale, type FactSheetView } from "@/lib/facts";
 import { FACT_MAX } from "@/lib/validation";
 import { addFact, deleteFact, deleteFactSheet, setFactVerified, updateFact, uploadFactSheet, verifyQuotedFacts } from "./actions";
@@ -28,7 +29,6 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/fac
 export const maxDuration = 150;
 
 type Fact = FactSheetView["facts"][number];
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 // The fact sheet: the only things the AI drafter may say about the org. Every fact shows its
 // quote and whether the quote was found on its page, grouped by page, so the owner can check and
@@ -114,8 +114,8 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
       <p className="lg-uploadnote">A text PDF (not a scan), up to 3.5 MB and 40 pages. Reading usually takes under a minute.</p>
       <Disclosure variant="inline" summary="What is sent">
         <p className="lg-uploadnote">
-          The PDF&apos;s text goes to Google&apos;s free Gemini tier with emails and phone numbers masked, so don&apos;t upload anything you wouldn&apos;t hand a
-          sponsor. The facts it finds wait here until you verify them.
+          The PDF&apos;s text goes to Google&apos;s free Gemini tier. Email addresses and phone numbers in US or international (+) format are masked, so
+          don&apos;t upload anything you wouldn&apos;t hand a sponsor. The facts it finds wait here until you verify them.
         </p>
       </Disclosure>
     </>

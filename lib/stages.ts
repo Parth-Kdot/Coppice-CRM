@@ -15,6 +15,11 @@ export const STAGE_LABELS: Record<Stage, string> = {
 // The outcomes. Moving here closes the pitch and clears any claim, so the UI asks first.
 export const TERMINAL_STAGES: Stage[] = ["COMMITTED", "DECLINED"];
 
+// What the stage form and the board ask before a move into an outcome.
+export function closeQuestion(companyName: string, to: Stage): { message: string; confirmLabel: string } {
+  return { message: `Move ${companyName} to ${STAGE_LABELS[to]}? This closes the pitch and releases any claim.`, confirmLabel: `Move to ${STAGE_LABELS[to]}` };
+}
+
 // The stages that mean the company answered. Moving into one of them from any other stage asks
 // "Which outreach got the reply?", so template stats know what worked (lib/claims.ts markReply).
 export const REPLY_STAGES: Stage[] = ["REPLIED", "IN_CONVERSATION", "COMMITTED"];

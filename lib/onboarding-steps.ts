@@ -266,7 +266,7 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn, empty = false }: AiCo
       key: "ai-off",
       kind: "coach",
       title: "AI is off",
-      body: owner ? "AI is off for this workspace. Turn it on in Settings > AI." : "AI is not available here yet. Everything else works.",
+      body: owner ? "AI is off for this workspace. Turn it on in Settings, under AI." : "AI is not available here yet. Everything else works.",
       route: null,
       anchors: [],
       link: owner ? { route: "settings", label: "Open Settings" } : undefined,
