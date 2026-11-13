@@ -207,7 +207,7 @@ export function StepReading({ workspaceId, year, view, locked }: { workspaceId: 
       {(tally.kept > 0 || tally.dropped > 0 || tally.planted > 0) && (
         <p className="lg-hint lg-cap-tally">
           Checked by code: {plural(tally.kept, "bullet", "bullets")} kept
-          {tally.dropped > 0 && `, ${plural(tally.dropped, "bullet", "bullets")} left out because its quote, number or month wasn't in the note`}
+          {tally.dropped > 0 && `, ${plural(tally.dropped, "bullet", "bullets")} left out because the note didn't support it`}
           {tally.planted > 0 && `, ${plural(tally.planted, "note", "notes")} left out for reading like instructions to the AI`}.
         </p>
       )}

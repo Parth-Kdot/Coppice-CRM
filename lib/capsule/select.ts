@@ -1,7 +1,7 @@
 import type { Stage } from "@/generated/prisma/enums";
 import { CARD_AI_COMPANIES, CARD_COMPANIES_PER_CALL } from "./limits";
 
-// Which companies get a relationship card, and in what order (pure; tests/capsule-select.test.ts).
+// Which companies get a relationship card, and in what order (pure; tests/capsule-check.test.ts and tests/capsule.test.ts).
 // Selection is by code: companies that are not archived and have at least one outreach in the
 // board year. They are ordered by stage, then by how much outreach they got, so the first 60 (the
 // ones the model reads, four to a call) are the deals worth the most to hand on. The rest get cards

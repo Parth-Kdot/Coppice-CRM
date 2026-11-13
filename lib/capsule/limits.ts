@@ -15,7 +15,9 @@ export const OUTREACH_NOTE_PROMPT_MAX = 400;
 // What it may send back.
 export const BULLETS_PER_CARD = 8;
 export const BULLET_TEXT_MAX = 160;
-export const BULLET_QUOTE_MIN = 8;
+// The same least length as every other quote in Coppice (lib/ai/text.ts quoteFound), so the proof
+// can't be a word or two.
+export const BULLET_QUOTE_MIN = 12;
 export const BULLET_QUOTE_MAX = 300;
 export const SECTIONS = ["champions", "worked", "timing", "avoid", "promises", "next"] as const;
 export type Section = (typeof SECTIONS)[number];
@@ -47,4 +49,4 @@ export const RECONTACT_MAX_DAYS = 365;
 // What Settings and the landing page say about what reaches Groq for this feature, to be used
 // where the privacy wording lives (components/landing/copy.ts, the Settings page).
 export const CAPSULE_PRIVACY =
-  "The Time Capsule's relationship cards and Ask the Archive send Groq your companies' notes and outreach notes, which can include names, with email addresses and phone numbers masked. Groq says it doesn't keep what it's sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse. The recap and the playbook use no AI.";
+  "The Time Capsule's relationship cards and Ask the Archive send Groq your companies' names and their notes and outreach notes, each with its date (cards also send the channel), and Ask the Archive sends the question you type. Notes and questions can include people's names. Email addresses and phone numbers are masked before anything is sent. Groq says it doesn't keep what it's sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse. The recap and the playbook use no AI.";

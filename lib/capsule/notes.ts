@@ -20,6 +20,8 @@ export type SentNote = {
   // The outreach entry's time, ISO; null for the company's notes field.
   sentAt: string | null;
   channel: string | null;
+  // The company's name, so a bullet or sentence may name the company its note belongs to.
+  companyName?: string;
   text: string;
 };
 
@@ -51,7 +53,7 @@ export function promptCompanies(companies: readonly CompanyNotes[]): { companies
   const out: PromptCompany[] = [];
   for (const company of companies) {
     const notes: SentNote[] = [];
-    const add = (raw: string | null, max: number, rest: Omit<SentNote, "id" | "text" | "companyId">) => {
+    const add = (raw: string | null, max: number, rest: Omit<SentNote, "id" | "text" | "companyId" | "companyName">) => {
       if (!raw?.trim()) return;
       if (plantedInstruction(raw)) {
         planted += 1;
@@ -60,7 +62,7 @@ export function promptCompanies(companies: readonly CompanyNotes[]): { companies
       const text = promptText(raw, max);
       if (!usable(text)) return;
       n += 1;
-      notes.push({ id: `n${n}`, companyId: company.id, text, ...rest });
+      notes.push({ id: `n${n}`, companyId: company.id, companyName: company.name, text, ...rest });
     };
     add(company.notes, COMPANY_NOTE_PROMPT_MAX, { kind: "company", outreachId: null, sentAt: null, channel: null });
     const latest = company.outreach
@@ -76,6 +78,10 @@ export function promptCompanies(companies: readonly CompanyNotes[]): { companies
 
 const attr = (text: string) => promptSafe(text).replace(/"/g, "'").slice(0, 120);
 
+// A company's name as the prompt shows it. A name is text a person typed, so one that reads as an
+// instruction to an AI is not sent: the model is shown "Company" in its place.
+export const promptName = (name: string) => (plantedInstruction(name) ? "Company" : attr(name));
+
 // The notes as the prompt shows them.
 export function companiesXml(companies: readonly PromptCompany[]): string {
   return companies
@@ -87,7 +93,7 @@ export function companiesXml(companies: readonly PromptCompany[]): string {
             : `<note id="${note.id}" source="outreach" date="${note.sentAt ? dayString(new Date(note.sentAt)) : ""}" channel="${note.channel}">${note.text}</note>`,
         )
         .join("\n");
-      return `<company id="${c.key}" name="${attr(c.name)}">\n${notes}\n</company>`;
+      return `<company id="${c.key}" name="${promptName(c.name)}">\n${notes}\n</company>`;
     })
     .join("\n");
 }

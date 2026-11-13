@@ -96,12 +96,13 @@ export const CHUNK0_REPLY = {
         { section: "champions", text: "Priya Rao is the champion at Atlas.", noteId: "n1", quote: "Priya Rao is our champion", month: null },
         { section: "next", text: "Follow up in August about the fall career fair.", noteId: "n1", quote: "follow up in August about the fall career fair", month: 8 },
         { section: "worked", text: "Priya replied within a day to the packet.", noteId: "n2", quote: "Priya replied within a day", month: null },
-        { section: "next", text: "Send Priya a booth quote by March 15.", noteId: "n3", quote: "booth quote by 3/15", month: 3 },
-        { section: "promises", text: "We promised a $5,000 booth.", noteId: "n3", quote: "booth quote by 3/15", month: null },
+        { section: "next", text: "Send Priya a booth quote by March 15.", noteId: "n3", quote: "Priya wants a booth quote by 3/15", month: 3 },
+        { section: "promises", text: "We promised a $5,000 booth.", noteId: "n3", quote: "Priya wants a booth quote by 3/15", month: null },
         { section: "avoid", text: "Cedar's tier was too small.", noteId: "n4", quote: "Asked about a $2,000 gold tier", month: null },
         { section: "timing", text: "They pay late in the winter.", noteId: "n2", quote: "they pay in the winter", month: null },
         { section: "timing", text: "Answers on weekends.", noteId: "n99", quote: "answers on weekends", month: null },
-        { section: "next", text: "Ask again later.", noteId: "n2", quote: "Priya replied", month: 10 },
+        // A month the quote has no date in: the bullet stays, the month is dropped.
+        { section: "next", text: "Priya replied within a day.", noteId: "n2", quote: "Priya replied within a day", month: 10 },
       ],
     },
     {

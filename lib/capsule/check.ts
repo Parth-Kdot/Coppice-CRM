@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { matchKey, maskContactDetails, numbersIn } from "@/lib/ai/text";
+import { matchKey, maskContactDetails } from "@/lib/ai/text";
 import { maskPhones } from "@/lib/ai/phones";
 import { plantedInstruction } from "@/lib/smart-import/check";
-import { monthsMentioned } from "@/lib/smart-import/dates";
 import {
   ARCHIVE_SENTENCES_MAX,
   ARCHIVE_SENTENCE_MAX,
@@ -14,6 +13,7 @@ import {
   SECTIONS,
 } from "./limits";
 import type { SentNote } from "./notes";
+import { inventedName, monthsFound, monthsIn, negationFound, numbersFound, quoteSpan, unsupportedTiming, wordsSupported } from "./support";
 import type { CardBullet } from "./types";
 
 // What the Time Capsule accepts from the model (pure; tests/capsule-check.test.ts). The model is
@@ -60,9 +60,23 @@ export type TextProblem = "contact" | "link" | "placeholder" | "instruction";
 const LINK = /https?:\/\/|\bwww\.|\b[a-z0-9][a-z0-9-]*\.(?:com|org|net|edu|gov|io|co|us|ai|app|dev|info|biz|ly)\b/i;
 const PLACEHOLDER = /\{\{|\}\}|\[[^\]\n]{1,30}\]|<[^>\n]{1,30}>/;
 
+// Text the model wrote, in the one form every check and the page see: NFKC (so a fullwidth "＠" or
+// "．" is the plain character), spacing collapsed, and format or control characters (a zero-width
+// space, a soft hyphen, a direction mark) taken out, so nothing a reader can't see or tell apart can
+// hide an address or a link from the checks that follow. This is also the text that is stored.
+export const cleanText = (text: string) =>
+  text
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .replace(/[\p{Cf}\p{Cc}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 // Why text a person will read can't be shown, or null. No email address, phone number (in any
-// format Coppice masks), link, placeholder ("[email]", "{{name}}") or instruction to an AI.
-export function textProblem(text: string): TextProblem | null {
+// format Coppice masks), link, placeholder ("[email]", "{{name}}") or instruction to an AI. The
+// text is cleaned first (cleanText), so the checks read what a person would.
+export function textProblem(raw: string): TextProblem | null {
+  const text = cleanText(raw);
   if (maskContactDetails(text) !== text || maskPhones(text) !== text || /\[(?:email|phone)\]/.test(text)) return "contact";
   if (LINK.test(text)) return "link";
   if (PLACEHOLDER.test(text)) return "placeholder";
@@ -80,21 +94,6 @@ export function quoteProblem(quote: string, noteText: string): "quote_short" | "
   return matchKey(noteText).includes(key) ? null : "quote_missing";
 }
 
-// Every number in the text is in `source` (numbers compare as lib/ai/text.ts numbersIn reads them,
-// so "$2,500" and "2500" are the same number). A text with no numbers passes.
-export const numbersFound = (text: string, source: string) => {
-  const known = numbersIn(source);
-  return numbersIn(text).every((n) => known.includes(n));
-};
-
-// Every month the text names (or dates in it) is also named in `source`. "May" the verb never
-// counts (lib/smart-import/dates.ts monthsMentioned). A text that names no month passes. This is
-// what stops "send the invoice by end of October" when the quote says nothing about October.
-export const monthsFound = (text: string, source: string) => {
-  const known = monthsMentioned(source);
-  return monthsMentioned(text).every((m) => known.includes(m));
-};
-
 // ----- Relationship cards -----
 
 export type DropReason =
@@ -108,6 +107,10 @@ export type DropReason =
   | "quote_missing"
   | "number"
   | "month"
+  | "name"
+  | "timing"
+  | "negation"
+  | "unsupported"
   | TextProblem
   | "repeat";
 
@@ -116,7 +119,7 @@ export type BulletCheck = { ok: true; bullet: CardBullet } | { ok: false; reason
 // One bullet for one company. `notes` is every note sent in the call, by id, so a note id that was
 // never sent and one that belongs to another company are both caught.
 export function checkBullet(bullet: BulletReadOutput, companyId: string, notes: ReadonlyMap<string, SentNote>): BulletCheck {
-  const text = bullet.text.replace(/\s+/g, " ").trim();
+  const text = cleanText(bullet.text);
   if (!text) return { ok: false, reason: "empty" };
   if (text.length > BULLET_TEXT_MAX) return { ok: false, reason: "too_long" };
   const problem = textProblem(text);
@@ -126,14 +129,31 @@ export function checkBullet(bullet: BulletReadOutput, companyId: string, notes: 
   if (note.companyId !== companyId) return { ok: false, reason: "other_company_note" };
   const badQuote = quoteProblem(bullet.quote, note.text);
   if (badQuote) return { ok: false, reason: badQuote };
-  const quote = bullet.quote.replace(/\s+/g, " ").trim();
-  if (!numbersFound(text, quote)) return { ok: false, reason: "number" };
-  if (!monthsFound(text, quote)) return { ok: false, reason: "month" };
+  const collapsed = bullet.quote.replace(/\s+/g, " ").trim();
+  // The quote kept is the note's own words: the stretch of the note the model's quote matches.
+  const quote = quoteSpan(collapsed, note.text) ?? collapsed;
+  // The text may say only what the quote says: its figures, months, names, seasons and deadlines
+  // are in the quote, a "never" needs one there, and most of its words are in the quote or note.
+  const unproven = unprovenProblem(text, quote, [note.text, note.companyName ?? ""], note.companyName ? [note.companyName] : []);
+  if (unproven) return { ok: false, reason: unproven };
   // A month is kept only on a "next" bullet, and only if code finds that month, or a date in it,
   // in the quote.
-  const month = bullet.section === "next" && bullet.month !== null && monthsMentioned(quote).includes(bullet.month) ? bullet.month : null;
+  const month = bullet.section === "next" && bullet.month !== null && monthsIn(quote, { written: false }).includes(bullet.month) ? bullet.month : null;
   const source = note.kind === "company" ? ({ kind: "company" } as const) : ({ kind: "outreach", outreachId: note.outreachId ?? "", sentAt: note.sentAt ?? "" } as const);
   return { ok: true, bullet: { section: bullet.section, text, quote, source, month } };
+}
+
+// What the text may not add to its proof (`proof` is the quote for a bullet, the cited notes for a
+// sentence; `context` is what else it may draw its plain words from; `names` are the company names
+// it may use). The reason, or null.
+function unprovenProblem(text: string, proof: string, context: readonly string[], names: readonly string[]): "number" | "month" | "name" | "timing" | "negation" | "unsupported" | null {
+  if (!numbersFound(text, proof)) return "number";
+  if (!monthsFound(text, proof)) return "month";
+  if (inventedName(text, proof, names)) return "name";
+  if (unsupportedTiming(text, proof)) return "timing";
+  if (!negationFound(text, proof)) return "negation";
+  if (!wordsSupported(text, [proof, ...context, ...names])) return "unsupported";
+  return null;
 }
 
 export type CardCheck = { bullets: CardBullet[]; dropped: Partial<Record<DropReason, number>> };
@@ -169,7 +189,22 @@ export function checkBullets(read: readonly (BulletReadOutput | null)[], company
 
 // ----- Ask the Archive -----
 
-export type SentenceDrop = "malformed" | "empty" | "too_long" | "no_note" | "unknown_note" | "quote_short" | "quote_long" | "quote_missing" | "number" | "month" | TextProblem;
+export type SentenceDrop =
+  | "malformed"
+  | "empty"
+  | "too_long"
+  | "no_note"
+  | "unknown_note"
+  | "quote_short"
+  | "quote_long"
+  | "quote_missing"
+  | "number"
+  | "month"
+  | "name"
+  | "timing"
+  | "negation"
+  | "unsupported"
+  | TextProblem;
 
 export type SentenceCheck =
   | { ok: true; sentence: { text: string; noteIds: string[]; quote: string; quoteNoteId: string } }
@@ -179,7 +214,7 @@ export type SentenceCheck =
 // (and at least one must be cited); the quote must be in one of the cited notes; every number in
 // the text must be in a cited note.
 export function checkSentence(item: { text: string; noteIds: string[]; quote: string }, notes: ReadonlyMap<string, SentNote>): SentenceCheck {
-  const text = item.text.replace(/\s+/g, " ").trim();
+  const text = cleanText(item.text);
   if (!text) return { ok: false, reason: "empty" };
   if (text.length > ARCHIVE_SENTENCE_MAX) return { ok: false, reason: "too_long" };
   const bad = textProblem(text);
@@ -192,11 +227,11 @@ export function checkSentence(item: { text: string; noteIds: string[]; quote: st
     if (!note) return { ok: false, reason: "unknown_note" };
     cited.push(note);
   }
-  const quote = item.quote.replace(/\s+/g, " ").trim();
+  const collapsed = item.quote.replace(/\s+/g, " ").trim();
   let problem: ReturnType<typeof quoteProblem> = "quote_missing";
   let quoteNote: SentNote | undefined;
   for (const note of cited) {
-    const p = quoteProblem(quote, note.text);
+    const p = quoteProblem(collapsed, note.text);
     if (p === null) {
       quoteNote = note;
       problem = null;
@@ -205,9 +240,12 @@ export function checkSentence(item: { text: string; noteIds: string[]; quote: st
     if (p !== "quote_missing") problem = p;
   }
   if (problem || !quoteNote) return { ok: false, reason: problem ?? "quote_missing" };
+  const quote = quoteSpan(collapsed, quoteNote.text) ?? collapsed;
+  // A sentence may draw on every note it cites, and name the companies they belong to.
   const citedText = cited.map((n) => n.text).join("\n");
-  if (!numbersFound(text, citedText)) return { ok: false, reason: "number" };
-  if (!monthsFound(text, citedText)) return { ok: false, reason: "month" };
+  const names = [...new Set(cited.flatMap((n) => (n.companyName ? [n.companyName] : [])))];
+  const unproven = unprovenProblem(text, citedText, [], names);
+  if (unproven) return { ok: false, reason: unproven };
   return { ok: true, sentence: { text, noteIds: ids, quote, quoteNoteId: quoteNote.id } };
 }
 

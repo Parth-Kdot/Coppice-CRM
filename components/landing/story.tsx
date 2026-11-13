@@ -76,7 +76,7 @@ function Accordion({ title, note, children }: { title: string; note?: string; ch
   );
 }
 
-// Trust, in my own voice where it is a choice I made. The two notes under it open on request so the
+// Trust, in my own voice where it is a choice I made. The note under it opens on request so the
 // section stays short.
 export function Trust() {
   return (

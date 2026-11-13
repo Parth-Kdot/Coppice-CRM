@@ -9,13 +9,14 @@ import { cardBody } from "./types";
 // bullet or hides the whole card. Hiding writes an ArchiveRedaction row and can be undone (the row
 // is deleted) until the handoff is published; bullet text can't be edited, which would break the
 // quote that proves it. Nothing here touches a company. Approving a card also proposes its
-// re-contact date (lib/capsule/calendar.ts).
+// re-contact date (lib/capsule/calendar.ts), and hiding or showing a bullet keeps that date in step
+// while it is still the proposal.
 
 // A card of this workspace, in a handoff that can still be changed.
 async function openCard(tx: Tx, actor: Membership, cardId: string) {
   const card = await tx.relationshipCard.findFirst({
     where: { id: cardId, workspaceId: actor.workspaceId },
-    select: { id: true, reportId: true, bullets: true, approvedAt: true, company: { select: { stage: true } }, report: { select: { status: true } }, redactions: { select: { bulletIndex: true } } },
+    select: { id: true, reportId: true, bullets: true, approvedAt: true, recontactOn: true, company: { select: { stage: true } }, report: { select: { status: true } }, redactions: { select: { bulletIndex: true } } },
   });
   if (!card) return { ok: false, error: NO_CARD } as const;
   if (card.report.status !== "DRAFT") return { ok: false, error: PUBLISHED_LOCK } as const;
@@ -26,16 +27,33 @@ async function openCard(tx: Tx, actor: Membership, cardId: string) {
 // Doing either twice is fine.
 export async function setHidden(actor: Membership, cardId: string, bulletIndex: number | null, hidden: boolean): Promise<Done> {
   if (!isOwner(actor)) return fail(OWNER_ONLY);
+  const today = await dbToday();
   return withTenant(actor, async (tx) => {
     const opened = await openCard(tx, actor, cardId);
     if (!opened.ok) return fail(opened.error);
     const { card } = opened;
     if (bulletIndex !== null && bulletIndex >= cardBody(card.bullets).bullets.length) return fail("That bullet isn't on this card.");
+    // The date this card proposes from the bullets visible now, to compare with what it proposes
+    // after this change.
+    const proposal = (hiddenNow: ReadonlySet<number | null>) =>
+      proposeRecontact(cardBody(card.bullets).bullets.filter((_, i) => !hiddenNow.has(i)), card.company.stage, today);
+    const before = new Set(card.redactions.map((r) => r.bulletIndex));
     if (hidden) {
       // ON CONFLICT DO NOTHING: the unique index and the partial one for whole-card rows both apply.
       await tx.archiveRedaction.createMany({ data: [{ workspaceId: actor.workspaceId, cardId, bulletIndex, hiddenById: actor.userId }], skipDuplicates: true });
     } else {
       await tx.archiveRedaction.deleteMany({ where: { workspaceId: actor.workspaceId, cardId, bulletIndex } });
+    }
+    // An approved card whose date is still its own proposal follows its bullets: hide the "next"
+    // bullet that made the date and the date goes (or moves to the next visible one); show it again
+    // and it comes back. A date the owner changed, or cleared on purpose, is left alone.
+    if (bulletIndex !== null && card.approvedAt) {
+      const after = new Set(before);
+      if (hidden) after.add(bulletIndex);
+      else after.delete(bulletIndex);
+      const was = proposal(before);
+      const now = proposal(after);
+      if (card.recontactOn === was && was !== now) await tx.relationshipCard.updateMany({ where: { id: cardId, workspaceId: actor.workspaceId }, data: { recontactOn: now } });
     }
     return { ok: true, data: undefined };
   });

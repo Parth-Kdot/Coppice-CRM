@@ -14,8 +14,9 @@ import { daysFromTo } from "./year";
 // (applying calls setFollowUp in lib/claims.ts, in apply.ts: nothing here writes to a company).
 // What is saved here is only RelationshipCard.recontactOn, the handoff's own date.
 //
-// Proposals are made when a card is approved (redact.ts) from the bullets then visible; the
-// calendar shows each next to the date saved, so a bullet hidden later doesn't change a date quietly.
+// Proposals are made when a card is approved (redact.ts) from the bullets then visible. Hiding or
+// showing a bullet later moves the saved date only if it was still the card's own proposal (the
+// owner's changed dates are never touched); the calendar shows each next to the date saved.
 
 const DAY_RANGE = (today: string) => ({ from: today, to: addDays(today, RECONTACT_MAX_DAYS) });
 
@@ -113,7 +114,9 @@ export async function saveRecontactDates(actor: Membership, reportId: string, da
     });
     const byCompany = new Map(cards.map((c) => [c.companyId, c]));
     const refused: SavedDates["refused"] = [];
-    let saved = 0;
+    // The date each accepted company ends with (a company listed twice keeps its last date), then
+    // one update for each distinct date, not one per company.
+    const accepted = new Map<string, string | null>();
     for (const { companyId, date } of dates) {
       const card = byCompany.get(companyId);
       if (!card) refused.push({ companyId, reason: "That company has no approved card in this handoff." });
@@ -121,12 +124,18 @@ export async function saveRecontactDates(actor: Membership, reportId: string, da
       else {
         const problem = date === null ? null : dateProblem(date, today);
         if (problem) refused.push({ companyId, reason: problem });
-        else {
-          await tx.relationshipCard.updateMany({ where: { id: card.id, workspaceId: actor.workspaceId }, data: { recontactOn: date } });
-          saved += 1;
-        }
+        else accepted.set(companyId, date);
       }
     }
+    const groups = new Map<string | null, string[]>();
+    for (const [companyId, date] of accepted) {
+      const ids = groups.get(date);
+      const cardId = (byCompany.get(companyId) as { id: string }).id;
+      if (ids) ids.push(cardId);
+      else groups.set(date, [cardId]);
+    }
+    for (const [date, ids] of groups) await tx.relationshipCard.updateMany({ where: { id: { in: ids }, workspaceId: actor.workspaceId }, data: { recontactOn: date } });
+    const saved = accepted.size;
     return { ok: true, data: { saved, refused } };
   });
 }
