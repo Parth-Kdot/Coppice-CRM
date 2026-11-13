@@ -51,3 +51,12 @@ export function localMidnight(ymd: string): Date {
   const utc = Date.parse(`${ymd}T00:00:00Z`);
   return new Date(utc - offsetAt(utc - offsetAt(utc)));
 }
+
+// "Due in 4 days" for the coming week, "Due Nov 2" after that. `days` is positive when overdue. `dueOn` is the short date ("Nov 2").
+export function overdueText(days: number, dueOn?: string): string {
+  if (days > 0) return days === 1 ? "1 day overdue" : `${days} days overdue`;
+  if (days === 0) return "Due today";
+  if (days === -1) return "Due tomorrow";
+  if (days >= -7 || !dueOn) return `Due in ${-days} days`;
+  return `Due ${dueOn}`;
+}
