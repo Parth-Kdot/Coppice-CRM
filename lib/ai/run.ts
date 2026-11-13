@@ -26,6 +26,9 @@ export const AI_WINDOW_DAYS = 30;
 export const DAILY_DRAFTS_PER_PERSON = 40;
 // Research briefs (lib/research/brief.ts) fetch pages and make two AI calls each, so fewer.
 export const DAILY_BRIEFS_PER_PERSON = 10;
+// Ask Coppice (lib/copilot): one call per typed question. Starter chips, chip edits and "Show again"
+// make no call, so they never count.
+export const DAILY_COPILOT_PER_PERSON = 50;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -128,6 +131,12 @@ async function gateIn(tx: Prisma.TransactionClient, tenant: Tenant, feature: AiF
       return `You've asked for ${DAILY_BRIEFS_PER_PERSON} research briefs in the last 24 hours. Try again tomorrow.`;
     }
   }
+  // Counted like drafts: a provider failure (a rate limit, a timeout) doesn't count against the person.
+  if (feature === "COPILOT") {
+    if ((await tx.aiRun.count({ where: { ...mine, feature: "COPILOT", ...countsForPerson } })) >= DAILY_COPILOT_PER_PERSON) {
+      return `You've asked Coppice ${DAILY_COPILOT_PER_PERSON} questions in the last 24 hours. Try again tomorrow.`;
+    }
+  }
   return null;
 }
 
@@ -175,6 +184,14 @@ export async function draftsToday(tenant: Tenant): Promise<number> {
   const since = new Date((await dbNow()).getTime() - DAY_MS);
   return withTenant(tenant, (tx) =>
     tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, userId: tenant.userId, feature: "DRAFT", createdAt: { gte: since }, ...countsForPerson } }),
+  );
+}
+
+// This person's Ask Coppice questions in the last 24 hours, as the daily limit counts them.
+export async function copilotToday(tenant: Tenant): Promise<number> {
+  const since = new Date((await dbNow()).getTime() - DAY_MS);
+  return withTenant(tenant, (tx) =>
+    tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, userId: tenant.userId, feature: "COPILOT", createdAt: { gte: since }, ...countsForPerson } }),
   );
 }
 

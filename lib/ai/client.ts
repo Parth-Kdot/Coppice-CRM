@@ -113,6 +113,11 @@ export const ROUTES: Record<AiFeature, Route> = {
     firstTryMs: 20_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
   },
+  // Ask Coppice (lib/copilot): one short call per question that turns it into an intent. The
+  // question and the names of companies just shown can hold names, so Groq (never Gemini), the same
+  // model Smart import's row pass proved live with strict json_schema. The reply is small JSON, so
+  // 700 tokens leave room for low reasoning without letting one call take a minute's free quota.
+  COPILOT: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 700 },
 };
 
 export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";

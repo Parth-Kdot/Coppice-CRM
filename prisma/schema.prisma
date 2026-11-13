@@ -42,6 +42,8 @@ model User {
   researchSources  ResearchSource[]
   companyBriefs    CompanyBrief[]
   onboarding       OnboardingProgress[]
+  copilotThreads   CopilotThread[]
+  copilotTurns     CopilotTurn[]
   // From the MCP plugin (lib/auth.ts), via the generator.
   oauthclients       OauthClient[]
   oauthrefreshtokens OauthRefreshToken[]
@@ -139,6 +141,8 @@ model Workspace {
   companyBriefs   CompanyBrief[]
   briefPages      CompanyBriefPage[]
   onboarding      OnboardingProgress[]
+  copilotThreads  CopilotThread[]
+  copilotTurns    CopilotTurn[]
 
   @@unique([slug])
   @@map("workspace")
@@ -598,6 +602,8 @@ enum AiFeature {
   // AI feature 2, the Research Agent: reading the fetched pages, then writing the brief.
   RESEARCH_READ
   RESEARCH_BRIEF
+  // Ask Coppice (AI feature 6): one Groq call turns a question into an intent; code does the rest.
+  COPILOT
 }
 
 enum AiRunStatus {
@@ -911,5 +917,61 @@ model OnboardingProgress {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+// ----- Ask Coppice (AI feature 6): a person's conversations about their pipeline -----
+
+enum CopilotTurnStatus {
+  ANSWERED
+  FAILED
+}
+
+// One conversation. Private to the person who started it: row-level security lets only that member
+// read or write it, owners included (see the migration). Turns older than 30 days and empty threads
+// are deleted whenever the person asks a question (lib/copilot/memory.ts).
+model CopilotThread {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  turns     CopilotTurn[]
+
+  // Lets a turn point at (thread, workspace) together, so it can never sit in another workspace.
+  @@unique([id, workspaceId])
+  @@index([workspaceId, userId, updatedAt])
+  @@index([userId])
+}
+
+// One question and its answer. Only what is needed to rebuild the screen is kept: the question, the
+// checked intent (or the filter after a chip edit), the one-sentence reply and the ids of the rows
+// shown. The rows themselves are never stored: they are read again, fresh, from the database.
+model CopilotTurn {
+  id          String            @id @default(cuid())
+  threadId    String
+  workspaceId String
+  userId      String
+  // At most 500 characters (a CHECK in the migration).
+  question    String
+  // The validated intent as lib/copilot/intent.ts stores it. Never raw model output.
+  intent      Json
+  reply       String
+  // Ids of the companies the answer showed, at most 25 (a CHECK in the migration).
+  shown       Json
+  status      CopilotTurnStatus
+  // A short code such as "rate_limited"; never the prompt or the reply.
+  error       String?
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread    CopilotThread @relation(fields: [threadId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  @@index([threadId, workspaceId, createdAt])
+  @@index([workspaceId, userId, createdAt])
   @@index([userId])
 }
