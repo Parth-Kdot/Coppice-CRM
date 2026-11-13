@@ -1,5 +1,7 @@
 import type { ExistingMatch } from "@/lib/csv";
-import { IMPORT_FIELDS, type ImportField, type ImportMapping } from "@/lib/validation";
+import { formatCount } from "@/lib/format";
+import { IMPORT_FIELDS, type ImportField } from "@/lib/limits";
+import type { ImportMapping } from "@/lib/validation";
 
 // The import's duplicate review as plain data (components/csv-importer-duplicates.tsx shows it).
 // Nothing here talks to the server: every answer is still just which rows are skipped, the same
@@ -10,7 +12,7 @@ import { IMPORT_FIELDS, type ImportField, type ImportMapping } from "@/lib/valid
 // code in the normal preview (lib/csv.ts) and in Smart import alike.
 export const CONTAINED_WHY = "One name contains the other";
 
-export type ReviewRow = { row: number; name: string; website: string | null };
+type ReviewRow = { row: number; name: string; website: string | null };
 // One reason two or more entries may be the same company: an exact group from lib/csv.ts, a
 // contained name, or one of Smart import's look-alikes.
 export type ReviewSource = { reason: string; existing: ExistingMatch[]; rows: ReviewRow[] };
@@ -208,7 +210,7 @@ export type PreviewForReview = {
   contained: { rows: ReviewRow[]; existing: ExistingMatch[]; why: string }[];
   labels: { row: number; name: string; website: string | null }[];
 };
-export const matchedReason = (matchedOn: string[]) => (matchedOn.length === 2 ? "Same name and website" : matchedOn[0] === "website" ? "Same website" : "Same name");
+const matchedReason = (matchedOn: string[]) => (matchedOn.length === 2 ? "Same name and website" : matchedOn[0] === "website" ? "Same website" : "Same name");
 
 export function previewSources(view: PreviewForReview, extra: ReviewSource[] = []): ReviewSource[] {
   const label = new Map(view.labels.map((l) => [l.row, l]));
@@ -250,18 +252,17 @@ export function carryDecisions(
 // The bulk answers offered above the groups when five or more share a kind: every row that is
 // already in Coppice skipped, or the first of every in-file pair kept. Each returns the skips to
 // set and the groups it decides.
-export const BULK_MIN = 5;
+const BULK_MIN = 5;
 export type BulkAnswer = { kind: "existing" | "pair"; label: string; groups: ReviewGroup[]; effects: { row: number; skip: boolean }[] };
 export function bulkAnswers(open: ReviewGroup[]): BulkAnswer[] {
   const existing = open.filter((g) => kindOf(g) === "existing");
   const pairs = open.filter((g) => kindOf(g) === "pair");
   const answers: BulkAnswer[] = [];
-  const n = (v: number) => v.toLocaleString("en-US");
   if (existing.length >= BULK_MIN) {
-    answers.push({ kind: "existing", label: `Skip all ${n(existing.length)} already in Coppice`, groups: existing, effects: existing.flatMap((g) => choiceEffects(g, "skip")) });
+    answers.push({ kind: "existing", label: `Skip all ${formatCount(existing.length)} already in Coppice`, groups: existing, effects: existing.flatMap((g) => choiceEffects(g, "skip")) });
   }
   if (pairs.length >= BULK_MIN) {
-    answers.push({ kind: "pair", label: `Keep the first of each pair (${n(pairs.length)})`, groups: pairs, effects: pairs.flatMap((g) => choiceEffects(g, "first")) });
+    answers.push({ kind: "pair", label: `Keep the first of each pair (${formatCount(pairs.length)})`, groups: pairs, effects: pairs.flatMap((g) => choiceEffects(g, "first")) });
   }
   return answers;
 }

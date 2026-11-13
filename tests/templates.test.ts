@@ -16,7 +16,7 @@ import { answer, calls, fakeGemini } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
 
-// Templates (Milestone 5), the template picked when logging outreach, and "Which outreach got the
+// Templates, the template picked when logging outreach, and "Which outreach got the
 // reply?". Real server actions and the real database as app_user; only Next.js's request APIs and
 // the Gemini HTTP calls are swapped.
 vi.mock("next/headers", () => import("./helpers/next-request"));

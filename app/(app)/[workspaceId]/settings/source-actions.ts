@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireOwner } from "@/lib/authz";
+import { notFound } from "@/lib/messages";
 import * as sources from "@/lib/research/sources";
 import { addResearchSourceSchema, renameResearchSourceSchema, researchSourceRefSchema, type ActionResult } from "@/lib/validation";
 
@@ -45,7 +46,7 @@ export async function renameResearchSource(_prev: ActionResult | null, form: For
 
 export async function archiveResearchSource(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = researchSourceRefSchema.safeParse({ workspaceId: form.get("workspaceId"), sourceId: form.get("sourceId") });
-  if (!parsed.success) return { ok: false, error: "Source not found." };
+  if (!parsed.success) return notFound("Source");
   const { workspaceId, sourceId } = parsed.data;
 
   try {

@@ -1,8 +1,9 @@
 import { APIError } from "better-auth";
 import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
-import { failure, LAST_OWNER_MESSAGE } from "@/lib/actions";
+import { failure, LAST_OWNER_MESSAGE } from "@/lib/action-failure";
 import { AuthzError, requireMembershipOr404, requireUser, roleLabel } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { toRole } from "@/lib/roles";
 import { notFoundError, redirectTo } from "./helpers/form";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
@@ -67,6 +68,17 @@ describe("requireMembershipOr404 (used by workspace pages)", () => {
 
 it("roleLabel shows owner as Owner and member as Officer", () => {
   expect([roleLabel("owner"), roleLabel("member")]).toEqual(["Owner", "Officer"]);
+});
+
+test.for([
+  ["owner", "owner"],
+  ["member", "member"],
+  ["member,owner", "member"],
+  ["owner,member", "member"],
+  ["Owner", "member"],
+  ["", "member"],
+] as const)("toRole reads the stored role %j as %s: only the exact word owner is an owner", ([raw, role]) => {
+  expect(toRole(raw)).toBe(role);
 });
 
 describe("startup checks fail fast with a clear message", () => {

@@ -155,13 +155,31 @@ describe("draftEmail", () => {
     await draftEmail(OWNER, companyId, { kind: "FOLLOW_UP", contactId, note: null });
     const prompt = promptOf();
     expect(prompt).toContain("<earlier_outreach>");
-    expect(prompt).toContain('Email: \\"Subject 1 for Org A\\"');
+    // The workspace name in the saved subject goes back to its placeholder.
+    expect(prompt).toContain('Email: \\"Subject 1 for {{orgName}}\\"');
     expect(prompt).toContain("LinkedIn");
     expect(prompt).not.toContain("Talked to Hank");
     expect(prompt).toContain("Write two follow-up emails.");
   });
 
-  // Recorded from the live test on 2026-11-07: Glasswing Hardware was Replied, its only outreach had
+  // A model can put a placeholder in a subject, and code fills it in before the draft is saved. The
+  // saved subject then holds real names, so they come back out before it goes into a follow-up prompt.
+  it("takes the contact's first name, the sender's name and the workspace name out of an earlier draft's subject", async () => {
+    fakeGemini(...drafted(variant(1, { subject: "{{firstName}}, a note from {{senderName}} at {{orgName}}" })));
+    const first = await draftEmail(OFFICER, companyId, { kind: "FIRST_TOUCH", contactId, note: null });
+    if (!first.ok) throw new Error(first.error);
+    expect(first.data[0].subject).toBe("Hank, a note from officerA at Org A");
+    const logged = await logOutreach(OFFICER, companyId, { channel: "EMAIL", note: null, followUpOn: addDays(await dbToday(), 7), aiDraftId: first.data[0].id });
+    expect(logged.ok).toBe(true);
+
+    fakeGemini(...drafted(variant(2)));
+    expect((await draftEmail(OFFICER, companyId, { kind: "FOLLOW_UP", contactId, note: null })).ok).toBe(true);
+    const prompt = promptOf();
+    expect(prompt).toContain('Email: \\"{{firstName}}, a note from {{senderName}} at {{orgName}}\\"');
+    expect(prompt).not.toMatch(/Hank|officerA|Org A/);
+  });
+
+  // Recorded case: Glasswing Hardware was Replied, its only outreach had
   // a reply ("Hugo replied and asked whether students could visit"), and both follow-ups said
   // "following up on my October 30 email" as if nobody had answered.
   it("tells a follow-up that the company replied: its stage, and which outreach got the reply, never the note", async () => {
@@ -363,7 +381,7 @@ describe("draft actions", () => {
   });
 });
 
-// ----- Found in the AI stress runs -----
+// ----- Drafting edge cases: bad fields, the log, the claim check -----
 
 describe("draftEmail: one bad field never wastes the call", () => {
   const ask = (tenant: Membership = OWNER, id = companyId) => draftEmail(tenant, id, { kind: "FIRST_TOUCH", contactId: null, note: null });

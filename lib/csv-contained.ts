@@ -10,7 +10,7 @@ import { CONTAINED_WHY } from "@/lib/import-review";
 // depend on them.
 
 export type NameLookalike = { rows: { row: number; name: string; website: string | null }[]; existing: ExistingMatch[]; why: string };
-export const CONTAINED_SHOWN = 100;
+const CONTAINED_SHOWN = 100;
 
 export type SavedName = { id: string; name: string; website: string | null; archivedAt: Date | null; nameKey: string; domainKey: string | null };
 

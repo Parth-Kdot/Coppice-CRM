@@ -16,7 +16,7 @@ export const COLUMN_STEP = 50;
 export const COLUMN_CAP = 200;
 // The archived sheet pages the same way.
 export const ARCHIVED_PAGE = 50;
-// The most one CSV import can add (Milestone 4). Kept for the queue (lib/queue.ts).
+// The size of the workspace the board's load test seeds: as many companies as one CSV import can add.
 export const SHOW_ALL_LIMIT = 2000;
 
 // The claim fields are read only, to show "Held by Sam until Nov 1"; whether a claim is still live

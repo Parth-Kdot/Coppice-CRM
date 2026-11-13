@@ -44,7 +44,7 @@ import {
   updateContact,
 } from "../actions";
 import { checkDraft, draftEmail } from "../draft-actions";
-import { acceptBriefItem, requestBrief } from "../research-actions";
+import { acceptBriefItem, requestBrief } from "../brief-actions";
 import { pageTitle } from "../../page-title";
 import "@/components/ledger/company.css";
 

@@ -1,5 +1,5 @@
-// Links that open a draft in the officer's own mail app. The app never sends email (project rule
-// 6): these only pre-fill a compose window, and the officer presses Send there.
+// Links that open a draft in the officer's own mail app. The app never sends email:
+// these only pre-fill a compose window, and the officer presses Send there.
 //
 // encodeURIComponent, never URLSearchParams: the latter turns spaces into "+", which Gmail and
 // Outlook show literally. Line breaks in the recipient or subject could smuggle extra headers into

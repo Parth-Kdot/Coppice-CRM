@@ -27,9 +27,8 @@ const ALLOWED = new Set([
 const FORMATS = new Set(["date-time", "date", "time"]);
 // The bounds Zod puts on every z.number().int(), which only add noise for the model.
 const SAFE_INT = Number.MAX_SAFE_INTEGER;
-// Gemini refuses a schema whose maxItems is large ("400 invalid argument", no detail): tested
-// 2026-10-26, 60 works and 100 fails on 3.6 Flash and 3.5 Flash-Lite. Bigger caps are left out
-// and enforced only by the Zod re-check.
+// Gemini refuses a schema whose maxItems is large ("400 invalid argument", no detail): 60 works and
+// 100 fails. Bigger caps are left out and enforced only by the Zod re-check.
 const MAX_ITEMS_SENT = 50;
 
 type Json = { [key: string]: unknown };

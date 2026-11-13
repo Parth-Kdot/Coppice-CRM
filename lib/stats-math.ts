@@ -1,4 +1,5 @@
 import type { Channel } from "@/generated/prisma/enums";
+import { DAY_MS } from "@/lib/dates";
 
 // The Scorecard's arithmetic: pure functions, no database and no AI, so every rule here is tested
 // on its own with hand-worked numbers (tests/stats-math.test.ts). lib/stats.ts reads the rows and
@@ -19,8 +20,6 @@ export const MATURITY_DAYS = 14;
 export const MIN_SENDS = 20;
 // The z value for a two-sided 95% interval.
 export const Z_95 = 1.959963984540054;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type Interval = { low: number; high: number };
 

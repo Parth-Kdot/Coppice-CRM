@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { decodeCsvBytes } from "@/app/(app)/[workspaceId]/import/read-file";
+import { decodeCsvBytes } from "@/lib/csv-file";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { Tick } from "@/components/ledger/marks";
 import { celebrate } from "@/components/ledger/motion-kit";

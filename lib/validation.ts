@@ -72,13 +72,17 @@ export const createWorkspaceSchema = z.object({ name: workspaceName });
 
 // Our ids are 25 to 36 characters. The cap stops anyone sending megabytes into a lookup.
 const id = z.string().min(1).max(64);
+// An id a form may leave empty: "" or missing means none.
+const optionalId = z.string().max(64).nullish().transform((v) => v || null);
+const EMAIL_MESSAGE = "Enter a valid email address.";
+// Trimmed and lowercased first, then checked for length, so " Sam@Purdue.edu " is accepted. 254
+// characters is the longest a real email address can be. The format is checked by each user.
+const emailText = z.string().trim().toLowerCase().max(254, EMAIL_MESSAGE);
 const role = z.enum(["member", "owner"]);
 
 export const inviteMemberSchema = z.object({
   workspaceId: id,
-  // Trim and lowercase first, then check the format, so " Sam@Purdue.edu " is accepted.
-  // 254 characters is the longest a real email address can be.
-  email: z.string().trim().toLowerCase().max(254, "Enter a valid email address.").pipe(z.email("Enter a valid email address.")),
+  email: emailText.pipe(z.email(EMAIL_MESSAGE)),
   role,
 });
 
@@ -155,7 +159,7 @@ export const mcpSettingsSchema = z.object({
 // Shape every server action returns (project convention).
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
-// ----- Companies and contacts (Milestone 2) -----
+// ----- Companies and contacts -----
 
 // A website is a bare domain ("acme.com") or an http(s) address. Anything with another scheme
 // (javascript:, data:, mailto:, ftp://) is refused, so a stored website can never become a
@@ -230,7 +234,7 @@ export const unarchiveSchema = companyRefSchema.extend({ stay: z.enum(["board"])
 
 export const moveStageSchema = companyRefSchema.extend({ stage: z.enum(Stage) });
 
-// Logging outreach (Milestone 3). The follow-up is a calendar date ("2026-11-01"); lib/claims.ts
+// Logging outreach. The follow-up is a calendar date ("2026-11-01"); lib/claims.ts
 // checks it is from today to a year out, using the database's idea of "today".
 export const logOutreachSchema = companyRefSchema.extend({
   channel: z.enum(Channel, "Pick how you reached out."),
@@ -239,7 +243,7 @@ export const logOutreachSchema = companyRefSchema.extend({
   // Set by "I sent it" under an AI draft; missing for a hand-logged outreach.
   aiDraftId: id.nullish(),
   // The template the email was based on, if one was picked ("" is "No template").
-  templateId: z.string().max(64).nullish().transform((v) => v || null),
+  templateId: optionalId,
   // The log form's key for this entry, so the same submit twice logs once (lib/claims.ts).
   clientKey: z.string().uuid().optional(),
 });
@@ -247,14 +251,10 @@ export const logOutreachSchema = companyRefSchema.extend({
 // "Draft an email": what kind, to whom (optional), and an optional note on what to emphasize.
 export const draftEmailSchema = companyRefSchema.extend({
   kind: z.enum(DraftKind, "Pick first email or follow-up."),
-  contactId: z
-    .string()
-    .max(64)
-    .nullish()
-    .transform((v) => v || null),
+  contactId: optionalId,
   note: optionalText(DRAFT_NOTE_MAX, "Note"),
   // An optional template to base both drafts on.
-  templateId: z.string().max(64).nullish().transform((v) => v || null),
+  templateId: optionalId,
 });
 
 // "Check again" on an edited draft: the text as it is in the boxes now. Browsers send form text with
@@ -274,7 +274,7 @@ export const checkDraftSchema = z.object({
 });
 
 // The board's "Possible duplicates" box: two companies, kept as separate or one archived.
-export const duplicatePairSchema = z.object({ workspaceId: id, companyId: id, otherId: id });
+export const duplicatePairSchema = companyRefSchema.extend({ otherId: id });
 export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, archiveId: id });
 
 // "Same company" while editing: archive this company (companyId) and keep the other one.
@@ -282,18 +282,14 @@ export const sameCompanySchema = companyRefSchema.extend({ keepId: id });
 
 export const contactFieldsSchema = z.object({
   name: z.string().trim().min(1, "Enter the contact's name.").max(120, "Name can be at most 120 characters.").refine(hasNoNul, NUL_MESSAGE),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .max(254, "Enter a valid email address.")
+  email: emailText
     .nullable()
     .transform((v) => v || null)
-    .pipe(z.email("Enter a valid email address.").nullable()),
+    .pipe(z.email(EMAIL_MESSAGE).nullable()),
   title: optionalText(120, "Title"),
 });
 
-export const addContactSchema = contactFieldsSchema.extend({ workspaceId: id, companyId: id });
+export const addContactSchema = contactFieldsSchema.extend(companyRefSchema.shape);
 export const updateContactSchema = addContactSchema.extend({ contactId: id });
 export const contactRefSchema = companyRefSchema.extend({ contactId: id });
 
@@ -389,7 +385,7 @@ export const freshLeadsSchema = z.object({
   offset: z.number().int().min(0).max(80),
 });
 
-// ----- CSV import (Milestone 4) -----
+// ----- CSV import -----
 
 // IMPORT_MAX_ROWS, IMPORT_MAX_BYTES, IMPORT_MAX_COLUMNS and IMPORT_FIELDS: lib/limits.
 
@@ -448,7 +444,7 @@ export const runImportSchema = z.object({
   seen: json(z.array(z.string(REVIEW_AGAIN).min(1, REVIEW_AGAIN).max(64, REVIEW_AGAIN), REVIEW_AGAIN).max(IMPORT_MAX_ROWS, REVIEW_AGAIN), REVIEW_AGAIN),
 });
 
-// ----- Fact sheet (AI feature 1) -----
+// ----- Fact sheet -----
 
 export const factTextSchema = z
   .string()
@@ -462,7 +458,7 @@ export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
 export const verifyFactSchema = factRefSchema.extend({ verified: z.enum(["1", "0"]).transform((v) => v === "1") });
 export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id });
 
-// ----- Templates and stats (Milestone 5) -----
+// ----- Templates and stats -----
 
 // A template's name and body. Line breaks are normalized like a checked draft's, and the body may
 // only use the three placeholders (lib/placeholders.ts).
@@ -502,7 +498,7 @@ export const statsFiltersSchema = z.object({
   by: z.enum(["industry", "touch"]).nullable().catch(null),
 });
 
-// ----- Smart import (AI feature 3) -----
+// ----- Smart import -----
 
 // SMART_MAX_ROWS, SMART_NOTE_MAX and SMART_STAGES: lib/limits.
 const STALE = "This Smart import is out of date. Start it again.";
@@ -550,7 +546,7 @@ export const smartImportSchema = runImportSchema.extend({
   sessionId: id,
   decisions: json(z.array(smartDecisionSchema).max(IMPORT_MAX_ROWS, STALE), STALE),
 });
-// ----- Research Agent (AI feature 2) -----
+// ----- Research briefs -----
 
 // An approved source: an http(s) page with no user:password, no IP address, no non-standard port,
 // and not LinkedIn or a people-search site (lib/research/urls.ts). Stored as the parsed URL.
@@ -646,9 +642,9 @@ export const oauthScopeListSchema = z
     return names.length <= MCP_SCOPES.length && new Set(names).size === names.length;
   }, "Each scope can be asked for once.");
 
-// Onboarding (the basics and AI tours, app/(app)/[workspaceId]/onboarding-actions.ts). Added by the
-// onboarding round. `step` is the index of the next unseen card; `event` says what happened: a card
-// was passed ("step"), the last card was reached ("done"), or the AI tour was put off ("later").
+// Onboarding (the basics and AI tours, app/(app)/[workspaceId]/onboarding-actions.ts). `step` is the
+// index of the next unseen card; `event` says what happened: a card was passed ("step"), the last
+// card was reached ("done"), or the AI tour was put off ("later").
 export const tourProgressSchema = z.object({
   workspaceId: id,
   tour: z.enum(["basics", "ai"]),

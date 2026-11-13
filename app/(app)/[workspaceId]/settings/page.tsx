@@ -33,7 +33,7 @@ import {
   updateMcpSettings,
 } from "./actions";
 import { disconnectAssistant } from "./assistant-actions";
-import { addResearchSource, archiveResearchSource, renameResearchSource } from "./research-actions";
+import { addResearchSource, archiveResearchSource, renameResearchSource } from "./source-actions";
 import "@/components/ledger/pages.css";
 import "@/components/ledger/settings.css";
 import { pageTitle } from "../page-title";

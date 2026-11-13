@@ -45,7 +45,7 @@ describe("basicsSteps", () => {
     expect(by(officer, "add").anchors).toEqual(["firstrun-add"]);
   });
 
-  it("anchors on the hooks the de-bloat packages added, phone first where the control moves", () => {
+  it("anchors on the data-tour hooks, phone first where the control moves", () => {
     const steps = basicsSteps({ role: "owner", empty: false, basicsRole: null });
     const by = (key: string) => steps.find((s) => s.key === key)!;
     expect(by("queue").anchors).toEqual(["queue-list"]);

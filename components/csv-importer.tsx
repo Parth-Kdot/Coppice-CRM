@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition, type DragEvent } from "react";
 import "@/components/ledger/zod-jitless";
-import { fileProblem } from "@/app/(app)/[workspaceId]/import/read-file";
+import { fileProblem } from "@/lib/csv-file";
 import { DuplicateGroups, groupHeadingId } from "@/components/csv-importer-duplicates";
 import { ImportDone, type Done } from "@/components/csv-importer-result";
 import { SampleRows } from "@/components/csv-importer-sample";

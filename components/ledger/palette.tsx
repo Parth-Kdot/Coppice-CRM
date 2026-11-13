@@ -14,7 +14,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { searchCompanies, type FoundCompany } from "@/app/(app)/[workspaceId]/search-actions";
+import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
+import type { FoundCompany } from "@/lib/search";
 import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { BoardIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";

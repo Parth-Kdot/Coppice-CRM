@@ -15,7 +15,7 @@ import {
   type ImportMapping,
 } from "@/lib/validation";
 
-// CSV import (Milestone 4). The server is the source of truth: the browser parses the file only
+// CSV import. The server is the source of truth: the browser parses the file only
 // to show it quickly, and every step here parses the same file again, checks every row with the
 // same rules as the Add company form, and finds duplicates again. Nothing is merged or skipped
 // silently: rows with errors are reported, and look-alikes are shown for a person to decide.
@@ -27,7 +27,7 @@ export type Table = { headers: string[]; rows: { row: number; cells: string[] }[
 // Parses CSV text into headers and rows. `row` is the spreadsheet row number (the header is row
 // 1), so messages match what people see in Google Sheets or Excel. Handles a byte-order mark,
 // Windows line endings, quoted commas and line breaks, and blank lines; refuses broken quoting.
-export const NOT_UTF8 = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File > Download > CSV.";
+const NOT_UTF8 = "This file isn't UTF-8 text. In Excel choose CSV UTF-8; in Google Sheets, File > Download > CSV.";
 export function parseCsv(text: string): ActionResult<Table> {
   // A NUL character means binary or UTF-16 text read the wrong way; Postgres would refuse it.
   if (text.includes("\u0000")) return { ok: false, error: NOT_UTF8 };
@@ -73,7 +73,7 @@ const GUESSES: [keyof ImportMapping, RegExp][] = [
 ];
 
 // Whether the name column was found from its header, or only assumed (no header looked like one).
-export function nameHeaderFound(headers: string[], mapping: ImportMapping): boolean {
+function nameHeaderFound(headers: string[], mapping: ImportMapping): boolean {
   const pattern = GUESSES.find(([field]) => field === "name")?.[1];
   const header = headers[mapping.name]?.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() ?? "";
   return Boolean(pattern?.test(header));
@@ -117,7 +117,7 @@ export type CheckedRow = {
 
 // A cell that held bytes the file's encoding couldn't map (U+FFFD): never saved.
 const UNREADABLE = "\uFFFD";
-export const UNREADABLE_ROW = "This row has characters Coppice can't read. In Excel use Save As, CSV UTF-8.";
+const UNREADABLE_ROW = "This row has characters Coppice can't read. In Excel use Save As, CSV UTF-8.";
 
 const namedFromEmailWarning = (name: string) => `Contact named "${name}" from their email.`;
 // Whether a row's contact is only a stand-in made from its email (no name cell), so a real name
@@ -185,7 +185,7 @@ export type ExistingMatch = { id: string; name: string; website: string | null; 
 // Rows (and existing companies) that look alike: same name ignoring case and legal suffixes, or
 // same website domain. Linked transitively: if row 3 matches row 5 by name and row 5 matches an
 // existing company by website, all three are one group.
-export type DuplicateGroup = { rows: number[]; existing: ExistingMatch[]; matchedOn: MatchReason[] };
+type DuplicateGroup = { rows: number[]; existing: ExistingMatch[]; matchedOn: MatchReason[] };
 
 async function findGroups(tx: Tx, workspaceId: string, rows: CheckedRow[]): Promise<DuplicateGroup[]> {
   const keyed = rows.map((r) => ({ row: r.row, nameKey: nameKey(r.company.name), domainKey: domainKey(r.company.website) }));
@@ -231,8 +231,6 @@ function defaultSkips(groups: DuplicateGroup[]): number[] {
   return groups.flatMap((g) => (g.existing.length > 0 ? g.rows : g.rows.slice(1))).sort((a, b) => a - b);
 }
 
-export type { NameLookalike } from "@/lib/csv-contained";
-
 export type ImportPreview = {
   headers: string[];
   mapping: ImportMapping;
@@ -260,7 +258,7 @@ export type ImportPreview = {
   names: { row: number; name: string }[];
 };
 
-export const PREVIEW_ROWS = 10;
+const PREVIEW_ROWS = 10;
 
 export async function previewImport(
   tenant: Tenant,
@@ -407,7 +405,7 @@ export async function runImport(
 }
 
 // At most this many look-alike pairs are remembered by one import.
-export const IMPORT_MAX_PAIRS = 5000;
+const IMPORT_MAX_PAIRS = 5000;
 const CHUNK = 500;
 
 async function inChunks<T>(items: T[], write: (chunk: T[]) => Promise<unknown>): Promise<void> {

@@ -21,8 +21,9 @@ import {
   releaseClaimsOf,
   type OutreachInput,
 } from "@/lib/claims";
-import { archiveCompany, createCompany, resolveAsDuplicate, unarchiveCompany } from "@/lib/companies";
-import { addDays } from "@/lib/dates";
+import { archiveCompany, createCompany, unarchiveCompany } from "@/lib/companies";
+import { resolveAsDuplicate } from "@/lib/company-pairs";
+import { addDays, DAY_MS } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { form, redirectTo } from "./helpers/form";
 import { asUser } from "./helpers/next-request";
@@ -36,7 +37,6 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const OWNER: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
 const OFFICER: Membership = { userId: "officerA", workspaceId: "a", role: "member" };
 const OTHER_ORG: Membership = { userId: "ownerB", workspaceId: "b", role: "owner" };
-const DAY = 24 * 60 * 60 * 1000;
 
 async function company(name = "Acme") {
   const result = await createCompany(OWNER, { name });
@@ -83,7 +83,7 @@ describe("claimCompany", () => {
     const { claimedById, claimExpiresAt } = await row(id);
     expect(claimedById).toBe("officerA");
     // 14 days, give or take the few milliseconds between the claim and reading the clock.
-    expect(Math.abs(claimExpiresAt!.getTime() - (now.getTime() + 14 * DAY))).toBeLessThan(5000);
+    expect(Math.abs(claimExpiresAt!.getTime() - (now.getTime() + 14 * DAY_MS))).toBeLessThan(5000);
   });
 
   it("uses the workspace's own claim window", async () => {
@@ -91,8 +91,8 @@ describe("claimCompany", () => {
     const id = await company();
     const result = await claimCompany(OFFICER, id);
     if (!result.ok) throw new Error(result.error);
-    expect(result.data.claimExpiresAt.getTime() - (await dbNow()).getTime()).toBeGreaterThan(3 * DAY - 5000);
-    expect(result.data.claimExpiresAt.getTime() - (await dbNow()).getTime()).toBeLessThan(3 * DAY + 5000);
+    expect(result.data.claimExpiresAt.getTime() - (await dbNow()).getTime()).toBeGreaterThan(3 * DAY_MS - 5000);
+    expect(result.data.claimExpiresAt.getTime() - (await dbNow()).getTime()).toBeLessThan(3 * DAY_MS + 5000);
   });
 
   it("renews when the holder claims again", async () => {
@@ -100,7 +100,7 @@ describe("claimCompany", () => {
     await claimCompany(OFFICER, id);
     await withTenant(OWNER, (tx) => tx.$executeRaw`UPDATE "Company" SET "claimExpiresAt" = now() + interval '1 day' WHERE id = ${id}`);
     expect((await claimCompany(OFFICER, id)).ok).toBe(true);
-    expect((await row(id)).claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY);
+    expect((await row(id)).claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY_MS);
   });
 
   it("refuses while someone else holds it, saying who and until when", async () => {
@@ -188,7 +188,7 @@ describe("logOutreach", () => {
 
     const after = await row(id);
     expect(after.stage).toBe("CONTACTED");
-    expect(after.claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY);
+    expect(after.claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY_MS);
     expect(Math.abs(after.lastContactedAt!.getTime() - (await dbNow()).getTime())).toBeLessThan(5000);
     // Midnight in West Lafayette on the chosen day.
     const [{ local }] = await withTenant(OWNER, (tx) =>
@@ -239,8 +239,8 @@ describe("logOutreach", () => {
     expect(await historyOf(id)).toEqual([]);
   });
 
-  // Changed by the de-bloat pass: the page now offers the log form on your own
-  // expired claim, and saving claims it again, so the log is no longer refused.
+  // The page offers the log form on your own expired claim, and saving claims it again, so the log
+  // is not refused.
   it("your own expired claim that nobody took since: logging renews it", async () => {
     const id = await company();
     await claimCompany(OFFICER, id);
@@ -248,7 +248,7 @@ describe("logOutreach", () => {
     expect(await logOutreach(OFFICER, id, await outreach())).toEqual({ ok: true, data: { outreachId: expect.any(String) } });
     const after = await row(id);
     expect(after.claimedById).toBe("officerA");
-    expect(after.claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY);
+    expect(after.claimExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 13 * DAY_MS);
     expect(await outreachCount()).toBe(1);
   });
 

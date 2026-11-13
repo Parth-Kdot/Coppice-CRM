@@ -8,7 +8,7 @@ import { isConfigured } from "@/lib/ai/client";
 import { roleLabel } from "@/lib/authz";
 import { basicsDoneElsewhere, complete, getProgress } from "@/lib/onboarding";
 import { basicsPending } from "@/lib/onboarding-steps";
-import { loadWorkspace } from "./page-title";
+import { loadWorkspace } from "./load-workspace";
 
 // The frame around every page of a workspace: spine, header with the workspace switcher and the
 // search, and the page. loadWorkspace reads who is signed in and checks they belong here (a

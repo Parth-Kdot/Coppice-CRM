@@ -3,20 +3,16 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { toRole, type Role } from "@/lib/roles";
 import { safeNextPath } from "@/lib/validation";
 
-// Better Auth's built-in role names. The UI shows "member" as Officer.
-export type Role = "owner" | "member";
+export { roleLabel, type Role } from "@/lib/roles";
 
 export type Membership = { userId: string; workspaceId: string; role: Role };
 
 // Thrown when someone is signed in but not allowed. Server actions catch it and
 // return { ok: false, error } instead of showing an error page.
 export class AuthzError extends Error {}
-
-export function roleLabel(role: Role): string {
-  return role === "owner" ? "Owner" : "Officer";
-}
 
 // The request header that carries the page's own path and query (set by proxy.ts), so a signed-out
 // visitor can be sent back to it after signing in. Only ever used through safeNextPath.
@@ -49,7 +45,7 @@ export const checkMembership = cache(async (userId: string, workspaceId: string)
   });
   // Same error whether the workspace doesn't exist or you aren't in it, so ids can't be probed.
   if (!row) throw new AuthzError("You are not a member of this workspace.");
-  return { userId, workspaceId, role: row.role === "owner" ? "owner" : "member" };
+  return { userId, workspaceId, role: toRole(row.role) };
 });
 
 export async function checkOwner(userId: string, workspaceId: string): Promise<Membership> {
@@ -58,7 +54,7 @@ export async function checkOwner(userId: string, workspaceId: string): Promise<M
   return membership;
 }
 
-// Project rule 1: every server action starts with one of these two.
+// Every server action starts with one of these two.
 export async function requireMembership(workspaceId: string): Promise<Membership> {
   const user = await requireUser();
   return checkMembership(user.id, workspaceId);

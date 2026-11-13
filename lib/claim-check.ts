@@ -6,6 +6,7 @@ import { matchKey, promptSafe } from "@/lib/ai/text";
 import type { Finding } from "@/lib/claim-rules";
 import { withTenant, type Tenant } from "@/lib/db";
 import { verifiedFacts } from "@/lib/facts";
+import { notFound } from "@/lib/messages";
 import { fill, unfill, type Names } from "@/lib/placeholders";
 import type { ActionResult } from "@/lib/validation";
 
@@ -96,7 +97,7 @@ export async function checkDraft(tenant: Tenant, draftId: string, text: Text): P
       select: { contact: { select: { name: true } }, createdBy: { select: { name: true } }, workspace: { select: { name: true } } },
     }),
   );
-  if (!draft) return { ok: false, error: "Draft not found." };
+  if (!draft) return notFound("Draft");
   const names = {
     firstName: draft.contact?.name.trim().split(/\s+/)[0] ?? null,
     senderName: draft.createdBy.name,

@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 
-// Milestone 0 check: the app's shared client can reach the real Postgres database.
-// Raw SQL is allowed in tests (rule 1.11); there are no tables to query yet.
+// The app's shared client can reach the real Postgres database. Raw SQL is allowed in tests (the
+// raw SQL allowlist).
 describe("database connection", () => {
   afterAll(async () => {
     // Close the pool so Vitest can exit instead of waiting on open connections.

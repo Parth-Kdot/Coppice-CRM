@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { matchKey } from "@/lib/ai/text";
-import { addDays } from "@/lib/dates";
+import { addDays, formatYmd } from "@/lib/dates";
 import { injectionFlags } from "@/lib/research/scan";
 import { contactFieldsSchema, SMART_NOTE_MAX } from "@/lib/validation";
 import { boardYearOf, daysIn, longDay, parseDateText, placeFollowUp, placeLastContacted, resolveDate, yearLabel, type Placed } from "./dates";
@@ -193,17 +193,17 @@ function checkDates(proposal: RowProposal, last: Quote | null, follow: Quote | n
 }
 
 const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const nameKey = (name: string) => name.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+const cellNameKey = (name: string) => name.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
 // Whether a name is one of us rather than someone at the company: the person who did the outreach
 // ("emailed 3/2 by Sam", "cc Priya"), or a member of this workspace (their full name, or a
-// one-word name that is a member's first name). The live run on 2026-11-07 proposed "Sam" from
-// "emailed 3/2 by Sam" as the company's contact once a row with only an email could take one.
+// one-word name that is a member's first name). Without this check, "emailed 3/2 by Sam" would
+// propose "Sam" as the company's contact.
 function oneOfUs(name: string, cellText: string, ourNames: readonly string[]): boolean {
   if (new RegExp(`\\b(?:by|cc'?d?|bcc)\\s+${escapeRe(name)}\\b`, "i").test(cellText)) return true;
-  const key = nameKey(name);
+  const key = cellNameKey(name);
   return ourNames.some((member) => {
-    const full = nameKey(member);
+    const full = cellNameKey(member);
     return full === key || (!key.includes(" ") && full.split(" ")[0] === key);
   });
 }
@@ -238,7 +238,7 @@ function checkContact(
 }
 
 // "Aug 2025", for a date the sheet gave only as a month.
-const monthYear = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", year: "numeric" });
+const monthYear = (date: string) => formatYmd(date, { month: "short", year: "numeric" });
 
 // A past board year never sets a stage or dates: it comes back as a fresh lead, with its story in
 // the notes.

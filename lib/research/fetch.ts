@@ -115,7 +115,7 @@ export const defaultDeps: FetchDeps = { lookup: systemLookup, transport: nodeTra
 
 // ----- Fetching -----
 
-export type FetchResult =
+type FetchResult =
   | { ok: true; finalUrl: string; contentType: string; body: string }
   | { ok: false; reason: SkipReason; status?: number };
 
@@ -214,7 +214,7 @@ async function checkHop(url: URL, options: FetchOptions): Promise<{ ok: true; ad
 }
 
 // One URL, following at most limits.maxRedirects redirects, every hop checked from scratch.
-export async function safeFetch(start: string, options: FetchOptions): Promise<FetchResult> {
+async function safeFetch(start: string, options: FetchOptions): Promise<FetchResult> {
   const { deps, limits, signal } = options;
   const first = checkUrl(start);
   if (!first.ok) return first;
@@ -292,7 +292,7 @@ function refuseBody(response: TransportResponse, options: FetchOptions): Extract
 
 // ----- A research page, with robots.txt -----
 
-export const PAGE_TYPES = ["text/html", "application/xhtml+xml", "text/plain"];
+const PAGE_TYPES = ["text/html", "application/xhtml+xml", "text/plain"];
 
 // robots.txt answers per site for one brief, so each is fetched once.
 export type RobotsCache = Map<string, Promise<string | null | "unreachable">>;

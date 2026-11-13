@@ -1,15 +1,17 @@
 // Small text helpers for AI features: masking contact details before text goes to the model,
 // and checking that a quote the model returned really appears in a page of text.
 
+import { maskPhones } from "@/lib/ai/phones";
+
 // Emails and phone numbers are replaced before any text is sent to the AI (free tier).
 // Each part is bounded (64 before the "@", 63 per label, as in RFC 5321), so a long run of word
 // characters can't make the match backtrack for seconds.
 const EMAIL = /[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+/g;
-// 765-555-0142, (765) 555 0142, +1 765.555.0142 ...
-const PHONE = /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b/g;
 
+// Phone numbers in any country's format are masked too (lib/ai/phones.ts): "765-555-0142",
+// "(765) 555 0142", "+1 765.555.0142", "+44 20 7946 0958", "089/1234567".
 export function maskContactDetails(text: string): string {
-  return text.replace(EMAIL, "[email]").replace(PHONE, "[phone]");
+  return maskPhones(text.replace(EMAIL, "[email]"));
 }
 
 // Text in a form where the same words match however the PDF set them: ligatures and smart quotes

@@ -1,7 +1,8 @@
-// The seed deletes and rewrites the demo workspace's rows, so it must never be pointed at a hosted
-// database by accident (a Supabase URL pasted into .env, a pooler host, a copied production
-// string). This file is kept free of imports so the check runs before anything touches the
-// database client.
+// The seed deletes and rewrites the demo workspace's rows, and the tests and db:setup create and wipe
+// databases, so none of them may be pointed at a hosted database by accident (a Supabase URL pasted
+// into .env, a pooler host, a copied production string). This is the one local-database check they
+// all use (the seed, scripts/local-db.ts, tests/test-db.ts). This file is kept free of imports so the
+// check runs before anything touches the database client.
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 

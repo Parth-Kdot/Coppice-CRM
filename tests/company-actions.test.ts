@@ -19,6 +19,7 @@ import {
 import type { Membership } from "@/lib/authz";
 import * as claims from "@/lib/claims";
 import * as companies from "@/lib/companies";
+import { listPossibleDuplicatePairs } from "@/lib/company-pairs";
 import { addDays } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { isWebAddress, websiteHref } from "@/lib/validation";
@@ -419,7 +420,7 @@ describe("the board's Possible duplicates box", () => {
       }),
     );
   }
-  const listed = async () => (await companies.listPossibleDuplicatePairs(A)).map((p) => [p.a.id, p.b.id]);
+  const listed = async () => (await listPossibleDuplicatePairs(A)).map((p) => [p.a.id, p.b.id]);
 
   it("'Separate entries' remembers the pair, so it stops being listed", async () => {
     await pair();
@@ -455,7 +456,7 @@ describe("the board's Possible duplicates box", () => {
   });
 });
 
-describe("de-bloat pass: the server stays the backstop", () => {
+describe("the server refuses what the UI hides", () => {
   const ref = (companyId: string) => form({ workspaceId: "a", companyId });
 
   it("an officer can't move or archive a company someone else holds, even with the buttons hidden", async () => {

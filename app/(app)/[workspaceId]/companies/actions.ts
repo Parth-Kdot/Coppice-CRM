@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership, requireOwner } from "@/lib/authz";
 import * as claims from "@/lib/claims";
 import { changeStage } from "@/lib/claims";
 import * as companies from "@/lib/companies";
 import type { ReplyChoice, SaveResult } from "@/lib/companies";
+import { markSeparate, resolveAsDuplicate } from "@/lib/company-pairs";
+import { notFound } from "@/lib/messages";
 import { opensReply } from "@/lib/stages";
 import {
   addContactSchema,
@@ -26,7 +28,7 @@ import {
   type ActionResult,
 } from "@/lib/validation";
 
-// Every action: validate the form, check membership (project rule 1), then call lib/, which runs
+// Every action: validate the form, check membership (every action starts with requireMembership or requireOwner), then call lib/, which runs
 // inside withTenant so row-level security backs up the workspace check. Any member may do these,
 // except that a company someone else holds can only be moved or archived by them or an owner, and
 // only owners can force-release a claim (all enforced in lib/claims.ts).
@@ -107,7 +109,7 @@ export async function updateCompany(_prev: ActionResult<SaveResult> | null, form
 
 export async function archiveCompany(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId } = parsed.data;
 
   try {
@@ -129,7 +131,7 @@ export async function unarchiveCompany(_prev: ActionResult | null, form: FormDat
     companyId: form.get("companyId"),
     stay: form.get("stay"),
   });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId, stay } = parsed.data;
 
   try {
@@ -151,12 +153,12 @@ export async function archiveAsDuplicate(_prev: ActionResult | null, form: FormD
     companyId: form.get("companyId"),
     keepId: form.get("keepId"),
   });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId, keepId } = parsed.data;
 
   try {
     const member = await requireMembership(workspaceId);
-    const result = await companies.resolveAsDuplicate(member, keepId, companyId);
+    const result = await resolveAsDuplicate(member, keepId, companyId);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
@@ -172,12 +174,12 @@ export async function keepSeparate(_prev: ActionResult | null, form: FormData): 
     companyId: form.get("companyId"),
     otherId: form.get("otherId"),
   });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId, otherId } = parsed.data;
 
   try {
     const member = await requireMembership(workspaceId);
-    const result = await companies.markSeparate(member, companyId, otherId);
+    const result = await markSeparate(member, companyId, otherId);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
@@ -194,12 +196,12 @@ export async function archiveDuplicate(_prev: ActionResult | null, form: FormDat
     keepId: form.get("keepId"),
     archiveId: form.get("archiveId"),
   });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, keepId, archiveId } = parsed.data;
 
   try {
     const member = await requireMembership(workspaceId);
-    const result = await companies.resolveAsDuplicate(member, keepId, archiveId);
+    const result = await resolveAsDuplicate(member, keepId, archiveId);
     if (!result.ok) return result;
   } catch (e) {
     return failure(e);
@@ -257,11 +259,11 @@ export async function markReply(_prev: ActionResult | null, form: FormData): Pro
   return { ok: true, data: undefined };
 }
 
-// ----- Claims and outreach (Milestone 3). All the rules live in lib/claims.ts. -----
+// ----- Claims and outreach. All the rules live in lib/claims.ts. -----
 
 export async function claimCompany(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId } = parsed.data;
 
   try {
@@ -283,7 +285,7 @@ export async function claimCompany(_prev: ActionResult | null, form: FormData): 
 
 export async function releaseClaim(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId } = parsed.data;
 
   try {
@@ -300,7 +302,7 @@ export async function releaseClaim(_prev: ActionResult | null, form: FormData): 
 // Owners only: checked here (requireOwner) and again inside forceRelease.
 export async function forceRelease(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = companyRefSchema.safeParse({ workspaceId: form.get("workspaceId"), companyId: form.get("companyId") });
-  if (!parsed.success) return { ok: false, error: "Company not found." };
+  if (!parsed.success) return notFound("Company");
   const { workspaceId, companyId } = parsed.data;
 
   try {
@@ -387,7 +389,7 @@ export async function removeContact(_prev: ActionResult | null, form: FormData):
     companyId: form.get("companyId"),
     contactId: form.get("contactId"),
   });
-  if (!parsed.success) return { ok: false, error: "Contact not found." };
+  if (!parsed.success) return notFound("Contact");
   const { workspaceId, companyId, contactId } = parsed.data;
 
   try {

@@ -80,6 +80,39 @@ describe("text helpers", () => {
     expect(maskContactDetails(input)).toBe(output);
   });
 
+  // Everything sent to the AI is masked the same way, so numbers in other countries' formats go too.
+  test.for([
+    ["Call +44 20 7946 0958 today", "Call [phone] today"],
+    ["Call +91 98765 43210 today", "Call [phone] today"],
+    ["Call 089/1234567 today", "Call [phone] today"],
+    ["Call +49 (0)89 1234567 today", "Call [phone] today"],
+    ["Call 765\u2013555\u20130142 today", "Call [phone] today"],
+    ["Call 7655550142 today", "Call [phone] today"],
+  ] as const)("masks international numbers: %j", ([input, output]) => {
+    expect(maskContactDetails(input)).toBe(output);
+  });
+
+  // Figures a packet is full of, which look a little like numbers but are not phone numbers.
+  test.for([
+    "$2,500",
+    "10,000 students",
+    "2026-27",
+    "Nov 13, 2026",
+    "3.5 MB",
+    "40 pages",
+    "14 days",
+    "95%",
+    "1,248 companies",
+    "Room 2140",
+    "ZIP 47906",
+    "+15% year over year",
+    "Oct 25, 2026, 1:15 AM",
+    "Seasons 2025 2026 2027.",
+    "Open 24/7, split 50/50.",
+  ])("leaves %j alone", (text) => {
+    expect(maskContactDetails(text)).toBe(text);
+  });
+
   it("matches text however the PDF set it", () => {
     expect(matchKey("The ﬁnal  “Gold”\ntier – Spon-\nsorship")).toBe('the final "gold" tier - sponsorship');
     // A hyphen before a digit is never joined: "2025-\n26" is not "202526".
@@ -431,7 +464,7 @@ describe("fact sheet actions", () => {
   });
 });
 
-// ----- Found in the AI stress runs -----
+// ----- Wordy or malformed facts -----
 
 describe("uploadFactSheet: one wordy fact never throws the read away", () => {
   const good = EXTRACTED.facts[0];

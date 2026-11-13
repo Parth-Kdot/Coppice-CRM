@@ -2,6 +2,7 @@
 
 import { AuthzError, requireMembership } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
+import { notFound } from "@/lib/messages";
 import { advance, complete, dismissAi, setBasicsHidden, tourCompany } from "@/lib/onboarding";
 import { tourProgressSchema, workspaceIdSchema, type ActionResult } from "@/lib/validation";
 
@@ -28,7 +29,7 @@ export async function saveTourProgress(input: {
   try {
     member = await requireMembership(parsed.data.workspaceId);
   } catch (e) {
-    if (e instanceof AuthzError) return { ok: false, error: "Workspace not found." };
+    if (e instanceof AuthzError) return notFound("Workspace");
     throw e;
   }
 
@@ -44,13 +45,13 @@ export async function saveTourProgress(input: {
 
 export async function loadTourCompany(workspaceId: string): Promise<ActionResult<{ companyId: string | null }>> {
   const parsed = workspaceIdSchema.safeParse(workspaceId);
-  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  if (!parsed.success) return notFound("Workspace");
 
   let member;
   try {
     member = await requireMembership(parsed.data);
   } catch (e) {
-    if (e instanceof AuthzError) return { ok: false, error: "Workspace not found." };
+    if (e instanceof AuthzError) return notFound("Workspace");
     throw e;
   }
   return { ok: true, data: { companyId: await tourCompany(member, await dbNow()) } };

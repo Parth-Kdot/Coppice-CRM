@@ -26,22 +26,19 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
 //
-// Free-tier capacity swings minute to minute (we've seen a model hang 45 s while another answered in
-// 6 s), and each model has its own quota (on 2026-10-26 3.6 Flash was out while 3.5 Flash-Lite
-// answered every call). So each feature gets one short try on its main model (`firstTryMs`), then
-// moves to a `fallback` model when the main one is overloaded, slow or out of quota, and drafting
-// has a `lastResort` after that. An overloaded model's 503 ("high demand") is never retried on the
+// Free-tier capacity swings minute to minute (a model can hang for 45 s while another answers in
+// 6 s), and each model has its own quota. So each feature gets one short try on its main model
+// (`firstTryMs`), then moves to a `fallback` model when the main one is overloaded, slow or out of
+// quota, and drafting has a `lastResort` after that. An overloaded model's 503 ("high demand") is never retried on the
 // same model while another is left in line: the call moves on as soon as it arrives, without
 // waiting out the try's timer. The last model in line gets one retry; everything shares the
 // overall deadline. AiRun records whichever model actually answered, and when it wasn't the first,
 // which model failed before it, how, and after how long (lib/ai/run.ts).
 //
-// On 2026-11-07 Gemini 3.8 Flash answered nothing on the owner's free key (503 "high demand" in
-// 3 s, or a hang through the proxy) while 3.6 Flash answered in about 1 s and 3.5 Flash-Lite in
-// 0.7 s, so every drafting, extraction and research-reading call waited out 3.8's first try. 3.6
-// Flash, with the thinking levels it was proven at, now goes first, and 3.8 is the fallback.
-// `tryMs` caps one try on a model that isn't first or last in line, so a hanging middle model
-// can't eat the drafting call's deadline.
+// 3.6 Flash, with the thinking levels it was proven at, goes first and 3.8 is the fallback, because
+// 3.8 can answer nothing for long stretches on a free key (503 "high demand", or a hang), and a
+// call that tried it first waited out its whole first try. `tryMs` caps one try on a model that
+// isn't first or last in line, so a hanging middle model can't eat the drafting call's deadline.
 type Model = { model: string; thinkingLevel?: ThinkingLevel; tryMs?: number };
 // `overallMs` shortens the whole call's deadline for a feature that is only a convenience (Smart
 // import's column suggestions and look-alikes): the person shouldn't wait the full 100 s for it.
@@ -71,7 +68,7 @@ export const ROUTES: Record<AiFeature, Route> = {
     firstTryMs: 20_000,
     fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.LOW, tryMs: 15_000 },
     // At its default (minimal) thinking it sometimes skipped the placeholders and line breaks;
-    // LOW followed them, at the same speed (tested 2026-10-26). It must stay at LOW.
+    // LOW followed them, at the same speed. It must stay at LOW.
     lastResort: { model: "gemini-3.5-flash-lite", thinkingLevel: ThinkingLevel.LOW },
   },
   // Flash-Lite's default (minimal) thinking is right for a quick check.

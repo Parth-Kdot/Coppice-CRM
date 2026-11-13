@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
-import { acceptBriefItem as acceptAction, requestBrief as requestAction } from "@/app/(app)/[workspaceId]/companies/research-actions";
-import { addResearchSource, archiveResearchSource, renameResearchSource } from "@/app/(app)/[workspaceId]/settings/research-actions";
+import { acceptBriefItem as acceptAction, requestBrief as requestAction } from "@/app/(app)/[workspaceId]/companies/brief-actions";
+import { addResearchSource, archiveResearchSource, renameResearchSource } from "@/app/(app)/[workspaceId]/settings/source-actions";
 import { DAILY_BRIEFS_PER_PERSON } from "@/lib/ai/run";
 import { numbersIn } from "@/lib/ai/text";
 import type { Membership } from "@/lib/authz";
@@ -22,7 +22,7 @@ import { resetAndSeed } from "./helpers/seed";
 vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-// The Research Agent end to end, against the real database, with recorded AI replies
+// Research briefs end to end, against the real database, with recorded AI replies
 // (tests/helpers/gemini.ts) and a fake internet (tests/helpers/research.ts). Nothing leaves the machine.
 
 const OWNER: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
@@ -700,7 +700,7 @@ describe("the server actions", () => {
   });
 });
 
-// ----- Found in the Research Agent stress run -----
+// ----- Edge cases in the brief's checks -----
 
 describe("namesPerson (a brief never names an individual)", () => {
   test.for([

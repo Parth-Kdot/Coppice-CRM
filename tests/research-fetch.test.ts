@@ -1,12 +1,13 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
+import { maskPhones } from "@/lib/ai/phones";
 import { isBlockedAddress } from "@/lib/research/addresses";
 import { cleanLine, cleanQuote, sitesIn } from "@/lib/research/checks";
 import { fetchResearchPage, LIMITS, nodeTransport, USER_AGENT } from "@/lib/research/fetch";
 import { decodeEntities, htmlToText, tidy } from "@/lib/research/html";
 import { robotsAllows } from "@/lib/research/robots";
-import { injectionFlags, maskPage, maskPhones, PAGE_TEXT_MAX, pageHead, teamInboxes } from "@/lib/research/scan";
+import { injectionFlags, maskPage, PAGE_TEXT_MAX, pageHead, teamInboxes } from "@/lib/research/scan";
 import { checkUrl, isApprovedHost, parseSourceUrl } from "@/lib/research/urls";
 import { addResearchSourceSchema } from "@/lib/validation";
 import { FAST, fakeNet, html, PUBLIC_IP, redirect, robots } from "./helpers/research";

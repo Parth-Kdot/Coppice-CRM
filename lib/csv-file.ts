@@ -1,12 +1,13 @@
-import { IMPORT_MAX_BYTES, type ActionResult } from "@/lib/validation";
+import { IMPORT_MAX_BYTES } from "@/lib/limits";
+import type { ActionResult } from "@/lib/validation";
 
 // The uploaded file as text, or why it can't be used. Shared by the import and Smart import actions
 // (kept out of the "use server" files, so it is never an action of its own). The browser runs the
 // same checks and decoding before it uploads (components/csv-importer.tsx), so a refusal shows at
 // once; the server checks again, because the browser's word counts for nothing.
 
-export const CHOOSE_CSV = "Choose a .csv file. In Google Sheets: File, Download, Comma-separated values.";
-export const TOO_BIG = "The file is over 3 MB. Split it into smaller files.";
+const CHOOSE_CSV = "Choose a .csv file. In Google Sheets: File, Download, Comma-separated values.";
+const TOO_BIG = "The file is over 3 MB. Split it into smaller files.";
 
 // Why a file can't be imported before it is even read (name and size only), or null.
 export function fileProblem(file: { name: string; size: number }): string | null {

@@ -34,7 +34,7 @@ export type Progress = {
 
 const SELECT = { basicsStep: true, basicsDoneAt: true, basicsRole: true, aiStep: true, aiDoneAt: true, aiDismissedAt: true, basicsHiddenAt: true } as const;
 
-export const MAX_STEP = 20;
+const MAX_STEP = 20;
 
 export async function getProgress(tenant: Tenant): Promise<Progress | null> {
   const row = await withTenant(tenant, (tx) =>

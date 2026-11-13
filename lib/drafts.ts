@@ -9,7 +9,8 @@ import { claimCompany, dbNow } from "@/lib/claims";
 import { day } from "@/lib/dates";
 import { withTenant, type Tenant } from "@/lib/db";
 import { verifiedFacts } from "@/lib/facts";
-import { fill, PLACEHOLDERS } from "@/lib/placeholders";
+import { notFound } from "@/lib/messages";
+import { fill, PLACEHOLDERS, unfill } from "@/lib/placeholders";
 import { STAGE_LABELS } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 
@@ -21,7 +22,9 @@ import type { ActionResult } from "@/lib/validation";
 //
 // Gemini's free tier may use prompts to improve Google's products, so no person's name or contact
 // details go to it: the recipient is described by job title, and the email says {{firstName}},
-// {{senderName}} and {{orgName}}, which code fills in afterwards.
+// {{senderName}} and {{orgName}}, which code fills in before the drafts are saved. Saved text that
+// goes to the AI again (an earlier draft's subject in a follow-up prompt) has its names turned
+// back into placeholders first.
 
 const EARLIER_OUTREACH_SHOWN = 5;
 
@@ -77,7 +80,7 @@ export type DraftRequest = { kind: DraftKind; contactId: string | null; note: st
 
 // What a drafting reply must pass, besides its schema (logged FAILED "broke_rules" when none does).
 // The body must greet and sign off through the placeholders: a model that writes names itself
-// invents them ("Hi John" to Hank, signed by a made-up officer), as Flash-Lite did on 2026-10-26.
+// invents them ("Hi John" to Hank, signed by a made-up officer).
 const signedProperly = (body: string) => PLACEHOLDERS.every((p) => new RegExp(`\\{\\{\\s*${p}\\s*\\}\\}`).test(body));
 export const usableVariants = (data: z.output<typeof Variants>) => data.variants.filter((v) => usable(v.subject) && usable(v.body) && signedProperly(v.body));
 
@@ -94,7 +97,7 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
         }),
       )
     : null;
-  if (request.contactId && !contact) return { ok: false, error: "Contact not found." };
+  if (request.contactId && !contact) return notFound("Contact");
   const template = request.templateId
     ? await withTenant(tenant, (tx) =>
         tx.template.findFirst({
@@ -122,7 +125,12 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
     }),
     earlier: await tx.outreach.findMany({
       where: { companyId, workspaceId: tenant.workspaceId },
-      select: { sentAt: true, channel: true, gotReply: true, aiDraft: { select: { subject: true } } },
+      select: {
+        sentAt: true,
+        channel: true,
+        gotReply: true,
+        aiDraft: { select: { subject: true, contact: { select: { name: true } }, createdBy: { select: { name: true } }, workspace: { select: { name: true } } } },
+      },
       orderBy: { sentAt: "desc" },
       take: EARLIER_OUTREACH_SHOWN,
     }),
@@ -139,10 +147,21 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
   ];
   if (request.kind === "FOLLOW_UP") {
     // Whether each one got a reply, so a follow-up to a company that answered doesn't read as a
-    // nudge. Neither this nor the stage carries a name (the outreach's own note is never sent).
-    const earlier = context.earlier.map(
-      (o) => `${day(o.sentAt)}, ${CHANNEL_LABELS[o.channel]}${o.aiDraft ? `: "${promptSafe(o.aiDraft.subject)}"` : ""}${o.gotReply ? ", they replied" : ""}`,
-    );
+    // nudge. An earlier draft's subject was saved with its names filled in, so they are turned back
+    // into placeholders first, as the Claim Checker does (lib/claim-check.ts); the outreach's own
+    // note is never sent.
+    const earlier = context.earlier.map((o) => {
+      const subject = o.aiDraft
+        ? promptSafe(
+            unfill(o.aiDraft.subject, {
+              firstName: o.aiDraft.contact?.name.trim().split(/\s+/)[0] ?? null,
+              senderName: o.aiDraft.createdBy.name,
+              orgName: o.aiDraft.workspace.name,
+            }),
+          )
+        : null;
+      return `${day(o.sentAt)}, ${CHANNEL_LABELS[o.channel]}${subject !== null ? `: "${subject}"` : ""}${o.gotReply ? ", they replied" : ""}`;
+    });
     lines.push(`<earlier_outreach>\n${earlier.length ? earlier.join("\n") : "(none logged)"}\n</earlier_outreach>`);
   }
   // A template is the workspace's own wording, so it is data like everything else in the tags:

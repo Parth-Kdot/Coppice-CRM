@@ -1,11 +1,11 @@
 import { isConfigured } from "@/lib/ai/client";
-import { aiUsage } from "@/lib/ai/run";
 import { dbToday } from "@/lib/claims";
 import type { Tenant } from "@/lib/db";
+import { workspaceRow } from "@/lib/workspaces";
 import { boardYearOf, yearLabel } from "./dates";
 import { PAST_YEARS } from "./shared";
 
-// Smart import, the Sheet Archaeologist (AI feature 3). An optional extra on top of the CSV
+// Smart import. An optional extra on top of the CSV
 // importer (lib/csv.ts), which still checks every row, finds duplicates and imports in one
 // transaction. Smart import adds, for a person to accept, edit or drop before anything is written:
 // 1. column suggestions from the headers and up to 15 sample rows (Gemini, IMPORT_MAPPING). A
@@ -29,8 +29,7 @@ import { PAST_YEARS } from "./shared";
 export { cellShape, cleanSuggestion, sampleSheet, shownColumns, suggestColumns, type ColumnSuggestion } from "./columns";
 export { checkRowsRead, findDoNotContact, plantedInstruction, quoteInCell, type Quote, type RowProposal, type RowsReadOutput } from "./check";
 export { runSmartImport } from "./commit";
-export { boardYearOf, futureHint, parseDateText, resolveDate, yearLabel } from "./dates";
-export { type LookalikeGroup } from "./lookalikes";
+export { boardYearOf, futureHint, parseDateText, resolveDate } from "./dates";
 export { readSmartChunk, type SmartChunk, type SmartChunkResult } from "./read";
 export { startSmartRead, type SmartStart } from "./start";
 
@@ -38,8 +37,8 @@ export type SmartOptions = { aiOn: boolean; gemini: boolean; groq: boolean; cycl
 
 // What the import page needs to show the Smart import switch: AI off hides it.
 export async function smartOptions(tenant: Tenant): Promise<SmartOptions> {
-  const [usage, today] = await Promise.all([aiUsage(tenant), dbToday()]);
+  const [workspace, today] = await Promise.all([workspaceRow(tenant.workspaceId), dbToday()]);
   const current = boardYearOf(today);
   const cycles = Array.from({ length: PAST_YEARS + 1 }, (_, i) => ({ start: current - i, label: yearLabel(current - i) }));
-  return { aiOn: usage.enabled, gemini: isConfigured(), groq: isConfigured("groq"), cycles, current };
+  return { aiOn: workspace.aiEnabled, gemini: isConfigured(), groq: isConfigured("groq"), cycles, current };
 }

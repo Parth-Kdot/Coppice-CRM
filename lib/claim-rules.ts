@@ -21,7 +21,7 @@ const AFTER_MONTH = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*
 const isDayOfMonth = (number: string, before: string) => /^\d{1,2}$/.test(number) && Number(number) <= 31 && AFTER_MONTH.test(before);
 const LINK = /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|edu|net|io|co|us|ai|dev)\b\S*/gi;
 // Also an invented past sponsorship told as a story ("Last year Ferncliff Foods sponsored our Gold
-// tier", seen live on 2026-11-07): "sponsored our ..." in the past tense, or "sponsored" within a
+// tier"): "sponsored our ..." in the past tense, or "sponsored" within a
 // sentence that starts its clause with "last year", "previously" or "in the past". The present
 // "sponsoring our hackathon" is the ask, so it isn't flagged.
 const HISTORY =

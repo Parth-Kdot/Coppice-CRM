@@ -43,7 +43,7 @@ import { testDatabaseUrls } from "./test-db";
 vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-// Smart import (lib/smart-import.ts) against the real database as app_user. No AI API is ever
+// Smart import (lib/smart-import/) against the real database as app_user. No AI API is ever
 // called: Gemini and Groq replies are recorded-style responses served by a fake fetch, in order.
 const A: Tenant = { userId: "ownerA", workspaceId: "a" };
 const OFFICER_A: Tenant = { userId: "officerA", workspaceId: "a" };
@@ -1195,7 +1195,7 @@ describe("Smart import across workspaces and members", () => {
   });
 });
 
-// ----- Found in the Smart import stress run -----
+// ----- Edge cases from real sheets -----
 
 describe("the look-alike prompt sends cleaned company names, like the column step", () => {
   test.for([
@@ -1436,10 +1436,10 @@ describe("column suggestions checked against the sheet", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Recorded from the live run with the real Gemini and Groq on 2026-11-07 (fictional sheet).
+// Recorded replies from the real Gemini and Groq for a fictional sheet.
 
-describe("live findings, recorded: columns, contacts named in notes, and planted text", () => {
-  // The sheet from the live run, headers and cells as they were.
+describe("real-world sheets: columns, contacts named in notes, and planted text", () => {
+  // The recorded sheet, headers and cells as they were.
   const LIVE_HEADERS = ["Org", "who", "e-mail", "notes / status", "Sector", "misc"];
   const LIVE_ROWS = [
     ["Brightwater Optics", "", "outreach@brightwater-optics.example.com", "emailed 3/2 by Sam, no reply yet. reach out again in Aug", "optics / lasers", ""],
@@ -1448,8 +1448,8 @@ describe("live findings, recorded: columns, contacts named in notes, and planted
     ["HPS", "", "campus@hollowmere.example.com", "replied 11/1, call booked w/ Raj Patel next week", "energy", ""],
   ].map((cells) => ({ cells }));
 
-  it("keeps Notes on its plainly headed column when the AI moves it to an empty one (Gemini picked 'misc', live)", () => {
-    // Gemini's suggestion in the live run moved Notes to column 5, empty in every row.
+  it("keeps Notes on its plainly headed column when the AI moves it to an empty one (Gemini picked 'misc')", () => {
+    // Gemini's recorded suggestion moved Notes to column 5, empty in every row.
     const recorded = { name: 0, industry: 4, website: null, notes: 5, contactName: 1, contactEmail: 2, freeText: [3] };
     const { mapping, freeText } = cleanSuggestion(LIVE_HEADERS, recorded, LIVE_ROWS);
     expect(mapping).toEqual({ name: 0, industry: 4, website: null, notes: 3, contactName: 1, contactEmail: 2 });
@@ -1577,8 +1577,8 @@ describe("live findings, recorded: columns, contacts named in notes, and planted
     expect(p.outcome).toBeUndefined();
   });
 
-  // Recorded from the re-run on 2026-11-07: with the email-named contact no longer in the way,
-  // Groq offered "Sam" from "emailed 3/2 by Sam" (the member who sent it) as Brightwater's contact.
+  // Recorded reply: with the email-named contact no longer in the way, Groq offered "Sam" from
+  // "emailed 3/2 by Sam" (the member who sent it) as Brightwater's contact.
   it("never proposes one of us as the company's contact: whoever did the outreach, or a workspace member", () => {
     const shown = [
       { row: 2, cells: [{ column: 4, header: "notes / status", text: "emailed 3/2 by Sam, no reply yet. reach out again in Aug" }] },

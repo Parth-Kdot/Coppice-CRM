@@ -15,9 +15,9 @@
 //
 // Each card is one short title and one sentence. `anchors` name the real control it points at, in
 // order of preference: the first one that is on the page and visible gets the highlight. An anchor
-// is a data-tour value (the de-bloat packages added them), or a plain CSS selector (it starts with
-// "#", "." or "[") for a page whose hook is still being added. A card whose control is missing
-// shows centred, with `illustration` if it has one.
+// is a data-tour value, or a plain CSS selector (it starts with "#", "." or "[") for a control
+// that has no data-tour hook. A card whose control is missing shows centred, with `illustration` if
+// it has one.
 
 export type TourName = "basics" | "ai";
 export type TourRole = "owner" | "member";

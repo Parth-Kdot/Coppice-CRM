@@ -436,7 +436,7 @@ model Company {
   stage           Stage     @default(NOT_CONTACTED)
   nextFollowUpAt  DateTime? @db.Timestamptz(3)
   lastContactedAt DateTime? @db.Timestamptz(3)
-  // Written only by lib/claims.ts (Milestone 3).
+  // Written only by lib/claims.ts.
   claimedById     String?
   claimExpiresAt  DateTime? @db.Timestamptz(3)
   // How the latest claim was made (app or assistant). Only meaningful while claimedById is set;
@@ -557,7 +557,7 @@ model Outreach {
   note        String?
   gotReply    Boolean  @default(false)
   via         Via      @default(APP)
-  // The AI draft this email came from, if any (AI feature 1), so stats can compare AI-drafted and
+  // The AI draft this email came from, if any (the Pitch Drafter), so stats can compare AI-drafted and
   // hand-written emails. Always a draft of the same workspace (composite key).
   aiDraftId   String?
   // A key the log form makes once per entry (a UUID), so a double submit, a retry after a
@@ -584,18 +584,18 @@ model Outreach {
   @@unique([workspaceId, clientKey])
 }
 
-// ----- AI (feature 1: the Fact-Locked Pitch Drafter) -----
+// ----- AI: fact sheet and Pitch Drafter -----
 
 enum AiFeature {
   FACT_EXTRACTION
   DRAFT
   CLAIM_CHECK
-  // Smart import (AI feature 3): column suggestions and look-alike names (Gemini), and reading
+  // Smart import: column suggestions and look-alike names (Gemini), and reading
   // free-text cells (Groq).
   IMPORT_MAPPING
   IMPORT_LOOKALIKES
   IMPORT_ROWS
-  // AI feature 2, the Research Agent: reading the fetched pages, then writing the brief.
+  // Research briefs: reading the fetched pages, then writing the brief.
   RESEARCH_READ
   RESEARCH_BRIEF
 }
@@ -709,8 +709,10 @@ model FactSheetItem {
   @@index([verifiedById])
 }
 
-// One drafted email (each Draft click makes two, with different angles). The body keeps its
-// {{firstName}}-style placeholders; names are filled in on screen, never sent to the AI.
+// One drafted email (each Draft click makes two, with different angles). The model writes
+// {{firstName}}-style placeholders and code fills the names in before the draft is saved, so the
+// subject and body hold real names. They are turned back into placeholders before any of that text
+// goes to an AI again (the Claim Checker, an earlier draft's subject in a follow-up).
 model AiDraft {
   id          String    @id @default(cuid())
   workspaceId String
@@ -722,7 +724,7 @@ model AiDraft {
   angle       String
   subject     String
   body        String
-  // The Claim Checker's findings for this draft (lib/ai/claim-check.ts).
+  // The Claim Checker's findings for this draft (lib/claim-check.ts).
   check       Json?
   model       String
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
@@ -740,7 +742,7 @@ model AiDraft {
   @@index([createdById])
 }
 
-// ----- Smart import (AI feature 3: the Sheet Archaeologist) -----
+// ----- Smart import -----
 
 // One Smart import in progress: the file it reads (by hash, since the file itself is sent again
 // with every step), the column choices it was read with, and the sheet's board year. The browser
@@ -790,7 +792,7 @@ model ImportChunk {
   @@index([workspaceId])
 }
 
-// ----- AI (feature 2: the Research Agent) -----
+// ----- AI: research briefs -----
 
 // A web page an owner approved for research briefs. The server fetches only these URLs (and
 // redirects that stay on one of their hosts), never anything else. Removing one archives it.

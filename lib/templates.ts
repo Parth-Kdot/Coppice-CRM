@@ -1,15 +1,16 @@
 import type { Membership } from "@/lib/authz";
 import { withTenant, type Tenant } from "@/lib/db";
+import { notFound } from "@/lib/messages";
 import type { ActionResult } from "@/lib/validation";
 
-// Outreach templates (Milestone 5): the emails a workspace sends again and again, so stats can say
+// Outreach templates: the emails a workspace sends again and again, so stats can say
 // which ones get replies. Owners write, edit, archive and unarchive them; every member can read
 // them and pick one when logging outreach or drafting. A template is never deleted: outreach points
 // at it, so archiving takes it out of the pickers and keeps its history in the stats.
 // The body may only use {{firstName}}, {{senderName}} and {{orgName}} (checked in lib/validation.ts).
 
 const ownersOnly = { ok: false, error: "Only the workspace owner can manage templates." } as const;
-const NOT_FOUND = { ok: false, error: "Template not found." } as const;
+const NOT_FOUND = notFound("Template");
 
 export type TemplateFields = { name: string; body: string };
 

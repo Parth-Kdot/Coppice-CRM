@@ -1,14 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership } from "@/lib/authz";
 import * as accept from "@/lib/research/accept";
 import * as research from "@/lib/research/brief";
 import type { BriefView } from "@/lib/research/brief";
 import { acceptBriefItemSchema, requestBriefSchema, type ActionResult } from "@/lib/validation";
 
-// The Research Agent's buttons on the company page. Any member may ask for a brief while AI is on
+// The research brief's buttons on the company page. Any member may ask for a brief while AI is on
 // (lib/research/brief.ts refuses otherwise); reading the pages and two AI calls take up to a few
 // minutes, within the company page's maxDuration.
 export async function requestBrief(_prev: ActionResult<BriefView> | null, form: FormData): Promise<ActionResult<BriefView>> {

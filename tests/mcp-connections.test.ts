@@ -240,7 +240,7 @@ describe("disconnect", () => {
   });
 });
 
-// Recorded from the live run with the official MCP client on 2026-11-07: after Better Auth's own
+// Recorded with the official MCP client: after Better Auth's own
 // POST /oauth2/delete-consent the access token was refused, but the token endpoint went on issuing
 // and rotating tokens for the revoked grant, and the client failed with "Server returned 401 after
 // re-authentication" instead of sending the person back to sign in.
@@ -280,7 +280,7 @@ describe("a consent removed some other way than Disconnect", () => {
   it("a consent gone from the database is caught by the grant check, which ends the leftover tokens too", async () => {
     const clientId = await newClient();
     const { accessToken, refreshToken } = await connect(clientId, "ownerA");
-    // Removed without any hook (a direct delete), the way the live run left it.
+    // Removed without any hook (a direct delete), the way the real client run left it.
     await prisma.oauthConsent.deleteMany({ where: { userId: "ownerA", clientId } });
     expect((await rows("ownerA", clientId)).refreshTokens).toBeGreaterThan(0);
     await expectRefused(accessToken);

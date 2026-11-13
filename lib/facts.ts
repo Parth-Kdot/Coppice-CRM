@@ -4,15 +4,15 @@ import { readPdfPages } from "@/lib/ai/pdf";
 import { runAi } from "@/lib/ai/run";
 import { clamped, droppedItems, keptItems } from "@/lib/ai/schema";
 import { promptSafe, quoteFound } from "@/lib/ai/text";
+import { DAY_MS } from "@/lib/dates";
 import { withTenant, type Tenant } from "@/lib/db";
+import { notFound, OWNERS_ONLY } from "@/lib/messages";
 import { FACT_MAX, type ActionResult } from "@/lib/validation";
 
-// The fact sheet: the only things the AI may state about the org. A chair uploads the
+// The fact sheet: the only things the AI may state about the org. An owner uploads the
 // sponsorship packet; the AI lists the facts in it, each with the sentence it came from and the
 // page; code checks that sentence really is on that page; and nothing is used until an owner
 // verifies it. Owners can also edit, delete, or add facts by hand. Officers can read them.
-
-const ownersOnly = { ok: false, error: "Only the workspace owner can do that." } as const;
 
 // Contact details are masked as "[email]" and "[phone]" before a page goes to the AI, so a fact
 // holding one of those tokens would put the token itself into an email to a sponsor.
@@ -21,7 +21,7 @@ export const hasMaskToken = (text: string) => MASK_TOKEN.test(text);
 export const MASKED_FACT = "Facts can't hold [email] or [phone]: drafts would send those words as they are. Leave contact details out of the fact.";
 const MASKED_VERIFY = "This fact holds [email] or [phone], so drafts can't use it. Edit it first.";
 const stripNul = (text: string) => text.replace(/\u0000/g, "");
-const FACT_NOT_FOUND = { ok: false, error: "Fact not found." } as const;
+const FACT_NOT_FOUND = notFound("Fact");
 
 // What the AI is asked to return. A fact over FACT_MAX is dropped on its own (cutting a fact could
 // change what it says), a long quote is cut to fit (its start is still checked against the page),
@@ -52,7 +52,7 @@ export type UploadResult = { factSheetId: string; facts: number; quotesFound: nu
 // Reads the PDF, asks the AI for its facts, checks each quote, and saves the file's text and the
 // (unverified) facts in one transaction. The AI call happens before the transaction, not inside it.
 export async function uploadFactSheet(owner: Membership, fileName: string, bytes: Uint8Array): Promise<ActionResult<UploadResult>> {
-  if (owner.role !== "owner") return ownersOnly;
+  if (owner.role !== "owner") return OWNERS_ONLY;
   const read = await readPdfPages(bytes);
   if (!read.ok) return read;
   // What the AI is shown is also what's stored to check its quotes against.
@@ -153,10 +153,10 @@ export function verifiedFacts(tenant: Tenant) {
 
 // Facts last checked more than a year ago get a Stale badge; `now` comes from dbNow().
 export const isStale = (fact: { verifiedAt: Date | null; createdAt: Date }, now: Date) =>
-  now.getTime() - (fact.verifiedAt ?? fact.createdAt).getTime() > 365 * 24 * 60 * 60 * 1000;
+  now.getTime() - (fact.verifiedAt ?? fact.createdAt).getTime() > 365 * DAY_MS;
 
 export function setFactVerified(owner: Membership, factId: string, verified: boolean): Promise<ActionResult> {
-  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   return withTenant(owner, async (tx) => {
     if (verified) {
       const fact = await tx.factSheetItem.findFirst({ where: { id: factId, workspaceId: owner.workspaceId }, select: { text: true } });
@@ -174,7 +174,7 @@ export function setFactVerified(owner: Membership, factId: string, verified: boo
 // "Verify all n with quotes found": every fact waiting for a check whose quote was found on its
 // page, in one go. Facts whose quote wasn't found, and any holding a masked token, stay waiting.
 export function verifyQuotedFacts(owner: Membership): Promise<ActionResult<{ verified: number }>> {
-  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   return withTenant(owner, async (tx) => {
     const { count } = await tx.factSheetItem.updateMany({
       where: {
@@ -194,7 +194,7 @@ export function verifyQuotedFacts(owner: Membership): Promise<ActionResult<{ ver
 // keeps its quote, which is checked again, and is verified only while the quote still supports the
 // new text: change "$2,500" to "$3,000" and it goes back to waiting, with "quote doesn't match".
 export function updateFact(owner: Membership, factId: string, text: string): Promise<ActionResult<{ verified: boolean }>> {
-  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   if (hasMaskToken(text)) return Promise.resolve({ ok: false, error: MASKED_FACT });
   return withTenant(owner, async (tx) => {
     const fact = await tx.factSheetItem.findFirst({
@@ -221,7 +221,7 @@ export function updateFact(owner: Membership, factId: string, text: string): Pro
 
 // A fact typed in by an owner: verified, with no quote to check.
 export function addFact(owner: Membership, text: string): Promise<ActionResult<{ factId: string }>> {
-  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   if (hasMaskToken(text)) return Promise.resolve({ ok: false, error: MASKED_FACT });
   return withTenant(owner, async (tx) => {
     const fact = await tx.factSheetItem.create({
@@ -241,7 +241,7 @@ export function addFact(owner: Membership, text: string): Promise<ActionResult<{
 
 // Facts aren't history, so deleting really deletes.
 export function deleteFact(owner: Membership, factId: string): Promise<ActionResult> {
-  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   return withTenant(owner, async (tx) => {
     const { count } = await tx.factSheetItem.deleteMany({ where: { id: factId, workspaceId: owner.workspaceId } });
     return count === 1 ? { ok: true, data: undefined } : FACT_NOT_FOUND;
@@ -251,9 +251,9 @@ export function deleteFact(owner: Membership, factId: string): Promise<ActionRes
 // Deletes an uploaded file with its page text and every fact read from it (facts typed by hand
 // stay).
 export function deleteFactSheet(owner: Membership, factSheetId: string): Promise<ActionResult> {
-  if (owner.role !== "owner") return Promise.resolve(ownersOnly);
+  if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   return withTenant(owner, async (tx) => {
     const { count } = await tx.factSheet.deleteMany({ where: { id: factSheetId, workspaceId: owner.workspaceId } });
-    return count === 1 ? { ok: true, data: undefined } : { ok: false, error: "File not found." };
+    return count === 1 ? { ok: true, data: undefined } : notFound("File");
   });
 }

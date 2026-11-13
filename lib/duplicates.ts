@@ -1,5 +1,5 @@
 // How two companies are judged "possibly the same". Only ever used to raise a flag a person
-// resolves (project rule 5): nothing is merged, blocked or removed automatically.
+// resolves: nothing is merged, blocked or removed automatically.
 
 // Words that don't change which company a name means.
 const LEGAL_SUFFIX = /\s+(inc|incorporated|llc|l l c|llp|l l p|pllc|lp|corp|corporation|co|company|ltd|limited|plc|gmbh|ag|sa)$/;
@@ -23,7 +23,7 @@ export function nameKey(name: string): string {
 // Hosts that many unrelated companies share (a LinkedIn page, a Linktree, a Google Site). Their
 // host alone says nothing about which company it is, so for these the key is the host plus the
 // path segment(s) that name the page: "linkedin.com/company/acme", "linktr.ee/acme".
-export const SHARED_HOSTS = [
+const SHARED_HOSTS = [
   "linkedin.com",
   "facebook.com",
   "instagram.com",
@@ -159,7 +159,7 @@ export function containedName(a: string, b: string): boolean {
 }
 
 // The same check on two name keys already worked out (lookalikePairs compares many).
-export function containedKey(a: string, b: string): boolean {
+function containedKey(a: string, b: string): boolean {
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short === long || short.replace(/ /g, "").length < 4) return false;
   return ` ${long} `.includes(` ${short} `);

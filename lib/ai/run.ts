@@ -3,9 +3,11 @@ import type { AiFeature } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { generate, isConfigured, providerOf, ROUTES, type AiErrorCode, type FailedTry, type GenerateRequest } from "@/lib/ai/client";
 import { dbNow } from "@/lib/claims";
-import { advisoryXactLock, prisma, withTenant, type Tenant } from "@/lib/db";
+import { DAY_MS } from "@/lib/dates";
+import { advisoryXactLock, withTenant, type Tenant } from "@/lib/db";
 import { breakdownAiUsage, type AiBreakdown } from "@/lib/ai/usage";
 import type { ActionResult } from "@/lib/validation";
+import { workspaceRow } from "@/lib/workspaces";
 
 // Every AI call in the app goes through runAi(). In order, it:
 // 1. refuses if the server has no API key for the feature's provider, or the workspace has AI
@@ -18,16 +20,15 @@ import type { ActionResult } from "@/lib/validation";
 //    one after another and can't all pass a limit (reserveAi);
 // 4. calls the model (lib/ai/client.ts), outside any database transaction;
 // 5. updates the row: the model that answered, tokens, time, and SUCCEEDED or FAILED with a short
-//    error code (a SUCCEEDED call a fallback model answered notes the models that failed first). A reply the caller's own checks reject (drafts that broke the rules) is FAILED
-//    too, so the log never counts an unusable answer as a success.
+//    error code (a SUCCEEDED call a fallback model answered notes the models that failed first). A
+//    reply the caller's own checks reject (drafts that broke the rules) is FAILED too, so the log
+//    never counts an unusable answer as a success.
 // Callers check membership first, as every server action does.
 
 export const AI_WINDOW_DAYS = 30;
 export const DAILY_DRAFTS_PER_PERSON = 40;
 // Research briefs (lib/research/brief.ts) fetch pages and make two AI calls each, so fewer.
 export const DAILY_BRIEFS_PER_PERSON = 10;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 // A failed call's code in AiRun: the client's codes, plus a reply the caller's checks refused.
 export type AiRunError = AiErrorCode | "broke_rules";
@@ -62,10 +63,7 @@ export type AiUsage = { enabled: boolean; limit: number; used: number };
 
 // The workspace's switch, limit, and AI calls in the last 30 days (for Settings).
 export async function aiUsage(tenant: Tenant): Promise<AiUsage> {
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { id: tenant.workspaceId },
-    select: { aiEnabled: true, aiMonthlyLimit: true },
-  });
+  const workspace = await workspaceRow(tenant.workspaceId);
   const since = new Date((await dbNow()).getTime() - AI_WINDOW_DAYS * DAY_MS);
   const used = await withTenant(tenant, (tx) => tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, createdAt: { gte: since } } }));
   return { enabled: workspace.aiEnabled, limit: workspace.aiMonthlyLimit, used };
@@ -89,14 +87,12 @@ export async function aiBreakdown(tenant: Tenant): Promise<AiBreakdown> {
 // the breakdown's total, so the two numbers come from one query and can never disagree.
 export async function aiUsageDetail(tenant: Tenant): Promise<AiUsage & { breakdown: AiBreakdown }> {
   const [workspace, breakdown] = await Promise.all([
-    prisma.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { aiEnabled: true, aiMonthlyLimit: true } }),
+    workspaceRow(tenant.workspaceId),
     aiBreakdown(tenant),
   ]);
   return { enabled: workspace.aiEnabled, limit: workspace.aiMonthlyLimit, used: breakdown.total, breakdown };
 }
 
-// Whether this person may make an AI call for this feature right now (steps 1 and 2 above), as
-// the reason it may not, or null. Runs inside a transaction: reserveAi's, under the workspace lock.
 // Groq is only used by Smart import, which says what still works without it.
 export const GROQ_NOT_CONFIGURED = "Smart import isn't set up on this server yet. Ask the app admin. The normal import below still works.";
 export const AI_OFF_MESSAGE = "AI is turned off for this workspace. An owner can turn it on in Settings.";
@@ -106,6 +102,8 @@ function configProblem(feature: AiFeature): string | null {
   return isConfigured() ? null : AI_ERROR_MESSAGES.not_configured;
 }
 
+// Whether this person may make an AI call for this feature right now (steps 1 and 2 above), as
+// the reason it may not, or null. Runs inside a transaction: reserveAi's, under the workspace lock.
 async function gateIn(tx: Prisma.TransactionClient, tenant: Tenant, feature: AiFeature, now: Date): Promise<string | null> {
   const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { aiEnabled: true, aiMonthlyLimit: true } });
   if (!workspace.aiEnabled) return AI_OFF_MESSAGE;

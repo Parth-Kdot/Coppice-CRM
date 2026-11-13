@@ -4,10 +4,11 @@ import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireUser } from "@/lib/authz";
-import { prisma } from "@/lib/db";
+import { notFound } from "@/lib/messages";
 import { createWorkspaceSchema, invitationIdSchema, type ActionResult } from "@/lib/validation";
+import { workspaceAlreadyJoined } from "@/lib/workspaces";
 
 export async function createWorkspace(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   await requireUser();
@@ -16,7 +17,7 @@ export async function createWorkspace(_prev: ActionResult | null, form: FormData
 
   let workspaceId: string;
   try {
-    // Better Auth checks allowUserToCreateOrganization (Option B) and makes the creator the owner.
+    // Better Auth checks allowUserToCreateOrganization (only listed emails may create a workspace) and makes the creator the owner.
     // The slug is required by Better Auth but unused: we always look workspaces up by id.
     const workspace = await auth.api.createOrganization({
       body: { name: parsed.data.name, slug: randomUUID() },
@@ -32,7 +33,7 @@ export async function createWorkspace(_prev: ActionResult | null, form: FormData
 export async function acceptInvitation(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = invitationIdSchema.safeParse(form.get("invitationId"));
-  if (!parsed.success) return { ok: false, error: "Invitation not found." };
+  if (!parsed.success) return notFound("Invitation");
 
   let workspaceId: string;
   try {
@@ -51,17 +52,4 @@ export async function acceptInvitation(_prev: ActionResult | null, form: FormDat
     workspaceId = joined;
   }
   redirect(`/${workspaceId}`);
-}
-
-async function workspaceAlreadyJoined(userId: string, invitationId: string): Promise<string | null> {
-  const invitation = await prisma.invitation.findUnique({
-    where: { id: invitationId },
-    select: { workspaceId: true },
-  });
-  if (!invitation) return null;
-  const membership = await prisma.membership.findUnique({
-    where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId } },
-    select: { workspaceId: true },
-  });
-  return membership?.workspaceId ?? null;
 }

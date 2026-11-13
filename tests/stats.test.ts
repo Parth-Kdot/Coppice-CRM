@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Membership } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
+import { DAY_MS } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { workspaceStats } from "@/lib/stats";
 import { resetAndSeed } from "./helpers/seed";
@@ -38,13 +39,12 @@ import { resetAndSeed } from "./helpers/seed";
 const OWNER: Membership = { userId: "ownerA", workspaceId: "a", role: "owner" };
 const OFFICER: Membership = { userId: "officerA", workspaceId: "a", role: "member" };
 const OTHER_ORG: Membership = { userId: "ownerB", workspaceId: "b", role: "owner" };
-const DAY = 24 * 60 * 60 * 1000;
 
 const range = (prefix: string, from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `${prefix}-${from + i}`);
 
 async function seedFixture() {
   const now = (await dbNow()).getTime();
-  const ago = (days: number) => new Date(now - days * DAY);
+  const ago = (days: number) => new Date(now - days * DAY_MS);
   await withTenant(OWNER, async (tx) => {
     const company = (id: string, industry: string | null, extra: object = {}) => ({ id, workspaceId: "a", name: id, nameKey: id, industry, ...extra });
     await tx.company.createMany({

@@ -222,8 +222,8 @@ describe("generate (the Gemini client)", () => {
     expect(calls[1].body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: "LOW" } });
   });
 
-  // Recorded on 2026-11-07 with the owner's free key: 3.8 Flash answered 503 "high demand" in 3 s on
-  // every call while 3.6 Flash answered. The overload moves on at once, never waiting out the first
+  // Recorded case: 3.8 Flash answered 503 "high demand" in 3 s on every call while 3.6 Flash
+  // answered. The overload moves on at once, never waiting out the first
   // try's timer (20 s for drafting), and the result says which model failed first and how.
   const highDemand = () => apiError(503, "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.", "UNAVAILABLE");
   it("an overloaded model's 503 moves to the next model at once, and the failed try is reported", async () => {
@@ -515,7 +515,7 @@ describe("source guard", () => {
   });
 });
 
-// ----- Found in the AI stress runs (each recorded here with recorded-style replies) -----
+// ----- Malformed or unusable AI replies (recorded-style replies) -----
 
 describe("generate: deadlines and replies that aren't refusals", () => {
   it("reports a 401 as a bad key, without trying another model", async () => {
