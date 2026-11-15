@@ -122,8 +122,9 @@ const assistants = mcp({
 //   compression. A failure is a 400 invalid_client and saves nothing. The same file applies the
 //   client name and field rules of lib/mcp/oauth-limits.ts to the document, since the plugin applies
 //   them only to registration, and refuses a jwks_uri, anything but token_endpoint_auth_method
-//   none, and a U+0000 character in any value or key (Postgres can't store it). A body that is not
-//   valid UTF-8 JSON is refused too, since the plugin would decode it more loosely.
+//   none, and a U+0000 character or an unpaired surrogate in any value or key (the database refuses
+//   or alters them). A body that is not valid UTF-8 JSON is refused too, since the plugin would
+//   decode it more loosely.
 // - How long a checked document is reused. The transport writes the only cache header the plugin
 //   sees: max-age with what the origin declared, minus its Age, held between 5 and 60 minutes. A
 //   document that says no-store, private, no-cache or max-age=0 is reused for 5 minutes, so one that

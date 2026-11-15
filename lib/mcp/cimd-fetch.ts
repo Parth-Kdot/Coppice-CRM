@@ -62,8 +62,9 @@ import { checkUrl } from "@/lib/research/urls";
 // backchannel logout address (the server would later call them), or ask for a client secret. The
 // jwks_uri refusal and the rule that token_endpoint_auth_method may only be none are part of what the
 // fetch budgets rest on: the plugin would fetch a jwks_uri through this same transport without
-// asking the budgets first. A document with U+0000 in any value or key, at any depth, is refused as
-// well, because Postgres can't store it and the failure would be a 500 on the first fetch.
+// asking the budgets first. A document with U+0000 or an unpaired surrogate in any value or key, at
+// any depth, is refused as well, because the database either refuses it, which would be a 500 after
+// the fetch, or stores it altered.
 
 export const CIMD_LIMITS = {
   // The plugin refuses a document over 5 KB as well; this stops reading at the same point.
@@ -168,19 +169,22 @@ function passedHeaders(headers: TransportResponse["headers"], withFreshness: boo
   return out;
 }
 
-// True when a string value or a key, at any depth, holds U+0000. The plugin stores the document's
-// fields as they are, and Postgres can't store that character in a text column.
-function hasNul(root: unknown): boolean {
+// True when a string value or a key, at any depth, holds U+0000 or a lone UTF-16 surrogate (a JSON
+// escape for half of a pair, with no partner). The plugin stores the document's fields as they
+// are. Postgres can't store U+0000 in a text column. A lone surrogate makes Prisma refuse a text[]
+// column (contacts, redirect paths, grant_types) and is stored as U+FFFD in a plain text column.
+// A correctly paired surrogate, such as an emoji, is fine.
+function hasUnstorableText(root: unknown): boolean {
   const pending: unknown[] = [root];
   while (pending.length > 0) {
     const value = pending.pop();
     if (typeof value === "string") {
-      if (value.includes("\u0000")) return true;
+      if (value.includes("\u0000") || !value.isWellFormed()) return true;
     } else if (Array.isArray(value)) {
       pending.push(...value);
     } else if (value && typeof value === "object") {
       for (const [key, inner] of Object.entries(value)) {
-        if (key.includes("\u0000")) return true;
+        if (key.includes("\u0000") || !key.isWellFormed()) return true;
         pending.push(inner);
       }
     }
@@ -201,7 +205,7 @@ function documentProblem(bytes: Buffer): string | null {
     return "the document is not a UTF-8 JSON object.";
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "the document is not a UTF-8 JSON object.";
-  if (hasNul(parsed)) return "the document contains a NUL character.";
+  if (hasUnstorableText(parsed)) return "the document contains a NUL character or an unpaired surrogate.";
   const problem = registrationProblem(parsed);
   if (problem) return problem;
   const method = (parsed as Record<string, unknown>).token_endpoint_auth_method;

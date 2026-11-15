@@ -469,26 +469,56 @@ describe("Coppice's own rules on a document", () => {
   });
 
   // Postgres can't store U+0000, and the plugin saves fields Coppice does not check (software_version,
-  // software_id, contacts) as they are, so such a document would fail later as a raw 500.
+  // software_id, contacts) as they are, so such a document would fail later as a raw 500. A lone
+  // surrogate (the JSON text escapes it) makes Prisma refuse a text[] column and becomes U+FFFD in a
+  // text column.
+  const HIGH = "\ud800";
+  const LOW = "\udc00";
   test.each([
-    ["software_version", { software_version: "1\u0000" }],
-    ["software_id", { software_id: "a\u0000b" }],
-    ["a contacts entry", { contacts: ["a\u0000@assistant.example"] }],
-    ["a value nested in an object inside an array", { extra: { list: [{ deep: ["fine", "x\u0000"] }] } }],
-    ["a key", { "bad\u0000key": "value" }],
-    ["a key nested in an object", { extra: { "bad\u0000key": 1 } }],
-  ])("refuses a NUL character in %s, and logs one line naming the site", async (_name, extra) => {
+    ["a NUL in software_version", { software_version: "1\u0000" }],
+    ["a NUL in software_id", { software_id: "a\u0000b" }],
+    ["a NUL in a contacts entry", { contacts: ["a\u0000@assistant.example"] }],
+    ["a NUL in a value nested in an object inside an array", { extra: { list: [{ deep: ["fine", "x\u0000"] }] } }],
+    ["a NUL in a key", { "bad\u0000key": "value" }],
+    ["a NUL in a key nested in an object", { extra: { "bad\u0000key": 1 } }],
+    ["a lone high surrogate in contacts", { contacts: [`a${HIGH}@assistant.example`] }],
+    ["a lone low surrogate in contacts", { contacts: [`a${LOW}@assistant.example`] }],
+    ["a lone high surrogate in post_logout_redirect_uris", { post_logout_redirect_uris: [`https://assistant.example/out${HIGH}`] }],
+    ["a lone low surrogate in post_logout_redirect_uris", { post_logout_redirect_uris: [`https://assistant.example/out${LOW}`] }],
+    ["a lone high surrogate in grant_types", { grant_types: ["authorization_code", `refresh_token${HIGH}`] }],
+    ["a lone low surrogate in grant_types", { grant_types: ["authorization_code", `refresh_token${LOW}`] }],
+    ["a lone high surrogate in software_version", { software_version: `1${HIGH}` }],
+    ["a lone low surrogate in software_version", { software_version: `1${LOW}` }],
+    ["a lone surrogate in a key", { [`bad${HIGH}key`]: "value" }],
+    ["a lone surrogate in a key nested in an object", { extra: { [`bad${LOW}key`]: 1 } }],
+    ["a lone surrogate in a value nested in an array inside an object", { extra: { list: [{ deep: ["fine", `x${HIGH}`] }] } }],
+  ])("refuses %s, and logs one line naming the site", async (_name, extra) => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const url = nextUrl();
     const fake = serve({ [url]: jsonReply(metadata(url, extra)) });
-    await expect(createCimdFetch(fake.deps, FAST)(url)).rejects.toThrow(/NUL character/);
+    await expect(createCimdFetch(fake.deps, FAST)(url)).rejects.toThrow(/NUL character or an unpaired surrogate/);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain(new URL(url).hostname);
+  });
+
+  it("refuses a lone surrogate in a path of redirect_uris", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    const doc = metadata(url);
+    doc.redirect_uris = [`${REDIRECT_URI}/cb${HIGH}`];
+    const fake = serve({ [url]: jsonReply(doc) });
+    await expect(createCimdFetch(fake.deps, FAST)(url)).rejects.toThrow(/NUL character or an unpaired surrogate/);
   });
 
   it("accepts a document with software_version, software_id, contacts and nested values that hold no NUL character", async () => {
     const url = nextUrl();
     const fake = serve({ [url]: jsonReply(metadata(url, { software_version: "1.2.3", software_id: "abc", contacts: ["a@assistant.example"], extra: { list: [{ deep: ["fine"] }] } })) });
+    expect((await createCimdFetch(fake.deps, FAST)(url)).status).toBe(200);
+  });
+
+  it("accepts correctly paired surrogates (an emoji) in values and keys", async () => {
+    const url = nextUrl();
+    const fake = serve({ [url]: jsonReply(metadata(url, { software_version: "1\u{1F600}", contacts: ["a\u{1F600}@assistant.example"], "key\u{1F600}": { inner: "\u{1F600}" } })) });
     expect((await createCimdFetch(fake.deps, FAST)(url)).status).toBe(200);
   });
 
@@ -621,6 +651,23 @@ describe("a document is refused before anything is saved", () => {
     expect(await clientRows(url)).toBe(0);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain("NUL character");
+  });
+
+  it.each([
+    ["contacts", (lone: string) => ({ contacts: [`a${lone}@assistant.example`] })],
+    ["post_logout_redirect_uris", (lone: string) => ({ post_logout_redirect_uris: [`https://assistant.example/out${lone}`] })],
+    ["grant_types", (lone: string) => ({ grant_types: ["authorization_code", `refresh_token${lone}`] })],
+    ["software_version", (lone: string) => ({ software_version: `1${lone}` })],
+  ])("a lone surrogate in %s answers 400 invalid_client to an anonymous authorize, saves no client row and logs one warning", async (_name, make) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url, make("\ud800"))) });
+    const answer = await anonymousAuthorize(url);
+    expect(answer.status).toBe(400);
+    expect(answer.body.error).toBe("invalid_client");
+    expect(await clientRows(url)).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("unpaired surrogate");
   });
 
   it("the client_credentials grant", async () => {
@@ -2557,6 +2604,46 @@ describe("at most 10 assistants that came from a metadata document, for one acco
       expect(await distinctDocuments()).toBe(10);
       // Still at the maximum for a new client.
       expectCapError(await rejection(createConsentWithinCap(args(await makeClient(), "ownerA"))));
+    });
+
+    it("a second row for a held client does not use up a place: with 9 held and 10 rows a new 10th is still stored", async () => {
+      const held = await holdDocuments("ownerA", 9);
+      await createConsentWithinCap(args(held[4], "ownerA"));
+      expect(await documentConsents()).toBe(10);
+      expect(await distinctDocuments()).toBe(9);
+      const tenth = await makeClient();
+      await createConsentWithinCap(args(tenth, "ownerA"));
+      expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", clientId: tenth } })).toBe(1);
+      expect(await distinctDocuments()).toBe(10);
+    });
+
+    it("a count that fails stores nothing and passes the error on", async () => {
+      await holdDocuments("ownerA", 9);
+      const clientId = await makeClient();
+      const real = prisma.$transaction.bind(prisma) as (fn: (tx: unknown) => Promise<unknown>, options?: unknown) => Promise<unknown>;
+      vi.spyOn(prisma, "$transaction").mockImplementation(((fn: (tx: unknown) => Promise<unknown>, options?: unknown) =>
+        real(
+          (tx) =>
+            fn(
+              new Proxy(tx as object, {
+                get(target, property, receiver) {
+                  if (property !== "oauthConsent") return Reflect.get(target, property, receiver);
+                  return new Proxy((target as { oauthConsent: object }).oauthConsent, {
+                    get(model, name, modelReceiver) {
+                      if (name === "findMany") return () => Promise.reject(new Error("count failed"));
+                      return Reflect.get(model, name, modelReceiver);
+                    },
+                  });
+                },
+              }),
+            ),
+          options,
+        )) as never);
+      const error = await createConsentWithinCap(args(clientId, "ownerA")).then(() => null, (e: unknown) => e as Error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error?.message).toBe("count failed");
+      expect(await prisma.oauthConsent.count({ where: { clientId } })).toBe(0);
+      expect(await documentConsents()).toBe(9);
     });
 
     it("does not hold another person to the first person's 10", async () => {

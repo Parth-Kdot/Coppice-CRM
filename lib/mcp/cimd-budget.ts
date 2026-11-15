@@ -156,16 +156,18 @@ export async function allowDocumentFetch(clientId: string, readConsent: ConsentR
 // Where it is enforced: at the insert of the consent row. lib/auth.ts gives Better Auth a database
 // client whose oauthConsent.create is createConsentWithinCap. The only place the installed plugins
 // create a consent is the consent endpoint (oauth-provider, consentEndpoint), which does so through
-// the adapter and so through that call. The other write to this table that an HTTP request could
-// reach, /oauth2/update-consent, only updates a row and is in disabledPaths (lib/auth.ts). For a
-// document assistant the count and the insert run in one transaction that first takes an advisory
-// lock for the person, the way the app's other limits do (lib/db.ts). Two Allows for one person
-// therefore go one after the other, on every server instance, and the second counts what the first
-// stored. So the rows can't go past the maximum whatever order requests arrive in, and whatever the
-// endpoint does after the insert. An Allow at the maximum is refused before anything is stored, and
-// the plugin makes no authorization code for it. When the person already has a consent row for the
-// assistant, the plugin updates that row and never reaches this call. A second row for the same
-// assistant is not counted again.
+// the adapter and so through that call. The plugin's other writes to this table never insert: the
+// consent endpoint updates the row it found, /oauth2/delete-consent removes one, and
+// /oauth2/update-consent, which only updates, is in disabledPaths (lib/auth.ts). The app itself only
+// deletes consents (lib/mcp/connections.ts). For a document assistant the count and the insert run
+// in one transaction that first takes an advisory lock for the person, the way the app's other
+// limits do (lib/db.ts). Two such inserts for one person therefore run one after the other, on
+// every server instance, and the second counts what the first stored. So the distinct document
+// assistants one person holds can't go past the maximum, whatever order requests arrive in and
+// whatever the endpoint does after the insert. An Allow for a new document assistant at the maximum
+// is refused before anything is stored, and the plugin makes no authorization code for it. When the
+// person already has a consent row for the assistant, the plugin updates that row and never reaches
+// this call. A second row for the same assistant is not counted again.
 //
 // What is accepted:
 // - Each insert for a document assistant holds one pooled connection for a short transaction, and
