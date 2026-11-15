@@ -1,5 +1,6 @@
 import { createServer as createHttpServer, type IncomingHttpHeaders, type Server } from "node:http";
 import { createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from "node:net";
+import { APIError } from "better-auth/api";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import ConsentPage from "@/app/(auth)/oauth/consent/page";
@@ -8,8 +9,23 @@ import { GET as authServerMetadataRoute } from "@/app/.well-known/oauth-authoriz
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { CACHE_CEILING_SECONDS, CACHE_FLOOR_SECONDS, CIMD_LIMITS, cacheLifetimeSeconds, createCimdFetch, metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
-import { NEW_CLIENT_FETCHES_PER_MINUTE, guardClientLookup, resetNewClientFetches } from "@/lib/mcp/cimd-gate";
+import {
+  CONNECTED_FETCHES_PER_MINUTE,
+  FAILING_CONNECTED_FETCHES_PER_MINUTE,
+  MAX_DOCUMENT_CLIENTS_PER_ACCOUNT,
+  MAX_FAILING_MARKS,
+  NEW_CLIENT_FETCHES_PER_MINUTE,
+  NEW_CLIENT_FETCHES_PER_SITE_PER_MINUTE,
+  allowDocumentFetch,
+  cimdBudgetSnapshot,
+  clearFailingMark,
+  createConsentWithinCap,
+  resetCimdBudgets,
+} from "@/lib/mcp/cimd-budget";
+import { NEW_CLIENT_REQUESTS_PER_MINUTE, guardClientLookup, resetNewClientRequests } from "@/lib/mcp/cimd-gate";
 import { appUrl, mcpResourceUrl } from "@/lib/mcp/config";
+import { consentRefusalText } from "@/lib/mcp/consent-refusal";
+import { withRetryAfter } from "@/lib/mcp/retry-after";
 import { NOT_CONNECTED, endGrantsWithoutConsent, listConnections } from "@/lib/mcp/connections";
 import { nodeTransport, type FetchDeps } from "@/lib/research/fetch";
 import { form } from "./helpers/form";
@@ -20,6 +36,7 @@ import {
   deleteOAuthClients,
   exchangeCode,
   fromNewIp,
+  getAccessToken,
   mcpClient,
   mcpPost,
   pkce,
@@ -56,6 +73,55 @@ vi.mock("@/lib/mcp/cimd-fetch", async (importOriginal) => {
       return net.fetch(input, init);
     },
   };
+});
+
+// The options lib/auth.ts gives cimd(); the real plugin is still the one that runs.
+const pluginOptions = vi.hoisted(() => ({ options: null as null | Record<string, unknown> }));
+vi.mock("@better-auth/cimd", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@better-auth/cimd")>();
+  return {
+    ...actual,
+    cimd: (options: Parameters<typeof actual.cimd>[0]) => {
+      pluginOptions.options = options as unknown as Record<string, unknown>;
+      return actual.cimd(options);
+    },
+  };
+});
+// Lets a test hold Allows at the insert of their consent rows, before the real function runs
+// (lib/auth.ts calls createConsentWithinCap through this wrapper). A hold keeps back the Allow for one
+// client until it is released. A barrier keeps every Allow back until the given number have arrived,
+// then lets them all go at once, so that concurrent Allows really do overlap.
+const insert = vi.hoisted(() => ({
+  hold: null as null | { clientId: string; reached: () => void; wait: Promise<void>; used: boolean },
+  barrier: null as null | { size: number; waiting: (() => void)[] },
+}));
+vi.mock("@/lib/mcp/cimd-budget", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/mcp/cimd-budget")>();
+  return {
+    ...actual,
+    createConsentWithinCap: async (args: Parameters<typeof actual.createConsentWithinCap>[0]) => {
+      const hold = insert.hold;
+      if (hold && !hold.used && (args.data as { clientId?: unknown }).clientId === hold.clientId) {
+        hold.used = true;
+        hold.reached();
+        await hold.wait;
+      }
+      const barrier = insert.barrier;
+      if (barrier) {
+        await new Promise<void>((resolve) => {
+          barrier.waiting.push(resolve);
+          if (barrier.waiting.length >= barrier.size) for (const go of barrier.waiting.splice(0)) go();
+        });
+      }
+      return actual.createConsentWithinCap(args);
+    },
+  };
+});
+// The gate runs as written unless a test switches it off, to try the fetch point on its own.
+const gate = vi.hoisted(() => ({ off: false }));
+vi.mock("@/lib/mcp/cimd-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/mcp/cimd-gate")>();
+  return { ...actual, guardClientLookup: (...args: Parameters<typeof actual.guardClientLookup>) => (gate.off ? Promise.resolve() : actual.guardClientLookup(...args)) };
 });
 
 const ALL = "openid offline_access coppice:read coppice:write";
@@ -155,7 +221,11 @@ beforeEach(async () => {
   shift += 61_000;
   vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + shift });
   net.fetch = null;
-  resetNewClientFetches();
+  gate.off = false;
+  insert.hold = null;
+  insert.barrier = null;
+  resetNewClientRequests();
+  resetCimdBudgets();
   await deleteOAuthClients();
   await prisma.workspace.updateMany({ data: { mcpEnabled: true } });
 });
@@ -398,6 +468,30 @@ describe("Coppice's own rules on a document", () => {
     expect(String(warn.mock.calls[0][0])).not.toContain("client.json");
   });
 
+  // Postgres can't store U+0000, and the plugin saves fields Coppice does not check (software_version,
+  // software_id, contacts) as they are, so such a document would fail later as a raw 500.
+  test.each([
+    ["software_version", { software_version: "1\u0000" }],
+    ["software_id", { software_id: "a\u0000b" }],
+    ["a contacts entry", { contacts: ["a\u0000@assistant.example"] }],
+    ["a value nested in an object inside an array", { extra: { list: [{ deep: ["fine", "x\u0000"] }] } }],
+    ["a key", { "bad\u0000key": "value" }],
+    ["a key nested in an object", { extra: { "bad\u0000key": 1 } }],
+  ])("refuses a NUL character in %s, and logs one line naming the site", async (_name, extra) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    const fake = serve({ [url]: jsonReply(metadata(url, extra)) });
+    await expect(createCimdFetch(fake.deps, FAST)(url)).rejects.toThrow(/NUL character/);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain(new URL(url).hostname);
+  });
+
+  it("accepts a document with software_version, software_id, contacts and nested values that hold no NUL character", async () => {
+    const url = nextUrl();
+    const fake = serve({ [url]: jsonReply(metadata(url, { software_version: "1.2.3", software_id: "abc", contacts: ["a@assistant.example"], extra: { list: [{ deep: ["fine"] }] } })) });
+    expect((await createCimdFetch(fake.deps, FAST)(url)).status).toBe(200);
+  });
+
   it("accepts a document with no authentication method named", async () => {
     const url = nextUrl();
     const doc: Record<string, unknown> = metadata(url);
@@ -517,6 +611,18 @@ describe("a document is refused before anything is saved", () => {
     await expectRefused(url);
   });
 
+  it("a NUL character in a field Coppice does not check answers 400 invalid_client to an anonymous authorize, saves no client row and logs one warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url, { software_version: "1\u0000" })) });
+    const answer = await anonymousAuthorize(url);
+    expect(answer.status).toBe(400);
+    expect(answer.body.error).toBe("invalid_client");
+    expect(await clientRows(url)).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("NUL character");
+  });
+
   it("the client_credentials grant", async () => {
     const url = nextUrl();
     serve({ [url]: jsonReply(metadata(url, { grant_types: ["client_credentials"] })) });
@@ -613,35 +719,52 @@ describe("redirect addresses are bound to the document's own site", () => {
 });
 
 describe("fetch budgets", () => {
-  it("a site is fetched at most ten times a minute, then refused at once with 429", async () => {
+  // The plugin's own per site limit (now a ceiling of 1000 that auth.handler can't reach) is replaced
+  // by the per site rule at the fetch point and a check of the numbers lib/auth.ts gives the plugin.
+  it("a sixth new assistant on one site inside a minute is refused with 429 and no fetch, and another site still works", async () => {
     const fake = serve({});
     const origin = `https://budget-${++counter}.example`;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
       const answer = await startAuthorize(`${origin}/c${i}.json`);
       expect(answer.body.error).toBe("invalid_client");
     }
-    expect(fake.requests).toHaveLength(10);
-    const over = await startAuthorize(`${origin}/c10.json`);
+    expect(fake.requests).toHaveLength(5);
+    const over = await startAuthorize(`${origin}/c5.json`);
     expect(over.status).toBe(429);
     expect(over.body.error).toBe("temporarily_unavailable");
-    expect(fake.requests).toHaveLength(10);
+    expect(fake.requests).toHaveLength(5);
     // Another site is not held back by it.
     expect((await startAuthorize(`https://budget-${++counter}.example/c.json`)).status).toBe(400);
+    expect(fake.requests).toHaveLength(6);
     // A minute later the site may be fetched again.
     vi.setSystemTime(Date.now() + 61_000);
-    expect((await startAuthorize(`${origin}/c10.json`)).status).toBe(400);
-    expect(fake.requests).toHaveLength(12);
+    expect((await startAuthorize(`${origin}/c5.json`)).status).toBe(400);
+    expect(fake.requests).toHaveLength(7);
   });
 
-  it("a failed fetch isn't repeated for the same client within a second", async () => {
+  it("lib/auth.ts gives the plugin ceilings that ordinary traffic can't reach, a one minute retry wait and a cache of 2000", () => {
+    expect(pluginOptions.options).toMatchObject({
+      metadataFetchPolicy: { minimumFetchInterval: 60, maximumFetchesPerMinute: 1000, maximumFetchesPerOriginPerMinute: 1000, maximumConcurrentFetches: 64, maximumConcurrentFetchesPerOrigin: 64 },
+      maxCacheEntries: 2000,
+    });
+  });
+
+  it("a failed fetch isn't repeated for the same client within a minute", async () => {
     const url = nextUrl();
     const fake = serve({});
+    const start = Date.now();
     expect((await startAuthorize(url)).status).toBe(400);
     const again = await startAuthorize(url);
     expect(again.status).toBe(429);
     expect(again.body.error).toBe("temporarily_unavailable");
     expect(fake.requests).toHaveLength(1);
-    vi.setSystemTime(Date.now() + 2_000);
+    vi.setSystemTime(start + 2_000);
+    expect((await startAuthorize(url)).status).toBe(429);
+    expect(fake.requests).toHaveLength(1);
+    vi.setSystemTime(start + 59_000);
+    expect((await startAuthorize(url)).status).toBe(429);
+    expect(fake.requests).toHaveLength(1);
+    vi.setSystemTime(start + 61_000);
     expect((await startAuthorize(url)).status).toBe(400);
     expect(fake.requests).toHaveLength(2);
   });
@@ -664,6 +787,12 @@ async function anonymousAuthorize(clientId: string) {
   });
   const response = await auth.handler(new Request(new URL(`/api/auth/oauth2/authorize?${query}`, appUrl()), { headers: fromNewIp(), redirect: "manual" }));
   return { status: response.status, body: (await response.json().catch(() => ({}))) as Record<string, string>, headers: response.headers };
+}
+
+// The same request as anonymousAuthorize, as the raw response.
+async function anonymousAuthorizeRaw(clientId: string) {
+  const query = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: REDIRECT_URI, scope: ALL, code_challenge: "x".repeat(43), code_challenge_method: "S256" });
+  return auth.handler(new Request(new URL(`/api/auth/oauth2/authorize?${query}`, appUrl()), { headers: fromNewIp(), redirect: "manual" }));
 }
 
 const send = async (path: string, init: { method?: string; headers?: Record<string, string>; body?: BodyInit }) =>
@@ -916,16 +1045,23 @@ describe("only a client somebody allowed is left alone by the gate", () => {
     expect(fake.requests).toHaveLength(fetched);
   });
 
-  // The share is 30 slots a minute. One row nobody allowed takes the first when it is made, and
-  // other addresses take all but `slots` of the rest. The request under test must take exactly
-  // those, and then the next one is told to wait.
+  // The gate counts the requests it lets through for clients that are not connected: 150 a minute.
+  // These calls take gate slots for a row nobody allowed and start no fetch, so the fetch point's
+  // own count is left alone.
+  async function spendGateSlots(count: number, clientId: string) {
+    for (let i = 0; i < count; i++) await guardClientLookup("/oauth2/public-client", { query: { client_id: clientId } });
+  }
+
+  // The gate's share is NEW_CLIENT_REQUESTS_PER_MINUTE slots a minute. One row nobody allowed takes the
+  // first when it is made, and fillers take all but `slots` of the rest. The request under test
+  // must take exactly those, and then the next one is told to wait.
   async function takesSlots(slots: number, request: (url: string, ctx: { location: URL; headers: Headers }) => Promise<Response>) {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const url = nextUrl();
     serve({ [url]: jsonReply(metadata(url)) });
     const { location, headers } = await authorize(url, "ownerA", { scope: ALL, challenge: pkce().challenge });
     // authorize took one slot.
-    for (let i = 0; i < NEW_CLIENT_FETCHES_PER_MINUTE - 1 - slots; i++) await anonymousAuthorize(junkUrl());
+    await spendGateSlots(NEW_CLIENT_REQUESTS_PER_MINUTE - 1 - slots, url);
     const allowed = await request(url, { location, headers });
     expect(await allowed.clone().text()).not.toContain("temporarily_unavailable");
     expect(await allowed.clone().text()).not.toContain("client not found");
@@ -992,7 +1128,7 @@ describe("only a client somebody allowed is left alone by the gate", () => {
     const url = nextUrl();
     serve({ [url]: jsonReply(metadata(url)) });
     await rowNobodyAllowed(url);
-    for (let i = 0; i < NEW_CLIENT_FETCHES_PER_MINUTE - 2; i++) await anonymousAuthorize(junkUrl());
+    await spendGateSlots(NEW_CLIENT_REQUESTS_PER_MINUTE - 2, url);
     // Coppice leaves the plugin's own pre-login lookup switched off, so what it answers is the plugin's refusal, not the gate's.
     const lookup = () => send("oauth2/public-client-prelogin", { headers: { "content-type": "application/json" }, body: JSON.stringify({ client_id: url, oauth_query: "x" }) });
     const first = await lookup();
@@ -1023,10 +1159,11 @@ describe("only a client somebody allowed is left alone by the gate", () => {
       const code = (await consent(location, headers, true)).searchParams.get("code") as string;
       expect((await exchangeCode(url, code, verifier)).status).toBe(200);
     }
-    // Each took five slots (authorize 1, continue 2, the details 1, the consent 1). The rest of the share is still there, and then it is used up.
+    // Each took five gate slots (authorize 1, continue 2, the details 1, the consent 1) and one fetch.
+    // The fetch point's share of 30 is what runs out first: 25 are left, and then it is used up.
     let answered = 0;
     while ((await anonymousAuthorize(junkUrl())).status !== 429) answered++;
-    expect(answered).toBe(NEW_CLIENT_FETCHES_PER_MINUTE - 5 * 5);
+    expect(answered).toBe(NEW_CLIENT_FETCHES_PER_MINUTE - 5);
     const over = await anonymousAuthorize(junkUrl());
     expect(over.status).toBe(429);
     expect(over.headers.get("retry-after")).toBe("60");
@@ -1263,12 +1400,12 @@ describe("the freshness the transport hands the plugin", () => {
     expect(fake.requests).toHaveLength(2);
   });
 
-  it("one account that allows 12 no-store documents, and 200 anonymous token requests naming them", async () => {
+  it("12 no-store documents allowed by two accounts (one account may allow 10), and 200 anonymous token requests naming them", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const urls = Array.from({ length: 12 }, () => nextUrl());
     const fake = serve(Object.fromEntries(urls.map((u) => [u, jsonReply(metadata(u), { "cache-control": "no-store" })])));
     const connected = [];
-    for (const url of urls) connected.push(await connectDocument(url));
+    for (const [i, url] of urls.entries()) connected.push(await connectDocument(url, i < 6 ? "ownerA" : "officerA"));
     expect(fake.requests).toHaveLength(12);
 
     // Inside a minute: the documents are still fresh, so nothing is fetched.
@@ -1564,5 +1701,1078 @@ describe("how a metadata-document assistant appears to its owner", () => {
     expect((await refresh(url, refreshToken)).body.error).toBe("invalid_client");
     // And the clean-up is safe to run again.
     expect(await endGrantsWithoutConsent("ownerA", url)).toEqual({ accessTokens: 0, refreshTokens: 0 });
+  });
+});
+
+// ----- The budgets at the fetch point (lib/mcp/cimd-budget.ts), counters only -----
+
+describe("the fetch budgets, as counters", () => {
+  let clock = 0;
+  const now = () => clock;
+  const allowed = new Set<string>();
+  const reader = async (id: string) => allowed.has(id);
+  const take = (id: string) => allowDocumentFetch(id, reader, now);
+  const site = (n: number) => `https://counter-site-${n}.example`;
+  const doc = (n: number, i = 0) => `${site(n)}/c${i}.json`;
+  const refusal = async (id: string) => {
+    const error = await take(id).then(
+      () => null,
+      (e: unknown) => e as { statusCode: number; body: Record<string, string>; headers: Record<string, string> },
+    );
+    expect(error).not.toBeNull();
+    return error as { statusCode: number; body: Record<string, string>; headers: Record<string, string> };
+  };
+
+  beforeEach(() => {
+    clock = 10_000_000;
+    allowed.clear();
+    resetCimdBudgets();
+  });
+
+  it("gives 30 slots a minute to clients nobody allowed, then refuses with 429 and a retry time, and takes nothing when it refuses", async () => {
+    for (let i = 0; i < NEW_CLIENT_FETCHES_PER_MINUTE; i++) expect(await take(doc(i))).toBe(true);
+    const error = await refusal(doc(99));
+    expect(error.statusCode).toBe(429);
+    expect(error.body).toEqual({ error: "temporarily_unavailable", error_description: "too many new assistants are connecting, try again in a minute" });
+    expect(error.headers).toEqual({ "Retry-After": "60" });
+    await refusal(doc(98));
+    expect(cimdBudgetSnapshot(now())).toEqual({ newClients: 30, connected: 0, failingConnected: 0, marked: 0 });
+  });
+
+  it("allows 5 a minute for one site inside those 30, and another site is not held back", async () => {
+    for (let i = 0; i < NEW_CLIENT_FETCHES_PER_SITE_PER_MINUTE; i++) expect(await take(doc(1, i))).toBe(true);
+    const error = await refusal(doc(1, 5));
+    expect(error.body.error_description).toBe("too many new assistants are connecting, try again in a minute");
+    expect(await take(doc(2))).toBe(true);
+    // The refusal took no slot: the 30 still hold 24 more for other sites.
+    expect(cimdBudgetSnapshot(now()).newClients).toBe(6);
+  });
+
+  it("slides by the minute and resets", async () => {
+    for (let i = 0; i < 5; i++) await take(doc(1, i));
+    clock += 30_000;
+    for (let i = 0; i < 5; i++) await take(doc(2, i));
+    await refusal(doc(1, 9));
+    // The first five are 60 s old and drop out, the later five do not.
+    clock += 30_000;
+    expect(cimdBudgetSnapshot(now()).newClients).toBe(5);
+    expect(await take(doc(1, 9))).toBe(true);
+    await refusal(doc(2, 9));
+    resetCimdBudgets();
+    expect(cimdBudgetSnapshot(now())).toEqual({ newClients: 0, connected: 0, failingConnected: 0, marked: 0 });
+    expect(await take(doc(2, 9))).toBe(true);
+  });
+
+  it("gives 120 slots to allowed clients that were stored or not fetched yet, with its own message", async () => {
+    for (let i = 0; i < CONNECTED_FETCHES_PER_MINUTE; i++) {
+      allowed.add(doc(i));
+      expect(await take(doc(i))).toBe(true);
+      clearFailingMark(doc(i));
+    }
+    allowed.add(doc(500));
+    const error = await refusal(doc(500));
+    expect(error.statusCode).toBe(429);
+    expect(error.body.error_description).toBe("too many assistants are refreshing, try again in a minute");
+    expect(error.headers).toEqual({ "Retry-After": "60" });
+  });
+
+  it("holds an allowed client whose last fetch did not store its document to 20 slots, and clearing the mark sends it back", async () => {
+    const ids = Array.from({ length: FAILING_CONNECTED_FETCHES_PER_MINUTE + 1 }, (_, i) => doc(i));
+    for (const id of ids) allowed.add(id);
+    // The first fetch of each is healthy. None is cleared, so each is failing from here on.
+    for (const id of ids) expect(await take(id)).toBe(true);
+    expect(cimdBudgetSnapshot(now())).toMatchObject({ connected: 21, failingConnected: 0, marked: 21 });
+    clock += 61_000;
+    for (const id of ids.slice(0, FAILING_CONNECTED_FETCHES_PER_MINUTE)) expect(await take(id)).toBe(true);
+    expect(cimdBudgetSnapshot(now())).toMatchObject({ connected: 0, failingConnected: 20 });
+    await refusal(ids[FAILING_CONNECTED_FETCHES_PER_MINUTE]);
+    // A document that was stored (what onClientRefreshed reports) leaves the failing bucket.
+    clearFailingMark(ids[0]);
+    expect(await take(ids[0])).toBe(true);
+    expect(cimdBudgetSnapshot(now())).toMatchObject({ connected: 1, failingConnected: 20 });
+  });
+
+  it("keeps the three counters apart", async () => {
+    // Use up the 30 for clients nobody allowed.
+    for (let i = 0; i < NEW_CLIENT_FETCHES_PER_MINUTE; i++) await take(doc(i));
+    // Allowed clients are not touched by that.
+    const healthy = doc(100);
+    const failing = doc(101);
+    allowed.add(healthy);
+    allowed.add(failing);
+    expect(await take(healthy)).toBe(true);
+    clearFailingMark(healthy);
+    expect(await take(failing)).toBe(true);
+    expect(await take(failing)).toBe(true);
+    // Use up the 20 for failing ones: the healthy 120 still answer.
+    for (let i = 0; i < FAILING_CONNECTED_FETCHES_PER_MINUTE; i++) {
+      const id = doc(200 + i);
+      allowed.add(id);
+      await take(id);
+      await take(id).catch(() => {});
+    }
+    expect(cimdBudgetSnapshot(now()).failingConnected).toBe(FAILING_CONNECTED_FETCHES_PER_MINUTE);
+    const another = doc(300);
+    allowed.add(another);
+    expect(await take(another)).toBe(true);
+    expect(await take(healthy)).toBe(true);
+    // And the other way round: the new-client counter is still full.
+    await refusal(doc(400));
+  });
+
+  it("remembers at most 2000 marked clients and forgets the oldest first", async () => {
+    const first = doc(0);
+    allowed.add(first);
+    expect(await take(first)).toBe(true);
+    for (let i = 1; i <= MAX_FAILING_MARKS; i++) {
+      // 100 a minute stays inside the budget of 120.
+      if (i % 100 === 0) clock += 61_000;
+      allowed.add(doc(i));
+      await take(doc(i));
+    }
+    expect(cimdBudgetSnapshot(now()).marked).toBe(MAX_FAILING_MARKS);
+    // The oldest mark was dropped, so the first client counts as healthy again.
+    clock += 61_000;
+    expect(await take(first)).toBe(true);
+    expect(cimdBudgetSnapshot(now())).toMatchObject({ connected: 1, failingConnected: 0 });
+  });
+
+  it("refuses an address Coppice would never fetch without asking the database or taking a slot", async () => {
+    const read = vi.fn(async () => true);
+    for (const id of ["http://assistant.example/c.json", "https://127.0.0.1/c.json", `https://assistant.example/${"a".repeat(600)}`]) {
+      expect(await allowDocumentFetch(id, read, now)).toBe(false);
+    }
+    expect(read).not.toHaveBeenCalled();
+    expect(cimdBudgetSnapshot(now())).toEqual({ newClients: 0, connected: 0, failingConnected: 0, marked: 0 });
+  });
+
+  it("answers 429 with a retry time when the database read fails, and takes no slot", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = await allowDocumentFetch(doc(1), async () => Promise.reject(new Error("connection lost")), now).then(
+      () => null,
+      (e: unknown) => e as { statusCode: number; body: Record<string, string>; headers: Record<string, string> },
+    );
+    expect(error?.statusCode).toBe(429);
+    expect(error?.body.error).toBe("temporarily_unavailable");
+    expect(error?.headers).toEqual({ "Retry-After": "60" });
+    expect(cimdBudgetSnapshot(now())).toEqual({ newClients: 0, connected: 0, failingConnected: 0, marked: 0 });
+  });
+});
+
+// ----- The budgets at the fetch point, through the real handler -----
+
+// What each kind of request below needs, and what it looks like to the caller.
+const basicFor = (user: string, secret = "secret") => `Basic ${Buffer.from(`${user}:${secret}`).toString("base64")}`;
+const ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+const refreshForm = { grant_type: "refresh_token", refresh_token: "nope" };
+const answerOf = async (response: Response) => ({ status: response.status, body: (await response.clone().json().catch(() => ({}))) as Record<string, string>, headers: response.headers });
+
+// An access token for a client, signed by Coppice's own key, the way a real one is: its azp names the client.
+async function accessTokenFor(clientId: string, userId = "ownerA") {
+  const at = Math.floor(Date.now() / 1000);
+  const { token } = await auth.api.signJWT({
+    body: {
+      payload: {
+        sub: userId,
+        azp: clientId,
+        client_id: clientId,
+        scope: ALL,
+        aud: [mcpResourceUrl(), new URL("/api/auth/oauth2/userinfo", appUrl()).toString()],
+        iss: new URL("/api/auth", appUrl()).toString(),
+        iat: at,
+        exp: at + 3600,
+      },
+    },
+  });
+  return token;
+}
+
+const userinfoWith = async (token: string) =>
+  auth.handler(new Request(new URL("/api/auth/oauth2/userinfo", appUrl()), { headers: { authorization: `Bearer ${token}`, ...fromNewIp() } }));
+const endSessionFor = async (clientId: string) =>
+  auth.handler(new Request(new URL(`/api/auth/oauth2/end-session?client_id=${encodeURIComponent(clientId)}`, appUrl()), { headers: fromNewIp() }));
+
+// A registered confidential client, which may call introspect.
+async function introspector() {
+  const registered = await registerClient({ client_name: "Introspector", token_endpoint_auth_method: "client_secret_basic" });
+  const { client_id: id, client_secret: secret } = registered.body as { client_id: string; client_secret: string };
+  return async (token: string) =>
+    send("oauth2/introspect", { headers: { "content-type": "application/x-www-form-urlencoded", authorization: basicFor(encodeURIComponent(id), encodeURIComponent(secret)) }, body: new URLSearchParams({ token }) });
+}
+
+describe("the fetch point on its own, with the gate switched off", () => {
+  const refusedByBudget = (a: { status: number; body: Record<string, string> }) =>
+    (a.status === 429 && a.body.error === "temporarily_unavailable") || ([400, 401].includes(a.status) && a.body.error === "invalid_client");
+
+  it("200 anonymous requests naming new ids on every endpoint cause at most 30 fetches in a minute, and a connected assistant still refreshes", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const good = nextUrl();
+    const fake = serve({ [good]: jsonReply(metadata(good), { "cache-control": "no-store" }) });
+    const connected = await connectDocument(good);
+    gate.off = true;
+    // The document has gone stale, so the refresh below needs a fetch.
+    vi.setSystemTime(Date.now() + (CACHE_FLOOR_SECONDS + 1) * 1000);
+    resetCimdBudgets();
+    const fetchesBefore = fake.requests.length;
+    const introspectAs = await introspector();
+    const fresh = (kind: string) => `https://${kind}-${++counter}.attacker.example/c.json`;
+
+    type Kind = { name: string; send: (id: string) => Promise<Response>; once: (a: { status: number; body: Record<string, string> }) => boolean };
+    const kinds: Kind[] = [
+      { name: "authorize", send: async (id) => (await anonymousAuthorizeRaw(id)), once: refusedByBudget },
+      { name: "tokenform", send: (id) => send("oauth2/token", formBody({ ...refreshForm, client_id: id })), once: refusedByBudget },
+      {
+        name: "tokenbasic",
+        send: (id) => send("oauth2/token", { headers: { "content-type": "application/x-www-form-urlencoded", authorization: basicFor(encodeURIComponent(id)) }, body: new URLSearchParams(refreshForm) }),
+        once: refusedByBudget,
+      },
+      { name: "tokenassertion", send: (id) => send("oauth2/token", formBody({ ...refreshForm, client_assertion_type: ASSERTION_TYPE, client_assertion: jwtNaming(id) })), once: refusedByBudget },
+      { name: "revoke", send: (id) => send("oauth2/revoke", formBody({ token: "nope", client_id: id })), once: refusedByBudget },
+      {
+        name: "introspectassertion",
+        send: (id) => send("oauth2/introspect", formBody({ token: "nope", client_assertion_type: ASSERTION_TYPE, client_assertion: jwtNaming(id) })),
+        once: (a) => a.status === 429 || a.status === 400,
+      },
+      { name: "introspectazp", send: async (id) => introspectAs(await accessTokenFor(id)), once: (a) => a.status === 200 && (a.body as unknown as { active: boolean }).active === false },
+      { name: "userinfo", send: async (id) => userinfoWith(await accessTokenFor(id)), once: (a) => a.status === 401 && a.body.error === "invalid_token" },
+      { name: "endsession", send: (id) => endSessionFor(id), once: (a) => a.status === 500 && a.body.error === "server_error" },
+    ];
+
+    let exhausted = -1;
+    let callsWhenExhausted = 0;
+    const hostsFetched = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const kind = kinds[i % kinds.length];
+      const answer = await answerOf(await kind.send(fresh(kind.name)));
+      if (exhausted >= 0) expect(kind.once(answer), `${kind.name} after the budget was used: ${answer.status} ${JSON.stringify(answer.body)}`).toBe(true);
+      if (exhausted < 0 && cimdBudgetSnapshot().newClients >= NEW_CLIENT_FETCHES_PER_MINUTE) {
+        exhausted = i;
+        callsWhenExhausted = fake.requests.length;
+      }
+    }
+    for (const r of fake.requests) hostsFetched.add(r.url.hostname.split("-")[0]);
+    expect(exhausted).toBeGreaterThan(0);
+    const junkCalls = fake.requests.length - fetchesBefore;
+    expect(junkCalls).toBeLessThanOrEqual(NEW_CLIENT_FETCHES_PER_MINUTE);
+    // No fetch after the budget was used up, and none was taken without one.
+    expect(fake.requests.length).toBe(callsWhenExhausted);
+    expect(junkCalls).toBe(cimdBudgetSnapshot().newClients);
+    // Every kind of request reached the fetch point at least once.
+    for (const kind of kinds) expect(hostsFetched.has(kind.name), `${kind.name} reached a fetch`).toBe(true);
+
+    const renewed = await refresh(good, connected.refreshToken);
+    expect(renewed.status).toBe(200);
+    expect(seenFor(fake, [good])).toBe(2);
+    expect(cimdBudgetSnapshot().connected).toBe(1);
+  }, 60_000);
+});
+
+// ----- The gate's small fixes -----
+
+describe("the gate reads a payload the way jose does, and refuses claims it can't read", () => {
+  const jwtFrom = (payload: string | Buffer) => `${Buffer.from('{"alg":"ES256"}').toString("base64url")}.${Buffer.from(payload).toString("base64url")}.c2ln`;
+  const withBom = (claims: Record<string, unknown>) => jwtFrom(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(JSON.stringify(claims))]));
+  const noMoreFetches = async (fake: FakeNet, id: string) => {
+    expect(fake.requests).toEqual([]);
+    expect(await clientRows(id)).toBe(0);
+    expect(cimdBudgetSnapshot()).toEqual({ newClients: 0, connected: 0, failingConnected: 0, marked: 0 });
+  };
+
+  it.each([
+    ["token", "client_assertion"],
+    ["revoke", "client_assertion"],
+    ["introspect", "client_assertion"],
+  ])("a client_assertion with a byte order mark in its payload, on %s, is refused early", async (path) => {
+    const fake = serve({});
+    const id = junkUrl();
+    const fields: Record<string, string> = path === "token" ? refreshForm : { token: "nope" };
+    const response = await send(`oauth2/${path}`, formBody({ ...fields, client_assertion_type: ASSERTION_TYPE, client_assertion: withBom({ iss: id, sub: id }) }));
+    expect([400, 401]).toContain(response.status);
+    expect((await response.json()).error).toBe("invalid_client");
+    await noMoreFetches(fake, id);
+  });
+
+  it("an id_token_hint with a byte order mark in its payload, on end-session, is refused early", async () => {
+    const fake = serve({});
+    const id = junkUrl();
+    const response = await auth.handler(new Request(new URL(`/api/auth/oauth2/end-session?id_token_hint=${withBom({ aud: id, azp: id })}`, appUrl()), { headers: fromNewIp() }));
+    expect((await response.json()).error).toBe("invalid_client");
+    await noMoreFetches(fake, id);
+  });
+
+  const guard = (path: string, body: Record<string, unknown>, query: Record<string, unknown> = {}) => guardClientLookup(path, { body, query });
+
+  // With a decode that kept the byte order mark, these claims would not parse and the request would be
+  // refused as unreadable. Read the way jose reads them, they name a connected client and pass.
+  it("lets a client_assertion or id_token_hint with a byte order mark through when it names a connected client", async () => {
+    const good = nextUrl();
+    serve({ [good]: jsonReply(metadata(good)) });
+    await connectDocument(good);
+    const assertion = withBom({ iss: good, sub: good });
+    for (const path of ["/oauth2/token", "/oauth2/revoke", "/oauth2/introspect"]) {
+      await expect(guard(path, { client_assertion: assertion })).resolves.toBeUndefined();
+    }
+    await expect(guard("/oauth2/end-session", {}, { id_token_hint: withBom({ aud: good, azp: good }) })).resolves.toBeUndefined();
+    // And the same claims naming a client nobody connected are still refused.
+    await expect(guard("/oauth2/token", { client_assertion: withBom({ iss: junkUrl(), sub: junkUrl() }) })).rejects.toMatchObject({ body: { error: "invalid_client" } });
+  });
+
+  const unreadable: [string, string][] = [
+    ["no dots at all", "garbage"],
+    ["a payload that is not base64url", "a.@@@@.c"],
+    ["a payload that is not JSON", jwtFrom("not json")],
+    ["a payload that is a JSON array", jwtFrom("[]")],
+    ["a payload that is a JSON string", jwtFrom('"text"')],
+    ["a payload that is JSON null", jwtFrom("null")],
+  ];
+
+  describe.each(["/oauth2/token", "/oauth2/revoke", "/oauth2/introspect"])("%s", (path) => {
+    test.each(unreadable)("a client_assertion with %s is refused before the plugin sees it", async (_name, assertion) => {
+      await expect(guard(path, { client_id: "assistant-registered-1", client_assertion: assertion })).rejects.toMatchObject({ body: { error: "invalid_client" } });
+    });
+  });
+
+  test.each(unreadable)("an id_token_hint with %s is refused on end-session", async (_name, hint) => {
+    await expect(guard("/oauth2/end-session", {}, { id_token_hint: hint })).rejects.toMatchObject({ body: { error: "invalid_client" } });
+  });
+
+  it("leaves a readable claim set with no client in it, an empty value, and the other paths alone", async () => {
+    await expect(guard("/oauth2/token", { client_assertion: jwtFrom(JSON.stringify({ exp: 1 })) })).resolves.toBeUndefined();
+    await expect(guard("/oauth2/token", { client_id: "assistant-registered-1", client_assertion: "" })).resolves.toBeUndefined();
+    await expect(guard("/oauth2/end-session", {}, { id_token_hint: jwtFrom(JSON.stringify({ aud: ["assistant-registered-1"] })) })).resolves.toBeUndefined();
+    await expect(guard("/oauth2/consent", { client_assertion: "garbage" })).resolves.toBeUndefined();
+    await expect(guard("/oauth2/authorize", {}, { id_token_hint: "garbage" })).resolves.toBeUndefined();
+  });
+
+  it("lets 150 requests a minute through for clients nobody allowed, and then answers 429 with a retry time", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url)) });
+    expect((await anonymousAuthorize(url)).status).toBe(302);
+    for (let i = 0; i < NEW_CLIENT_REQUESTS_PER_MINUTE - 1; i++) await guardClientLookup("/oauth2/public-client", { query: { client_id: url } });
+    await expect(guardClientLookup("/oauth2/public-client", { query: { client_id: url } })).rejects.toMatchObject({
+      statusCode: 429,
+      body: { error: "temporarily_unavailable" },
+      headers: { "Retry-After": "60" },
+    });
+    vi.setSystemTime(Date.now() + 61_000);
+    await expect(guardClientLookup("/oauth2/public-client", { query: { client_id: url } })).resolves.toBeUndefined();
+  });
+});
+
+// ----- What a refused or failed fetch costs, and who can still get through -----
+
+describe("what the fetch point protects", () => {
+  const noStore = { "cache-control": "no-store" };
+  const stale = (seconds = CACHE_FLOOR_SECONDS + 1) => vi.setSystemTime(Date.now() + seconds * 1000);
+  const refreshWith = (clientId: string, refreshToken: string) =>
+    send("oauth2/token", formBody({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId, resource: mcpResourceUrl() }));
+
+  it("ten junk ids a minute on the same site as a connected assistant, for five minutes, don't stop its next re-read", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const site = `https://shared-${++counter}.example`;
+    const good = `${site}/assistant.json`;
+    const fake = serve({ [good]: jsonReply(metadata(good), noStore) });
+    const connected = await connectDocument(good);
+    for (let minute = 0; minute < 5; minute++) {
+      vi.setSystemTime(Date.now() + 61_000);
+      const before = fake.requests.length;
+      for (let i = 0; i < 10; i++) await anonymousAuthorize(`${site}/junk-${minute}-${i}.json`);
+      // At most five of the ten are fetched, and the real assistant's site is not used up.
+      expect(fake.requests.length - before).toBeLessThanOrEqual(NEW_CLIENT_FETCHES_PER_SITE_PER_MINUTE);
+    }
+    // 305 seconds have passed, so the document's five minutes are over and the re-read needs a fetch.
+    const renewed = await refresh(good, connected.refreshToken);
+    expect(renewed.status).toBe(200);
+    expect(seenFor(fake, [good])).toBe(2);
+  });
+
+  it("a connected document that starts answering 500 is fetched at most once a minute, and another assistant still refreshes", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const bad = nextUrl();
+    const other = nextUrl();
+    const pages: Record<string, FakeReply> = { [bad]: jsonReply(metadata(bad), noStore), [other]: jsonReply(metadata(other), noStore) };
+    const fake = serve(pages);
+    await connectDocument(bad);
+    const otherConnection = await connectDocument(other);
+    pages[bad] = { status: 500 };
+    stale();
+    const perMinute: number[] = [];
+    for (let minute = 0; minute < 5; minute++) {
+      const before = seenFor(fake, [bad]);
+      for (let i = 0; i < 60; i++) await send("oauth2/token", formBody({ ...refreshForm, client_id: bad }));
+      perMinute.push(seenFor(fake, [bad]) - before);
+      vi.setSystemTime(Date.now() + 61_000);
+    }
+    expect(perMinute.every((n) => n <= 1)).toBe(true);
+    expect(perMinute.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(4);
+    expect((await refresh(other, otherConnection.refreshToken)).status).toBe(200);
+  }, 60_000);
+
+  describe("allowed documents that all start failing", () => {
+    const stored = (id: string) => ({ id: crypto.randomUUID(), clientId: id, createdAt: new Date(), updatedAt: new Date() });
+
+    it("125 of them, each named once a minute for four minutes: at most 20 fetches a minute, and a real assistant refreshes every time", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const failing = Array.from({ length: 125 }, () => `https://failing-${++counter}.attacker.example/c.json`);
+      const real = Array.from({ length: 6 }, () => nextUrl());
+      const pages: Record<string, FakeReply> = {};
+      for (const id of real) pages[id] = jsonReply(metadata(id), noStore);
+      for (const id of failing) pages[id] = { status: 500 };
+      const fake = serve(pages);
+      const connections = [];
+      for (const id of real) connections.push(await connectDocument(id));
+      // Set-up: the rows and the consents are written directly, for a person who allowed them all.
+      await prisma.oauthClient.createMany({
+        data: failing.map((id) => ({
+          ...stored(id),
+          clientDiscoveryId: "cimd",
+          name: "Failing Assistant",
+          redirectUris: [REDIRECT_URI],
+          tokenEndpointAuthMethod: "none",
+          grantTypes: ["authorization_code", "refresh_token"],
+          responseTypes: ["code"],
+          scopes: ALL.split(" "),
+        })),
+      });
+      await prisma.oauthConsent.createMany({ data: failing.map((id) => ({ ...stored(id), userId: "ownerA", scopes: ALL.split(" ") })) });
+      stale();
+
+      const callsTo = (ids: string[]) => seenFor(fake, ids);
+      const failedBefore = new Set<string>();
+      const nameAll = async () => {
+        for (const id of failing) await send("oauth2/token", formBody({ ...refreshForm, client_id: id }));
+      };
+      // Minute 0: the first fetch of each, and a real assistant that refreshes first.
+      expect((await refresh(real[0], connections[0].refreshToken)).status).toBe(200);
+      await nameAll();
+      for (const r of fake.requests) if (failing.includes(r.url.href)) failedBefore.add(r.url.href);
+      expect(failedBefore.size).toBeGreaterThan(100);
+
+      const afterFirstFailure: number[] = [];
+      for (let minute = 1; minute <= 4; minute++) {
+        vi.setSystemTime(Date.now() + 61_000);
+        const before = fake.requests.length;
+        await nameAll();
+        const calls = fake.requests.slice(before).filter((r) => failing.includes(r.url.href));
+        afterFirstFailure.push(calls.filter((r) => failedBefore.has(r.url.href)).length);
+        for (const r of calls) failedBefore.add(r.url.href);
+        // A different connected assistant whose copy has run out gets its fetch and answers 200.
+        expect((await refresh(real[minute], connections[minute].refreshToken)).status).toBe(200);
+        expect(cimdBudgetSnapshot().failingConnected).toBeLessThanOrEqual(FAILING_CONNECTED_FETCHES_PER_MINUTE);
+      }
+      expect(Math.max(...afterFirstFailure)).toBeLessThanOrEqual(FAILING_CONNECTED_FETCHES_PER_MINUTE);
+      expect(Math.max(...afterFirstFailure)).toBeGreaterThan(0);
+      expect(callsTo(failing)).toBeLessThanOrEqual(125 + 4 * 26);
+    }, 120_000);
+
+    it("a document that recovers leaves the failing bucket on its next successful fetch", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const url = nextUrl();
+      const pages: Record<string, FakeReply> = { [url]: jsonReply(metadata(url), noStore) };
+      const fake = serve(pages);
+      const connected = await connectDocument(url);
+      const empty = { newClients: 0, connected: 0, failingConnected: 0, marked: 0 };
+      // The connect used one slot for a client nobody had allowed yet. Start from nothing.
+      resetCimdBudgets();
+      pages[url] = { status: 500 };
+      stale();
+      expect((await refresh(url, connected.refreshToken)).status).toBe(400);
+      expect(cimdBudgetSnapshot()).toEqual({ ...empty, connected: 1, marked: 1 });
+      // It answers again. The retry comes from the failing bucket and clears the mark.
+      pages[url] = jsonReply(metadata(url), noStore);
+      vi.setSystemTime(Date.now() + 61_000);
+      const renewed = await refresh(url, connected.refreshToken);
+      expect(renewed.status).toBe(200);
+      expect(cimdBudgetSnapshot()).toEqual({ ...empty, failingConnected: 1 });
+      // The next time it has to be fetched it is an ordinary allowed client again.
+      stale();
+      expect((await refresh(url, renewed.body.refresh_token)).status).toBe(200);
+      expect(cimdBudgetSnapshot()).toEqual({ ...empty, connected: 1 });
+      expect(seenFor(fake, [url])).toBe(4);
+    });
+  });
+
+  it("a 304 from a revalidation clears the mark too, so a document that keeps answering never counts as failing", async () => {
+    const url = nextUrl();
+    const fake = conditionalNet(url, noStore);
+    net.fetch = createCimdFetch(fake.deps, FAST);
+    const connected = await connectDocument(url);
+    resetCimdBudgets();
+    stale();
+    const first = await refresh(url, connected.refreshToken);
+    expect(first.status).toBe(200);
+    // The second request carried the validator and was answered 304.
+    expect(fake.requests).toHaveLength(2);
+    expect(fake.requests[1].headers["if-none-match"]).toBe('"v1"');
+    expect(cimdBudgetSnapshot()).toEqual({ newClients: 0, connected: 1, failingConnected: 0, marked: 0 });
+    stale();
+    expect((await refresh(url, first.body.refresh_token)).status).toBe(200);
+    expect(cimdBudgetSnapshot()).toEqual({ newClients: 0, connected: 1, failingConnected: 0, marked: 0 });
+  });
+
+  it("30 documents that hang until the timeout, started together, don't stop a connected assistant from refreshing", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const good = nextUrl();
+    const hanging = Array.from({ length: 30 }, () => `https://hang-${++counter}.attacker.example/c.json`);
+    const pages: Record<string, FakeReply> = { [good]: jsonReply(metadata(good), noStore) };
+    for (const id of hanging) pages[id] = { hang: true };
+    const fake = serve(pages, {}, { ...CIMD_LIMITS, connectMs: 50, requestMs: 700 });
+    const connected = await connectDocument(good);
+    stale();
+    const started = hanging.map((id) => anonymousAuthorize(id));
+    // Real timers: wait until the fake network shows all 30 in flight.
+    for (let waited = 0; seenFor(fake, hanging) < 30 && waited < 2000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(seenFor(fake, hanging)).toBe(30);
+    const renewed = await refresh(good, connected.refreshToken);
+    expect(renewed.status).toBe(200);
+    for (const answer of await Promise.all(started)) expect(answer.status).toBe(400);
+  }, 30_000);
+
+  it("after Disconnect, the old access token at userinfo and introspect costs the budget for new assistants, never the connected one", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url), noStore) });
+    const connected = await connectDocument(url);
+    const introspectAs = await introspector();
+    expect((await asUser("ownerA", () => disconnectAssistant(null, form({ workspaceId: "a", clientId: url })))).ok).toBe(true);
+    resetCimdBudgets();
+    stale();
+    // The token itself is still a valid signed token: what is checked here is who pays for the lookup.
+    await userinfoWith(connected.accessToken);
+    expect(cimdBudgetSnapshot()).toEqual({ newClients: 1, connected: 0, failingConnected: 0, marked: 0 });
+    stale();
+    // The counters look back one minute, so only this second lookup shows.
+    await introspectAs(connected.accessToken);
+    expect(cimdBudgetSnapshot()).toEqual({ newClients: 1, connected: 0, failingConnected: 0, marked: 0 });
+  });
+
+  describe("a first connect", () => {
+    it.each([
+      ["a plain document", {}],
+      ["a no-store document", { "cache-control": "no-store" }],
+      ["a max-age=0 document", { "cache-control": "max-age=0" }],
+    ])("costs one fetch for %s, not one for each step", async (_name, headers) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const url = nextUrl();
+      const fake = serve({ [url]: jsonReply(metadata(url), headers) });
+      // What a person's browser does: authorize, come back from sign-in through continue, ask for the details on the consent page, allow, and the assistant asks for a token.
+      const { verifier, challenge } = pkce();
+      const { location, headers: session } = await authorize(url, "ownerA", { scope: ALL, challenge });
+      const onward = await auth.handler(
+        new Request(new URL("/api/auth/oauth2/continue", appUrl()), {
+          method: "POST",
+          headers: { ...Object.fromEntries(session), "content-type": "application/json", accept: "application/json", ...fromNewIp() },
+          body: JSON.stringify({ postLogin: true, oauth_query: location.search.slice(1) }),
+        }),
+      );
+      expect(onward.status).toBe(200);
+      const details = await auth.handler(new Request(new URL(`/api/auth/oauth2/public-client?client_id=${encodeURIComponent(url)}`, appUrl()), { headers: { ...Object.fromEntries(session), ...fromNewIp() } }));
+      expect(details.status).toBe(200);
+      const code = (await consent(location, session, true)).searchParams.get("code") as string;
+      expect((await exchangeCode(url, code, verifier)).status).toBe(200);
+      expect(fake.requests).toHaveLength(1);
+      expect(cimdBudgetSnapshot().newClients).toBe(1);
+    });
+
+    it("can be tried again after a minute when the first fetch failed", async () => {
+      const url = nextUrl();
+      const pages: Record<string, FakeReply> = { [url]: { status: 500 } };
+      const fake = serve(pages);
+      expect((await startAuthorize(url)).status).toBe(400);
+      pages[url] = jsonReply(metadata(url));
+      vi.setSystemTime(Date.now() + 30_000);
+      expect((await startAuthorize(url)).status).toBe(429);
+      vi.setSystemTime(Date.now() + 31_000);
+      const answer = await startAuthorize(url);
+      expect(answer.status).toBe(302);
+      expect(answer.location).toContain("/oauth/consent");
+      expect(fake.requests).toHaveLength(2);
+    });
+  });
+
+  describe("a failing database inside the fetch point", () => {
+    it("answers 429 with a retry time on token and authorize, and the plugin's own 500 on end-session", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const good = nextUrl();
+      const fake = serve({ [good]: jsonReply(metadata(good), noStore) });
+      const connected = await connectDocument(good);
+      const armed = () => vi.spyOn(prisma.oauthConsent, "count").mockRejectedValueOnce(new Error("the database went away"));
+
+      stale();
+      armed();
+      const token = await refreshWith(good, connected.refreshToken);
+      expect(token.status).toBe(429);
+      expect(token.headers.get("retry-after")).toBe("60");
+      expect((await token.json()).error).toBe("temporarily_unavailable");
+
+      // The refusal counts as a failed fetch, so the id waits a minute.
+      vi.setSystemTime(Date.now() + 61_000);
+      armed();
+      const authorizeAnswer = await anonymousAuthorize(good);
+      expect(authorizeAnswer.status).toBe(429);
+      expect(authorizeAnswer.headers.get("retry-after")).toBe("60");
+      expect(authorizeAnswer.body.error).toBe("temporarily_unavailable");
+
+      vi.setSystemTime(Date.now() + 61_000);
+      armed();
+      const logout = await endSessionFor(good);
+      expect(logout.status).toBe(500);
+      expect(await logout.json()).toMatchObject({ error: "server_error" });
+      // Nothing was fetched for any of them, and the error that was logged is the name of the error only.
+      expect(seenFor(fake, [good])).toBe(1);
+      for (const call of error.mock.calls) expect(JSON.stringify(call)).not.toContain("the database went away");
+    });
+  });
+});
+
+// ----- The account cap, the wait after a refusal, and what people and assistants see -----
+
+// The route handlers, which add what the plugin's own answers lack.
+const route = () => import("@/app/api/auth/[...all]/route");
+const appRequest = (path: string, init: RequestInit = {}) => new Request(new URL(path, appUrl()), { ...init, headers: { ...fromNewIp(), ...init.headers } });
+const tokenRequest = (clientId: string, refreshToken: string) =>
+  appRequest("/api/auth/oauth2/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId, resource: mcpResourceUrl() }),
+  });
+
+describe("at most 10 assistants that came from a metadata document, for one account", () => {
+  const SENTENCE = "You have connected 10 assistants this way. Disconnect one in Settings first.";
+  // The consent step as a browser sends it, with the status and body kept.
+  const consentResponse = (location: URL, headers: Headers, accept = true) =>
+    auth.handler(
+      new Request(new URL("/api/auth/oauth2/consent", appUrl()), {
+        method: "POST",
+        headers: { ...Object.fromEntries(headers), "content-type": "application/json", accept: "application/json", ...fromNewIp() },
+        body: JSON.stringify({ accept, oauth_query: location.search.slice(1) }),
+      }),
+    );
+  async function consentAnswer(location: URL, headers: Headers, accept = true) {
+    const response = await consentResponse(location, headers, accept);
+    return { status: response.status, body: (await response.json()) as Record<string, string> };
+  }
+
+  it("lets a 10th be allowed, refuses the 11th with the sentence and stores nothing, still allows a registered one, and a Disconnect frees a place", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(MAX_DOCUMENT_CLIENTS_PER_ACCOUNT).toBe(10);
+    const urls = Array.from({ length: 11 }, () => nextUrl());
+    serve(Object.fromEntries(urls.map((u) => [u, jsonReply(metadata(u))])));
+    for (const url of urls.slice(0, 10)) await connectDocument(url, "ownerA");
+    expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", oauthclient: { clientDiscoveryId: "cimd" } } })).toBe(10);
+
+    const { location, headers } = await authorize(urls[10], "ownerA", { scope: ALL, challenge: pkce().challenge });
+    const refused = await consentAnswer(location, headers);
+    expect(refused.status).toBe(400);
+    expect(refused.body).toEqual({ error: "invalid_request", error_description: SENTENCE });
+    expect(await prisma.oauthConsent.count({ where: { clientId: urls[10] } })).toBe(0);
+    // Denying is not refused.
+    expect((await consentAnswer(location, headers, false)).status).toBe(200);
+    // Allowing one of the ten again (a new consent screen for it) is not counted as an 11th: it answers 200 with a code.
+    const again = await consentLink(urls[1], "ownerA", true);
+    const allowedAgain = await consentAnswer(again.location, again.headers);
+    expect(allowedAgain.status).toBe(200);
+    expect(codeIn(allowedAgain.body)).toBeTruthy();
+    expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", oauthclient: { clientDiscoveryId: "cimd" } } })).toBe(10);
+    expect(await prisma.oauthConsent.count({ where: { clientId: urls[10] } })).toBe(0);
+    // Somebody else is not held to this person's count.
+    expect((await connectDocument(urls[10], "officerA")).accessToken).toBeTruthy();
+    // A registered assistant is not counted or limited.
+    expect((await getAccessToken("ownerA")).accessToken).toBeTruthy();
+    expect(await prisma.oauthConsent.count({ where: { clientId: urls[10], userId: "ownerA" } })).toBe(0);
+
+    // After Disconnect of one, the next document assistant can be allowed.
+    expect((await asUser("ownerA", () => disconnectAssistant(null, form({ workspaceId: "a", clientId: urls[0] })))).ok).toBe(true);
+    expect((await connectDocument(urls[10], "ownerA")).accessToken).toBeTruthy();
+  }, 60_000);
+
+  // A consent screen link for a client, even when the person already holds it (prompt=consent).
+  async function consentLink(clientId: string, userId = "ownerA", promptConsent = false) {
+    const query = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      redirect_uri: REDIRECT_URI,
+      scope: ALL,
+      state: "state-1",
+      code_challenge: pkce().challenge,
+      code_challenge_method: "S256",
+      resource: mcpResourceUrl(),
+      ...(promptConsent ? { prompt: "consent" } : {}),
+    });
+    const headers = await signedInHeaders(userId);
+    const response = await auth.handler(new Request(new URL(`/api/auth/oauth2/authorize?${query}`, appUrl()), { headers: { ...Object.fromEntries(headers), ...fromNewIp() }, redirect: "manual" }));
+    const location = new URL(response.headers.get("location") as string, appUrl());
+    expect(location.pathname).toBe("/oauth/consent");
+    return { location, headers };
+  }
+  const documentConsents = (userId = "ownerA") => prisma.oauthConsent.count({ where: { userId, oauthclient: { clientDiscoveryId: "cimd" } } });
+  const distinctDocuments = async (userId = "ownerA") =>
+    (await prisma.oauthConsent.findMany({ where: { userId, oauthclient: { clientDiscoveryId: "cimd" } }, select: { clientId: true }, distinct: ["clientId"] })).length;
+  // The authorization code in an answer that sends the person back to the assistant, or null.
+  const codeIn = (body: Record<string, string>) => {
+    const target = body.url ?? body.redirect_uri;
+    return target ? new URL(target, appUrl()).searchParams.get("code") : null;
+  };
+
+  it("Allows sent at the same moment at 9 held assistants: exactly one is allowed, the rest get the sentence, and the person holds 10", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const urls = Array.from({ length: 17 }, () => nextUrl());
+    serve(Object.fromEntries(urls.map((u) => [u, jsonReply(metadata(u))])));
+    for (const url of urls.slice(0, 9)) await connectDocument(url, "ownerA");
+    const fresh = urls.slice(9);
+    const links = [];
+    for (const url of fresh) links.push(await authorize(url, "ownerA", { scope: ALL, challenge: pkce().challenge }));
+    insert.barrier = { size: fresh.length, waiting: [] };
+    const answers = await Promise.all(links.map((link) => consentAnswer(link.location, link.headers)));
+    const allowed = answers.filter((a) => a.status === 200);
+    const refused = answers.filter((a) => a.status === 400);
+    expect(allowed).toHaveLength(1);
+    expect(refused).toHaveLength(fresh.length - 1);
+    for (const answer of refused) expect(answer.body).toEqual({ error: "invalid_request", error_description: SENTENCE });
+    expect(await documentConsents()).toBe(10);
+    expect(await distinctDocuments()).toBe(10);
+    // A refused one has no consent and no code; the allowed one has a code.
+    for (const [i, answer] of answers.entries()) {
+      if (answer.status === 400) {
+        expect(await prisma.oauthConsent.count({ where: { clientId: fresh[i] } })).toBe(0);
+        expect(codeIn(answer.body)).toBeNull();
+      } else {
+        expect(codeIn(answer.body)).toBeTruthy();
+        expect(await prisma.oauthConsent.count({ where: { clientId: fresh[i], userId: "ownerA" } })).toBe(1);
+      }
+    }
+  }, 60_000);
+
+  it("Allows sent together at 9 held leave at most 10 even when the endpoint fails after the insert with a plain error", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const noStore = { "cache-control": "no-store" };
+    const held = Array.from({ length: 9 }, () => nextUrl());
+    const fresh = Array.from({ length: 6 }, () => nextUrl());
+    const pages = Object.fromEntries([...held, ...fresh].map((u) => [u, jsonReply(metadata(u), noStore)]));
+    serve(pages);
+    for (const url of held) await connectDocument(url, "ownerA");
+    const links = [];
+    for (const url of fresh) links.push(await authorize(url, "ownerA", { scope: ALL, challenge: pkce().challenge }));
+    // The cached copies expire (no-store is kept 5 minutes) and the documents have changed, so the
+    // authorize step after the insert updates the client row. That update fails with a plain Error,
+    // not an APIError, the way a database refusal does (a NUL character in a document did this before
+    // such documents were refused). The consent row is already stored when it happens.
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    serve({ ...pages, ...Object.fromEntries(fresh.map((u) => [u, jsonReply(metadata(u, { client_name: "Doc Assistant Renamed" }), noStore)])) });
+    const context = await auth.$context;
+    const realUpdate = context.adapter.update.bind(context.adapter);
+    const failed: string[] = [];
+    vi.spyOn(context.adapter, "update").mockImplementation((async (args: { model: string; where: { field: string; value: unknown }[] }) => {
+      if (args.model === "oauthClient") {
+        failed.push(String(args.where.find((w) => w.field === "clientId")?.value ?? "?"));
+        throw new Error("the update was refused");
+      }
+      return realUpdate(args as never);
+    }) as never);
+
+    insert.barrier = { size: fresh.length, waiting: [] };
+    const answers = await Promise.all(links.map(async (link) => ({ response: await consentResponse(link.location, link.headers) })));
+    const statuses = answers.map(({ response }) => response.status);
+    const refused = await Promise.all(answers.filter(({ response }) => response.status === 400).map(({ response }) => response.json()));
+    // Only the Allow that got past the cap reached the failing update, and it ended as a 500.
+    expect(statuses.filter((status) => status === 500)).toHaveLength(1);
+    expect(failed).toHaveLength(1);
+    expect(refused).toHaveLength(fresh.length - 1);
+    for (const body of refused) expect(body).toEqual({ error: "invalid_request", error_description: SENTENCE });
+    // A row was stored for at most one of the new documents: the one whose Allow answered 500.
+    const stored = await prisma.oauthConsent.findMany({ where: { userId: "ownerA", clientId: { in: fresh } }, select: { clientId: true } });
+    expect(stored.map((row) => row.clientId)).toEqual(failed);
+    expect(await distinctDocuments()).toBe(10);
+    expect(await documentConsents()).toBe(10);
+  }, 60_000);
+
+  describe("createConsentWithinCap on its own", () => {
+    const args = (clientId: string, userId: string | undefined) => ({
+      data: { id: `cap-consent-${++counter}`, clientId, userId, scopes: ["openid"], createdAt: new Date(), updatedAt: new Date() },
+    });
+    async function makeClient(discovery: string | null = "cimd") {
+      const clientId = nextUrl();
+      await prisma.oauthClient.create({ data: { id: `cap-client-${++counter}`, clientId, clientDiscoveryId: discovery } });
+      return clientId;
+    }
+    async function holdDocuments(userId: string, count: number) {
+      const ids: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const clientId = await makeClient();
+        await createConsentWithinCap(args(clientId, userId));
+        ids.push(clientId);
+      }
+      return ids;
+    }
+    const rejection = (promise: Promise<unknown>) => promise.then(() => null, (error: unknown) => error as InstanceType<typeof APIError>);
+    function expectCapError(error: InstanceType<typeof APIError> | null) {
+      expect(error).toBeInstanceOf(APIError);
+      expect(error?.statusCode).toBe(400);
+      expect(error?.body).toMatchObject({ error: "invalid_request", error_description: SENTENCE });
+    }
+
+    it("stores a consent for a registered client without the cap, even when the person holds 10 document assistants", async () => {
+      await holdDocuments("ownerA", 10);
+      const registered = await makeClient(null);
+      await createConsentWithinCap(args(registered, "ownerA"));
+      expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", clientId: registered } })).toBe(1);
+      expect(await documentConsents()).toBe(10);
+    });
+
+    it("stores a consent that has no userId as it is, even when somebody holds 10 document assistants", async () => {
+      await holdDocuments("ownerA", 10);
+      const clientId = await makeClient();
+      await createConsentWithinCap(args(clientId, undefined));
+      expect(await prisma.oauthConsent.count({ where: { clientId, userId: null } })).toBe(1);
+    });
+
+    it("refuses a new document client at 10 held with the APIError and stores nothing", async () => {
+      await holdDocuments("ownerA", 10);
+      const clientId = await makeClient();
+      expectCapError(await rejection(createConsentWithinCap(args(clientId, "ownerA"))));
+      expect(await prisma.oauthConsent.count({ where: { clientId } })).toBe(0);
+      expect(await documentConsents()).toBe(10);
+    });
+
+    it("stores a 10th document client, then refuses the 11th", async () => {
+      await holdDocuments("ownerA", 9);
+      await createConsentWithinCap(args(await makeClient(), "ownerA"));
+      expect(await documentConsents()).toBe(10);
+      expectCapError(await rejection(createConsentWithinCap(args(await makeClient(), "ownerA"))));
+      expect(await documentConsents()).toBe(10);
+    });
+
+    it("stores a second row for a client the person already holds at 10 held, and counts it once", async () => {
+      const held = await holdDocuments("ownerA", 10);
+      await createConsentWithinCap(args(held[3], "ownerA"));
+      expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", clientId: held[3] } })).toBe(2);
+      expect(await documentConsents()).toBe(11);
+      expect(await distinctDocuments()).toBe(10);
+      // Still at the maximum for a new client.
+      expectCapError(await rejection(createConsentWithinCap(args(await makeClient(), "ownerA"))));
+    });
+
+    it("does not hold another person to the first person's 10", async () => {
+      await holdDocuments("ownerA", 10);
+      const clientId = await makeClient();
+      await createConsentWithinCap(args(clientId, "officerA"));
+      expect(await prisma.oauthConsent.count({ where: { userId: "officerA", clientId } })).toBe(1);
+      expect(await documentConsents("officerA")).toBe(1);
+    });
+
+    it("lets exactly one of two parallel calls for two new clients through at 9 held", async () => {
+      await holdDocuments("ownerA", 9);
+      const [first, second] = [await makeClient(), await makeClient()];
+      insert.barrier = { size: 2, waiting: [] };
+      const results = await Promise.allSettled([createConsentWithinCap(args(first, "ownerA")), createConsentWithinCap(args(second, "ownerA"))]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      expect(rejected).toHaveLength(1);
+      expectCapError(rejected[0].reason as InstanceType<typeof APIError>);
+      expect(await documentConsents()).toBe(10);
+      expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", clientId: { in: [first, second] } } })).toBe(1);
+    });
+
+    it("lets exactly one of eight parallel calls for new clients through at 9 held", async () => {
+      await holdDocuments("ownerA", 9);
+      const fresh = await Promise.all(Array.from({ length: 8 }, () => makeClient()));
+      insert.barrier = { size: 8, waiting: [] };
+      const results = await Promise.allSettled(fresh.map((clientId) => createConsentWithinCap(args(clientId, "ownerA"))));
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(7);
+      expect(await documentConsents()).toBe(10);
+    });
+  });
+
+  it("an Allow for an assistant that was disconnected meanwhile is refused when a new assistant took its place, and leaves 10", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const held = Array.from({ length: 10 }, () => nextUrl());
+    const extra = nextUrl();
+    serve(Object.fromEntries([...held, extra].map((u) => [u, jsonReply(metadata(u), { "cache-control": "max-age=3600" })])));
+    for (const url of held) await connectDocument(url, "ownerA");
+    expect(await documentConsents()).toBe(10);
+
+    // A new consent screen for an assistant the person already holds (X), and one for a new assistant (Y).
+    const x = held[0];
+    const screenX = await consentLink(x, "ownerA", true);
+    const screenY = await consentLink(extra);
+    // The person disconnects X, which leaves 9. Then Allow X starts, and its insert waits.
+    expect((await asUser("ownerA", () => disconnectAssistant(null, form({ workspaceId: "a", clientId: x })))).ok).toBe(true);
+    expect(await documentConsents()).toBe(9);
+    let release!: () => void;
+    let reached!: () => void;
+    const wait = new Promise<void>((resolve) => (release = resolve));
+    const arrived = new Promise<void>((resolve) => (reached = resolve));
+    insert.hold = { clientId: x, reached, wait, used: false };
+    const allowX = consentAnswer(screenX.location, screenX.headers);
+    await arrived;
+    // While it waits, Y is allowed and takes the free place.
+    const allowedY = await consentAnswer(screenY.location, screenY.headers);
+    expect(allowedY.status).toBe(200);
+    expect(codeIn(allowedY.body)).toBeTruthy();
+    expect(await documentConsents()).toBe(10);
+    release();
+
+    const answer = await allowX;
+    expect(answer.status).toBe(400);
+    expect(answer.body).toEqual({ error: "invalid_request", error_description: SENTENCE });
+    expect(codeIn(answer.body)).toBeNull();
+    expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", clientId: x } })).toBe(0);
+    expect(await prisma.oauthConsent.count({ where: { userId: "ownerA", clientId: extra } })).toBe(1);
+    expect(await documentConsents()).toBe(10);
+    expect(insert.hold.used).toBe(true);
+  }, 60_000);
+
+  it("an Allow with no session is answered 401 by the endpoint's own session check, and stores nothing", async () => {
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url)) });
+    const { location } = await authorize(url, "ownerA", { scope: ALL, challenge: pkce().challenge });
+    const answer = await consentAnswer(location, new Headers());
+    expect(answer.status).toBe(401);
+    expect(await prisma.oauthConsent.count({ where: { clientId: url } })).toBe(0);
+  });
+
+  it("reaches the person as the text on the consent buttons: the client's own error, read as the buttons read it", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const urls = Array.from({ length: 11 }, () => nextUrl());
+    serve(Object.fromEntries(urls.map((u) => [u, jsonReply(metadata(u))])));
+    for (const url of urls.slice(0, 10)) await connectDocument(url, "ownerA");
+    const { location, headers } = await authorize(urls[10], "ownerA", { scope: ALL, challenge: pkce().challenge });
+    const { createAuthClient } = await import("better-auth/client");
+    const client = createAuthClient({
+      baseURL: new URL("/api/auth", appUrl()).toString(),
+      fetchOptions: { customFetchImpl: async (input, init) => auth.handler(new Request(input, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), ...Object.fromEntries(headers), ...fromNewIp() } })) },
+    });
+    const { error } = await client.$fetch<unknown>("/oauth2/consent", { method: "POST", body: { accept: true, oauth_query: location.search.slice(1) } });
+    expect(error).toMatchObject({ status: 400, error: "invalid_request", error_description: SENTENCE });
+    expect(consentRefusalText(error)).toBe(SENTENCE);
+  });
+
+  it("shows the busy text for a 429, the sentence for the cap, and the expired text for anything else", () => {
+    expect(consentRefusalText({ status: 429, error: "temporarily_unavailable" })).toBe("Coppice is busy connecting assistants right now. Wait a minute, then try again.");
+    expect(consentRefusalText({ status: 400, error: "invalid_request", error_description: SENTENCE })).toBe(SENTENCE);
+    expect(consentRefusalText({ status: 400, error: "invalid_request", error_description: "Scope not originally requested" })).toBe("This request has expired. Go back to your assistant and connect again.");
+    expect(consentRefusalText({ status: 400, error: "invalid_signature" })).toBe("This request has expired. Go back to your assistant and connect again.");
+    expect(consentRefusalText(null)).toBe("This request has expired. Go back to your assistant and connect again.");
+  });
+});
+
+describe("the wait after a refused or failed fetch", () => {
+  const noStore = { "cache-control": "no-store" };
+  const fill = async (connected: boolean, count: number) => {
+    for (let i = 0; i < count; i++) await allowDocumentFetch(`https://fill-${++counter}.example/c.json`, async () => connected);
+  };
+
+  it("a full connected budget refuses a refresh with 429 and Retry-After 60, and the id waits a minute even when the budget frees at once", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { GET, POST } = await route();
+    const good = nextUrl();
+    const fake = serve({ [good]: jsonReply(metadata(good), noStore) });
+    const connected = await connectDocument(good);
+    vi.setSystemTime(Date.now() + (CACHE_FLOOR_SECONDS + 1) * 1000);
+    resetCimdBudgets();
+    await fill(true, CONNECTED_FETCHES_PER_MINUTE);
+    const start = Date.now();
+
+    const refused = await POST(tokenRequest(good, connected.refreshToken));
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect((await refused.json()).error_description).toBe("too many assistants are refreshing, try again in a minute");
+
+    // The budget empties at once. The plugin still keeps the id out for a minute.
+    resetCimdBudgets();
+    vi.setSystemTime(start + 30_000);
+    const plugins = await auth.handler(tokenRequest(good, connected.refreshToken));
+    expect(plugins.status).toBe(429);
+    // The plugin's own answer has no retry time. The route handler adds it, on POST and on GET.
+    expect(plugins.headers.get("retry-after")).toBeNull();
+    const viaRoute = await POST(tokenRequest(good, connected.refreshToken));
+    expect(viaRoute.status).toBe(429);
+    expect(viaRoute.headers.get("retry-after")).toBe("60");
+    const query = new URLSearchParams({ response_type: "code", client_id: good, redirect_uri: REDIRECT_URI, scope: ALL, code_challenge: "x".repeat(43), code_challenge_method: "S256" });
+    const getAnswer = await GET(appRequest(`/api/auth/oauth2/authorize?${query}`, { redirect: "manual" }));
+    expect(getAnswer.status).toBe(429);
+    expect(getAnswer.headers.get("retry-after")).toBe("60");
+    expect(seenFor(fake, [good])).toBe(1);
+
+    vi.setSystemTime(start + 61_000);
+    const renewed = await POST(tokenRequest(good, connected.refreshToken));
+    expect(renewed.status).toBe(200);
+    expect(seenFor(fake, [good])).toBe(2);
+  });
+
+  it("leaves a retry time that is already there, and any 429 outside the OAuth paths, as it is", async () => {
+    const tooMany = (headers: Record<string, string> = {}) => new Response("{}", { status: 429, headers });
+    const oauth = (path = "/api/auth/oauth2/token") => appRequest(path, { method: "POST" });
+    // A 429 under /oauth2/ with no retry time gets one, and keeps its body and other headers.
+    const added = withRetryAfter(oauth(), tooMany({ "x-other": "kept" }));
+    expect(added.headers.get("retry-after")).toBe("60");
+    expect(added.headers.get("x-other")).toBe("kept");
+    expect(await added.text()).toBe("{}");
+    // One that has its own is not changed, and is not given a second value.
+    expect(withRetryAfter(oauth(), tooMany({ "Retry-After": "5" })).headers.get("retry-after")).toBe("5");
+    // Other statuses under /oauth2/ and 429s elsewhere are left alone.
+    expect(withRetryAfter(oauth(), new Response("{}", { status: 400 })).headers.get("retry-after")).toBeNull();
+    expect(withRetryAfter(oauth(), new Response("{}", { status: 200 })).headers.get("retry-after")).toBeNull();
+    expect(withRetryAfter(oauth("/api/auth/sign-in/social"), tooMany()).headers.get("retry-after")).toBeNull();
+    expect(withRetryAfter(oauth("/api/auth/oauth2"), tooMany()).headers.get("retry-after")).toBeNull();
+
+    // A real 429 outside the OAuth paths: Better Auth's own limit on sign-in attempts from one address.
+    const { POST } = await route();
+    const ip = fromNewIp();
+    const attempt = () =>
+      POST(appRequest("/api/auth/sign-in/social", { method: "POST", headers: { ...ip, "content-type": "application/json" }, body: JSON.stringify({ provider: "google", callbackURL: "/" }) }));
+    let limited: Response | null = null;
+    for (let i = 0; i < 6 && !limited; i++) {
+      const answer = await attempt();
+      if (answer.status === 429) limited = answer;
+    }
+    expect(limited).not.toBeNull();
+    expect(limited?.headers.get("retry-after")).toBeNull();
+  });
+
+  it("the CORS answer on the token endpoint exposes Retry-After", async () => {
+    const { POST, OPTIONS } = await route();
+    const answered = await POST(tokenRequest("assistant-registered-1", "nope"));
+    expect(answered.headers.get("access-control-expose-headers")).toContain("Retry-After");
+    expect(OPTIONS(appRequest("/api/auth/oauth2/token", { method: "OPTIONS" })).headers.get("access-control-expose-headers")).toContain("Retry-After");
+  });
+
+  it("the consent page with the fetch budget used up says Coppice is busy, not that the link expired", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url), noStore) });
+    const { location } = await authorize(url, "ownerA", { scope: ALL, challenge: pkce().challenge });
+    const page = async () => {
+      const search: Record<string, string | string[]> = {};
+      for (const key of new Set(location.searchParams.keys())) search[key] = location.searchParams.getAll(key);
+      return renderToStaticMarkup(await asUser("ownerA", async () => ConsentPage({ searchParams: Promise.resolve(search) } as Parameters<typeof ConsentPage>[0])));
+    };
+    expect(await page()).toContain("Doc Assistant");
+    // The copy of the document has run out, and the 30 slots for new assistants are gone.
+    vi.setSystemTime(Date.now() + (CACHE_FLOOR_SECONDS + 1) * 1000);
+    await fill(false, NEW_CLIENT_FETCHES_PER_MINUTE);
+    const busy = await page();
+    expect(busy).toContain("Coppice is busy connecting assistants right now. Wait a minute, then reload this page.");
+    expect(busy).not.toContain("This link has expired");
+    expect(busy).not.toContain("Allow");
+  });
+
+  it("a link that is gone still says it has expired", async () => {
+    const url = nextUrl();
+    serve({ [url]: jsonReply(metadata(url)) });
+    const { location } = await authorize(url, "ownerA", { scope: ALL, challenge: pkce().challenge });
+    const search: Record<string, string | string[]> = {};
+    for (const key of new Set(location.searchParams.keys())) search[key] = location.searchParams.getAll(key);
+    search.client_id = "https://nobody.example/c.json";
+    const markup = renderToStaticMarkup(await asUser("ownerA", async () => ConsentPage({ searchParams: Promise.resolve(search) } as Parameters<typeof ConsentPage>[0])));
+    expect(markup).toContain("This link has expired");
   });
 });

@@ -3,11 +3,15 @@ import { auth } from "@/lib/auth";
 import { OAUTH_CORS_PATHS, preflight, withCors } from "@/lib/mcp/cors";
 import { readCappedText, withBody } from "@/lib/mcp/body";
 import { OAUTH_BODY_LIMIT, OAUTH_PATH_PREFIX, REGISTRATION_PATH } from "@/lib/mcp/oauth-limits";
+import { withRetryAfter } from "@/lib/mcp/retry-after";
 
 // Every /api/auth/* request (Google redirect, callback, session, sign-out) goes to Better Auth.
 const handlers = toNextJsHandler(auth);
 
-export const { GET } = handlers;
+// A 429 under /api/auth/oauth2/ with no Retry-After gets one (lib/mcp/retry-after.ts).
+export async function GET(request: Request) {
+  return withRetryAfter(request, await handlers.GET(request));
+}
 
 // MCP clients that run in a browser call the OAuth token and registration endpoints from their own
 // site, so those two answer with CORS headers (lib/mcp/cors.ts). Every other path is unchanged.
@@ -29,7 +33,8 @@ async function boundedOAuthBody(request: Request): Promise<Request | Response> {
 
 export async function POST(request: Request) {
   const bounded = await boundedOAuthBody(request);
-  const response = bounded instanceof Response ? bounded : await handlers.POST(bounded);
+  const answered = bounded instanceof Response ? bounded : await handlers.POST(bounded);
+  const response = withRetryAfter(request, answered);
   return needsCors(request) ? withCors(response) : response;
 }
 

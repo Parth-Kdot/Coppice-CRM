@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { ErrorLine } from "@/components/ledger/shared";
 import { authClient } from "@/lib/auth-client";
+import { consentRefusalText } from "@/lib/mcp/consent-refusal";
 
 // Allow / Deny on the consent page. The auth client sends the page's signed request along
 // (oauthProviderClient), and Better Auth answers with where to go next: back to the assistant
-// with a code, or with "access denied".
+// with a code, or with "access denied". When Allow is refused, what the person reads comes from
+// lib/mcp/consent-refusal.ts.
 export function ConsentButtons({ clientName }: { clientName: string }) {
   const [going, setGoing] = useState<"allow" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function ConsentButtons({ clientName }: { clientName: string }) {
       const { data, error: refused } = await authClient.oauth2.consent({ accept });
       const next = (data as { redirect_uri?: string; url?: string } | null)?.redirect_uri ?? (data as { url?: string } | null)?.url;
       if (refused || !next) {
-        setError("This request has expired. Go back to your assistant and connect again.");
+        setError(consentRefusalText(refused));
         setGoing(null);
         return;
       }

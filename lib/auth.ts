@@ -8,7 +8,8 @@ import { cimd } from "@better-auth/cimd";
 import { mcp } from "@better-auth/mcp";
 import { prisma } from "@/lib/db";
 import { MCP_SCOPES, mcpResourceUrl } from "@/lib/mcp/config";
-import { cimdFetch, metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
+import { allowDocumentFetch, clearFailingMark, createConsentWithinCap } from "@/lib/mcp/cimd-budget";
+import { cimdFetch } from "@/lib/mcp/cimd-fetch";
 import { guardClientLookup } from "@/lib/mcp/cimd-gate";
 import { endGrantsWithoutConsent } from "@/lib/mcp/connections";
 import { SCOPE_CHECKED_PATHS, registrationProblem, scopeProblem } from "@/lib/mcp/oauth-limits";
@@ -103,73 +104,120 @@ const assistants = mcp({
 // Client ID Metadata Documents. The plugin adds a discovery for https client_ids to the MCP
 // plugin above; both discovery documents then say client_id_metadata_document_supported. What to
 // know about it:
-// - When Coppice fetches. Whenever a client_id is an https URL, inside the client lookup:
-//   /oauth2/authorize (before any sign-in, so anyone can start a fetch), the token endpoint
-//   including refresh, consent, the consent page, revoke, introspect and end-session. A new URL is
-//   fetched, checked and saved as an oauthClient row marked clientDiscoveryId "cimd" (no secret,
-//   no password-style login), before anyone has signed in or allowed anything. The gate
-//   (lib/mcp/cimd-gate.ts) treats such a client as connected only once a consent row names it.
-//   For a client that is not connected, the token, revoke, introspect and end-session endpoints
-//   answer invalid_client without calling the plugin, and the other endpoints pass it on only
-//   for a row nobody has allowed yet, so the first connect works. For a known client the plugin
-//   keeps the document in memory, per server instance, for the time the transport gives it (see
-//   below), then asks again with If-None-Match. Nothing is fetched in the background. If the
-//   assistant's host is down when its entry has expired, refresh fails and the person connects
-//   again.
+// - Where Coppice can fetch. An assistant can use the https URL of a JSON document it hosts as its
+//   client_id, and the plugin fetches that URL inside its client lookup. That lookup runs on every
+//   endpoint that resolves a client: /oauth2/authorize (before any sign-in, so anyone can start
+//   one), the token endpoint including refresh, consent, continue, public-client, revoke,
+//   end-session, and introspect and userinfo through the azp of an access token. A new URL is
+//   fetched, checked and saved as an oauthClient row marked clientDiscoveryId "cimd" (no secret, no
+//   password-style login), before anyone has signed in or allowed anything. For a known client the
+//   plugin keeps the document in memory, per server instance, for the time the transport gives it
+//   (see below), then asks again with If-None-Match. Nothing is fetched in the background. If the
+//   assistant's host is down when its entry has expired, the refresh fails (400 invalid_client, then
+//   the plugin's own 429 for a minute). The refresh token is kept, so the assistant's next try after
+//   its host answers again works.
 // - How it fetches (lib/mcp/cimd-fetch.ts): the app's own transport, because the plugin leaves
 //   the network to the app. One GET to a public https name on the standard port, resolved once with
 //   every answer checked, connected to the checked address, no redirects, 5 s and 5 KB, no
 //   compression. A failure is a 400 invalid_client and saves nothing. The same file applies the
 //   client name and field rules of lib/mcp/oauth-limits.ts to the document, since the plugin applies
-//   them only to registration, and refuses anything but token_endpoint_auth_method none. A body that
-//   is not valid UTF-8 JSON is refused too, since the plugin would decode it more loosely.
+//   them only to registration, and refuses a jwks_uri, anything but token_endpoint_auth_method
+//   none, and a U+0000 character in any value or key (Postgres can't store it). A body that is not
+//   valid UTF-8 JSON is refused too, since the plugin would decode it more loosely.
 // - How long a checked document is reused. The transport writes the only cache header the plugin
-//   sees: max-age with what the origin declared, minus its Age, held between 5 and 60 minutes.
-//   A document that says no-store, private, no-cache or max-age=0 is reused for 5 minutes, so one that
-//   keeps answering costs one fetch every five minutes per instance and not one per request. The draft lets a
-//   server set its own bounds. A changed document is picked up within five minutes at the latest.
+//   sees: max-age with what the origin declared, minus its Age, held between 5 and 60 minutes. A
+//   document that says no-store, private, no-cache or max-age=0 is reused for 5 minutes, so one that
+//   keeps answering costs one fetch every five minutes per instance and not one per request. A
+//   changed document is picked up when the lifetime Coppice gave it runs out: within five minutes
+//   for no-store or a short max-age, and within sixty minutes at the latest.
 // - Origin binding. A document's redirect_uris, client_uri and post_logout_redirect_uris must be
 //   on the document's own origin. Loopback and private-use callbacks, which desktop assistants
 //   use, are still accepted by the plugin. Without redirect_uris here, a document at one site
 //   could list callbacks on another.
-// - Budgets, all per server instance and kept in memory. The plugin allows 120 fetches a minute,
-//   10 a minute and 2 at once for one site, and 16 at once, on top of its rate limits on
-//   authorize and token requests. A request over budget is refused at once, not queued. The
-//   plugin takes a slot before any lookup, so the gate (lib/mcp/cimd-gate.ts) is what keeps
-//   anonymous requests from using them up: a client that is not connected takes one of 30 slots
-//   a minute for each request that names it, on every endpoint the gate lets through, and every
-//   other request for it is refused before the plugin is called. The gate reads the client_id the
-//   way the plugin does, Basic headers included. That leaves at least 90 fetch starts a minute
-//   that only requests naming a connected client can use. The 16 fetches in flight at once are
-//   shared: slow documents from clients that are not connected can hold all of them for a few
-//   seconds at a time (up to the 5 s limit, about 10 s of every minute at 30 slots), and a
-//   connected assistant that needs a fetch then gets 429 until it tries again. The plugin's own
-//   minimumFetchInterval stays at its default (one second), because a document that can't be
-//   cached is looked up several times within seconds during one connect.
-// - Limits that remain. A first fetch needs no sign-in (the plugin signs the sign-in redirect
-//   itself), so a sender can hold the 30 slots at zero, which only delays new connections. The
-//   plugin still saves a row for each valid document nobody allowed, at most 30 a minute per
-//   instance; open registration already lets anyone save client rows, and no clean-up job runs.
-//   One signed-in account that allows hundreds of its own documents could still use much of the
-//   budget, and no per-account cap exists: each one is a consent row tied to that account, and
-//   each one that answers costs one fetch every five minutes per instance. A connected document
-//   that keeps failing is not held to that: the plugin stores only a fetch that worked, so it is
-//   fetched again on about every request that names it, once a second at most, and one account
-//   with a dozen failing connected documents on different sites could use the whole 120 a minute.
+// - The budgets sit at the fetch (lib/mcp/cimd-budget.ts, the isMetadataDocumentUrlAllowed option
+//   below). The plugin calls that option with the exact client_id it resolved, right before every
+//   network fetch and re-read included, so the budgets apply on every endpoint above, whatever field
+//   or header named the client. Per server instance, in memory, each a minute that slides: 30 fetches
+//   for clients nobody allowed, at most 5 of them for one site, so the 30 can't be aimed at one
+//   site; 120 for allowed clients; and 20 for allowed clients whose last fetch on this instance did
+//   not end with the document stored, which never take from the 120. A client counts as allowed when
+//   a consent row names it. The cimd options onClientCreated and onClientRefreshed below tell the
+//   budget that a document was stored. A refused fetch answers 429 temporarily_unavailable with Retry-After 60 on
+//   authorize, token, revoke, consent, continue and public-client. The plugin wraps it elsewhere:
+//   end-session answers 500 server_error "Unable to resolve the logout client", userinfo answers 401
+//   invalid_token, and introspect answers {"active":false} for the azp of a token.
+// - One account may allow at most 10 assistants that came from a metadata document, since using up
+//   the 120 with documents that answer takes about 600 of them (one fetch per five minutes each).
+//   The cap is applied where the consent row is inserted: Better Auth's database client below
+//   stores a consent through createConsentWithinCap, which counts and inserts in one transaction
+//   under a lock for the person, so Allows sent at the same moment are counted one after the other
+//   and an 11th is refused with a 400 before anything is stored. Registered assistants are not
+//   counted.
+// - The plugin's own limits are set as ceilings that ordinary traffic can't reach, and the budgets
+//   above do the limiting. The plugin takes its slots (rate, per site rate, concurrency, per client
+//   state) before it calls the option, so a request that the option then refuses has already used
+//   them. Left tight, they would be what gets drained: ten junk ids a minute at one assistant's
+//   site would use up that site's ten and lock the real assistant out of its next re-read. So:
+//   1000 fetches a minute, 1000 per site, 64 in flight, 64 per site in flight. Real fetches are
+//   bounded by the budgets, each at most 5 s and 5 KB, so at most 30 fetches for clients nobody
+//   allowed can be in flight, and they can't hold all 64 slots.
+// - minimumFetchInterval is 60 seconds. The plugin forgets a client's last fetch time after every
+//   successful fetch, so this only spaces out retries after a failure, and a connected document
+//   that has started failing is tried at most once a minute per instance. The cost: a refusal by
+//   the budget is a failed fetch to the plugin, so the refused id, a real connected assistant
+//   included, can't be fetched again on this instance for 60 s even if the budget frees at once,
+//   on every endpoint, authorize included; requests that joined the refused fetch fail with it; and
+//   a person whose assistant's site hiccups waits a minute before a retry works. For that minute the
+//   plugin answers 429 itself with no Retry-After, and app/api/auth/[...all]/route.ts adds
+//   Retry-After 60 to a 429 under /api/auth/oauth2/ that has none.
+// - maxCacheEntries is 2000. It bounds the cached documents and the plugin's per client and per
+//   site entries. A cached document can take about 10 KB of memory, so the worst case is about 22 MB
+//   per plugin instance; expired entries stay until newer ones push them out. It must stay above
+//   1000: at most about 1000 per client entries a minute can't be evicted, so the per client state
+//   can never report that it is full. It does not bound the length of a client key, because the
+//   plugin records the client_id before the budget runs; the gate's 512 character refusal keeps
+//   those short for every id it recognises.
+// - The gate (lib/mcp/cimd-gate.ts) is a first filter in hooks.before. It refuses recognisable junk
+//   before the plugin sees it, so the plugin's ceilings stay far from full. It is not what protects
+//   the budgets: it reads requests the way the plugin does as far as is known, and anything it
+//   misses is still counted at the fetch.
+// - Limits that remain. (a) A sender needs no sign-in to use the 30 fetches a minute for new
+//   assistants, which delays new connections only. (b) Rows for documents nobody allowed are still
+//   saved, at most 30 a minute per instance, with no clean-up job; open registration already allows
+//   the same. (c) Allowed documents that fail share 20 fetches a minute after their first failed
+//   fetch on an instance. That first fetch on each instance, and the first one after a mark is
+//   pushed out of the 2000 kept, still comes from the 120. So each failing allowed document can
+//   take one of the 120 once per instance, at a time its sender chooses: a set of more than about
+//   120 can use the 120 for a minute, or part of it over several minutes. A real assistant whose
+//   own site is failing competes for the 20 with other failing documents. Using up the 120 with
+//   documents that answer takes about 600 of them, which is 60 accounts at 10 each. (d) A flood of
+//   more than about a thousand requests a minute that the gate fails to recognise could fill the
+//   plugin's ceilings; that is an ordinary volume attack and is left to the rate limits. (e) All
+//   counters and the cache are in memory per auth instance: each server instance, in development
+//   each reload, and any bundle that loads lib/auth.ts on its own (the consent page, if it is not
+//   shared with the API route, may then cost one more fetch). (f) The 60
+//   second wait after a failed or refused fetch described above. (g) On end-session, userinfo and
+//   introspect a refused fetch shows as the plugin's own 500, 401 or {"active":false}, not as a 429.
 // - What it shows. The consent page and Settings show the document's client_name and a line
 //   naming the host the document came from (lib/mcp/connections.ts). logo_uri is never loaded.
 const clientDocuments = cimd({
   fetchClientMetadataResource: cimdFetch,
   metadataProfile: "mcp-2026-07-28",
-  // A pure check with no lookup, as the plugin asks; the transport does the network checks.
-  isMetadataDocumentUrlAllowed: (url) => metadataUrlProblem(url) === null,
+  // Called with the exact id the plugin is about to fetch: false for an address Coppice would
+  // never fetch, a thrown 429 when a budget is used up.
+  isMetadataDocumentUrlAllowed: (url) => allowDocumentFetch(url),
+  // Both run only after the plugin has stored the document, so the id is no longer failing.
+  onClientCreated: ({ client }) => clearFailingMark(client.clientId),
+  onClientRefreshed: ({ client }) => clearFailingMark(client.clientId),
   originBoundFields: ["post_logout_redirect_uris", "client_uri", "redirect_uris"],
   metadataFetchPolicy: {
-    maximumFetchesPerMinute: 120,
-    maximumFetchesPerOriginPerMinute: 10,
-    maximumConcurrentFetches: 16,
-    maximumConcurrentFetchesPerOrigin: 2,
+    minimumFetchInterval: 60,
+    maximumFetchesPerMinute: 1000,
+    maximumFetchesPerOriginPerMinute: 1000,
+    maximumConcurrentFetches: 64,
+    maximumConcurrentFetchesPerOrigin: 64,
   },
+  maxCacheEntries: 2000,
 });
 
 // Client management over HTTP is off: Coppice never lets a person create, edit or list OAuth
@@ -187,8 +235,13 @@ const oauthClientAdminPaths = [
   "/oauth2/update-consent",
 ];
 
+// The database client Better Auth uses. It is the app's client with one change: a consent row is
+// stored through createConsentWithinCap, which holds one account to 10 assistants that came from a
+// metadata document (lib/mcp/cimd-budget.ts). Everything else goes to the database unchanged.
+const authDatabase = prisma.$extends({ query: { oauthConsent: { create: ({ args }) => createConsentWithinCap(args) } } });
+
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, { provider: "postgresql" }),
+  database: prismaAdapter(authDatabase, { provider: "postgresql" }),
   // The session is also kept in a signed cookie for five minutes, so most page loads read it without
   // two database round trips (session, then user). Membership is still checked against the database
   // on every request (lib/authz.ts), so removing someone from a workspace takes effect at once;

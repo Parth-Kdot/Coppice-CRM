@@ -51,6 +51,18 @@ function returnsTo(redirectUri: string | null): string {
   }
 }
 
+// The client lookup can be refused because too many documents are being fetched (a 429 from the
+// budget in lib/mcp/cimd-budget.ts). That is not an expired link, and saying so would send the
+// person back to the assistant for nothing.
+function Busy() {
+  return (
+    <>
+      <h1 className="lg-auth-title">Coppice is busy</h1>
+      <p className="lg-auth-sub">Coppice is busy connecting assistants right now. Wait a minute, then reload this page.</p>
+    </>
+  );
+}
+
 function Expired() {
   return (
     <>
@@ -71,8 +83,12 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
   const clientId = params.get("client_id");
   const { secret } = await auth.$context;
   const valid = clientId !== null && (await verifyOAuthQueryParams(query, secret));
+  let busy = false;
   const client = valid
-    ? await auth.api.getOAuthClientPublic({ query: { client_id: clientId }, headers: requestHeaders }).catch(() => null)
+    ? await auth.api.getOAuthClientPublic({ query: { client_id: clientId }, headers: requestHeaders }).catch((error: unknown) => {
+        busy = (error as { statusCode?: unknown } | null)?.statusCode === 429;
+        return null;
+      })
     : null;
 
   // An assistant that identifies itself with a Client ID Metadata Document (its client_id is a
@@ -103,7 +119,7 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
       </div>
       <main id="main" tabIndex={-1} className="lg-auth-main lg-page-enter">
         {!client ? (
-          <Expired />
+          busy ? <Busy /> : <Expired />
         ) : (
           <>
             <p className="lg-sc">Connect an assistant</p>

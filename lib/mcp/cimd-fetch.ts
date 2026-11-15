@@ -38,23 +38,32 @@ import { checkUrl } from "@/lib/research/urls";
 // and CACHE_CEILING_SECONDS (cacheLifetimeSeconds). Then it hands the plugin one cache header it
 // wrote itself, max-age with that number, and none of the origin's cache-control, expires, date,
 // age or vary. So a no-store document that answers is fetched at most once every five minutes on an
-// instance, and a changed document is picked up within five minutes at the latest. The floor only
-// applies to a document that answers: the plugin keeps nothing for a fetch that failed, so a
-// document that has started to fail is fetched again on every request that names it, held back
-// only by the plugin's one-second wait for one client and its limit per site. Only the content type
-// and the validators (etag and last-modified) are passed on as they came, so the plugin's
-// revalidation still sends If-None-Match when it can. A 304 gets the same header when it carries
-// cache-control or expires, and none when it carries neither, which keeps the header the plugin
-// stored from the last check. Every other status goes back with no headers at all.
+// instance. A changed document is picked up when the lifetime Coppice gave it runs out: within five
+// minutes for no-store, private, no-cache or a short max-age, and within sixty minutes at the latest.
+// The floor only applies to a document that answers: the plugin keeps nothing for a fetch that
+// failed, so a document that has started to fail is asked for again as soon as the plugin's own wait
+// allows, which lib/auth.ts sets to one minute for one client. Every one of those fetches is counted
+// by the budgets at the fetch point (lib/mcp/cimd-budget.ts). Only the content type and the
+// validators (etag and last-modified) are passed on as they came, so the plugin's revalidation still
+// sends If-None-Match when it can. A 304 gets the same header when it carries cache-control or
+// expires, and none when it carries neither, which keeps the header the plugin stored from the last
+// check. Every other status goes back with no headers at all.
 //
-// Anything wrong is thrown, never returned: the plugin turns every throw into 400 invalid_client,
-// and nothing here can throw from inside a socket listener, so a malformed reply can't take the
-// process down (the packaged Node transport could, for a status outside 200 to 599).
+// A malformed reply is thrown, never returned: a reply with a status outside 200 to 599, a
+// compressed or oversized body, a body that can't be read, or a document Coppice's rules refuse. The
+// plugin turns every throw into 400 invalid_client, and nothing here can throw from inside a socket
+// listener, so a malformed reply can't take the process down (the packaged Node transport could,
+// for a status outside 200 to 599). A redirect and an error status are not thrown. They go back as a
+// bare status (point 4 above), and the plugin answers with "returned HTTP" and that status.
 //
 // Coppice's own rules for what a client may be called (lib/mcp/oauth-limits.ts) run here on the
 // document too, since the plugin applies them only to registration. A document may not use a name
 // that reads as Coppice, carry control characters or a very long name, name a jwks_uri or a
-// backchannel logout address (the server would later call them), or ask for a client secret.
+// backchannel logout address (the server would later call them), or ask for a client secret. The
+// jwks_uri refusal and the rule that token_endpoint_auth_method may only be none are part of what the
+// fetch budgets rest on: the plugin would fetch a jwks_uri through this same transport without
+// asking the budgets first. A document with U+0000 in any value or key, at any depth, is refused as
+// well, because Postgres can't store it and the failure would be a 500 on the first fetch.
 
 export const CIMD_LIMITS = {
   // The plugin refuses a document over 5 KB as well; this stops reading at the same point.
@@ -76,8 +85,9 @@ const URL_MAX = 512;
 const PASS_THROUGH = ["content-type", "etag", "last-modified"];
 const FORWARDED_REQUEST_HEADERS = ["if-none-match", "if-modified-since"];
 
-// What can be said about a metadata document URL without looking anything up. Also used by
-// lib/auth.ts as the plugin's pre-fetch gate, which must stay free of DNS.
+// What can be said about a metadata document URL without looking anything up. Also used by the
+// fetch budget (lib/mcp/cimd-budget.ts), which is the plugin's pre-fetch gate and must stay free
+// of DNS.
 export function metadataUrlProblem(url: string): string | null {
   if (url.length > URL_MAX) return "the address is too long";
   const checked = checkUrl(url);
@@ -158,6 +168,26 @@ function passedHeaders(headers: TransportResponse["headers"], withFreshness: boo
   return out;
 }
 
+// True when a string value or a key, at any depth, holds U+0000. The plugin stores the document's
+// fields as they are, and Postgres can't store that character in a text column.
+function hasNul(root: unknown): boolean {
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === "string") {
+      if (value.includes("\u0000")) return true;
+    } else if (Array.isArray(value)) {
+      pending.push(...value);
+    } else if (value && typeof value === "object") {
+      for (const [key, inner] of Object.entries(value)) {
+        if (key.includes("\u0000")) return true;
+        pending.push(inner);
+      }
+    }
+  }
+  return false;
+}
+
 // What Coppice's own rules say about a document, or null. This fails closed: the plugin decodes
 // the same bytes without checking them (an invalid byte becomes U+FFFD and the document goes on
 // to be accepted), so a body that is not valid UTF-8, not JSON, or not a JSON object is refused
@@ -171,6 +201,7 @@ function documentProblem(bytes: Buffer): string | null {
     return "the document is not a UTF-8 JSON object.";
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "the document is not a UTF-8 JSON object.";
+  if (hasNul(parsed)) return "the document contains a NUL character.";
   const problem = registrationProblem(parsed);
   if (problem) return problem;
   const method = (parsed as Record<string, unknown>).token_endpoint_auth_method;
