@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { createServer as createHttpServer, type IncomingHttpHeaders, type Server } from "node:http";
 import { createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from "node:net";
 import { APIError } from "better-auth/api";
@@ -8,7 +9,7 @@ import { disconnectAssistant } from "@/app/(app)/[workspaceId]/settings/assistan
 import { GET as authServerMetadataRoute } from "@/app/.well-known/oauth-authorization-server/[[...path]]/route";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { CACHE_CEILING_SECONDS, CACHE_FLOOR_SECONDS, CIMD_LIMITS, cacheLifetimeSeconds, createCimdFetch, metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
+import { CACHE_CEILING_SECONDS, CACHE_FLOOR_SECONDS, CIMD_LIMITS, cacheLifetimeSeconds, createCimdFetch, isUnstorableText, metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
 import {
   CONNECTED_FETCHES_PER_MINUTE,
   FAILING_CONNECTED_FETCHES_PER_MINUTE,
@@ -2105,6 +2106,274 @@ describe("the gate reads a payload the way jose does, and refuses claims it can'
     });
     vi.setSystemTime(Date.now() + 61_000);
     await expect(guardClientLookup("/oauth2/public-client", { query: { client_id: url } })).resolves.toBeUndefined();
+  });
+});
+
+// ----- A client id the database can't take (lib/mcp/cimd-gate.ts) -----
+
+// Postgres refuses U+0000 in a text value (error 22021). A client_id that held one used to reach a
+// client lookup, the gate's own for an https id and the plugin's for any other, and the request
+// answered a raw 500. A lone UTF-16 surrogate causes no error, but it is sent to the database as
+// U+FFFD, so the lookup would ask for a different id than the request named. Both are refused by
+// the gate with 400 invalid_client, for every id a request names, before any lookup.
+describe("a client id with a NUL character or an unpaired surrogate is refused before any lookup", () => {
+  const UNSTORABLE = "client_id contains a NUL character or an unpaired surrogate.";
+  const NUL = "\u0000";
+  const LONE = "\ud800";
+  const basic = (user: string) => `Basic ${Buffer.from(`${user}:secret`).toString("base64")}`;
+  const hintNaming = (clientId: string) => `${Buffer.from('{"alg":"ES256"}').toString("base64url")}.${Buffer.from(JSON.stringify({ aud: clientId, azp: clientId })).toString("base64url")}.c2ln`;
+  // The two shapes a client id has: the short kind registration hands out, and a document address.
+  const kinds: [string, () => string][] = [
+    ["an id shaped like a registered one", () => `assistant-registered-${++counter}`],
+    ["a metadata document address", junkUrl],
+  ];
+
+  // The refusal is the gate's own, nothing reached the database or the network, and nothing was
+  // logged (the 500 this replaces was logged as a server error).
+  let fake: FakeNet;
+  let logged: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fake = serve({});
+    logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  async function expectUnstorable(response: Response) {
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_client", error_description: UNSTORABLE });
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    expect(logged).not.toHaveBeenCalled();
+    expect(fake.requests).toEqual([]);
+    expect(await prisma.oauthClient.count()).toBe(0);
+    expect(cimdBudgetSnapshot()).toEqual({ newClients: 0, connected: 0, failingConnected: 0, marked: 0 });
+  }
+
+  describe.each(kinds)("%s with a NUL character, sent as %%00", (_kind, makeId) => {
+    it("in the query of an anonymous authorize", async () => {
+      await expectUnstorable(await anonymousAuthorizeRaw(makeId() + NUL));
+    });
+
+    it("in the query of a signed-in authorize", async () => {
+      const query = new URLSearchParams({ response_type: "code", client_id: makeId() + NUL, redirect_uri: REDIRECT_URI, scope: ALL, state: "state-1", code_challenge: pkce().challenge, code_challenge_method: "S256", resource: mcpResourceUrl() });
+      expect(query.toString()).toContain("%00");
+      const headers = await signedInHeaders("ownerA");
+      await expectUnstorable(await auth.handler(new Request(new URL(`/api/auth/oauth2/authorize?${query}`, appUrl()), { headers: { ...Object.fromEntries(headers), ...fromNewIp() }, redirect: "manual" })));
+    });
+
+    it("in the middle of the id, in the query of an authorize", async () => {
+      const id = makeId();
+      await expectUnstorable(await anonymousAuthorizeRaw(`${id.slice(0, 12)}${NUL}${id.slice(12)}`));
+    });
+
+    it("in the form body of a token request", async () => {
+      const request = formBody({ ...refreshForm, client_id: makeId() + NUL });
+      expect(request.body.toString()).toContain("%00");
+      await expectUnstorable(await send("oauth2/token", request));
+    });
+
+    it("in the form body of a token request that names a second, clean client_id first", async () => {
+      await expectUnstorable(await send("oauth2/token", { headers: { "content-type": "application/x-www-form-urlencoded" }, body: `grant_type=refresh_token&refresh_token=nope&client_id=clean-${++counter}&client_id=${encodeURIComponent(makeId())}%00` }));
+    });
+
+    it("in the Basic header of a token request, form-encoded as %00", async () => {
+      const user = `${encodeURIComponent(makeId())}%00`;
+      await expectUnstorable(await send("oauth2/token", { headers: { "content-type": "application/x-www-form-urlencoded", authorization: basic(user) }, body: new URLSearchParams(refreshForm) }));
+    });
+
+    it("in the Basic header of a token request, as a raw byte", async () => {
+      // A colon would end the user part, so the address is form-encoded and the NUL is not.
+      const user = `${encodeURIComponent(makeId())}${NUL}`;
+      await expectUnstorable(await send("oauth2/token", { headers: { "content-type": "application/x-www-form-urlencoded", authorization: basic(user) }, body: new URLSearchParams(refreshForm) }));
+    });
+
+    it("in the claims of a client_assertion on a token request", async () => {
+      await expectUnstorable(await send("oauth2/token", formBody({ ...refreshForm, client_assertion_type: ASSERTION_TYPE, client_assertion: jwtNaming(makeId() + NUL) })));
+    });
+
+    it.each(["oauth2/revoke", "oauth2/introspect"])("in the form body and in the Basic header of %s", async (path) => {
+      await expectUnstorable(await send(path, formBody({ token: "nope", client_id: makeId() + NUL, client_secret: "secret" })));
+      await expectUnstorable(await send(path, { headers: { "content-type": "application/x-www-form-urlencoded", authorization: basic(`${encodeURIComponent(makeId())}%00`) }, body: new URLSearchParams({ token: "nope" }) }));
+    });
+
+    it("in the query and in the id_token_hint of end-session", async () => {
+      await expectUnstorable(await auth.handler(new Request(new URL(`/api/auth/oauth2/end-session?client_id=${encodeURIComponent(makeId())}%00`, appUrl()), { headers: fromNewIp() })));
+      await expectUnstorable(await auth.handler(new Request(new URL(`/api/auth/oauth2/end-session?id_token_hint=${hintNaming(makeId() + NUL)}`, appUrl()), { headers: fromNewIp() })));
+    });
+
+    it("in the query of public-client and the body of public-client-prelogin, for a signed-in account", async () => {
+      const headers = { ...Object.fromEntries(await signedInHeaders("ownerA")) };
+      await expectUnstorable(await auth.handler(new Request(new URL(`/api/auth/oauth2/public-client?client_id=${encodeURIComponent(makeId())}%00`, appUrl()), { headers: { ...headers, ...fromNewIp() } })));
+      await expectUnstorable(await send("oauth2/public-client-prelogin", { headers: { ...headers, ...JSON_TYPE }, body: JSON.stringify({ client_id: makeId() + NUL }) }));
+    });
+
+    it("in the oauth_query that consent and continue carry", async () => {
+      const headers = { ...Object.fromEntries(await signedInHeaders("ownerA")), ...JSON_TYPE };
+      const oauthQuery = new URLSearchParams({ response_type: "code", client_id: makeId() + NUL, scope: ALL }).toString();
+      await expectUnstorable(await send("oauth2/consent", { headers, body: JSON.stringify({ accept: true, oauth_query: oauthQuery }) }));
+      await expectUnstorable(await send("oauth2/continue", { headers, body: JSON.stringify({ selected: true, oauth_query: oauthQuery }) }));
+    });
+  });
+
+  // A lone surrogate can't arrive in a query, a form or a Basic header: those are decoded as UTF-8,
+  // where half a pair has no valid bytes. It arrives in JSON, as an escape.
+  describe.each(kinds)("%s with an unpaired surrogate", (_kind, makeId) => {
+    it("in the claims of a client_assertion on a token request", async () => {
+      await expectUnstorable(await send("oauth2/token", formBody({ ...refreshForm, client_assertion_type: ASSERTION_TYPE, client_assertion: jwtNaming(makeId() + LONE) })));
+    });
+
+    it("in the id_token_hint of end-session, as the audience or as one of several", async () => {
+      await expectUnstorable(await auth.handler(new Request(new URL(`/api/auth/oauth2/end-session?id_token_hint=${hintNaming(makeId() + LONE)}`, appUrl()), { headers: fromNewIp() })));
+      const several = `${Buffer.from('{"alg":"ES256"}').toString("base64url")}.${Buffer.from(JSON.stringify({ aud: [`clean-${++counter}`, makeId() + "\udc00"] })).toString("base64url")}.c2ln`;
+      await expectUnstorable(await auth.handler(new Request(new URL(`/api/auth/oauth2/end-session?id_token_hint=${several}`, appUrl()), { headers: fromNewIp() })));
+    });
+
+    it("in the JSON body of public-client-prelogin", async () => {
+      const headers = { ...Object.fromEntries(await signedInHeaders("ownerA")), ...JSON_TYPE };
+      const body = JSON.stringify({ client_id: makeId() + LONE });
+      expect(body).toContain("\\ud800");
+      await expectUnstorable(await send("oauth2/public-client-prelogin", { headers, body }));
+    });
+  });
+
+  it("a real registered client's id with a NUL added is refused, and the client itself is untouched", async () => {
+    const connected = await getAccessToken("ownerA");
+    const before = await prisma.oauthClient.count();
+    for (const id of [connected.clientId + NUL, NUL + connected.clientId]) {
+      const response = await send("oauth2/token", formBody({ grant_type: "refresh_token", refresh_token: connected.refreshToken, client_id: id, resource: mcpResourceUrl() }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_client", error_description: UNSTORABLE });
+    }
+    expect(logged).not.toHaveBeenCalled();
+    expect(await prisma.oauthClient.count()).toBe(before);
+    // The refused requests used nothing up: the same refresh token still works for the real id.
+    expect((await refresh(connected.clientId, connected.refreshToken)).status).toBe(200);
+  });
+
+  it("the bytes of half a pair in a query or a form are not a surrogate once decoded, and the plugin answers as for any unknown client", async () => {
+    const asForm = await send("oauth2/token", { headers: { "content-type": "application/x-www-form-urlencoded" }, body: "grant_type=refresh_token&refresh_token=nope&client_id=assistant-registered%ED%A0%80" });
+    expect(asForm.status).toBe(400);
+    expect(await asForm.json()).toEqual({ error: "invalid_client", error_description: "client not found" });
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  describe("the gate on its own", () => {
+    const guard = (path: string, source: Parameters<typeof guardClientLookup>[1]) => guardClientLookup(path, source);
+    const refused = { statusCode: 400, body: { error: "invalid_client", error_description: UNSTORABLE } };
+    const PATHS = ["/oauth2/authorize", "/oauth2/token", "/oauth2/revoke", "/oauth2/introspect", "/oauth2/end-session", "/oauth2/public-client", "/oauth2/public-client-prelogin", "/oauth2/consent", "/oauth2/continue"];
+
+    describe.each(PATHS)("%s", (path) => {
+      test.each([
+        ["a NUL in a plain id", `assistant${NUL}`],
+        ["a NUL alone", NUL],
+        ["a NUL in an https id", `https://junk.attacker.example/c.json${NUL}`],
+        ["a lone high surrogate", `assistant${LONE}`],
+        ["a lone low surrogate in an https id", "https://junk.attacker.example/\udc00c.json"],
+      ])("%s is refused in the query, the body, an assertion and a hint", async (_name, id) => {
+        await expect(guard(path, { query: { client_id: id } })).rejects.toMatchObject(refused);
+        await expect(guard(path, { body: { client_id: id } })).rejects.toMatchObject(refused);
+        await expect(guard(path, { body: { client_assertion: jwtNaming(id) } })).rejects.toMatchObject(refused);
+        await expect(guard(path, { query: { id_token_hint: hintNaming(id) } })).rejects.toMatchObject(refused);
+      });
+
+      it("refuses a NUL in the client_id of an oauth_query, and reads a lone surrogate there as U+FFFD, as any query parser does", async () => {
+        await expect(guard(path, { body: { oauth_query: "response_type=code&client_id=assistant%00" } })).rejects.toMatchObject(refused);
+        await expect(guard(path, { body: { oauth_query: `response_type=code&client_id=assistant${LONE}` } })).resolves.toBeUndefined();
+      });
+
+      it("answers 400 with no Basic challenge when the id came in a Basic header", async () => {
+        const request = new Request(`https://coppice.test/api/auth${path}`, { method: "POST", headers: { authorization: basic("assistant%00") } });
+        const error = await guard(path, { request }).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(APIError);
+        expect(error).toMatchObject(refused);
+        expect(new Headers((error as APIError).headers as HeadersInit).has("www-authenticate")).toBe(false);
+      });
+
+      it("refuses it even when the same request also names a clean id", async () => {
+        await expect(guard(path, { query: { client_id: "assistant-registered-1" }, body: { client_id: `assistant${NUL}` } })).rejects.toMatchObject(refused);
+      });
+    });
+
+    it("leaves a correctly paired surrogate (an emoji) and U+FFFD alone", async () => {
+      for (const path of PATHS) {
+        await expect(guard(path, { query: { client_id: "assistant-😀" } })).resolves.toBeUndefined();
+        await expect(guard(path, { body: { client_id: "assistant-�" } })).resolves.toBeUndefined();
+      }
+    });
+
+    it("has no rule for a path outside the nine", async () => {
+      await expect(guard("/oauth2/userinfo", { query: { client_id: `assistant${NUL}` } })).resolves.toBeUndefined();
+      await expect(guard("/oauth2/register", { body: { client_id: `assistant${NUL}` } })).resolves.toBeUndefined();
+    });
+  });
+
+  // The other OAuth paths. None of them hands a caller's client id to the client lookup, so none
+  // needs the gate: userinfo takes the id from a token Coppice issued, key rotation is switched off
+  // before it reads its assertion, and client management over HTTP is disabled (lib/auth.ts).
+  describe("paths outside the nine can't reach the client lookup with an id the caller chose", () => {
+    it("userinfo ignores a client_id in the request and refuses a token it did not issue, without a server error", async () => {
+      const unsigned = `${Buffer.from('{"alg":"ES256"}').toString("base64url")}.${Buffer.from(JSON.stringify({ azp: `assistant${NUL}`, client_id: `assistant${NUL}`, sub: "ownerA" })).toString("base64url")}.c2ln`;
+      const answers = [
+        await auth.handler(new Request(new URL("/api/auth/oauth2/userinfo?client_id=assistant%00", appUrl()), { headers: { ...fromNewIp(), authorization: `Bearer ${unsigned}` } })),
+        await send("oauth2/userinfo", formBody({ access_token: `nope${NUL}`, client_id: `assistant${NUL}` })),
+        await send("oauth2/userinfo?client_id=assistant%00", formBody({ access_token: unsigned })),
+      ];
+      for (const response of answers) {
+        expect(response.status).toBe(401);
+        expect((await response.json()).error).toBe("invalid_token");
+      }
+      expect(logged).not.toHaveBeenCalled();
+    });
+
+    it("userinfo with a real token answers for the token's own client, whatever client_id the request adds", async () => {
+      const { accessToken } = await getAccessToken("ownerA");
+      const response = await auth.handler(new Request(new URL("/api/auth/oauth2/userinfo?client_id=assistant%00", appUrl()), { headers: { ...fromNewIp(), authorization: `Bearer ${accessToken}` } }));
+      expect(response.status).toBe(200);
+      expect((await response.json()).sub).toBe("ownerA");
+      expect(logged).not.toHaveBeenCalled();
+    });
+
+    it("key rotation is off, so its client_assertion is never read", async () => {
+      // A key set the endpoint accepts, so the answer is about rotation and not about the body.
+      const key = { ...generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }), kid: "k1", alg: "ES256", use: "sig" };
+      const response = await send("oauth2/client/rotate-keys", { headers: JSON_TYPE, body: JSON.stringify({ client_assertion: jwtNaming(`assistant${NUL}`), client_assertion_type: ASSERTION_TYPE, jwks: { keys: [key] } }) });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ error: "access_denied", error_description: "Client key rotation is disabled" });
+      expect(logged).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["GET", "oauth2/get-client?client_id=assistant%00", undefined],
+      ["POST", "oauth2/update-client", { client_id: `assistant${NUL}`, update: {} }],
+      ["POST", "oauth2/delete-client", { client_id: `assistant${NUL}` }],
+      ["POST", "oauth2/client/rotate-secret", { client_id: `assistant${NUL}` }],
+    ])("client management stays off: %s %s answers 404", async (method, path, body) => {
+      const headers = { ...Object.fromEntries(await signedInHeaders("ownerA")), ...fromNewIp(), ...JSON_TYPE };
+      const response = await auth.handler(new Request(new URL(`/api/auth/${path}`, appUrl()), { method, headers, body: body ? JSON.stringify(body) : undefined }));
+      expect(response.status).toBe(404);
+      expect(logged).not.toHaveBeenCalled();
+    });
+
+    it("registration ignores a client_id in its body and hands out its own", async () => {
+      const registered = await registerClient({ client_id: `assistant${NUL}` });
+      expect(registered.status).toBe(201);
+      expect(registered.body.client_id).toMatch(/^[A-Za-z0-9]+$/);
+      expect(logged).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("isUnstorableText, the test shared by documents and client ids", () => {
+  test.each([
+    ["an empty string", "", false],
+    ["plain text", "assistant-registered-1", false],
+    ["an address", "https://assistant.example/client.json", false],
+    ["accents and an emoji", "café 😀", false],
+    ["U+FFFD", "a�b", false],
+    ["a NUL at the end", "a\u0000", true],
+    ["a NUL alone", "\u0000", true],
+    ["a lone high surrogate", "a\ud800", true],
+    ["a lone low surrogate", "\udc00a", true],
+    ["a pair the wrong way round", "\udc00\ud800", true],
+  ])("%s", (_name, value, expected) => {
+    expect(isUnstorableText(value)).toBe(expected);
   });
 });
 

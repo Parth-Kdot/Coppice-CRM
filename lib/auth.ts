@@ -181,7 +181,10 @@ const assistants = mcp({
 // - The gate (lib/mcp/cimd-gate.ts) is a first filter in hooks.before. It refuses recognisable junk
 //   before the plugin sees it, so the plugin's ceilings stay far from full. It is not what protects
 //   the budgets: it reads requests the way the plugin does as far as is known, and anything it
-//   misses is still counted at the fetch.
+//   misses is still counted at the fetch. It is also where a client_id the database can't be asked
+//   for is refused: one with U+0000 or an unpaired surrogate gets 400 invalid_client on the nine
+//   paths that resolve a client from the request, whatever its shape, before any lookup. Postgres
+//   answers error 22021 for U+0000, which used to end as a raw 500.
 // - Limits that remain. (a) A sender needs no sign-in to use the 30 fetches a minute for new
 //   assistants, which delays new connections only. (b) Rows for documents nobody allowed are still
 //   saved, at most 30 a minute per instance, with no clean-up job; open registration already allows
@@ -261,7 +264,8 @@ export const auth = betterAuth({
   // (lib/mcp/oauth-limits.ts), on top of the plugin's own.
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      // Who may make Coppice fetch a client's metadata document (lib/mcp/cimd-gate.ts).
+      // Which client ids may reach a client lookup, and who may make Coppice fetch a client's
+      // metadata document (lib/mcp/cimd-gate.ts). This stays first.
       await guardClientLookup(ctx.path, { query: ctx.query, body: ctx.body, headers: ctx.headers, request: ctx.request });
       if (ctx.path === "/oauth2/register") {
         const problem = registrationProblem(ctx.body);
