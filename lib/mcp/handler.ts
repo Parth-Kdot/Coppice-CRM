@@ -11,9 +11,11 @@ import type { McpPrincipal } from "@/lib/mcp/tools";
 
 // POST /api/mcp, end to end:
 // 1. requireMcpAuth (Better Auth's MCP plugin) checks the bearer token: signature against our own
-//    keys, issuer, expiry, that it was issued for this MCP URL (the audience), and that it carries
-//    coppice:read. Anything else gets a 401 or 403 with the WWW-Authenticate challenge MCP clients
-//    use to start or step up sign-in. No token logic is written here.
+//    keys, issuer, expiry, that it was issued for this MCP URL (the audience), that it carries an
+//    azp claim (the client the token was issued to), and that it carries coppice:read. A session
+//    JWT signed with the same key has no azp, so it never reaches the handler below. Anything
+//    else gets a 401 or 403 with the WWW-Authenticate challenge MCP clients use to start or step
+//    up sign-in. No token logic is written here.
 // 2. The MCP SDK serves the request statelessly: a fresh server per request, nothing kept between
 //    requests (no MCP sessions), so it works on Vercel's short-lived functions. Clients on the
 //    current protocol (2026-07-28) are served directly; older clients (2025 protocol) get the SDK's
@@ -40,6 +42,17 @@ function principalFrom(extra: Extra): McpPrincipal {
     throw new Error("MCP request reached the server without a verified token.");
   }
   return { userId: extra.userId, clientId: extra.clientId, scopes: new Set(extra.scopes as string[]) };
+}
+
+// requireMcpAuth (Better Auth 1.7.12 and later) refuses a token without an azp claim before the
+// handler runs, which is what keeps a session JWT out. This only narrows the claims' types. A
+// missing or non-string value here means that check did not run, so it fails closed with an error
+// (a 500 that should never happen) instead of looking up a grant with no client filter.
+function verifiedPrincipal(claims: { sub?: unknown; azp?: unknown }): { userId: string; clientId: string } {
+  if (typeof claims.sub !== "string" || typeof claims.azp !== "string") {
+    throw new Error("MCP request reached the handler without a verified assistant token.");
+  }
+  return { userId: claims.sub, clientId: claims.azp };
 }
 
 const rpcError = (status: number, code: number, message: string) => Response.json({ jsonrpc: "2.0", error: { code, message }, id: null }, { status });
@@ -80,22 +93,19 @@ async function singleMessage(request: Request): Promise<Request | Response> {
 export const handleMcpRequest = requireMcpAuth(
   auth,
   async (request, claims) => {
-    // Assistant tokens always name the client they were issued to (azp) and the person (sub).
-    // A session token signed with the same key has no azp, so it is refused here as well
-    // (Better Auth 1.7.12 adds the same check inside requireMcpAuth).
-    if (typeof claims.sub !== "string" || typeof claims.azp !== "string" || claims.sub === claims.azp) return unauthorized();
+    const { userId, clientId } = verifiedPrincipal(claims);
     const scopes = typeof claims.scope === "string" ? claims.scope.split(" ") : [];
-    if (!(await grantIsLive(claims.azp, claims.sub, scopes))) return revoked();
+    if (!(await grantIsLive(clientId, userId, scopes))) return revoked();
     const single = await singleMessage(request);
     if (single instanceof Response) return single;
     return mcp.fetch(single, {
       authInfo: {
         token: "",
-        clientId: claims.azp,
+        clientId,
         scopes,
         expiresAt: claims.exp,
         resource: new URL(mcpResourceUrl()),
-        extra: { userId: claims.sub, clientId: claims.azp, scopes },
+        extra: { userId, clientId, scopes },
       },
     });
   },
