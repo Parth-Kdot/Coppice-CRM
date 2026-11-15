@@ -27,6 +27,9 @@ export type Connection = {
   name: string;
   // Where the assistant sends the person back after sign-in: the one thing it can't fake.
   returnsTo: string;
+  // For an assistant that identifies itself with a Client ID Metadata Document: the host that
+  // document came from, the one thing TLS proves about it. Null for a registered assistant.
+  identifiedBy: string | null;
   canWrite: boolean;
   scopes: string[];
   allowedAt: Date;
@@ -50,6 +53,19 @@ export function redirectLabel(redirectUris: readonly string[]): string {
   }
 }
 
+// The host a Client ID Metadata Document came from, for a client the plugin found that way
+// (clientDiscoveryId "cimd", whose client_id is the document's https URL). Null for anything else,
+// including a value that is not a readable https address.
+export function identityHost(clientId: string, discoveryId: string | null | undefined): string | null {
+  if (discoveryId !== "cimd") return null;
+  try {
+    const url = new URL(clientId);
+    return url.protocol === "https:" && url.host ? url.host : null;
+  } catch {
+    return null;
+  }
+}
+
 const latest = (a: Date | null | undefined, b: Date | null | undefined): Date | null => {
   if (!a) return b ?? null;
   if (!b) return a;
@@ -59,7 +75,7 @@ const latest = (a: Date | null | undefined, b: Date | null | undefined): Date | 
 export async function listConnections(userId: string): Promise<Connection[]> {
   const consents = await prisma.oauthConsent.findMany({
     where: { userId },
-    select: { clientId: true, scopes: true, createdAt: true, oauthclient: { select: { name: true, redirectUris: true } } },
+    select: { clientId: true, scopes: true, createdAt: true, oauthclient: { select: { name: true, redirectUris: true, clientDiscoveryId: true } } },
     // The id breaks ties, so rows never swap places between renders.
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     take: CONNECTIONS_SHOWN,
@@ -87,6 +103,7 @@ export async function listConnections(userId: string): Promise<Connection[]> {
       clientId: consent.clientId,
       name: safeClientName(consent.oauthclient.name) || "An unnamed app",
       returnsTo: redirectLabel(consent.oauthclient.redirectUris),
+      identifiedBy: identityHost(consent.clientId, consent.oauthclient.clientDiscoveryId),
       canWrite: consent.scopes.includes(WRITE_SCOPE),
       scopes: consent.scopes,
       allowedAt: consent.createdAt,

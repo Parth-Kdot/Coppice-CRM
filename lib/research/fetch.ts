@@ -135,7 +135,7 @@ const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
 // Resolves when the promise does, or rejects as soon as the signal aborts, whichever is first.
 // The abort listener is always removed, so nothing is left behind.
-function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) {
     promise.catch(() => {});
     return Promise.reject(signal.reason);
@@ -162,7 +162,7 @@ const header = (headers: TransportResponse["headers"], name: string) => {
 };
 
 // Reads the body, stopping (and dropping the connection) the moment it passes maxBytes.
-async function readLimited(response: TransportResponse, maxBytes: number, signal: AbortSignal): Promise<{ ok: true; bytes: Buffer } | { ok: false; reason: SkipReason }> {
+export async function readLimited(response: TransportResponse, maxBytes: number, signal: AbortSignal): Promise<{ ok: true; bytes: Buffer } | { ok: false; reason: SkipReason }> {
   const iterator = response.body[Symbol.asyncIterator]();
   const chunks: Uint8Array[] = [];
   let size = 0;

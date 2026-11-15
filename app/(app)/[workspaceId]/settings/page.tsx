@@ -367,6 +367,12 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                         <p className="lg-hint">
                           {!workspace.mcpEnabled && <>Off in this workspace · </>}
                           Returns to {c.returnsTo} · {accessLabel(c)} · allowed {day(c.allowedAt)}
+                          {c.identifiedBy && (
+                            <>
+                              {" "}
+                              · Its details come from <bdi>{c.identifiedBy}</bdi>
+                            </>
+                          )}
                           {c.lastRenewedAt && <> · last connected {day(c.lastRenewedAt)}</>}
                         </p>
                       </div>
