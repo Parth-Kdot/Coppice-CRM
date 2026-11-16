@@ -4,7 +4,7 @@
 //   shared.ts      the gate (openWorkspace), results (ok, fail, refusedBy, untrusted), guarded, the
 //                  confirm and owner helpers, cursors and the activity recorder
 //   workspace.ts   Group W: list_workspaces, get_workspace, list_members
-//   companies.ts   Group C: companies, the queue, claims, outreach and stages
+//   companies.ts   Group C: companies, the queue, claims, outreach, stages and previous versions
 //   contacts.ts    Group P: contacts and permanent deletes
 //   knowledge.ts   Group K: facts, templates, prepare_email, research sources, brief items
 //   stats.ts       Group S: stats and experiments

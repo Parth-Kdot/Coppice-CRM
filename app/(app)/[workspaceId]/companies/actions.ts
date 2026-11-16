@@ -9,7 +9,8 @@ import { changeStage } from "@/lib/claims";
 import * as companies from "@/lib/companies";
 import type { ReplyChoice, SaveResult } from "@/lib/companies";
 import { markSeparate, resolveAsDuplicate } from "@/lib/company-pairs";
-import { notFound } from "@/lib/messages";
+import { COMPANY_ARCHIVED, notFound } from "@/lib/messages";
+import { restoreRefusal, restoreVersion } from "@/lib/restore-version";
 import { opensReply } from "@/lib/stages";
 import {
   addContactSchema,
@@ -21,6 +22,7 @@ import {
   logOutreachSchema,
   markReplySchema,
   moveStageSchema,
+  restoreVersionSchema,
   sameCompanySchema,
   setFollowUpSchema,
   unarchiveSchema,
@@ -371,7 +373,17 @@ export async function updateContact(_prev: ActionResult | null, form: FormData):
     ...contactFields(form),
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
-  const { workspaceId, companyId, contactId, ...fields } = parsed.data;
+  const { workspaceId, companyId, contactId, ...parsedFields } = parsed.data;
+  // Only the boxes the person changed are saved. The schema lowercases an email, so sending all three
+  // would rewrite the capitals of a stored email on a title-only edit and replace its previous version.
+  const changed = (key: "name" | "email" | "title") => {
+    const original = form.get(`original.${key}`);
+    return typeof original !== "string" || original !== form.get(key);
+  };
+  const fields: Partial<typeof parsedFields> = {};
+  if (changed("name")) fields.name = parsedFields.name;
+  if (changed("email")) fields.email = parsedFields.email;
+  if (changed("title")) fields.title = parsedFields.title;
 
   try {
     const { userId } = await requireMembership(workspaceId);
@@ -402,6 +414,38 @@ export async function removeContact(_prev: ActionResult | null, form: FormData):
   }
   revalidatePath(companyPath(workspaceId, companyId));
   return { ok: true, data: undefined };
+}
+
+// "Restore" under a previous version (lib/restore-version.ts). A refusal comes back as the action's
+// error, which the company page shows as a margin note, and the page re-renders with the latest
+// values and versions.
+export async function restorePreviousVersion(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const parsed = restoreVersionSchema.safeParse({
+    workspaceId: form.get("workspaceId"),
+    companyId: form.get("companyId"),
+    versionId: form.get("versionId"),
+    expected: form.get("expected"),
+    field: form.get("field"),
+    contactId: form.get("contactId"),
+  });
+  if (!parsed.success) return { ok: false, error: "Reload the page and try again." };
+  const { workspaceId, companyId, versionId, expected, field, contactId } = parsed.data;
+
+  let refusal: string | null;
+  try {
+    const member = await requireMembership(workspaceId);
+    const result = await restoreVersion(member, { companyId, versionId, expect: { digest: expected }, subject: { field, contactId } }, "APP");
+    if (!result.ok) {
+      // An archived company shows no previous versions, so redraw the page without the box.
+      if (result.error === COMPANY_ARCHIVED) refresh(workspaceId, companyId);
+      return result;
+    }
+    refusal = restoreRefusal(result.data);
+  } catch (e) {
+    return failure(e);
+  }
+  refresh(workspaceId, companyId);
+  return refusal ? { ok: false, error: refusal } : { ok: true, data: undefined };
 }
 
 // Sets a company's next follow-up date and nothing else: no claim, no outreach entry (lib/claims.ts

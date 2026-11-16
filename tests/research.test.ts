@@ -14,6 +14,7 @@ import { htmlToText } from "@/lib/research/html";
 import { maskPage } from "@/lib/research/scan";
 import { addSource, archiveSource, defaultSourceLabel, listSources, renameSource } from "@/lib/research/sources";
 import { form, redirectTo } from "./helpers/form";
+import { allVersions } from "./helpers/previous-versions";
 import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { FAST, fakeNet, html, robots, type FakeReply } from "./helpers/research";
@@ -585,6 +586,11 @@ describe("accepting a brief item", () => {
     // Twice is the same as once.
     ok(await acceptBriefItem(OWNER, companyId, brief.id, giving.id));
     expect((await notesOf())?.match(/Community Giving Portal/g)).toHaveLength(1);
+  });
+
+  it("keeps the notes from before the line was added as the notes' previous version, made through the app", async () => {
+    ok(await acceptBriefItem(OFFICER, companyId, brief.id, brief.items[1].id));
+    expect(await allVersions()).toMatchObject([{ field: "NOTES", value: "Met them at the fall fair.", via: "APP", replacedById: OFFICER.userId, contactId: null }]);
   });
 
   it("adds a team inbox found on the page", async () => {

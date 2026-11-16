@@ -37,6 +37,7 @@ import {
   mcpSaveRecontactDatesSchema,
   mcpSaveResearchSourceSchema,
   mcpSaveTemplateSchema,
+  mcpRestorePreviousVersionSchema,
   mcpSetCompanyArchivedSchema,
   mcpSetDepartingSchema,
   mcpSetFactVerifiedSchema,
@@ -132,7 +133,7 @@ function registerCompanyTools(server: McpServer, principal: McpPrincipal) {
     {
       title: "Get a company",
       description:
-        "One company with its notes, contacts, outreach history, stage history, look-alikes and, while AI is on, its latest stored research brief and your recent drafts.",
+        "One company with its notes, contacts, outreach history, stage history, look-alikes, the values replaced in the last hour (previousVersions) and, while AI is on, its latest stored research brief and your recent drafts.",
       inputSchema: mcpCompanySchema,
       annotations: READ,
     },
@@ -180,12 +181,24 @@ function registerCompanyTools(server: McpServer, principal: McpPrincipal) {
     {
       title: "Edit a company",
       description:
-        "Change a company's name, industry, website or notes. Change only what the person asked: notes are replaced in full and the old text is not kept. Send original from get_company; if someone changed it since, nothing is saved.",
+        "Change a company's name, industry, website or notes. Change only what the person asked: notes are replaced in full, and the value replaced can be put back for one hour with restore_previous_version. Send original from get_company; if someone changed it since, nothing is saved.",
       inputSchema: mcpUpdateCompanySchema,
       annotations: ACTION,
       scopeChallenge: needsWrite,
     },
     (args) => tools.guarded(() => tools.updateCompanyTool(principal, args)),
+  );
+  server.registerTool(
+    "restore_previous_version",
+    {
+      title: "Restore a previous version",
+      description:
+        "Put back the previous value of one company or contact field, from previousVersions in get_company. The value it replaces becomes the new previous version, so a restore can be undone. Each lasts one hour. Send field, contactId and current as get_company returned them; if the field changed since, nothing is restored.",
+      inputSchema: mcpRestorePreviousVersionSchema,
+      annotations: ACTION,
+      scopeChallenge: needsWrite,
+    },
+    (args) => tools.guarded(() => tools.restorePreviousVersionTool(principal, args)),
   );
   server.registerTool(
     "set_company_archived",
@@ -289,7 +302,7 @@ function registerContactTools(server: McpServer, principal: McpPrincipal) {
     {
       title: "Add or change a contact",
       description:
-        "Add a contact to a company, or change one when you send contactId. Change only what the person asked: an email you replace is not kept. Archived companies are refused.",
+        "Add a contact to a company, or change one when you send contactId. Change only what the person asked: a replaced name, email or title can be put back for one hour with restore_previous_version. Archived companies are refused.",
       inputSchema: mcpSaveContactSchema,
       annotations: ACTION,
       scopeChallenge: needsWrite,

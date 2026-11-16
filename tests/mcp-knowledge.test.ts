@@ -9,6 +9,7 @@ import { createTemplate, listTemplates } from "@/lib/templates";
 import { MCP_LIST_LIMIT } from "@/lib/validation";
 import { activityRows, clearActivity, defineToolTables, OWNER_A, tokenCache, type ToolRow } from "./helpers/mcp-tools";
 import { deleteOAuthClients, mcpClient, resultJson, resultText, restoreFetch, routeAppFetches } from "./helpers/oauth";
+import { allVersions } from "./helpers/previous-versions";
 import { resetAndSeed } from "./helpers/seed";
 
 // Group K of the MCP server, knowledge (facts, templates, prepare_email, research sources and
@@ -702,6 +703,12 @@ describe("accept_brief_item", () => {
     const inbox = await json("officerA", "accept_brief_item", { companyId: id, briefId, itemId: "m1-1" });
     expect(inbox.added).toBe(true);
     expect(await notesOf(id)).toContain("Coppice brief, team inbox: giving@acme.example.com.");
+  });
+
+  it("keeps the notes from before as a previous version made by the assistant", async () => {
+    const { id, briefId } = await setup();
+    await json("officerA", "accept_brief_item", { companyId: id, briefId, itemId: "i1" });
+    expect(await allVersions()).toMatchObject([{ field: "NOTES", value: "Met them at the fair.", via: "ASSISTANT", replacedById: "officerA" }]);
   });
 
   it("is refused while AI is off, with the app's wording, and changes nothing", async () => {

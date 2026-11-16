@@ -12,6 +12,7 @@ import {
   moveStage,
   releaseClaim,
   removeContact,
+  restorePreviousVersion,
   setFollowUp,
   unarchiveCompany,
   updateCompany,
@@ -23,6 +24,9 @@ import * as companies from "@/lib/companies";
 import { listPossibleDuplicatePairs } from "@/lib/company-pairs";
 import { addDays } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
+import { valueDigest } from "@/lib/previous-versions";
+import { COMPANY_ARCHIVED } from "@/lib/messages";
+import { VERSION_CHANGED, VERSION_GONE } from "@/lib/previous-versions-copy";
 import { isWebAddress, websiteHref } from "@/lib/validation";
 import { form, redirectTo } from "./helpers/form";
 import { asUser, signedOut } from "./helpers/next-request";
@@ -89,6 +93,7 @@ describe("every company action refuses outsiders", () => {
       ["addContact", () => addContact(null, form({ workspaceId: "a", companyId: acme, name: "Eve" }))],
       ["updateContact", () => updateContact(null, form({ workspaceId: "a", companyId: acme, contactId: contact, name: "Eve" }))],
       ["removeContact", () => removeContact(null, form({ workspaceId: "a", companyId: acme, contactId: contact }))],
+      ["restorePreviousVersion", () => restorePreviousVersion(null, form({ workspaceId: "a", companyId: acme, versionId: "x", expected: "0".repeat(64), field: "NOTES", contactId: "" }))],
       ["claimCompany", () => claimCompany(null, form({ workspaceId: "a", companyId: acme }))],
       ["releaseClaim", () => releaseClaim(null, form({ workspaceId: "a", companyId: acme }))],
       ["forceRelease", () => forceRelease(null, form({ workspaceId: "a", companyId: acme }))],
@@ -337,6 +342,19 @@ describe("contacts", () => {
     expect(await asUser("officerA", () => updateContact(null, form({ ...ref, name: "X" })))).toEqual({ ok: false, error: "Contact not found." });
   });
 
+  it("saves only the boxes that changed: a title edit leaves a stored email with capitals alone and writes no email slot", async () => {
+    // A row from before emails were lowercased, written directly.
+    const contact = await withTenant(A, (tx) =>
+      tx.contact.create({ data: { workspaceId: "a", companyId: acme, name: "Sam", email: "Sam@X.com", title: "CEO" }, select: { id: true } }),
+    );
+    const ref = { workspaceId: "a", companyId: acme, contactId: contact.id };
+    const posted = { name: "Sam", email: "Sam@X.com", title: "CTO", "original.name": "Sam", "original.email": "Sam@X.com", "original.title": "CEO" };
+    expect(await asUser("officerA", () => updateContact(null, form({ ...ref, ...posted })))).toEqual(OK);
+    expect(await contactsOf(acme)).toContainEqual({ name: "Sam", email: "Sam@X.com", title: "CTO" });
+    const slots = await withTenant(A, (tx) => tx.previousVersion.findMany({ select: { field: true, value: true } }));
+    expect(slots).toEqual([{ field: "TITLE", value: "CEO" }]);
+  });
+
   test.for([
     [{ name: "" }, "Enter the contact's name."],
     [{ name: "Sam", email: "not-an-email" }, "Enter a valid email address."],
@@ -510,5 +528,59 @@ describe("the server refuses what the UI hides", () => {
     // No key at all still logs (an older page, the AI assistant).
     expect(await asUser("ownerA", () => logOutreach(null, form({ ...fields, clientKey: "" })))).toEqual(OK);
     expect(await withTenant(A, (tx) => tx.outreach.count())).toBe(2);
+  });
+});
+
+describe("restorePreviousVersion", () => {
+  const restoreForm = (companyId: string, versionId: string, expected: string, extra: Record<string, string> = {}) =>
+    form({ workspaceId: "a", companyId, versionId, expected, field: "NOTES", contactId: "", ...extra });
+  const setup = async () => {
+    const id = await make(A, "Acme", { notes: "first" });
+    await companies.updateCompany(A, id, { original: { name: "Acme", notes: "first" }, changes: { name: "Acme", notes: "second" } });
+    const slot = await withTenant(A, (tx) => tx.previousVersion.findFirstOrThrow({ select: { id: true } }));
+    return { id, versionId: slot.id };
+  };
+
+  it("restores the value, remembers the one it replaced, and refreshes the page", async () => {
+    const { id, versionId } = await setup();
+    revalidatePath.mockClear();
+    expect(await asUser("officerA", () => restorePreviousVersion(null, restoreForm(id, versionId, valueDigest("second"))))).toEqual(OK);
+    expect((await row(id))?.notes).toBe("first");
+    expect(await withTenant(A, (tx) => tx.previousVersion.findMany({ select: { field: true, value: true, via: true, replacedById: true } }))).toEqual([
+      { field: "NOTES", value: "second", via: "APP", replacedById: "officerA" },
+    ]);
+    expect(revalidatePath).toHaveBeenCalledWith(companyPage(id));
+  });
+
+  it("a value that changed since the page loaded restores nothing, says so, and still refreshes the page", async () => {
+    const { id, versionId } = await setup();
+    revalidatePath.mockClear();
+    expect(await asUser("ownerA", () => restorePreviousVersion(null, restoreForm(id, versionId, valueDigest("not the current notes"))))).toEqual({ ok: false, error: VERSION_CHANGED });
+    expect((await row(id))?.notes).toBe("second");
+    expect(revalidatePath).toHaveBeenCalledWith(companyPage(id));
+  });
+
+  it("a page that loaded before another change is told the field changed, not that the hour ran out", async () => {
+    const { id, versionId } = await setup();
+    // A second edit of the same field gives it a new slot, so the id the page posted is gone.
+    await companies.updateCompany(A, id, { original: { name: "Acme", notes: "second" }, changes: { name: "Acme", notes: "third" } });
+    expect(await asUser("ownerA", () => restorePreviousVersion(null, restoreForm(id, versionId, valueDigest("second"))))).toEqual({ ok: false, error: VERSION_CHANGED });
+    expect((await row(id))?.notes).toBe("third");
+    // A different field of that name (a contact's) has no slot, so it is plainly gone.
+    expect(await asUser("ownerA", () => restorePreviousVersion(null, restoreForm(id, versionId, valueDigest("second"), { field: "INDUSTRY" })))).toEqual({ ok: false, error: VERSION_GONE });
+  });
+
+  it("an archived company refuses the restore and redraws the page, which no longer shows the box", async () => {
+    const { id, versionId } = await setup();
+    await companies.archiveCompany(A, id);
+    revalidatePath.mockClear();
+    expect(await asUser("ownerA", () => restorePreviousVersion(null, restoreForm(id, versionId, valueDigest("second"))))).toEqual({ ok: false, error: COMPANY_ARCHIVED });
+    expect(revalidatePath).toHaveBeenCalledWith(companyPage(id));
+  });
+
+  it("a bad digest is refused before anything is read", async () => {
+    const { id, versionId } = await setup();
+    expect(await asUser("ownerA", () => restorePreviousVersion(null, restoreForm(id, versionId, "not a digest")))).toEqual({ ok: false, error: "Reload the page and try again." });
+    expect((await row(id))?.notes).toBe("second");
   });
 });

@@ -17,6 +17,8 @@ import type { ActionResult } from "@/lib/validation";
 //                    succeeds and the new render is in place (focusSoon), so focus never falls to
 //                    <body> when the form itself disappears.
 //   submitAriaLabel  the button's accessible name when its text alone is ambiguous ("Remove Priya").
+//   quietError       do not write a refusal under the form, for a form whose caller already shows it
+//                    (the previous versions list writes it as a margin note).
 //   refreshOnError   router.refresh() after a refusal, for stale-state refusals ("already held").
 //   submitClassName  extra classes on the submit button, after the lg-btn ones.
 //   submitDataTour   data-tour on the submit button, for the onboarding tour.
@@ -57,6 +59,7 @@ type Props = {
   focusAfter?: string | (() => HTMLElement | null);
   submitAriaLabel?: string;
   refreshOnError?: boolean;
+  quietError?: boolean;
   submitClassName?: string;
   submitDataTour?: string;
   savedNote?: boolean;
@@ -83,6 +86,7 @@ export function ActionForm({
   focusAfter,
   submitAriaLabel,
   refreshOnError = false,
+  quietError = false,
   submitClassName,
   submitDataTour,
   savedNote = false,
@@ -184,7 +188,7 @@ export function ActionForm({
           )}
         </span>
       )}
-      {state && !state.ok && (
+      {state && !state.ok && !quietError && (
         <div className="w-full">
           <ErrorLine>{state.error}</ErrorLine>
         </div>

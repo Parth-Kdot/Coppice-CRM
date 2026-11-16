@@ -120,4 +120,23 @@ describe("what people are told about assistants", () => {
     expect(assistantsGuide).toContain(`${MCP_LIMITS.read} reads and ${MCP_LIMITS.action} changes a minute`);
     expect(trustLine).toContain("Coppice's own AI");
   });
+
+  it("says in each place that a value a change replaced can be read and put back for an hour", () => {
+    expect(SCOPE_LABELS[WRITE_SCOPE]).toContain("put back a value changed in the last hour");
+    expect(SCOPE_LABELS[READ_SCOPE]).toContain("the values a change replaced in the last hour");
+    expect(assistantsReadme).toContain("the values a change replaced in the last hour");
+    expect(consentSource).toContain("the values a change replaced in the last hour");
+    expect(settingsSource).toContain("the values a change replaced in the last hour");
+  });
+
+  it("the landing privacy item about previous versions is honest: Coppice's own AI never reads them, an assistant can", () => {
+    const item = TRUST.privacy.find((i) => i.title === "Previous versions last one hour")!;
+    expect(item).toBeDefined();
+    expect(item.body).not.toMatch(/not sent to an AI provider/);
+    expect(item.body).toContain("Coppice's own AI never reads it");
+    expect(item.body).toContain("An assistant you connect can read it");
+    expect(item.body).toContain("usually within minutes and otherwise by a daily cleanup");
+    expect(item.body).toContain("Backups of the database can keep it for their retention period");
+    expect(item.body).not.toMatch(/[—–→]|->| \+ | = /);
+  });
 });

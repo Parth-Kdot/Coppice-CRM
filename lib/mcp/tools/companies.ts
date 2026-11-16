@@ -1,7 +1,8 @@
 import type { z } from "zod";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, VersionField } from "@/generated/prisma/client";
 import { literal } from "@/lib/board";
 import { changeStage, claimCompany, dbNow, dbToday, forceRelease, heldBy, logOutreach, markReply, releaseClaim, setFollowUp } from "@/lib/claims";
+import { restoreVersion } from "@/lib/restore-version";
 import { archiveCompany, createCompany, getCompanyPage, unarchiveCompany, updateCompany, type CompanyFields, type SaveResult } from "@/lib/companies";
 import { listDuplicateReview, markSeparate, resolveAsDuplicate } from "@/lib/company-pairs";
 import { filterClauses } from "@/lib/copilot/query";
@@ -11,6 +12,8 @@ import { notFoundMessage } from "@/lib/messages";
 import { getQueue, type QueueRow } from "@/lib/queue";
 import { latestBrief } from "@/lib/research/brief";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { PREVIOUS_VERSION_MS } from "@/lib/previous-versions";
+import { VERSION_GONE_ASSISTANT } from "@/lib/previous-versions-copy";
 import { workspaceRow } from "@/lib/workspaces";
 import {
   companyFieldsSchema,
@@ -25,6 +28,7 @@ import {
   type mcpMarkReplySchema,
   type mcpQueueSchema,
   type mcpReleaseClaimSchema,
+  type mcpRestorePreviousVersionSchema,
   type mcpResolveDuplicateSchema,
   type mcpSetCompanyArchivedSchema,
   type mcpSetFollowUpSchema,
@@ -141,7 +145,7 @@ export async function getCompany(principal: McpPrincipal, args: z.infer<typeof m
   const now = await dbNow();
   const page = await getCompanyPage(member, args.companyId);
   if (!page) return fail(notFoundMessage("Company"));
-  const { company: c, lookAlikes } = page;
+  const { company: c, lookAlikes, previousVersions } = page;
   // The company page shows stored briefs and drafts only while AI is on for the workspace; so do we.
   // These are reads of what is already stored: nothing here asks a model for anything.
   const aiOn = (await workspaceRow(member.workspaceId)).aiEnabled;
@@ -178,6 +182,18 @@ export async function getCompany(principal: McpPrincipal, args: z.infer<typeof m
     stageChanges: c.stageChanges.map((s) => ({ changedAt: iso(s.changedAt), from: s.fromStage, to: s.toStage, by: untrusted(s.changedBy.name), via: s.via })),
     totals: { outreach: c.outreachTotal, stageChanges: c.stageChangeTotal },
     openLookAlikes: lookAlikes.map((l) => ({ id: l.id, name: untrusted(l.name) })),
+    // Values replaced in the last hour, with the ids restore_previous_version takes. Empty for an
+    // archived company. Typed text and the replacer's display name are wrapped as untrusted.
+    previousVersions: previousVersions.map((v) => ({
+      id: v.id,
+      contactId: v.contactId,
+      field: v.field.toLowerCase(),
+      value: untrusted(v.value),
+      replacedAt: iso(v.replacedAt),
+      restorableUntil: iso(new Date(v.replacedAt.getTime() + PREVIOUS_VERSION_MS)),
+      replacedBy: untrusted(v.replacedByName),
+      via: v.via,
+    })),
     latestBrief: brief
       ? {
           id: brief.id,
@@ -391,7 +407,7 @@ export async function updateCompanyTool(principal: McpPrincipal, args: z.infer<t
   const edit = { changes: next, original: old };
   if (named.every((f) => (next[f] ?? null) === (old[f] ?? null))) return ok({ saved: true, changed: false, companyId: args.companyId });
 
-  const result = await updateCompany(member, args.companyId, edit, args.separateFrom ?? []);
+  const result = await updateCompany(member, args.companyId, edit, args.separateFrom ?? [], "ASSISTANT");
   return fromResult(result, async (data) => {
     if (data.status === "possible-duplicates") return lookAlikes(data);
     if (data.status === "conflict") {
@@ -403,6 +419,28 @@ export async function updateCompanyTool(principal: McpPrincipal, args: z.infer<t
     }
     await recordActivity(principal, member, { tool: "update_company", action: "updated", companyId: args.companyId });
     return ok({ saved: true, changed: true, companyId: args.companyId });
+  });
+}
+
+export async function restorePreviousVersionTool(principal: McpPrincipal, args: z.infer<typeof mcpRestorePreviousVersionSchema>): Promise<ToolResult> {
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  const found = await openCompany(member, args.companyId);
+  if (found.refused) return found.refused;
+  const result = await restoreVersion(member, { companyId: args.companyId, versionId: args.versionId, expect: { value: args.current }, subject: args.field ? { field: args.field.toUpperCase() as VersionField, contactId: args.contactId ?? null } : undefined, separateFrom: args.separateFrom ?? [] }, "ASSISTANT");
+  return fromResult(result, async (data) => {
+    if (data.status === "gone") return fail(`${VERSION_GONE_ASSISTANT} Read the company again with get_company.`);
+    if (data.status === "changed") return fail("The field changed after you read it, so nothing was restored. Read the company again with get_company and ask the person what to keep.");
+    if (data.status === "possible-duplicates") return lookAlikes(data);
+    if (data.status === "unchanged") return ok({ restored: false, changed: false });
+    await recordActivity(principal, member, { tool: "restore_previous_version", action: "updated", companyId: args.companyId, targetId: data.contactId });
+    return ok({
+      restored: true,
+      field: data.field.toLowerCase(),
+      contactId: data.contactId,
+      note: "The value it replaced is now the previous version, kept for an hour, so this can be undone the same way.",
+    });
   });
 }
 

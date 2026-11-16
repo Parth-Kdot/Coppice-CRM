@@ -97,6 +97,7 @@ export const ACTIVITY_LINES: Record<string, Partial<Record<ActivityAction, Line>
   change_stage: { stage_changed: line("moved the stage of", "company") },
   create_company: { added: line("added", "company") },
   update_company: { updated: line("edited", "company") },
+  restore_previous_version: { updated: line("restored a previous version on", "company") },
   set_company_archived: { archived: line("archived", "company"), unarchived: line("unarchived", "company") },
   resolve_duplicate: { kept_separate: line("kept apart look-alikes of", "company"), archived_duplicate: line("archived as a duplicate", "company") },
   release_claim: { released: line("released the claim on", "company"), force_released: line("released someone else's claim on", "company") },

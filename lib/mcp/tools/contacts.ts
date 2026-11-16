@@ -44,7 +44,18 @@ export async function saveContactTool(principal: McpPrincipal, args: z.infer<typ
   if (fields.data.name === current.name && fields.data.email === current.email && fields.data.title === current.title) {
     return ok({ saved: true, changed: false, contactId: args.contactId });
   }
-  const result = await updateContact(member, args.contactId, fields.data);
+  // Only the fields the assistant sent are written, so a field someone else changed since the read
+  // above keeps its value and its previous version.
+  const result = await updateContact(
+    member,
+    args.contactId,
+    {
+      name: args.name !== undefined ? fields.data.name : undefined,
+      email: args.email !== undefined ? fields.data.email : undefined,
+      title: args.title !== undefined ? fields.data.title : undefined,
+    },
+    "ASSISTANT",
+  );
   return fromResult(result, async () => {
     await recordActivity(principal, member, { tool: "save_contact", action: "updated", companyId: args.companyId, targetId: args.contactId });
     return ok({ saved: true, changed: true, contactId: args.contactId });

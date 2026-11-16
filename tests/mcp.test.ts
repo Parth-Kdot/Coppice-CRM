@@ -562,6 +562,7 @@ describe("tools over the current protocol (the official MCP client)", () => {
         "release_departing_claims",
         "reopen_for_next_year",
         "resolve_duplicate",
+        "restore_previous_version",
         "review_handoff_card",
         "run_import",
         "save_contact",

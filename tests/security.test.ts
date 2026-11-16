@@ -1,4 +1,5 @@
 import { globSync, readFileSync } from "node:fs";
+import { dirname, join, normalize } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { createWorkspace } from "@/app/(app)/workspaces/actions";
 import { inviteMember } from "@/app/(app)/[workspaceId]/settings/actions";
@@ -24,6 +25,27 @@ const RAW_SQL_ALLOWED = ["lib/claims.ts", "lib/db.ts", "scripts/local-db.ts"];
 describe("source guards", () => {
   it("finds the code to scan (so these tests can't pass by checking nothing)", () => {
     expect(files(APP_CODE).length).toBeGreaterThan(10);
+  });
+
+  it("only lib/previous-versions.ts touches previous versions, and only the company page and get_company read them", () => {
+    // Comments are removed first, so a sentence that names a function is not a use of it.
+    const code = (f: string) => source(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(files(APP_CODE).filter((f) => /\.previousVersion\b/.test(code(f)))).toEqual(["lib/previous-versions.ts"]);
+    // Any way of importing the module (the alias or a relative path, resolved from the file), and any
+    // mention of the page reader (a renamed import, a function passed by reference), counts.
+    const importsPreviousVersions = (f: string) =>
+      [...code(f).matchAll(/from\s+["']([^"']+)["']/g)].some(([, spec]) => {
+        const target = spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? join(dirname(f), spec) : null;
+        return target !== null && normalize(target) === "lib/previous-versions";
+      });
+    expect(files(APP_CODE).filter(importsPreviousVersions).sort()).toEqual(
+      ["app/(app)/[workspaceId]/companies/[companyId]/page.tsx", "lib/companies.ts", "lib/mcp/tools/companies.ts", "lib/restore-version.ts"].sort(),
+    );
+    expect(files(APP_CODE).filter((f) => /\bgetCompanyPage\b/.test(code(f))).sort()).toEqual(
+      ["app/(app)/[workspaceId]/companies/[companyId]/page.tsx", "lib/companies.ts", "lib/mcp/tools/companies.ts"].sort(),
+    );
+    // get_company also returns previous versions, so nothing outside the MCP server may import its tools.
+    expect(files(APP_CODE).filter((f) => !f.startsWith("lib/mcp/") && /from\s+["'][^"']*mcp\/tools(\/[^"']*)?["']/.test(code(f)))).toEqual([]);
   });
 
   test.for(files(ALL_CODE))("%s never uses the unsafe raw SQL functions", (file) => {

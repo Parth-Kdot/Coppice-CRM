@@ -1,3 +1,4 @@
+import type { Via } from "@/generated/prisma/client";
 import { AI_OFF_MESSAGE, aiUsage } from "@/lib/ai/run";
 import { updateCompany } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
@@ -22,7 +23,9 @@ function noteLine(brief: BriefView, itemId: string): string | null {
 
 // "Add to notes": appends one item to the company's notes through the usual company edit (so a
 // change someone else made at the same moment is never overwritten), then remembers it was added.
-export async function acceptBriefItem(tenant: Tenant, companyId: string, briefId: string, itemId: string): Promise<ActionResult> {
+// The notes before the line was added are kept for an hour as the notes' previous version, made by
+// `via` (the app, or the person's assistant).
+export async function acceptBriefItem(tenant: Tenant, companyId: string, briefId: string, itemId: string, via: Via = "APP"): Promise<ActionResult> {
   // The feature is hidden while AI is off, and refused here too.
   const usage = await aiUsage(tenant);
   if (!usage.enabled) return { ok: false, error: AI_OFF_MESSAGE };
@@ -43,7 +46,7 @@ export async function acceptBriefItem(tenant: Tenant, companyId: string, briefId
   if (!(original.notes ?? "").includes(line)) {
     const notes = original.notes ? `${original.notes}\n${line}` : line;
     if (notes.length > COMPANY_LIMITS.notes) return { ok: false, error: "The company's notes are full. Shorten them first." };
-    const saved = await updateCompany(tenant, companyId, { changes: { ...original, notes }, original });
+    const saved = await updateCompany(tenant, companyId, { changes: { ...original, notes }, original }, [], via);
     if (!saved.ok) return saved;
     if (saved.data.status !== "saved") return { ok: false, error: "Someone else just edited this company. Reload the page and try again." };
   }

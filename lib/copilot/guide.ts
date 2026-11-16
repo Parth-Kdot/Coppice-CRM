@@ -98,6 +98,16 @@ export const GUIDE: GuideTopic[] = [
     ],
   },
   {
+    id: "previous-versions",
+    title: "Undo an edit",
+    summary: "Put back a value changed in the last hour.",
+    body: [
+      "When someone changes a company's name, industry, website or notes, or a contact's name, email or title, Coppice keeps the value it replaced for one hour. The company page shows the company's under Previous versions, below the notes, and a contact's right under that contact, with who replaced it and when, and a Restore button.",
+      "Only the latest previous value of each field is kept. A second change to the same field replaces it, however recent. A field nobody changed keeps its previous value until its hour is up.",
+      "Restoring is an edit: anyone who can edit the company can do it, and the value it replaces becomes the new previous version, so a restore can be undone too. If the field changed after the page loaded, nothing is restored. After the hour the old value is never shown again. It is usually deleted within minutes, and a daily cleanup catches the rest.",
+    ],
+  },
+  {
     id: "import",
     title: "Importing and Smart import",
     summary: "CSV import, and the optional AI reading.",
@@ -146,7 +156,7 @@ export const GUIDE: GuideTopic[] = [
     summary: "Outside assistants, if an owner allows.",
     body: [
       "An owner can allow outside AI assistants for the workspace in Settings. They are off by default.",
-      "Each person connects their own assistant and chooses whether it can only read, or can also make changes as them: companies, contacts, claims, outreach, follow-ups, stages and imports, and for owners facts, templates and the handoff. Claims, outreach and stage moves are marked via assistant in the company's history, and every change an assistant makes is listed in Settings for the whole workspace (lines about who is leaving show to owners only).",
+      "Each person connects their own assistant and chooses whether it can only read, or can also make changes as them: companies and contacts (including putting back a value changed in the last hour), claims, outreach, follow-ups, stages and imports, and for owners facts, templates and the handoff. Claims, outreach and stage moves are marked via assistant in the company's history, and every change an assistant makes is listed in Settings for the whole workspace (lines about who is leaving show to owners only).",
       `An assistant follows the same rules you do: a live claim held by someone else blocks it, and Committed, Declined, permanent deletes, verifying a fact, experiments, a CSV import and the handoff steps that change many companies or publish the handoff need an explicit yes. It cannot change members, roles, invitations, the claim window, the AI settings or the assistants switch. Each person is limited to ${MCP_LIMITS.read} reads and ${MCP_LIMITS.action} changes a minute.`,
       "Whatever an assistant reads, including contact names and notes, goes to the company behind that assistant. That is separate from Coppice's own AI.",
     ],
