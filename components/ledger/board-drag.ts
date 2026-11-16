@@ -4,18 +4,23 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import type { Stage } from "@/generated/prisma/enums";
+import { prefersReducedMotion } from "./motion-kit";
 import { STAGES } from "@/lib/stages";
 
 // Drag and drop for board slips, on pointer events. Press a slip and move more than 5 px and it
 // lifts: a copy of it follows the pointer with a hard 2 px offset shadow, the slip it came
 // from stays behind as a dashed outline, and the stage under the pointer shows a ruled drop line.
 // Letting go over another stage calls onDrop. Escape or letting go anywhere else sends the copy back.
-// Mouse and pen only: a finger belongs to scrolling, so phones use the Move to menu.
+// Mouse and pen only: a finger belongs to scrolling, so phones use the Move to menu. A slip marked
+// data-locked (someone else holds it and you are an officer) doesn't lift at all.
+//
+// Nothing here sets React state while a drag runs: the lifted slip, the column under the pointer
+// (data-over) and the board itself (data-dragging) are marked as DOM attributes, so moving across
+// columns never re-renders the board or its hundreds of slips.
 //
 // Motion is plain DOM here: the copy is positioned through the CSSOM (style.setProperty), which the
 // strict style policy allows, and it settles back with the Web Animations API.
@@ -24,6 +29,9 @@ const THRESHOLD = 5;
 const EDGE = 56;
 
 type Session = {
+  over: HTMLElement | null;
+  // The board (.lg-bd) the slip sits in, marked data-dragging while it is lifted.
+  board: HTMLElement | null;
   id: string;
   stage: Stage;
   el: HTMLElement;
@@ -36,10 +44,6 @@ type Session = {
   y: number;
   raf: number | null;
 };
-
-const reducedMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const isStage = (value: string | undefined): value is Stage =>
   (STAGES as readonly string[]).includes(value ?? "");
@@ -61,8 +65,6 @@ export function useBoardDrag({
   onDrop: (companyId: string, to: Stage, from: DOMRect) => void;
 }) {
   const session = useRef<Session | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<Stage | null>(null);
   const dropRef = useRef(onDrop);
   useEffect(() => {
     dropRef.current = onDrop;
@@ -78,6 +80,9 @@ export function useBoardDrag({
     if (s.raf !== null) cancelAnimationFrame(s.raf);
     document.body.removeAttribute("data-board-dragging");
     delete s.el.dataset.lifted;
+    s.board?.removeAttribute("data-dragging");
+    if (s.over) delete s.over.dataset.over;
+    s.over = null;
     const ghost = s.ghost;
     if (!ghost) return;
     const target = drop
@@ -87,8 +92,6 @@ export function useBoardDrag({
         undefined)
       : undefined;
     const box = ghost.getBoundingClientRect();
-    setDragging(null);
-    setOver(null);
     // The click that follows letting go over the slip's own link must not open the company.
     const swallow = (event: MouseEvent) => {
       event.preventDefault();
@@ -106,7 +109,7 @@ export function useBoardDrag({
     }
     // Back to where it came from.
     const home = s.el.getBoundingClientRect();
-    if (reducedMotion() || typeof ghost.animate !== "function") {
+    if (prefersReducedMotion() || typeof ghost.animate !== "function") {
       ghost.remove();
       return;
     }
@@ -146,7 +149,7 @@ export function useBoardDrag({
       s.offY = s.startY - box.top;
       s.el.dataset.lifted = "";
       document.body.setAttribute("data-board-dragging", "");
-      setDragging(s.id);
+      s.board?.setAttribute("data-dragging", "");
       place(s);
       // Lean on the left or right edge of the strip and it scrolls, for the narrow screens.
       const tick = () => {
@@ -171,9 +174,12 @@ export function useBoardDrag({
         session.current
       )
         return;
-      // Buttons (Claim, Move to) keep their own clicks.
+      // Buttons (Claim, Move to) keep their own clicks; a locked slip stays put.
       if ((event.target as HTMLElement).closest("button")) return;
+      if (event.currentTarget.dataset.locked !== undefined) return;
       const s: Session = {
+        over: null,
+        board: event.currentTarget.closest<HTMLElement>(".lg-bd"),
         id,
         stage,
         el: event.currentTarget,
@@ -196,10 +202,17 @@ export function useBoardDrag({
           begin(s);
         }
         place(s);
-        const target = document
+        const column = document
           .elementFromPoint(s.x, s.y)
-          ?.closest<HTMLElement>("[data-drop-stage]")?.dataset.dropStage;
-        setOver(isStage(target) && target !== s.stage ? target : null);
+          ?.closest<HTMLElement>("[data-drop-stage]");
+        const target = column?.dataset.dropStage;
+        const next =
+          column && isStage(target) && target !== s.stage ? column : null;
+        if (next !== s.over) {
+          if (s.over) delete s.over.dataset.over;
+          if (next) next.dataset.over = "";
+          s.over = next;
+        }
       };
       const up = () => stop(true);
       const cancel = () => stop(false);
@@ -228,5 +241,5 @@ export function useBoardDrag({
     [begin, stop],
   );
 
-  return { dragging, over, onPointerDown };
+  return { onPointerDown };
 }

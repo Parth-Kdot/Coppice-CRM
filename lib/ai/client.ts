@@ -16,41 +16,59 @@ import { toGeminiSchema, toGroqSchema } from "@/lib/ai/schema";
 // contacted"), otherwise its shape ("[header: 2 words]"); the company names and industries from the
 // columns headed plainly as such ("Company", "Industry"), unless a cell reads as a note; and only
 // the shape of every other cell (lib/smart-import/columns.ts).
+// Research briefs (owner decision, recorded here): the reading call gets the text of public pages an
+// owner approved, which can name people (a page's "Jane Doe leads campus outreach"); emails and
+// phone numbers are masked. Code then drops every passage and item that names a person or holds a
+// masked contact detail (lib/research/checks.ts namesPerson), so no name reaches the writing call
+// or the brief. Smart import's look-alike call gets the sheet's company names and the names of the
+// workspace's saved companies, cleaned the same way as the column step: a cell that reads as a note is cut to the name before it, or left out.
 
 // Which model each feature uses: one place to change. Thinking is set by level only; the other
 // sampling knobs (temperature, topP, candidateCount) are ignored by these models.
 //
-// Free-tier capacity swings minute to minute (we've seen a model hang 45 s while another answered in
-// 6 s), and each model has its own quota (on 2026-10-26 3.6 Flash was out while 3.5 Flash-Lite
-// answered every call). So each feature gets one short try on its main model (`firstTryMs`), then
-// moves to a `fallback` model when the main one is overloaded, slow or out of quota, and drafting
-// has a `lastResort` after that. The last model in line gets one retry; everything shares the
-// overall deadline. AiRun records whichever model actually answered.
-type Model = { model: string; thinkingLevel?: ThinkingLevel };
-type GeminiRoute = Model & { provider?: "gemini"; firstTryMs: number; fallback: Model; lastResort?: Model };
+// Free-tier capacity swings minute to minute (a model can hang for 45 s while another answers in
+// 6 s), and each model has its own quota. So each feature gets one short try on its main model
+// (`firstTryMs`), then moves to a `fallback` model when the main one is overloaded, slow or out of
+// quota, and drafting has a `lastResort` after that. An overloaded model's 503 ("high demand") is never retried on the
+// same model while another is left in line: the call moves on as soon as it arrives, without
+// waiting out the try's timer. The last model in line gets one retry; everything shares the
+// overall deadline. AiRun records whichever model actually answered, and when it wasn't the first,
+// which model failed before it, how, and after how long (lib/ai/run.ts).
+//
+// 3.6 Flash, with the thinking levels it was proven at, goes first and 3.8 is the fallback, because
+// 3.8 can answer nothing for long stretches on a free key (503 "high demand", or a hang), and a
+// call that tried it first waited out its whole first try. `tryMs` caps one try on a model that
+// isn't first or last in line, so a hanging middle model can't eat the drafting call's deadline.
+type Model = { model: string; thinkingLevel?: ThinkingLevel; tryMs?: number };
+// `overallMs` shortens the whole call's deadline for a feature that is only a convenience (Smart
+// import's column suggestions and look-alikes): the person shouldn't wait the full 100 s for it.
+type GeminiRoute = Model & { provider?: "gemini"; firstTryMs: number; fallback: Model; lastResort?: Model; overallMs?: number };
 // Groq (Smart import's row pass, which reads cells that can hold names): one model, one try. Its
 // free tier allows about 30 requests and 8,000 tokens a minute, so a 429 is reported to the person
 // to wait and continue; it is never retried, and there is no fallback model.
-type GroqRoute = { provider: "groq"; model: string; reasoningEffort: "low" | "medium" | "high"; timeoutMs: number };
+// `maxTokens` caps the reply, which also caps how much one call can count toward the minute's
+// token quota.
+type GroqRoute = { provider: "groq"; model: string; reasoningEffort: "low" | "medium" | "high"; timeoutMs: number; maxTokens: number };
 export type Route = GeminiRoute | GroqRoute;
 export type Provider = "gemini" | "groq";
 export const ROUTES: Record<AiFeature, Route> = {
-  // Long input and more thinking, so a longer first try.
+  // Long input and more thinking, so a longer first try (3.6 Flash read the 2-page live packet in
+  // 23.5 s at MEDIUM).
   FACT_EXTRACTION: {
-    model: "gemini-3.8-flash",
+    model: "gemini-3.6-flash",
     thinkingLevel: ThinkingLevel.MEDIUM,
     firstTryMs: 50_000,
-    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.MEDIUM },
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.MEDIUM },
   },
   // The officer is waiting with nothing else to do, so drafting tries a third model before giving
   // up. Flash-Lite's drafts pass the same rules and Claim Checker as any other.
   DRAFT: {
-    model: "gemini-3.8-flash",
+    model: "gemini-3.6-flash",
     thinkingLevel: ThinkingLevel.LOW,
     firstTryMs: 20_000,
-    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.LOW, tryMs: 15_000 },
     // At its default (minimal) thinking it sometimes skipped the placeholders and line breaks;
-    // LOW followed them, at the same speed (tested 2026-10-26).
+    // LOW followed them, at the same speed. It must stay at LOW.
     lastResort: { model: "gemini-3.5-flash-lite", thinkingLevel: ThinkingLevel.LOW },
   },
   // Flash-Lite's default (minimal) thinking is right for a quick check.
@@ -62,18 +80,67 @@ export const ROUTES: Record<AiFeature, Route> = {
   // Smart import: which column is which, from the headers and a few sample rows (mostly cell shapes).
   IMPORT_MAPPING: {
     model: "gemini-3.5-flash-lite",
-    firstTryMs: 20_000,
+    firstTryMs: 15_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    overallMs: 30_000,
   },
   // Smart import: which company names in a sheet look like each other or like existing companies.
   IMPORT_LOOKALIKES: {
     model: "gemini-3.5-flash-lite",
+    firstTryMs: 15_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+    overallMs: 30_000,
+  },
+  // Smart import: free-text cells, which can contain names, so Groq (owner decision). Low reasoning
+  // keeps a chunk of rows well inside the free tier's tokens per minute. A 15-row answer is about
+  // 1,500 tokens, so 3,000 leaves room without letting one call take most of a minute's quota.
+  IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 3000 },
+  // Research briefs (lib/research/brief.ts): reading up to six fetched pages is long input, like
+  // fact extraction (3.6 Flash took 38 s live at MEDIUM); writing the brief from the passages read
+  // is short, so Flash-Lite goes first.
+  RESEARCH_READ: {
+    model: "gemini-3.6-flash",
+    thinkingLevel: ThinkingLevel.MEDIUM,
+    firstTryMs: 50_000,
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.MEDIUM },
+  },
+  RESEARCH_BRIEF: {
+    model: "gemini-3.5-flash-lite",
+    thinkingLevel: ThinkingLevel.LOW,
     firstTryMs: 20_000,
     fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
   },
-  // Smart import: free-text cells, which can contain names, so Groq (owner decision). Low reasoning
-  // keeps a chunk of rows well inside the free tier's tokens per minute.
-  IMPORT_ROWS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000 },
+  // Ask Coppice (lib/copilot): one short call per question that turns it into an intent. The
+  // question and the names of companies just shown can hold names, so Groq (never Gemini), the same
+  // model Smart import's row pass proved live with strict json_schema. The intent is small JSON (about
+  // 100 to 300 tokens), but Groq's cap counts the model's reasoning too, and an unclear question can
+  // reason for several hundred tokens at low effort. A reply cut off by the cap comes back as a 400
+  // json_validate_failed, not as a length stop, so 700 failed live on such questions. 1,500 is half of
+  // Smart import's budget on the same model.
+  COPILOT: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 1500 },
+  // The stats page's "Explain these numbers" (lib/scorecard/explain.ts): a few short paragraphs
+  // around numbers code already worked out. Routed like the claim check, but with LOW thinking
+  // on Flash-Lite too.
+  SCORECARD_EXPLAIN: {
+    model: "gemini-3.5-flash-lite",
+    thinkingLevel: ThinkingLevel.LOW,
+    firstTryMs: 15_000,
+    fallback: { model: "gemini-3.6-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
+  // The Template Lab (lib/template-lab/propose.ts): rewriting an email takes the drafter's route
+  // without its last resort. The owner is not waiting on a click mid-task, and can ask again.
+  TEMPLATE_LAB: {
+    model: "gemini-3.6-flash",
+    thinkingLevel: ThinkingLevel.LOW,
+    firstTryMs: 20_000,
+    fallback: { model: "gemini-3.8-flash", thinkingLevel: ThinkingLevel.LOW },
+  },
+  // Time Capsule (lib/capsule/): relationship cards read from company and outreach notes, four
+  // companies a call, and Ask the Archive's one answer from the notes that mention a question's
+  // words. Both read notes that can name people, so they go to Groq, never Gemini. A cards reply is
+  // up to eight short bullets for each of four companies; an answer is at most five sentences.
+  CAPSULE_CARDS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 2000 },
+  ARCHIVE_ASK: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 700 },
 };
 
 export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";
@@ -91,9 +158,12 @@ export type AiErrorCode =
 
 export type Usage = { promptTokens: number | null; outputTokens: number | null; thinkingTokens: number | null };
 
+// A model that failed before the one that answered (or before the last one tried), for AiRun.
+export type FailedTry = { model: string; error: AiErrorCode; ms: number };
+
 export type GenerateResult<T> =
-  | { ok: true; data: T; model: string; usage: Usage }
-  | { ok: false; error: AiErrorCode; model: string; usage: Usage | null };
+  | { ok: true; data: T; model: string; usage: Usage; fellBack?: FailedTry[] }
+  | { ok: false; error: AiErrorCode; model: string; usage: Usage | null; fellBack?: FailedTry[] };
 
 export type GenerateRequest<S extends z.ZodType> = {
   feature: AiFeature;
@@ -102,6 +172,12 @@ export type GenerateRequest<S extends z.ZodType> = {
   // The task, with any data wrapped and labelled as data (never as instructions).
   prompt: string;
   schema: S;
+  // A shorter deadline for this one call, in ms: the claim check that follows a Draft click gets
+  // one quick try on its main model, since the drafts are already saved and "Check with AI" is
+  // there if it doesn't answer in time.
+  deadlineMs?: number;
+  // false: no fallback model, only the main one (with the deadline above).
+  fallback?: false;
 };
 
 // Thinking tokens count against this, so it's generous; replies are short JSON.
@@ -140,22 +216,45 @@ export async function generate<S extends z.ZodType>(request: GenerateRequest<S>)
   if (!isConfigured()) return { ok: false, error: "not_configured", model: route.model, usage: null };
 
   // One deadline for the whole call, every model included. Only the last model in line is retried.
-  const signal = AbortSignal.timeout(OVERALL_TIMEOUT_MS);
-  const line: [Model, { attempts: number; timeoutMs: number }][] = [
-    [route, { attempts: 1, timeoutMs: route.firstTryMs }],
-    [route.fallback, { attempts: route.lastResort ? 1 : 2, timeoutMs: ATTEMPT_TIMEOUT_MS }],
-  ];
-  if (route.lastResort) line.push([route.lastResort, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+  const overall = Math.min(OVERALL_TIMEOUT_MS, route.overallMs ?? OVERALL_TIMEOUT_MS, request.deadlineMs ?? OVERALL_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(overall);
+  // With no fallback, the one model gets the whole deadline.
+  const firstTry = request.fallback === false ? overall : Math.min(route.firstTryMs, overall);
+  const line: [Model, { attempts: number; timeoutMs: number }][] = [[route, { attempts: 1, timeoutMs: firstTry }]];
+  if (request.fallback !== false) {
+    line.push([route.fallback, { attempts: route.lastResort ? 1 : 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+    if (route.lastResort) line.push([route.lastResort, { attempts: 2, timeoutMs: ATTEMPT_TIMEOUT_MS }]);
+  }
 
+  // A model in the middle of the line gets its own shorter try, if it has one.
+  if (line.length === 3 && line[1][0].tryMs) line[1][1].timeoutMs = Math.min(line[1][0].tryMs, ATTEMPT_TIMEOUT_MS);
+
+  const failed: FailedTry[] = [];
+  const noted = (r: GenerateResult<z.output<S>>): GenerateResult<z.output<S>> => (failed.length ? { ...r, fellBack: failed } : r);
   let result!: GenerateResult<z.output<S>>;
-  for (const [model, tries] of line) {
+  for (const [i, [model, tries]] of line.entries()) {
+    // Past the deadline, the next model would only time out at once.
+    if (signal.aborted) return noted({ ok: false, error: "timeout", model: model.model, usage: null });
+    const started = performance.now();
     result = await callModel(model, tries, request, signal);
     // Only a busy, slow or out-of-quota model is worth moving away from; a bad key, a refused
     // request or a blocked prompt would fail the same way on the next model.
-    if (result.ok || !MOVE_ON.includes(result.error)) return result;
+    if (result.ok || !MOVE_ON.includes(result.error)) return noted(result);
+    if (i < line.length - 1) {
+      const tried = { model: model.model, error: result.error, ms: Math.round(performance.now() - started) };
+      failed.push(tried);
+      // In the server log as well, for calls that end FAILED too (their AiRun row keeps only the
+      // code). The feature, model, code and time only: never the prompt, the reply or the key.
+      console.warn(`[ai] ${request.feature}: ${tried.model} ${tried.error} after ${tried.ms} ms, moving to ${line[i + 1][0].model}`);
+    }
   }
-  return result;
+  return noted(result);
 }
+
+// Why a reply that didn't finish normally is no use. Only a safety or policy stop is a refusal;
+// no candidate at all, or an "OTHER" stop, is the service failing, which another model may not.
+const REFUSALS = new Set(["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "LANGUAGE"]);
+export const finishError = (finish: string | undefined): AiErrorCode => (finish && REFUSALS.has(finish) ? "blocked" : "unavailable");
 
 // Free-tier quotas are per model, so a rate limit sends the call on too.
 const MOVE_ON: AiErrorCode[] = ["unavailable", "timeout", "rate_limited"];
@@ -196,7 +295,7 @@ async function callModel<S extends z.ZodType>(
   const finish = response.candidates?.[0]?.finishReason;
   if (response.promptFeedback?.blockReason) return { ok: false, error: "blocked", model, usage };
   if (finish === "MAX_TOKENS") return { ok: false, error: "truncated", model, usage };
-  if (finish !== "STOP") return { ok: false, error: "blocked", model, usage };
+  if (finish !== "STOP") return { ok: false, error: finishError(finish), model, usage };
 
   let json: unknown;
   try {
@@ -211,15 +310,57 @@ async function callModel<S extends z.ZodType>(
 
 // ----- Groq -----
 
+// The text of the reply Groq says it could not validate, from a 400 json_validate_failed. The SDK
+// keeps the response body on `error.error`, and the text sits under its own `error` key.
+export function failedGeneration(error: unknown): string | null {
+  const body = error instanceof Groq.APIError ? (error.error as { error?: { failed_generation?: unknown }; failed_generation?: unknown } | undefined) : undefined;
+  const text = body?.error?.failed_generation ?? body?.failed_generation;
+  return typeof text === "string" ? text : null;
+}
+
+// Whether text is JSON that stops before it is complete: an object or array still open, or a string
+// still open, at the end. That is what the token cap does to a reply; a reply that is wrong but whole
+// (a stray word, an extra comma) is not cut off.
+export function isCutOffJson(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed === "") return false;
+  try {
+    JSON.parse(trimmed);
+    return false;
+  } catch {
+    // Fall through to look at where it ends.
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const char of trimmed) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+  }
+  return trimmed.startsWith("{") && (inString || depth > 0);
+}
+
 // What went wrong with a thrown Groq SDK error. The SDK's errors carry a numeric status; a reply
-// that broke the JSON schema comes back as a 400 with code json_validate_failed.
-function groqErrorCode(error: unknown): AiErrorCode {
+// that broke the JSON schema comes back as a 400 with code json_validate_failed. When that reply is
+// cut off, the token cap ended it, so that is "truncated". The length of the text is logged, never
+// the text, so the cause can be confirmed without keeping what people asked.
+function groqErrorCode(error: unknown, route?: GroqRoute): AiErrorCode {
   if (error instanceof Groq.APIConnectionTimeoutError || (error instanceof Error && error.name === "AbortError")) return "timeout";
   if (error instanceof Groq.APIUserAbortError) return "timeout";
   if (error instanceof Groq.APIError && typeof error.status === "number") {
     if (error.status === 429) return "rate_limited";
     if (error.status === 401 || error.status === 403) return "bad_key";
-    if (error.status === 400 && /json_validate_failed/i.test(JSON.stringify(error.error ?? "") + error.message)) return "invalid_output";
+    if (error.status === 400 && /json_validate_failed/i.test(JSON.stringify(error.error ?? "") + error.message)) {
+      const failed = failedGeneration(error);
+      const cut = failed !== null && isCutOffJson(failed);
+      console.warn(`groq json_validate_failed model=${route?.model ?? "?"} max_tokens=${route?.maxTokens ?? "?"} failed_generation_chars=${failed === null ? "none" : failed.length} cut_off=${cut}`);
+      return cut ? "truncated" : "invalid_output";
+    }
     if (error.status >= 400 && error.status < 500) return "rejected";
   }
   return "unavailable";
@@ -243,10 +384,10 @@ async function callGroq<S extends z.ZodType>(route: GroqRoute, request: Generate
       response_format: { type: "json_schema", json_schema: { name: "result", schema: toGroqSchema(request.schema), strict: true } },
       reasoning_effort: route.reasoningEffort,
       include_reasoning: false,
-      max_completion_tokens: MAX_OUTPUT_TOKENS,
+      max_completion_tokens: route.maxTokens,
     });
   } catch (error) {
-    return { ok: false, error: groqErrorCode(error), model, usage: null };
+    return { ok: false, error: groqErrorCode(error, route), model, usage: null };
   }
 
   const details = completion.usage as { completion_tokens_details?: { reasoning_tokens?: number } } | undefined;
@@ -257,7 +398,10 @@ async function callGroq<S extends z.ZodType>(route: GroqRoute, request: Generate
   };
   const choice = completion.choices?.[0];
   if (choice?.finish_reason === "length") return { ok: false, error: "truncated", model, usage };
-  if (choice?.finish_reason !== "stop") return { ok: false, error: "blocked", model, usage };
+  // Groq's types leave it out, but its API sends "content_filter" when a reply was filtered.
+  if ((choice?.finish_reason as string | undefined) === "content_filter") return { ok: false, error: "blocked", model, usage };
+  // No choice, or a stop for any other reason (a tool call it wasn't offered): the service failed.
+  if (choice?.finish_reason !== "stop") return { ok: false, error: "unavailable", model, usage };
 
   let json: unknown;
   try {

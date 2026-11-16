@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import type { Stage } from "@/generated/prisma/enums";
 import { STAGE_LABELS, STAGES } from "@/lib/stages";
 import { CheckIcon, StageGlyph } from "./icons";
+import { popoverPortal, usePopover } from "./popover";
 
-// The one-click "Move to" menu on a board slip. A ruled card with the six stages; a click moves the
-// company at once (Committed and Declined still ask first, in the board). It opens from the slip's
-// stage glyph button or from the m key on a focused slip. Arrow keys move, Enter picks, Escape closes
-// and returns focus to the button, Tab and a click outside close it. It is drawn in a portal so a
-// scrolling column never clips it.
+// The "Move to" menu: a ruled card with the six stages; a click moves the company at once (Committed
+// and Declined still ask first, in the caller). On the board it opens from a slip's stage glyph
+// button or the m key, and also carries the slip's other actions (Claim, Release) below a rule.
+// Arrow keys move (skipping the current stage), Home and End go to the first and last item that can
+// be picked, Enter picks, Escape closes and returns focus to the button, Tab, focus leaving and a
+// click outside close it. Drawn in a portal (usePopover) so a scrolling column never clips it.
+//
+// disabledReason: the stages can't be picked by this person (an officer, on a company someone else
+// holds). The menu then shows that one sentence, as a disabled item that still takes focus so it is
+// read out, instead of stage choices the server would refuse.
+
+export type MoveMenuAction = { key: string; label: string; onSelect: () => void };
+
+type Item = { key: string; label: string; stage?: Stage; here?: boolean; reason?: boolean; onSelect?: () => void };
 
 export function MoveMenu({
   anchor,
@@ -18,135 +27,117 @@ export function MoveMenu({
   current,
   onPick,
   onClose,
+  disabledReason,
+  actions = [],
 }: {
   anchor: HTMLElement;
   companyName: string;
   current: Stage;
   onPick: (stage: Stage) => void;
   onClose: (restoreFocus: boolean) => void;
+  disabledReason?: string;
+  actions?: MoveMenuAction[];
 }) {
-  const card = useRef<HTMLDivElement>(null);
+  const card = usePopover(anchor, true, { align: "right", onDismiss: () => onClose(false) });
   const items = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // Place the card under the button, right edges together, or above it when there is no room below.
-  useLayoutEffect(() => {
-    const el = card.current;
-    if (!el) return;
-    const place = () => {
-      const a = anchor.getBoundingClientRect();
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
-      const left = Math.max(8, Math.min(window.innerWidth - w - 8, a.right - w));
-      const below = a.bottom + 6;
-      const top = below + h > window.innerHeight - 8 ? Math.max(8, a.top - h - 6) : below;
-      el.style.setProperty("left", `${left}px`);
-      el.style.setProperty("top", `${top}px`);
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [anchor]);
+  const list: Item[] = [
+    ...(disabledReason
+      ? [{ key: "reason", label: disabledReason, reason: true }]
+      : STAGES.map((stage) => ({ key: stage, label: STAGE_LABELS[stage], stage, here: stage === current }))),
+    ...actions.map((a) => ({ key: a.key, label: a.label, onSelect: a.onSelect })),
+  ];
+  // Every item takes focus except the current stage, which can't be picked and is only marked.
+  const focusable = list.map((item) => !item.here);
 
-  useEffect(() => {
-    const first = STAGES.findIndex((s) => s !== current);
-    items.current[first]?.focus();
-    const onDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (card.current?.contains(target) || anchor.contains(target)) return;
-      onClose(false);
-    };
-    // A scroll that carries the button away would leave the card hanging in the air. A scroll that
-    // only brought the button into view (the menu opened from the keyboard) leaves it where it is.
-    const start = anchor.getBoundingClientRect();
-    const onScroll = (event: Event) => {
-      if (card.current?.contains(event.target as Node)) return;
-      const now = anchor.getBoundingClientRect();
-      if (Math.abs(now.top - start.top) > 1 || Math.abs(now.left - start.left) > 1) onClose(false);
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("scroll", onScroll, true);
-    return () => {
-      document.removeEventListener("pointerdown", onDown, true);
-      document.removeEventListener("scroll", onScroll, true);
-    };
-  }, [anchor, current, onClose]);
-
-  const focusAt = (index: number) => {
-    const count = STAGES.length;
-    for (let step = 0; step < count; step++) {
-      const next = (index + step + count) % count;
-      if (STAGES[next] !== current) {
-        items.current[next]?.focus();
+  // Focus `from`, or the nearest item that takes focus in the direction of `step`, wrapping.
+  const focusFrom = (from: number, step: 1 | -1) => {
+    const count = list.length;
+    for (let i = 0; i < count; i++) {
+      const at = (((from + i * step) % count) + count) % count;
+      if (focusable[at]) {
+        items.current[at]?.focus();
         return;
       }
     }
   };
 
+  useEffect(() => {
+    focusFrom(0, 1);
+    // Only when it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = items.current.findIndex((el) => el === document.activeElement);
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      focusAt(index + 1);
+      focusFrom(index + 1, 1);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      for (let i = 1; i <= STAGES.length; i++) {
-        const next = (index - i + STAGES.length * 2) % STAGES.length;
-        if (STAGES[next] !== current) {
-          items.current[next]?.focus();
-          break;
-        }
-      }
+      focusFrom(index - 1, -1);
     } else if (event.key === "Home") {
       event.preventDefault();
-      focusAt(0);
+      focusFrom(0, 1);
     } else if (event.key === "End") {
+      // Backwards from the last item, so End never wraps round to the first.
       event.preventDefault();
-      focusAt(STAGES.length - 1);
+      focusFrom(list.length - 1, -1);
     } else if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       onClose(true);
     } else if (event.key === "Tab") {
-      onClose(false);
+      // Back to the button first, so the browser's own Tab moves on from there, not from <body>.
+      onClose(true);
     }
   };
 
-  return createPortal(
-    <div ref={card} className="lg-movemenu" role="menu" aria-label={`Move ${companyName} to`} onKeyDown={onKeyDown}>
-      <p className="lg-movemenu-head lg-tag" aria-hidden="true">
-        Move to
-      </p>
-      {STAGES.map((stage, i) => {
-        const here = stage === current;
-        return (
-          <button
-            key={stage}
-            ref={(el) => {
-              items.current[i] = el;
-            }}
-            type="button"
-            role="menuitem"
-            className="lg-movemenu-item"
-            aria-current={here ? "true" : undefined}
-            aria-disabled={here || undefined}
-            tabIndex={-1}
-            onClick={() => {
-              if (here) return;
-              onPick(stage);
-            }}
-          >
-            <StageGlyph stage={stage} size={16} />
-            <span>{STAGE_LABELS[stage]}</span>
-            {here && (
-              <span className="lg-movemenu-here">
-                <CheckIcon size={15} />
-                <span className="lg-sr">Current stage</span>
-              </span>
-            )}
-          </button>
-        );
-      })}
+  const onBlur = () => {
+    requestAnimationFrame(() => {
+      if (!document.hasFocus()) return;
+      const active = document.activeElement;
+      if (card.current?.contains(active) || anchor.contains(active)) return;
+      onClose(false);
+    });
+  };
+
+  return popoverPortal(
+    <div ref={card} className="lg-movemenu" role="menu" aria-label={`Move ${companyName} to`} onKeyDown={onKeyDown} onBlur={onBlur}>
+      {!disabledReason && (
+        <p className="lg-movemenu-head lg-tag" aria-hidden="true">
+          Move to
+        </p>
+      )}
+      {list.map((item, i) => (
+        <button
+          key={item.key}
+          ref={(el) => {
+            items.current[i] = el;
+          }}
+          type="button"
+          role="menuitem"
+          className={`lg-movemenu-item${item.onSelect ? " lg-movemenu-act" : ""}${item.reason ? " lg-movemenu-reason" : ""}`}
+          aria-current={item.here ? "true" : undefined}
+          aria-disabled={item.here || item.reason || undefined}
+          tabIndex={-1}
+          onClick={() => {
+            if (item.here || item.reason) return;
+            if (item.stage) onPick(item.stage);
+            else item.onSelect?.();
+          }}
+        >
+          {item.stage && <StageGlyph stage={item.stage} size={16} />}
+          <span>{item.label}</span>
+          {item.here && (
+            <span className="lg-movemenu-here">
+              <CheckIcon size={15} />
+              <span className="lg-sr">Current stage</span>
+            </span>
+          )}
+        </button>
+      ))}
     </div>,
-    document.body,
+    anchor,
   );
 }

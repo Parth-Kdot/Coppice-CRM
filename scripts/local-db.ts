@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { Client } from "pg";
+import { isLocalDatabaseUrl } from "../prisma/seed-guard";
 
 // Gets a local or CI database ready: creates it if needed, applies migrations as the owner role,
 // and gives the app_user role (created by the tenant_rls migration, with no password) the password
@@ -9,13 +10,11 @@ import { Client } from "pg";
 //   npm run db:setup        sets up the dev database from .env (scripts/db-setup.ts)
 //   tests/global-setup.ts   uses it for the test database
 
-const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
-
 export async function setupLocalDatabase({ ownerUrl, appUrl }: { ownerUrl: string; appUrl: string }) {
   const owner = new URL(ownerUrl);
   const app = new URL(appUrl);
   for (const url of [owner, app]) {
-    if (!LOCAL_HOSTS.includes(url.hostname)) {
+    if (!isLocalDatabaseUrl(url.toString())) {
       throw new Error(`Refusing to set up ${url.hostname}; this script only touches a local database.`);
     }
   }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { SHOOTS_THREE, Stool } from "../ledger/stool";
+import { SHOOTS_THREE, Stool } from "../brand/stool";
 import { HERO } from "./copy";
 import { MiniQueue } from "./mini-queue";
 import { MOTION_OK, setupGsap } from "./motion";

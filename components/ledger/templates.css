@@ -6,31 +6,8 @@
 
 @layer components {
   /* ---------- Settings: the template list ---------- */
-  .lg-tpls {
-    list-style: none;
-    margin: -6px 0 0;
-  }
-  .lg-tpl {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  .lg-tpl:last-child {
-    border-bottom: 0;
-  }
-  .lg-tpl[data-archived] .lg-tplname {
-    color: var(--ink-2);
-  }
-  .lg-tplhead {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 10px;
-  }
   .lg-tplname {
     overflow-wrap: anywhere;
-  }
-  .lg-tplhead .lg-muted {
-    font-size: var(--fs-1);
   }
   /* A template's text, as written: line breaks kept, long ones scroll inside the box. */
   .lg-tpltext {
@@ -44,19 +21,6 @@
     overflow-wrap: anywhere;
     font-size: var(--fs-2);
     line-height: 1.45;
-  }
-  .lg-tplgroup {
-    margin-top: 18px;
-  }
-  .lg-tplgroup .lg-tpls {
-    margin-top: 0;
-  }
-  .lg-tpladd {
-    display: grid;
-    gap: 8px;
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid var(--rule);
   }
 
   /* ---------- The log form's picker ---------- */
@@ -81,9 +45,6 @@
   }
 
   /* ---------- Reply marks on outreach entries ---------- */
-  .lg-entryreply {
-    margin-top: 6px;
-  }
   .lg-replied {
     border-color: var(--moss);
     background: var(--moss-wash);
@@ -99,8 +60,12 @@
     gap: 10px;
     padding: 20px;
   }
+  /* A column of rows that keep their own height: a grid squeezed them into each other once the list
+     scrolled. */
   .lg-replyask-list {
-    display: grid;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     max-height: min(52vh, 420px);
     overflow-y: auto;
     border: 1px solid var(--rule);
@@ -108,6 +73,7 @@
   }
   .lg-replyopt {
     display: flex;
+    flex-shrink: 0;
     align-items: flex-start;
     gap: 10px;
     min-height: 44px;
@@ -115,11 +81,29 @@
     border-bottom: 1px solid var(--rule);
     cursor: pointer;
   }
-  .lg-replyopt:last-child {
+  .lg-replyopt:last-of-type {
     border-bottom: 0;
+  }
+  .lg-replyask-list > .lg-showmore {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 6px 12px 10px;
   }
   .lg-replyopt:hover {
     background: var(--paper-2);
+  }
+  /* The check stamped onto the picked entry once it is marked (reply-prompt.tsx); hidden otherwise. */
+  .lg-replyopt {
+    position: relative;
+  }
+  .lg-replyopt-stamp {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    display: inline-flex;
+    color: var(--moss);
+    opacity: 0;
+    pointer-events: none;
   }
   .lg-replyopt:has(input:checked) {
     background: var(--moss-wash);
@@ -146,12 +130,17 @@
     font-size: var(--fs-1);
     overflow-wrap: anywhere;
   }
+  /* One line of note; the whole note once the entry is picked. */
   .lg-replyopt-note {
     overflow: hidden;
     color: var(--ink);
     font-size: var(--fs-1);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .lg-replyopt:has(input:checked) .lg-replyopt-note {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .lg-replyask-acts {
     display: flex;
