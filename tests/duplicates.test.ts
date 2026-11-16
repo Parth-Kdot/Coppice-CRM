@@ -129,4 +129,33 @@ describe("lookalikePairs (Smart import's look-alikes)", () => {
     const items = [item("r2", "Lilly"), item("c1", "Eli Lilly", false), item("c2", "Lilly Labs", false)];
     expect(lookalikePairs(items, [], 1)).toHaveLength(1);
   });
+
+  test("compares rows with rows and with saved companies, never two saved companies", () => {
+    const items = [item("r2", "Lilly Labs North"), item("r3", "Lilly Labs"), item("c1", "Acme", false), item("c2", "Acme Labs West", false)];
+    expect(lookalikePairs(items, [], 100).map((p) => p.members.map((m) => m.key).join("+"))).toEqual(["r2+r3"]);
+  });
+
+  // The preview runs this against every saved company each time a file is picked or a column
+  // changes, so it has to stay fast on a big workspace (2,000 rows, 20,000 companies).
+  test.for([
+    ["realistic names", 0],
+    ["names over a small vocabulary", 400],
+  ] as const)("is fast on a big workspace: %s", ([, vocab]) => {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const words = Array.from({ length: vocab || 5000 }, (_, i) => `word${i}x`);
+    const suffixes = ["Labs", "Group", "Media", "Software", "Partners", "Health", "Foods", "Energy"];
+    const name = () =>
+      vocab ? [0, 1, 2].map(() => words[Math.floor(rnd() * vocab)]).join(" ") : `${words[Math.floor(rnd() * words.length)]} ${suffixes[Math.floor(rnd() * suffixes.length)]}`;
+    const items = [
+      ...Array.from({ length: 2000 }, (_, i) => item(`r${i + 2}`, name())),
+      ...Array.from({ length: 20000 }, (_, i) => item(`c${i}`, name(), false, `n${i}.example.com`)),
+    ];
+    const started = performance.now();
+    const pairs = lookalikePairs(items, [], 100);
+    expect(pairs.length).toBeLessThanOrEqual(100);
+    expect(pairs.every((p) => p.members.some((m) => m.isRow))).toBe(true);
+    // About 0.1 s here; the old pairwise check took 4.6 s on the small vocabulary.
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });

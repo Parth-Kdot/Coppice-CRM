@@ -8,7 +8,8 @@ import { PageHead } from "@/components/ledger/shared";
 import { Stepper } from "@/components/ledger/stepper";
 import { TemplatesSection } from "@/components/ledger/templates-section";
 import { isConfigured } from "@/lib/ai/client";
-import { AI_WINDOW_DAYS, aiUsage } from "@/lib/ai/run";
+import { AI_WINDOW_DAYS, aiUsageDetail } from "@/lib/ai/run";
+import { describeAiFailures, describeAiUsage } from "@/lib/ai/usage";
 import { requireMembershipOr404, roleLabel, type Role } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS } from "@/lib/validation";
@@ -58,8 +59,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           orderBy: { createdAt: "desc" },
         })
       : [],
-    aiUsage({ userId: me.userId, workspaceId }),
+    aiUsageDetail({ userId: me.userId, workspaceId }),
   ]);
+  const aiParts = ai.breakdown;
 
   const ids = <input type="hidden" name="workspaceId" value={workspaceId} />;
   const filled = ai.limit > 0 ? Math.min(METER_CELLS, Math.ceil((ai.used / ai.limit) * METER_CELLS)) : ai.used > 0 ? METER_CELLS : 0;
@@ -237,6 +239,11 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               <p className="lg-usage-line">
                 {ai.used} AI {ai.used === 1 ? "call" : "calls"} in the last {AI_WINDOW_DAYS} days, out of {ai.limit}.
               </p>
+              {aiParts.parts.length > 0 && (
+                <p className="lg-usage-detail">
+                  That is {describeAiUsage(aiParts)} {describeAiFailures(aiParts.failed)} Everyone in the workspace is counted. One Draft click uses two calls: one to write, one to check.
+                </p>
+              )}
               <div className="lg-meter" data-full={atLimit || undefined} aria-hidden="true">
                 {Array.from({ length: METER_CELLS }, (_, i) => (
                   <span key={i} data-on={i < filled || undefined} />

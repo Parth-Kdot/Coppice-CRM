@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import type { Prisma, Stage } from "@/generated/prisma/client";
 import type { ContactFields, CompanyFields } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
+import { findContained, loadSavedNames, type NameLookalike } from "@/lib/csv-contained";
 import { domainKey, groupLookAlikes, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import {
   companyFieldsSchema,
@@ -159,11 +160,22 @@ async function findGroups(tx: Tx, workspaceId: string, rows: CheckedRow[]): Prom
     ...keyed.map((k) => ({ ...k, id: `row:${k.row}`, name: "", website: null, archivedAt: null })),
   ];
   // A group matters if it has a row from the file and something else: another row or a company.
+  // Its reasons are only the ones a row shares: two saved companies that share a website don't
+  // make a row's group "same website".
+  const viaRow = (members: typeof items, reason: MatchReason) => {
+    const keyOf = (m: (typeof items)[number]) => (reason === "name" ? m.nameKey : m.domainKey);
+    const count = new Map<string, number>();
+    for (const m of members) {
+      const key = keyOf(m);
+      if (key) count.set(key, (count.get(key) ?? 0) + 1);
+    }
+    return members.some((m) => m.row !== null && (count.get(keyOf(m) ?? "") ?? 0) > 1);
+  };
   return groupLookAlikes(items)
     .map((g) => ({
       rows: g.members.flatMap((m) => (m.row === null ? [] : [m.row])).sort((a, b) => a - b),
       existing: g.members.flatMap((m) => (m.row === null ? [{ id: m.id, name: m.name, website: m.website, archived: m.archivedAt !== null }] : [])),
-      matchedOn: g.matchedOn,
+      matchedOn: g.matchedOn.filter((reason) => viaRow(g.members, reason)),
     }))
     .filter((g) => g.rows.length > 0)
     .sort((a, b) => a.rows[0] - b.rows[0]);
@@ -176,6 +188,8 @@ function defaultSkips(groups: DuplicateGroup[]): number[] {
   return groups.flatMap((g) => (g.existing.length > 0 ? g.rows : g.rows.slice(1))).sort((a, b) => a - b);
 }
 
+export type { NameLookalike } from "@/lib/csv-contained";
+
 export type ImportPreview = {
   headers: string[];
   mapping: ImportMapping;
@@ -185,12 +199,16 @@ export type ImportPreview = {
   // Every row that can't be imported, and why.
   errors: { row: number; messages: string[] }[];
   groups: DuplicateGroup[];
+  // Names inside other names, shown with the groups above; they suggest no skips.
+  contained: NameLookalike[];
   // Name and website of every row that's in a group, so the choices can say which row is which.
   labels: { row: number; name: string; website: string | null }[];
   defaultSkips: number[];
   // Existing companies shown as possible duplicates; sent back with the import, so a company
   // added in between is noticed instead of slipping through.
   seen: string[];
+  // The name of every row that can be imported, so the result can say which went in.
+  names: { row: number; name: string }[];
 };
 
 export const PREVIEW_ROWS = 10;
@@ -203,7 +221,12 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
   if (!checked.ok) return checked;
 
   const valid = checked.data.filter((r) => r.errors.length === 0);
-  const groups = await withTenant(tenant, (tx) => findGroups(tx, tenant.workspaceId, valid));
+  const { groups, saved } = await withTenant(tenant, async (tx) => ({
+    groups: await findGroups(tx, tenant.workspaceId, valid),
+    saved: valid.length > 0 ? await loadSavedNames(tx, tenant.workspaceId) : [],
+  }));
+  // Compared after the transaction has closed: it is plain code over every saved name.
+  const contained = findContained(valid, saved);
   const grouped = new Set(groups.flatMap((g) => g.rows));
   return {
     ok: true,
@@ -214,9 +237,11 @@ export async function previewImport(tenant: Tenant, text: string, mapping: Impor
       sample: checked.data.slice(0, PREVIEW_ROWS),
       errors: checked.data.filter((r) => r.errors.length > 0).map((r) => ({ row: r.row, messages: r.errors })),
       groups,
+      contained,
       labels: valid.filter((r) => grouped.has(r.row)).map((r) => ({ row: r.row, name: r.company.name, website: r.company.website ?? null })),
       defaultSkips: defaultSkips(groups),
       seen: groups.flatMap((g) => g.existing.map((c) => c.id)),
+      names: valid.map((r) => ({ row: r.row, name: r.company.name })),
     },
   };
 }

@@ -122,6 +122,48 @@
   }
 }
 
+/* Shared by lists that settle a decision and move on (components/ledger/motion.tsx). */
+/* An item leaving: it fades and slides left; .lg-exit then closes its height. */
+@keyframes lg-exit-slide {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+/* An item arriving or coming back: it rises into place. */
+@keyframes lg-enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* "Already set": a choice clicked again gives a small press and a ring that fades out. */
+@keyframes lg-ack-settle {
+  0% {
+    transform: scale(1);
+    outline-color: var(--moss-2);
+    outline-offset: 0;
+  }
+  35% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+    outline-color: transparent;
+    outline-offset: 5px;
+  }
+}
+
 /* ---------- Components ---------- */
 
 @layer components {
@@ -624,6 +666,33 @@
   .lg-disclose[data-open="true"] .lg-disclose-fade {
     opacity: 1;
     transition-delay: 60ms;
+  }
+
+  /* ---------- Leave and arrive (components/ledger/motion.tsx ExitCollapse) ---------- */
+  /* The slide plays first, then the row closes, so what is below moves up into the gap. */
+  .lg-exit {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows var(--dur-base) var(--ease-out);
+  }
+  .lg-exit > .lg-exit-inner {
+    min-height: 0;
+  }
+  .lg-exit[data-leaving] {
+    grid-template-rows: 0fr;
+    transition-delay: 160ms;
+  }
+  .lg-exit[data-leaving] > .lg-exit-inner {
+    overflow: hidden;
+    animation: lg-exit-slide var(--dur-base) var(--ease-out) forwards;
+  }
+  .lg-exit[data-entering] > .lg-exit-inner {
+    animation: lg-enter-rise var(--dur-base) var(--ease-out) both;
+  }
+  /* Any element can carry the settle (replayAck). */
+  [data-ack] {
+    outline: 2px solid transparent;
+    animation: lg-ack-settle 420ms var(--ease-out);
   }
 
   /* ---------- Marks ---------- */
