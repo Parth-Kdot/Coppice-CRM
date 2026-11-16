@@ -1,8 +1,9 @@
 import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { literal } from "@/lib/board";
-import { changeStage, claimCompany, dbNow, dbToday, heldBy, logOutreach } from "@/lib/claims";
-import { getCompanyPage } from "@/lib/companies";
+import { changeStage, claimCompany, dbNow, dbToday, forceRelease, heldBy, logOutreach, markReply, releaseClaim, setFollowUp } from "@/lib/claims";
+import { archiveCompany, createCompany, getCompanyPage, unarchiveCompany, updateCompany, type CompanyFields, type SaveResult } from "@/lib/companies";
+import { listDuplicateReview, markSeparate, resolveAsDuplicate } from "@/lib/company-pairs";
 import { filterClauses } from "@/lib/copilot/query";
 import { withTenant } from "@/lib/db";
 import { recentDrafts } from "@/lib/drafts";
@@ -12,13 +13,22 @@ import { latestBrief } from "@/lib/research/brief";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { workspaceRow } from "@/lib/workspaces";
 import {
+  companyFieldsSchema,
   MCP_LIST_LIMIT,
   type mcpChangeStageSchema,
   type mcpCompanySchema,
+  type mcpCreateCompanySchema,
   type mcpListCompaniesSchema,
+  type mcpListDuplicatePairsSchema,
   type mcpListMyClaimsSchema,
   type mcpLogOutreachSchema,
+  type mcpMarkReplySchema,
   type mcpQueueSchema,
+  type mcpReleaseClaimSchema,
+  type mcpResolveDuplicateSchema,
+  type mcpSetCompanyArchivedSchema,
+  type mcpSetFollowUpSchema,
+  type mcpUpdateCompanySchema,
 } from "@/lib/validation";
 import {
   BAD_CURSOR,
@@ -27,10 +37,12 @@ import {
   confirmNeededLater,
   decodeCursor,
   fail,
+  formCheck,
   fromResult,
   iso,
   moreFields,
   ok,
+  openCompany,
   openWorkspace,
   recordActivity,
   refusedBy,
@@ -39,8 +51,10 @@ import {
   type ToolResult,
 } from "./shared";
 
-// Group C, companies and claims: finding companies, reading one, the follow-up queue, and the
-// changes the app makes through lib/claims.ts (claim, log outreach, move a stage).
+// Group C, companies and claims: finding companies, reading one, the follow-up queue, look-alike
+// pairs, adding and editing a company, archiving, claims, outreach, replies, follow-ups and stages.
+// Changes go through lib/claims.ts, lib/companies.ts and lib/company-pairs.ts, the same functions
+// the app's actions call, so every rule the app keeps holds here too.
 
 const ORDER: Record<NonNullable<z.infer<typeof mcpListCompaniesSchema>["sort"]>, Prisma.CompanyOrderByWithRelationInput[]> = {
   name: [{ name: "asc" }, { id: "asc" }],
@@ -178,6 +192,8 @@ export async function getCompany(principal: McpPrincipal, args: z.infer<typeof m
             url: untrusted(i.url),
             accepted: i.accepted,
           })),
+          // Team inboxes the brief found (careers@ and the like), with the ids accept_brief_item takes.
+          inboxes: brief.inboxes.map((i) => ({ id: i.id, address: untrusted(i.email), url: untrusted(i.url), accepted: i.accepted })),
         }
       : null,
     yourRecentDrafts: drafts.map((d) => ({ id: d.id, kind: d.kind, angle: untrusted(d.angle), subject: untrusted(d.subject), body: untrusted(d.body), createdAt: iso(d.createdAt) })),
@@ -296,5 +312,175 @@ export async function changeStageTool(principal: McpPrincipal, args: z.infer<typ
     // Moving to the stage it is already at changes nothing, so it is not logged.
     if (data.changed) await recordActivity(principal, gate.member, { tool: "change_stage", action: "stage_changed", companyId: args.companyId });
     return ok({ changed: data.changed, from: data.fromStage, to: data.toStage });
+  });
+}
+
+// ----- The rest of Group C -----
+
+// Look-alikes, as the answer to a create or an edit that stopped to ask. Nothing was saved.
+function lookAlikes(result: Extract<SaveResult, { status: "possible-duplicates" }>): ToolResult {
+  return ok({
+    saved: false,
+    possibleDuplicates: result.matches.map((m) => ({ id: m.id, name: untrusted(m.name), website: untrusted(m.website), archived: m.archived, matchedOn: m.matchedOn })),
+    total: result.total,
+    next:
+      "Nothing was saved. Show the person these look-alikes. If one is the company they mean, work with it instead, and bring an archived one back with set_company_archived. " +
+      "Only after the person says these are different companies, call again with separateFrom set to these ids.",
+  });
+}
+
+const pairSide = (c: { id: string; name: string; website: string | null }) => ({ id: c.id, name: untrusted(c.name), website: untrusted(c.website) });
+
+export async function listDuplicatePairs(principal: McpPrincipal, args: z.infer<typeof mcpListDuplicatePairsSchema>): Promise<ToolResult> {
+  const offset = decodeCursor(args.cursor);
+  if (offset === null) return fail(BAD_CURSOR);
+  const gate = await openWorkspace(principal, args.workspaceId, "read");
+  if (gate.refused) return gate.refused;
+  // The pairs are found newest to oldest group by group, so a page asks for everything up to its end.
+  const pairs = await listDuplicateReview(gate.member, offset + MCP_LIST_LIMIT + 1);
+  return ok({
+    pairs: pairs.slice(offset, offset + MCP_LIST_LIMIT).map((p) => ({ a: pairSide(p.a), b: pairSide(p.b), matchedOn: p.matchedOn, suggestedKeepId: p.keepId })),
+    ...moreFields(pairs.length > offset + MCP_LIST_LIMIT, offset, MCP_LIST_LIMIT, "Resolve some pairs with resolve_duplicate first."),
+  });
+}
+
+export async function createCompanyTool(principal: McpPrincipal, args: z.infer<typeof mcpCreateCompanySchema>): Promise<ToolResult> {
+  const fields = formCheck(companyFieldsSchema, { name: args.name, industry: args.industry ?? null, website: args.website ?? null, notes: args.notes ?? null });
+  if (fields.refused) return fields.refused;
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const result = await createCompany(gate.member, fields.data, args.separateFrom ?? []);
+  if (result.status === "possible-duplicates") return lookAlikes(result);
+  if (result.status !== "saved") return fail("The company could not be saved.");
+  await recordActivity(principal, gate.member, { tool: "create_company", action: "added", companyId: result.companyId });
+  return ok({ saved: true, companyId: result.companyId });
+}
+
+const EDITABLE = ["name", "industry", "website", "notes"] as const;
+
+export async function updateCompanyTool(principal: McpPrincipal, args: z.infer<typeof mcpUpdateCompanySchema>): Promise<ToolResult> {
+  // The new values go through the app's own form schema (trimmed, an empty box is null). The old
+  // values are compared exactly as stored, so they are not trimmed.
+  const changes = formCheck(companyFieldsSchema.partial(), args.changes);
+  if (changes.refused) return changes.refused;
+  const named = EDITABLE.filter((f) => changes.data[f] !== undefined);
+  if (named.length === 0) return fail("Say what to change, in changes.");
+  for (const f of named) {
+    if (args.original[f] === undefined) return fail(`Send the current ${f} in original, exactly as get_company returned it.`);
+  }
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  const found = await openCompany(member, args.companyId);
+  if (found.refused) return found.refused;
+
+  // Fields the person did not name are the same on both sides, so the lib sees them as unchanged.
+  const next: CompanyFields = { name: "", industry: null, website: null, notes: null };
+  const old: CompanyFields = { ...next };
+  for (const f of named) {
+    const to = changes.data[f] ?? null;
+    const from = args.original[f] ?? null;
+    if (f === "name") {
+      next.name = to ?? "";
+      old.name = from ?? "";
+    } else {
+      next[f] = to;
+      old[f] = from || null;
+    }
+  }
+  const edit = { changes: next, original: old };
+  if (named.every((f) => (next[f] ?? null) === (old[f] ?? null))) return ok({ saved: true, changed: false, companyId: args.companyId });
+
+  const result = await updateCompany(member, args.companyId, edit, args.separateFrom ?? []);
+  return fromResult(result, async (data) => {
+    if (data.status === "possible-duplicates") return lookAlikes(data);
+    if (data.status === "conflict") {
+      return ok({
+        saved: false,
+        conflicts: data.conflicts.map((c) => ({ field: c.field, theirs: untrusted(c.theirs), yours: untrusted(c.yours) })),
+        next: "Nothing was saved. Someone changed this company after you read it. Show the person both values and ask what to keep, then read the company again with get_company.",
+      });
+    }
+    await recordActivity(principal, member, { tool: "update_company", action: "updated", companyId: args.companyId });
+    return ok({ saved: true, changed: true, companyId: args.companyId });
+  });
+}
+
+export async function setCompanyArchivedTool(principal: McpPrincipal, args: z.infer<typeof mcpSetCompanyArchivedSchema>): Promise<ToolResult> {
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  const found = await openCompany(member, args.companyId, { allowArchived: true });
+  if (found.refused) return found.refused;
+  // Already where the person wants it: nothing changes, so nothing is logged.
+  if ((found.company.archivedAt !== null) === args.archived) return ok({ archived: args.archived, changed: false });
+  const result = args.archived ? await archiveCompany(member, args.companyId) : await unarchiveCompany(member, args.companyId);
+  return fromResult(result, async () => {
+    await recordActivity(principal, member, { tool: "set_company_archived", action: args.archived ? "archived" : "unarchived", companyId: args.companyId });
+    return ok({ archived: args.archived, changed: true });
+  });
+}
+
+export async function resolveDuplicateTool(principal: McpPrincipal, args: z.infer<typeof mcpResolveDuplicateSchema>): Promise<ToolResult> {
+  if (args.decision === "same" && args.keepId !== args.companyId && args.keepId !== args.otherId) {
+    return fail("For same, send keepId: the id of the company to keep, companyId or otherId.");
+  }
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  if (args.decision === "separate") {
+    const result = await markSeparate(member, args.companyId, args.otherId);
+    return fromResult(result, async () => {
+      await recordActivity(principal, member, { tool: "resolve_duplicate", action: "kept_separate", companyId: args.companyId });
+      return ok({ decision: "separate", note: "Remembered. These two are no longer flagged as look-alikes." });
+    });
+  }
+  const archiveId = args.keepId === args.companyId ? args.otherId : args.companyId;
+  const result = await resolveAsDuplicate(member, args.keepId as string, archiveId);
+  return fromResult(result, async () => {
+    await recordActivity(principal, member, { tool: "resolve_duplicate", action: "archived_duplicate", companyId: archiveId });
+    return ok({ decision: "same", kept: args.keepId, archived: archiveId, note: "Nothing was merged: the archived company keeps its contacts and history. set_company_archived brings it back." });
+  });
+}
+
+export async function releaseClaimTool(principal: McpPrincipal, args: z.infer<typeof mcpReleaseClaimSchema>): Promise<ToolResult> {
+  const force = args.force === true;
+  const gate = await openWorkspace(principal, args.workspaceId, "action", { owner: force });
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  if (force && args.confirm !== true) {
+    return confirmNeededLater(principal, "release_claim", "Releasing someone else's claim lets anyone claim the company, and the person who held it is not told.");
+  }
+  const result = force ? await forceRelease(member, args.companyId) : await releaseClaim(member, args.companyId);
+  return fromResult(result, async () => {
+    await recordActivity(principal, member, { tool: "release_claim", action: force ? "force_released" : "released", companyId: args.companyId });
+    return ok({ released: true });
+  });
+}
+
+export async function markReplyTool(principal: McpPrincipal, args: z.infer<typeof mcpMarkReplySchema>): Promise<ToolResult> {
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  // Marking an entry that is already marked is fine and changes nothing, so it is not logged again.
+  const before = await withTenant(member, (tx) =>
+    tx.outreach.findFirst({ where: { id: args.outreachId, companyId: args.companyId, workspaceId: member.workspaceId }, select: { gotReply: true } }),
+  );
+  const result = await markReply(member, args.companyId, args.outreachId);
+  return fromResult(result, async () => {
+    if (!before?.gotReply) await recordActivity(principal, member, { tool: "mark_reply", action: "replied", companyId: args.companyId });
+    return ok({ marked: true });
+  });
+}
+
+export async function setFollowUpTool(principal: McpPrincipal, args: z.infer<typeof mcpSetFollowUpSchema>): Promise<ToolResult> {
+  const gate = await openWorkspace(principal, args.workspaceId, "action");
+  if (gate.refused) return gate.refused;
+  const { member } = gate;
+  // setFollowUp takes via but has no history row to write it on, so the activity row is the record.
+  const result = await setFollowUp(member, args.companyId, args.followUpOn, "ASSISTANT");
+  return fromResult(result, async (data) => {
+    await recordActivity(principal, member, { tool: "set_follow_up", action: "follow_up_set", companyId: args.companyId });
+    return ok({ followUpOn: args.followUpOn, nextFollowUpAt: iso(data.nextFollowUpAt) });
   });
 }

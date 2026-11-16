@@ -1,6 +1,7 @@
 import { CAPSULE_PRIVACY } from "@/lib/capsule/limits";
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
+import { AssistantActivityList } from "@/components/ledger/assistant-activity";
 import { Disclosure } from "@/components/ledger/disclosure";
 import { WarningIcon } from "@/components/ledger/icons";
 import { DeleteWorkspaceForm, InviteForm, MemberList, OpenFromHash, type MemberRow } from "@/components/ledger/invite-form";
@@ -17,6 +18,7 @@ import { day } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { AI_LIMIT_MAX, CLAIM_WINDOW_MAX_DAYS, CLAIM_WINDOW_MIN_DAYS, WORKSPACE_NAME_MAX } from "@/lib/limits";
 import { mcpResourceUrl } from "@/lib/mcp/config";
+import { ACTIVITY_SHOWN, listActivity } from "@/lib/mcp/activity-list";
 import { accessLabel, listConnections } from "@/lib/mcp/connections";
 import { listSources } from "@/lib/research/sources";
 import { toRole } from "@/lib/roles";
@@ -89,8 +91,14 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
     // Your own assistants only (lib/mcp/connections.ts): its three queries run one after the other.
     listConnections(me.userId),
   ]);
-  // aiUsageDetail makes two queries of its own.
-  const [ai, templates, ownerSources] = await Promise.all([aiUsageDetail(me), listTemplates(me), isOwner ? listSources(me) : null]);
+  // aiUsageDetail makes one query of its own besides the workspace row both rounds share; the activity
+  // list is one withTenant call, so neither round asks for more than four connections.
+  const [ai, templates, ownerSources, activity] = await Promise.all([
+    aiUsageDetail(me),
+    listTemplates(me),
+    isOwner ? listSources(me) : null,
+    listActivity(me, { aiOn: aiState(workspace.aiEnabled) === "on" }),
+  ]);
   // The running experiment's templates are locked in the list below (their text, and archiving them).
   const experiment = await getExperimentView(me);
   const state = aiState(ai.enabled);
@@ -276,8 +284,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               look into errors or abuse.
               Ask Coppice sends Groq your question, your last few questions in that conversation, the names of companies it just showed you, and the industry names your workspace uses,
               and Groq keeps them as described above. Notes, contacts and outreach history are not sent; answers are read from your workspace by code.
-              An AI assistant a member connects is separate (see AI assistants below): what it reads, contact names included, goes to
-              the company behind it.
+              An AI assistant a member connects is separate (see AI assistants below): what it reads, including contact names and emails, notes,
+              facts, templates and stats, goes to the company behind it, and Coppice&apos;s masking does not apply.
             </p>
             <p className="max-w-[66ch]">{CAPSULE_PRIVACY}</p>
           </Disclosure>
@@ -327,13 +335,17 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
           <div className="lg-set-mcp">
             <p className="max-w-[66ch]">
               Members can connect their own AI assistant (any that supports remote MCP servers) to read this workspace and, if they allow it,
-              claim companies, log outreach and move stages as them, marked &quot;via assistant&quot; in a company&apos;s history.
+              make changes as them: companies, contacts, claims, outreach, follow-ups, stages, imports and, for owners, facts, templates, research
+              pages, template experiments and the year-end handoff. It follows the same rules as the member. Permanent deletes need the member&apos;s
+              agreement, and an assistant cannot change members, roles, invitations, the claim window, the AI settings or this switch. Claims,
+              outreach and stage moves are marked &quot;via assistant&quot; in a company&apos;s history, and every change is listed below.
             </p>
             <p className="lg-mcp-privacy max-w-[66ch]">
               <WarningIcon size={16} />
               <span>
                 Everything an assistant reads here goes to the AI company behind it, under that company&apos;s terms: company names and
-                notes, contact names, emails and titles, and outreach notes. Coppice&apos;s own masking does not apply.
+                notes, contact names, emails and titles, outreach notes, members&apos; names, facts, templates, stats and handoff cards. Owners&apos;
+                assistants also get members&apos; emails and unverified facts. Coppice&apos;s own masking does not apply.
               </span>
             </p>
             <h3 className="lg-h3 mt-4">How to connect</h3>
@@ -396,6 +408,13 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
                 </ShowMore>
               </div>
             )}
+            <h3 className="lg-h3 mt-4" id="set-mcp-changes">
+              What assistants changed
+            </h3>
+            <p className="lg-hint max-w-[66ch]">
+              Every member sees this list, with each assistant&apos;s name. It shows the last {ACTIVITY_SHOWN} changes in this workspace, newest first.
+            </p>
+            <AssistantActivityList items={activity} />
             {isOwner ? (
               <ActionForm
                 action={updateMcpSettings}

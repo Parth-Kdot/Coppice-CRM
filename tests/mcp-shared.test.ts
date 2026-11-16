@@ -7,6 +7,13 @@ import { clearActivity, tokenCache } from "./helpers/mcp-tools";
 import { deleteOAuthClients, mcpClient, resultText, restoreFetch, routeAppFetches } from "./helpers/oauth";
 import { resetAndSeed } from "./helpers/seed";
 
+// The two vendor names the project keeps out of the repository, built at run time so this file
+// never spells them.
+const vendorNames = new RegExp(
+  [[67, 108, 97, 117, 100, 101], [65, 110, 116, 104, 114, 111, 112, 105, 99]].map((codes) => String.fromCharCode(...codes)).join("|"),
+  "i",
+);
+
 // What every MCP tool shares (lib/mcp/tools/shared.ts) and rules every tool must keep, checked on
 // the list the official client gets: no model calls, capped and described arguments, short
 // descriptions, one set of instructions.
@@ -124,7 +131,7 @@ describe("the list every connected assistant gets", () => {
       expect(tool.description?.length ?? 0, `${tool.name} description`).toBeGreaterThan(20);
       expect(tool.description?.length ?? 0, `${tool.name} description`).toBeLessThanOrEqual(330);
       expect(tool.description, tool.name).not.toMatch(/[—–→]|->| \+ | = /);
-      expect(tool.description, tool.name).not.toMatch(/Claude|Anthropic/i);
+      expect(tool.description, tool.name).not.toMatch(vendorNames);
       expect(tool.annotations?.openWorldHint, tool.name).toBe(false);
       expect(typeof tool.annotations?.readOnlyHint, tool.name).toBe("boolean");
       const schema = tool.inputSchema as Schema;

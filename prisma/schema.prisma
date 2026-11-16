@@ -1210,7 +1210,7 @@ model AssistantActivity {
   userId      String
   // The OAuth client (the assistant). Not a foreign key: a deleted client keeps its history.
   clientId    String?
-  // The MCP tool name, for example "archive_company".
+  // The MCP tool name, for example "set_company_archived".
   tool        String
   // What the tool did, one of a fixed list (checked in the migration): "added", "archived", ...
   action      String

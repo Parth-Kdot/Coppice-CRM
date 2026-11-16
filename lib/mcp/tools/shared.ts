@@ -1,7 +1,8 @@
+import type { z } from "zod";
 import { AuthzError, checkMembership, type Membership } from "@/lib/authz";
 import { claimState } from "@/lib/claims";
 import { prisma, withTenant } from "@/lib/db";
-import { OWNERS_ONLY } from "@/lib/messages";
+import { COMPANY_ARCHIVED, notFoundMessage, OWNERS_ONLY } from "@/lib/messages";
 import { WRITE_SCOPE } from "@/lib/mcp/config";
 import type { ActivityAction } from "@/lib/mcp/activity";
 import { MCP_LIMITS, returnMcpCall, takeMcpCall, type McpCallKind } from "@/lib/mcp/rate-limit";
@@ -67,7 +68,7 @@ export async function guarded(run: () => Promise<ToolResult>): Promise<ToolResul
 
 export const NOT_A_MEMBER = "Workspace not found, or you are not a member of it. Use list_workspaces to see the ones you can reach.";
 export const MCP_OFF = "Assistants are turned off for this workspace. An owner can turn them on in Coppice, under Settings.";
-export const READ_ONLY = "This connection can only read. To claim, log outreach or move stages, reconnect your assistant and allow changes.";
+export const READ_ONLY = "This connection can only read. To make changes as you, reconnect your assistant and allow changes.";
 
 export async function limited(principal: McpPrincipal, kind: McpCallKind): Promise<ToolResult | null> {
   const result = await takeMcpCall(principal.userId, kind);
@@ -159,6 +160,32 @@ export async function recordActivity(principal: McpPrincipal, member: Membership
   } catch (error) {
     console.error("MCP activity not recorded", error);
   }
+}
+
+// ----- The app's own rules, run inside a tool -----
+
+// Runs one of the app's form schemas (companyFieldsSchema, contactFieldsSchema and the like) over
+// what the assistant sent and gives back its output: trimmed, with an empty box as null, exactly
+// what the app's form would have saved. The first problem comes back as the refusal, in the app's
+// own words. The tool schemas hold no transforms, so this is where the trimming happens.
+export function formCheck<S extends z.ZodType>(schema: S, input: unknown): { data: z.output<S>; refused?: undefined } | { refused: ToolResult } {
+  const parsed = schema.safeParse(input);
+  return parsed.success ? { data: parsed.data } : { refused: fail(parsed.error.issues[0].message) };
+}
+
+// A company the tool is about to change, read inside withTenant (so row-level security applies):
+// a missing company, or one in another workspace, is "Company not found."; an archived one is
+// refused with the sentence the app uses, so nothing about it changes until it is unarchived.
+export async function openCompany(member: Membership, companyId: string, options: { allowArchived?: boolean } = {}) {
+  const company = await withTenant(member, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, workspaceId: member.workspaceId },
+      select: { id: true, name: true, industry: true, website: true, notes: true, stage: true, archivedAt: true, claimedById: true, claimExpiresAt: true },
+    }),
+  );
+  if (!company) return { refused: fail(notFoundMessage("Company")) };
+  if (company.archivedAt && !options.allowArchived) return { refused: fail(COMPANY_ARCHIVED) };
+  return { company };
 }
 
 // ----- Lists -----

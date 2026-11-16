@@ -3,9 +3,9 @@ import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { clamped, keptItems } from "@/lib/ai/schema";
 import { domainKey } from "@/lib/duplicates";
 import { placeholderProblem } from "@/lib/placeholders";
-import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
+import { parseSourceUrl, SKIP_MESSAGES, SOURCE_URL_MAX } from "@/lib/research/urls";
 import { MCP_SCOPES } from "@/lib/mcp/config";
-import { ARCHIVE_QUESTION_MAX, ARCHIVE_QUESTION_MIN, CARD_MAX_CALLS } from "@/lib/capsule/limits";
+import { ARCHIVE_QUESTION_MAX, ARCHIVE_QUESTION_MIN, BULLETS_PER_CARD, CARD_MAX_CALLS } from "@/lib/capsule/limits";
 import {
   AI_LIMIT_MAX,
   BOARD_QUERY_MAX,
@@ -62,6 +62,9 @@ export type { BoardFilters, ImportField, StageName } from "@/lib/limits";
 // instead of a message. Every free-text field refuses it up front.
 const NUL_MESSAGE = "This text has a character Coppice can't save.";
 const hasNoNul = (v: string | null) => v === null || !v.includes("\0");
+// For text an assistant sends. JSON can carry a lone UTF-16 surrogate (\ud800), which Postgres
+// quietly stores as U+FFFD, so that text is refused too instead of being saved changed.
+const hasStorableText = (v: string | null) => hasNoNul(v) && (v === null || v.isWellFormed());
 
 // Every server action parses its input with one of these before touching the database.
 
@@ -75,7 +78,7 @@ const workspaceName = z
 export const createWorkspaceSchema = z.object({ name: workspaceName });
 
 // Our ids are 25 to 36 characters. The cap stops anyone sending megabytes into a lookup.
-const id = z.string().min(1).max(64);
+const id = z.string().min(1).max(64).refine(hasStorableText, NUL_MESSAGE);
 // An id a form may leave empty: "" or missing means none.
 const optionalId = z.string().max(64).nullish().transform((v) => v || null);
 const EMAIL_MESSAGE = "Enter a valid email address.";
@@ -396,6 +399,12 @@ export const freshLeadsSchema = z.object({
 // Which column (by position) fills each field; null leaves it empty. Name is required, and a
 // column can only fill one field.
 const column = z.number().int().min(0).max(IMPORT_MAX_COLUMNS - 1);
+// Each column fills at most one field. Shared with the MCP import tools, whose schema describes each field.
+const eachColumnOnce = (m: Record<string, number | null>) => {
+  const used = Object.values(m).filter((c) => c !== null);
+  return new Set(used).size === used.length;
+};
+const EACH_COLUMN_ONCE = "Each column can only fill one field.";
 export const importMappingSchema = z
   .object({
     name: column,
@@ -405,10 +414,7 @@ export const importMappingSchema = z
     contactName: column.nullable(),
     contactEmail: column.nullable(),
   })
-  .refine((m) => {
-    const used = Object.values(m).filter((c) => c !== null);
-    return new Set(used).size === used.length;
-  }, "Each column can only fill one field.");
+  .refine(eachColumnOnce, EACH_COLUMN_ONCE);
 export type ImportMapping = z.infer<typeof importMappingSchema>;
 
 // A form field holding JSON, parsed and then checked against `schema`.
@@ -600,7 +606,7 @@ const mcpWorkspace = id.describe("The workspace's id, from list_workspaces.");
 const mcpCompany = id.describe("The company's id, from list_companies or get_follow_up_queue.");
 
 // Free text from an assistant: capped, and without the NUL character Postgres can't store.
-export const mcpText = (max: number, description: string) => z.string().max(max).refine(hasNoNul, NUL_MESSAGE).describe(description);
+export const mcpText = (max: number, description: string) => z.string().max(max).refine(hasStorableText, NUL_MESSAGE).describe(description);
 // An id from another tool's answer, with the name of the tool it comes from.
 export const mcpId = (description: string) => id.describe(description);
 // Asked for as true after the person agrees, for anything that deletes or can't be undone.
@@ -622,7 +628,7 @@ export const mcpListCompaniesSchema = z.object({
     .string()
     .trim()
     .max(100)
-    .refine(hasNoNul, NUL_MESSAGE)
+    .refine(hasStorableText, NUL_MESSAGE)
     .optional()
     .describe("Text to find in the company's name, website or industry. Leave out to list companies by name."),
   stage: z.enum(Stage).optional().describe("Only companies at this stage."),
@@ -653,7 +659,7 @@ export const mcpLogOutreachSchema = z.object({
   workspaceId: mcpWorkspace,
   companyId: mcpCompany,
   channel: z.enum(Channel).describe("How you reached out."),
-  note: z.string().trim().max(NOTE_MAX).refine(hasNoNul, NUL_MESSAGE).optional().describe("A short note on what was said."),
+  note: z.string().trim().max(NOTE_MAX).refine(hasStorableText, NUL_MESSAGE).optional().describe("A short note on what was said."),
   followUpOn: z.iso.date().describe("When to follow up, as YYYY-MM-DD: from today to a year out."),
   clientKey: z
     .uuid()
@@ -670,6 +676,162 @@ export const mcpChangeStageSchema = z.object({
     .boolean()
     .optional()
     .describe("Required as true for COMMITTED or DECLINED, which end the pitch and release the claim. Ask the person first."),
+});
+
+// ----- Group C, the rest: duplicates, creating and editing companies, archive, claims, replies -----
+
+export const mcpListDuplicatePairsSchema = z.object({ workspaceId: mcpWorkspace, cursor: mcpCursor });
+
+const mcpSeparateFrom = z
+  .array(mcpId("A look-alike's id, from the answer of this tool's last call."))
+  .max(20)
+  .optional()
+  .describe("Look-alikes the person said are different companies, by id from the last answer. Send only after the person agrees.");
+
+export const mcpCreateCompanySchema = z.object({
+  workspaceId: mcpWorkspace,
+  name: mcpText(COMPANY_LIMITS.name, "The company's name."),
+  industry: mcpText(COMPANY_LIMITS.industry, "Its industry. Leave out if unknown.").optional(),
+  website: mcpText(COMPANY_LIMITS.website, "Its website, like acme.com or https://acme.com. Leave out if unknown.").optional(),
+  notes: mcpText(COMPANY_LIMITS.notes, "Notes about the company. Leave out if there are none.").optional(),
+  separateFrom: mcpSeparateFrom,
+});
+
+// A text field of an edit: a string, or null to clear industry, website or notes.
+const mcpClearable = (max: number, description: string) => z.string().max(max).refine(hasStorableText, NUL_MESSAGE).nullable().optional().describe(description);
+export const mcpUpdateCompanySchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  changes: z
+    .object({
+      name: mcpText(COMPANY_LIMITS.name, "The new name.").optional(),
+      industry: mcpClearable(COMPANY_LIMITS.industry, "The new industry, or null to clear it."),
+      website: mcpClearable(COMPANY_LIMITS.website, "The new website, or null to clear it."),
+      notes: mcpClearable(COMPANY_LIMITS.notes, "The new notes in full, or null to clear them. This replaces the old notes."),
+    })
+    .describe("Only the fields the person asked to change."),
+  original: z
+    .object({
+      name: mcpClearable(COMPANY_LIMITS.notes, "The name as get_company returned it, unchanged."),
+      industry: mcpClearable(COMPANY_LIMITS.notes, "The industry as get_company returned it, null if it had none."),
+      website: mcpClearable(COMPANY_LIMITS.notes, "The website as get_company returned it, null if it had none."),
+      notes: mcpClearable(COMPANY_LIMITS.notes, "The notes as get_company returned them, null if there were none."),
+    })
+    .describe("The current value of every field in changes, exactly as get_company returned it. If someone changed it since, nothing is saved."),
+  separateFrom: mcpSeparateFrom,
+});
+
+export const mcpSetCompanyArchivedSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  archived: z.boolean().describe("true to archive the company, false to bring it back."),
+});
+
+export const MCP_DUPLICATE_DECISIONS = ["same", "separate"] as const;
+export const mcpResolveDuplicateSchema = z.object({
+  workspaceId: mcpWorkspace,
+  decision: z.enum(MCP_DUPLICATE_DECISIONS).describe("same: they are one company, so one is archived. separate: they are different companies."),
+  companyId: mcpCompany,
+  otherId: mcpId("The other company of the pair, from list_duplicate_pairs."),
+  keepId: mcpId("For same: the company to keep, companyId or otherId. The other one is archived.").optional(),
+});
+
+export const mcpReleaseClaimSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  force: z.boolean().optional().describe("Owners only: release someone else's claim. Needs confirm."),
+  confirm: mcpConfirm("Required as true with force, after the person agrees."),
+});
+
+export const mcpMarkReplySchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  outreachId: mcpId("The outreach entry that got the reply, from get_company."),
+});
+
+export const mcpSetFollowUpSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  followUpOn: z.iso.date().describe("The next follow-up date as YYYY-MM-DD: from today to a year out."),
+});
+
+// ----- Group P, contacts -----
+
+export const mcpSaveContactSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  contactId: mcpId("The contact to change, from get_company. Leave out to add a new contact.").optional(),
+  name: mcpText(CONTACT_LIMITS.name, "The contact's name. Required for a new contact; left out on a change it stays as it is.").optional(),
+  email: mcpText(254, "Their email address. On a change, leave out to keep it or send an empty string to clear it.").optional(),
+  title: mcpText(CONTACT_LIMITS.title, "Their job title. On a change, leave out to keep it or send an empty string to clear it.").optional(),
+});
+
+export const MCP_DELETE_KINDS = ["contact", "fact", "fact_sheet"] as const;
+export const mcpDeletePermanentlySchema = z.object({
+  workspaceId: mcpWorkspace,
+  what: z.enum(MCP_DELETE_KINDS).describe("contact (any member), fact or fact_sheet (an uploaded packet with its facts; owners only)."),
+  id: mcpId("The contact's id from get_company, the fact's id or the file's id from list_facts."),
+  confirm: mcpConfirm("Required as true, after the person agrees. This cannot be undone."),
+});
+
+// ----- Group K, knowledge: facts, templates, emails, research sources, brief items -----
+
+export const mcpListFactsSchema = z.object({ workspaceId: mcpWorkspace, cursor: mcpCursor });
+
+export const mcpSaveFactSchema = z.object({
+  workspaceId: mcpWorkspace,
+  factId: mcpId("The fact to change, from list_facts. Leave out to add a new fact.").optional(),
+  text: mcpText(FACT_MAX, "The fact as one short sentence about the organization. No email addresses or phone numbers."),
+});
+
+export const mcpSetFactVerifiedSchema = z.object({
+  workspaceId: mcpWorkspace,
+  factId: mcpId("The fact's id, from list_facts."),
+  verified: z.boolean().describe("true to verify the fact, false to take the verified mark off."),
+  confirm: mcpConfirm("Required as true to verify, after the person agrees. Verified facts can reach sponsors."),
+});
+
+export const mcpListTemplatesSchema = z.object({ workspaceId: mcpWorkspace, cursor: mcpCursor });
+
+export const mcpSaveTemplateSchema = z.object({
+  workspaceId: mcpWorkspace,
+  templateId: mcpId("The template to change, from list_templates. Leave out to add a new template.").optional(),
+  name: mcpText(TEMPLATE_LIMITS.name, "The template's name. It must be unique in the workspace."),
+  body: mcpText(TEMPLATE_LIMITS.body, "The email text. It may only use the placeholders {{firstName}}, {{senderName}} and {{orgName}}."),
+});
+
+export const mcpSetTemplateArchivedSchema = z.object({
+  workspaceId: mcpWorkspace,
+  templateId: mcpId("The template's id, from list_templates."),
+  archived: z.boolean().describe("true to archive the template, false to bring it back."),
+});
+
+export const mcpPrepareEmailSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  templateId: mcpId("An active template to fill in, from list_templates. Send this or text, not both.").optional(),
+  contactId: mcpId("The contact to greet, from get_company. Must belong to this company.").optional(),
+  text: mcpText(TEMPLATE_LIMITS.body, "Your own email text to check instead of a template. It may use {{firstName}}, {{senderName}} and {{orgName}}.").optional(),
+});
+
+export const mcpSaveResearchSourceSchema = z.object({
+  workspaceId: mcpWorkspace,
+  sourceId: mcpId("The source to rename, from list_research_sources. Leave out to add a new source.").optional(),
+  url: mcpText(SOURCE_URL_MAX, "The page's address for a new source, like https://acme.com/careers. A source's address cannot be changed.").optional(),
+  label: mcpText(SOURCE_LABEL_MAX, "The source's label. Required to rename; optional for a new source.").optional(),
+});
+
+export const mcpSetResearchSourceArchivedSchema = z.object({
+  workspaceId: mcpWorkspace,
+  sourceId: mcpId("The source's id, from list_research_sources."),
+  archived: z.literal(true).describe("Always true. A source cannot be brought back; add its address again instead."),
+});
+
+export const mcpAcceptBriefItemSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  briefId: mcpId("The brief's id, from get_company."),
+  itemId: mcpText(40, "The brief item's id, or a team inbox's id, from get_company."),
 });
 
 // Settings > AI assistants: Disconnect one of your own assistants (lib/mcp/connections.ts). The
@@ -902,4 +1064,153 @@ export const askArchiveSchema = z.object({
 // Anything else is dropped, and the page opens on a year it can show.
 export const capsulePageSchema = z.object({
   year: z.coerce.number().int().min(2000).max(2200).nullable().catch(null),
+});
+
+// ----- MCP tools, continued: stats, the handoff and import -----
+// These come after the Template Lab and Time Capsule schemas above, whose limits they reuse.
+
+// ----- Group S, stats and the Template Lab -----
+
+export const MCP_STATS_SPLITS = ["industry", "touch"] as const;
+export const mcpGetStatsSchema = z.object({
+  workspaceId: mcpWorkspace,
+  by: z.enum(MCP_STATS_SPLITS).optional().describe("Also split each template's numbers by industry or by touch number. Leave out for the plain table."),
+});
+
+const mcpVariantSchema = z.object({
+  kind: z.enum(VARIANT_KINDS).describe("What the variant changes: opening, ask, closing or shorter."),
+  summary: mcpText(LAB_SUMMARY_MAX, `What changed and why it might help, at most ${LAB_SUMMARY_MAX} characters.`),
+  body: mcpText(TEMPLATE_LIMITS.body, "The whole template text with exactly one change. Plain text, no email addresses or phone numbers."),
+});
+export const mcpStartExperimentSchema = z.object({
+  workspaceId: mcpWorkspace,
+  templateId: mcpId("The active template to test, from list_templates. It becomes version A."),
+  variants: z.array(mcpVariantSchema).min(1).max(2).describe("One or two variants you wrote, each the template with one change."),
+  confirm: mcpConfirm("Required as true, after the person agrees. The variants become templates the whole team sees."),
+});
+export const mcpEndExperimentSchema = z.object({
+  workspaceId: mcpWorkspace,
+  experimentId: mcpId("The running experiment's id, from get_stats."),
+  keepTemplateId: mcpId("The template to keep, one of the experiment's templates from get_stats. The others are archived."),
+  confirm: mcpConfirm("Required as true, after the person agrees. An experiment cannot be restarted."),
+});
+
+// ----- Group H, the year-end handoff -----
+
+const mcpReport = mcpId("The handoff's id, from get_handoff or start_handoff.");
+const mcpBoardYear = z.number().int().min(2000).max(2100);
+const mcpBoardYearField = mcpBoardYear.optional().describe("The year a board year starts in, such as 2026 for 2026-27. Leave out for the current board year.");
+export const MCP_RECONTACT_DATES_MAX = 200;
+export const MCP_CARD_BULLET_MAX = BULLETS_PER_CARD - 1;
+
+export const mcpGetHandoffSchema = z.object({ workspaceId: mcpWorkspace, boardYearStart: mcpBoardYearField, cursor: mcpCursor });
+export const mcpSetDepartingSchema = z.object({
+  workspaceId: mcpWorkspace,
+  userId: mcpId("The member's user id, from list_members (owners get it)."),
+  departing: z.boolean().describe("true to mark the member as leaving next year's board, false to clear the mark. Nobody loses access."),
+});
+export const mcpReleaseDepartingClaimsSchema = z.object({
+  workspaceId: mcpWorkspace,
+  confirm: mcpConfirm("Required as true, after the person agrees. It gives back every claim held by members marked as leaving."),
+});
+export const mcpStartHandoffSchema = z.object({ workspaceId: mcpWorkspace, boardYearStart: mcpBoardYearField });
+export const mcpBuildHandoffCardsSchema = z.object({
+  workspaceId: mcpWorkspace,
+  reportId: mcpReport,
+  confirm: mcpConfirm("Required as true while AI is on for the workspace, after the person agrees."),
+});
+export const mcpReviewHandoffCardSchema = z.object({
+  workspaceId: mcpWorkspace,
+  cardId: mcpId("The card's id, from get_handoff."),
+  bulletIndex: z.number().int().min(0).max(MCP_CARD_BULLET_MAX).optional().describe("Which bullet of the card (its index from get_handoff). Leave out for the whole card."),
+  hidden: z.boolean().optional().describe("true to hide it from officers, false to show it again. Applied before approve."),
+  approve: z.literal(true).optional().describe("true to approve the card so officers see it once the handoff is published. A hidden card cannot be approved."),
+});
+export const mcpApproveRemainingCardsSchema = z.object({
+  workspaceId: mcpWorkspace,
+  reportId: mcpReport,
+  confirm: mcpConfirm("Required as true, after the person agrees. It approves every card that is not hidden without a card-by-card review."),
+});
+export const mcpSaveRecontactDatesSchema = z.object({
+  workspaceId: mcpWorkspace,
+  reportId: mcpReport,
+  dates: z
+    .array(
+      z.object({
+        companyId: mcpCompany,
+        date: z.iso.date().nullable().describe("The re-contact date as YYYY-MM-DD, from today to a year out, or null to blank it."),
+      }),
+    )
+    .min(1)
+    .max(MCP_RECONTACT_DATES_MAX)
+    .describe(`Dates for companies with an approved card, at most ${MCP_RECONTACT_DATES_MAX}.`),
+});
+export const mcpFillBlankDatesSchema = z.object({
+  workspaceId: mcpWorkspace,
+  reportId: mcpReport,
+  date: z.iso.date().describe("The date to give every approved card that has none, as YYYY-MM-DD: from today to a year out."),
+});
+export const mcpApplyHandoffCalendarSchema = z.object({
+  workspaceId: mcpWorkspace,
+  reportId: mcpReport,
+  confirm: mcpConfirm("Required as true, after the person agrees. It overwrites the follow-up dates of many companies and the old dates are not kept."),
+});
+export const mcpReopenForNextYearSchema = z.object({
+  workspaceId: mcpWorkspace,
+  cardId: mcpId("The approved card of a Committed company, from get_handoff."),
+  confirm: mcpConfirm("Required as true, after the person agrees. It moves a closed deal back to Contacted."),
+});
+export const mcpSetHandoffPublishedSchema = z.object({
+  workspaceId: mcpWorkspace,
+  reportId: mcpReport,
+  published: z.boolean().describe("true to publish the handoff to every member, false to take it back to a draft."),
+  confirm: mcpConfirm("Required as true to publish, after the person agrees."),
+});
+
+// ----- Group I, CSV import -----
+
+// The request body limit (64 KB of bytes, lib/mcp/handler.ts) counts what is sent, so the CSV is
+// capped by its size once written as JSON text: accents take two or three bytes and line breaks
+// and quotes take two. The seen list gets its own byte cap, and with at most IMPORT_MAX_ROWS skip
+// numbers (7 bytes each at most) the three always fit under the limit.
+export const MCP_IMPORT_CSV_MAX = 36_000;
+export const MCP_IMPORT_SEEN_MAX_BYTES = 12_000;
+const jsonBytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
+const SPLIT_MESSAGE = "This is too much to send in one call. Split a bigger file and import each part.";
+const mcpImportColumn = (what: string) => column.describe(`The column (0 is the first) holding ${what}.`);
+const mcpImportOptionalColumn = (what: string) => column.nullable().describe(`The column (0 is the first) holding ${what}, or null for none.`);
+export const mcpImportMappingSchema = z
+  .object({
+    name: mcpImportColumn("the company name"),
+    industry: mcpImportOptionalColumn("the industry"),
+    website: mcpImportOptionalColumn("the website"),
+    notes: mcpImportOptionalColumn("the notes"),
+    contactName: mcpImportOptionalColumn("the contact's name"),
+    contactEmail: mcpImportOptionalColumn("the contact's email"),
+  })
+  .refine(eachColumnOnce, EACH_COLUMN_ONCE)
+  .describe("Which column fills which field. Each column can fill one field.");
+const mcpImportCsv = z
+  .string()
+  .min(1)
+  .max(MCP_IMPORT_CSV_MAX)
+  .refine(hasStorableText, NUL_MESSAGE)
+  .refine((v) => jsonBytes(v) <= MCP_IMPORT_CSV_MAX, SPLIT_MESSAGE)
+  .describe("The CSV text with a header row. At most about 35,000 characters, fewer with accents, quotes or many short lines. Split a bigger file and import each part.");
+export const mcpPreviewImportSchema = z.object({
+  workspaceId: mcpWorkspace,
+  csv: mcpImportCsv,
+  mapping: mcpImportMappingSchema.optional().describe("Which column fills which field. Leave out to let Coppice guess from the header row."),
+});
+export const mcpRunImportSchema = z.object({
+  workspaceId: mcpWorkspace,
+  csv: mcpImportCsv,
+  mapping: mcpImportMappingSchema,
+  skip: z.array(z.number().int().min(2).max(100_000)).max(IMPORT_MAX_ROWS).describe("Row numbers to leave out (row 1 is the header), from the preview's defaultSkips or the person's choices."),
+  seen: z
+    .array(mcpId("A company id from the preview's seen list."))
+    .max(IMPORT_MAX_ROWS)
+    .refine((v) => jsonBytes(v) <= MCP_IMPORT_SEEN_MAX_BYTES, SPLIT_MESSAGE)
+    .describe("The preview's seen list, sent back unchanged."),
+  confirm: mcpConfirm("Required as true, after the person agrees. Companies are added to the shared board and there is no bulk undo."),
 });

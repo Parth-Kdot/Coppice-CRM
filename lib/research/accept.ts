@@ -1,7 +1,7 @@
 import { AI_OFF_MESSAGE, aiUsage } from "@/lib/ai/run";
 import { updateCompany } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
-import { notFound } from "@/lib/messages";
+import { COMPANY_ARCHIVED, notFound } from "@/lib/messages";
 import { loadBrief, type BriefView } from "@/lib/research/brief";
 import { DOOR_LABELS } from "@/lib/research/doors";
 import { COMPANY_LIMITS, type ActionResult } from "@/lib/validation";
@@ -37,7 +37,7 @@ export async function acceptBriefItem(tenant: Tenant, companyId: string, briefId
     tx.company.findFirst({ where: { id: companyId, workspaceId: tenant.workspaceId }, select: { name: true, industry: true, website: true, notes: true, archivedAt: true } }),
   );
   if (!company) return notFound("Company");
-  if (company.archivedAt) return { ok: false, error: "This company is archived. Unarchive it first." };
+  if (company.archivedAt) return { ok: false, error: COMPANY_ARCHIVED };
 
   const original = { name: company.name, industry: company.industry, website: company.website, notes: company.notes };
   if (!(original.notes ?? "").includes(line)) {

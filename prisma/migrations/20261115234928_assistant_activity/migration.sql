@@ -38,7 +38,7 @@ ALTER TABLE "AssistantActivity" ADD CONSTRAINT "AssistantActivity_userId_fkey" F
 ALTER TABLE "AssistantActivity" ADD CONSTRAINT "AssistantActivity_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- What the tool did, from a fixed list, so a row can never hold free text. The Settings line is
--- built from the pair (tool, action) by one table in lib/mcp/tools/shared.ts, which a test keeps
+-- built from the pair (tool, action) by one table in lib/mcp/activity.ts, which a test keeps
 -- equal to this list. A new key needs a new migration.
 ALTER TABLE "AssistantActivity" ADD CONSTRAINT "AssistantActivity_action_check" CHECK ("action" IN (
   'added', 'updated', 'archived', 'unarchived', 'claimed', 'released', 'force_released', 'logged',
@@ -60,7 +60,7 @@ ALTER TABLE "AssistantActivity" ADD CONSTRAINT "AssistantActivity_lengths_check"
 -- Every member of the workspace can read the rows. A row can only be added by the member it is
 -- about (userId is the signed-in person), and its company, when set, must be in the same workspace
 -- (the company link is a plain key so a deleted company can clear it, so the policy checks it).
--- Deleting a workspace or a person's company still clears the rows through the foreign keys.
+-- Deleting a workspace removes its rows through the foreign key; deleting a company only clears the row's company.
 -- =============================================================================================
 GRANT SELECT, INSERT ON "AssistantActivity" TO app_user;
 REVOKE UPDATE, DELETE ON "AssistantActivity" FROM app_user;

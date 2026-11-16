@@ -58,6 +58,23 @@ export const ACTIVITY_PHRASES: Record<"fact" | "fact_sheet" | "card" | "report" 
   experiment: "an experiment",
 };
 
+// The noun in front of a name that is not a company's, so a line reads "added the template Alumni
+// angle" while one whose target is gone reads "added a template" (ACTIVITY_GONE_PHRASES).
+export const ACTIVITY_NAME_PREFIX: Record<"contact" | "template" | "source", string> = {
+  contact: "the contact ",
+  template: "the template ",
+  source: "the research source ",
+};
+
+// What a line says when the company, contact, template or research source it was about is gone, or
+// when the person looking may not see its name. Never a name, so nothing typed is shown.
+export const ACTIVITY_GONE_PHRASES: Record<"company" | "contact" | "template" | "source", string> = {
+  company: "a company",
+  contact: "a contact",
+  template: "a template",
+  source: "a research source",
+};
+
 type Line = { verb: string; target: ActivityTarget };
 const line = (verb: string, target: ActivityTarget): Line => ({ verb, target });
 
@@ -75,7 +92,7 @@ export const ACTIVITY_LINES: Record<string, Partial<Record<ActivityAction, Line>
   release_claim: { released: line("released the claim on", "company"), force_released: line("released someone else's claim on", "company") },
   mark_reply: { replied: line("marked a reply from", "company") },
   set_follow_up: { follow_up_set: line("set a follow-up date for", "company") },
-  save_contact: { added: line("added a contact:", "contact"), updated: line("edited the contact", "contact") },
+  save_contact: { added: line("added", "contact"), updated: line("edited", "contact") },
   delete_permanently: {
     deleted_contact: line("deleted", "contact"),
     deleted_fact: line("deleted", "fact"),
@@ -83,10 +100,10 @@ export const ACTIVITY_LINES: Record<string, Partial<Record<ActivityAction, Line>
   },
   save_fact: { added: line("added", "fact"), updated: line("edited", "fact") },
   set_fact_verified: { verified: line("verified", "fact"), unverified: line("took the verified mark off", "fact") },
-  save_template: { added: line("added the template", "template"), updated: line("edited the template", "template") },
-  set_template_archived: { archived: line("archived the template", "template"), unarchived: line("unarchived the template", "template") },
-  save_research_source: { added: line("added the research source", "source"), updated: line("renamed the research source", "source") },
-  set_research_source_archived: { archived: line("archived the research source", "source") },
+  save_template: { added: line("added", "template"), updated: line("edited", "template") },
+  set_template_archived: { archived: line("archived", "template"), unarchived: line("unarchived", "template") },
+  save_research_source: { added: line("added", "source"), updated: line("renamed", "source") },
+  set_research_source_archived: { archived: line("archived", "source") },
   accept_brief_item: { updated: line("added a research item to the notes of", "company") },
   start_experiment: { started: line("started", "experiment") },
   end_experiment: { ended: line("ended", "experiment") },
@@ -99,7 +116,7 @@ export const ACTIVITY_LINES: Record<string, Partial<Record<ActivityAction, Line>
   save_recontact_dates: { dates_saved: line("saved re-contact dates in", "report") },
   fill_blank_dates: { dates_filled: line("filled the blank re-contact dates in", "report") },
   apply_handoff_calendar: { calendar_applied: line("applied the re-contact dates of", "report") },
-  reopen_for_next_year: { reopened: line("reopened for next year", "company") },
+  reopen_for_next_year: { reopened: line("reopened for next year:", "company") },
   set_handoff_published: { published: line("published", "report"), unpublished: line("unpublished", "report") },
   run_import: { imported: line("ran", "import") },
 };

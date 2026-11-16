@@ -1,8 +1,10 @@
 // Settings shared by the auth config (lib/auth.ts), the MCP route (app/api/mcp) and the pages
 // that explain it. Kept apart from lib/auth.ts so pages can import them without loading auth.
 
-// What an assistant can ask for. coppice:read lets it look at the workspaces you turned MCP on
-// for; coppice:write also lets it claim companies, log outreach and move stages as you. The
+// What an assistant can ask for. coppice:read lets it look at the workspaces that allow assistants,
+// as you can see them; coppice:write also lets it make changes as you (companies, contacts, claims,
+// outreach, follow-ups, stages, imports and, for owners, facts, templates, experiments and the
+// handoff). Every change an assistant makes is listed in Settings for the whole workspace. The
 // others are the standard sign-in scopes MCP clients ask for (offline_access allows a refresh
 // token, so the assistant doesn't send you back to the consent page every hour).
 export const READ_SCOPE = "coppice:read";
@@ -15,8 +17,10 @@ export const SCOPE_LABELS: Record<string, string> = {
   profile: "See your name and picture",
   email: "See your email address",
   offline_access: "Stay connected without asking again (access renews every hour)",
-  [READ_SCOPE]: "Read companies, contacts, notes, outreach history, the follow-up queue and claims in workspaces that allow assistants",
-  [WRITE_SCOPE]: "Claim companies, log outreach and move stages as you, in workspaces that allow assistants",
+  [READ_SCOPE]:
+    "Read what you can see in workspaces that allow assistants: companies, contacts, notes, outreach history, claims, the follow-up queue, members' names (owners also see emails), facts, templates, stats, research briefs and the year-end handoff",
+  [WRITE_SCOPE]:
+    "Make changes as you in workspaces that allow assistants: add and edit companies and contacts, claim and release, log outreach, set follow-up dates and stages, resolve duplicates and import companies. For owners also facts, templates, research pages, template experiments and the handoff. Permanent deletes happen only after you agree",
 };
 
 // The site's public address. BETTER_AUTH_URL is already required for Google sign-in; locally it

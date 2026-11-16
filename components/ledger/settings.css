@@ -354,6 +354,10 @@
   .lg-invite-cancel {
     flex: none;
   }
+  /* What assistants changed: one sentence per row, the time and the assistant's name under it. */
+  .lg-act-line {
+    overflow-wrap: anywhere;
+  }
 
   /* ---------- Every other section: one line each, opened on demand ---------- */
   .lg-set-more {
