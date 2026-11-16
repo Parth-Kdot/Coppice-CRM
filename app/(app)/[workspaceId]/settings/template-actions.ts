@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireOwner } from "@/lib/authz";
+import { notFound } from "@/lib/messages";
 import * as templates from "@/lib/templates";
 import { createTemplateSchema, templateRefSchema, updateTemplateSchema, type ActionResult } from "@/lib/validation";
 
@@ -55,7 +56,7 @@ export async function updateTemplate(_prev: ActionResult | null, form: FormData)
 
 export async function archiveTemplate(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = templateRefSchema.safeParse({ workspaceId: form.get("workspaceId"), templateId: form.get("templateId") });
-  if (!parsed.success) return { ok: false, error: "Template not found." };
+  if (!parsed.success) return notFound("Template");
   const { workspaceId, templateId } = parsed.data;
 
   try {
@@ -71,7 +72,7 @@ export async function archiveTemplate(_prev: ActionResult | null, form: FormData
 
 export async function unarchiveTemplate(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = templateRefSchema.safeParse({ workspaceId: form.get("workspaceId"), templateId: form.get("templateId") });
-  if (!parsed.success) return { ok: false, error: "Template not found." };
+  if (!parsed.success) return notFound("Template");
   const { workspaceId, templateId } = parsed.data;
 
   try {

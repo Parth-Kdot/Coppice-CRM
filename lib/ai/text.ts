@@ -1,13 +1,22 @@
 // Small text helpers for AI features: masking contact details before text goes to the model,
 // and checking that a quote the model returned really appears in a page of text.
 
-// Emails and phone numbers are replaced before any text is sent to the AI (free tier).
-const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
-// 765-555-0142, (765) 555 0142, +1 765.555.0142 ...
-const PHONE = /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b/g;
+import { maskInternationalPhones } from "@/lib/ai/phones";
 
+// Emails and phone numbers are replaced before any text is sent to the AI (free tier).
+// Each part is bounded (64 before the "@", 63 per label, as in RFC 5321), so a long run of word
+// characters can't make the match backtrack for seconds.
+const EMAIL = /[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+/g;
+
+// North-American numbers: 765-555-0142, (765) 555 0142, +1 765.555.0142 ...
+const US_PHONE = /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b/g;
+
+// Emails, North-American phone numbers, and international ones that start with "+" or "00"
+// ("+44 20 7946 0958", "0049 89 1234567"; lib/ai/phones.ts). A number in another country's local
+// style ("089/1234567") is not masked here: matching it would also mask rows of small numbers in a
+// packet's tables. Research page text is masked more broadly (maskPage in lib/research/scan.ts).
 export function maskContactDetails(text: string): string {
-  return text.replace(EMAIL, "[email]").replace(PHONE, "[phone]");
+  return maskInternationalPhones(text.replace(EMAIL, "[email]").replace(US_PHONE, "[phone]"));
 }
 
 // Text in a form where the same words match however the PDF set them: ligatures and smart quotes

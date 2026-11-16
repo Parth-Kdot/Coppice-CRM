@@ -6,7 +6,7 @@ import type { Stage } from "@/generated/prisma/enums";
 // and thin like a pen nib. No hatching below 32 px: the engraved variants at the bottom of this file
 // are for 48 px and up (landing, empty states).
 
-type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & { size?: number };
+export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & { size?: number };
 
 function Icon({ size = 20, children, ...rest }: IconProps & { children: ReactNode }) {
   return (
@@ -50,16 +50,6 @@ export function BoardIcon(props: IconProps) {
       <rect x="8" y="3.8" width="4" height="8.2" rx="0.8" />
       <rect x="13.2" y="3.8" width="4" height="10.4" rx="0.8" />
       <path d="M4 6.4h1.6M9.2 6.4h1.6M14.4 6.4h1.6" strokeWidth={THIN} />
-    </Icon>
-  );
-}
-
-export function CompaniesIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M4.2 17V6.4L10 3.4l5.8 3V17M2.6 17h14.8" />
-      <path d="M8 9.4h1M11 9.4h1M8 12.2h1M11 12.2h1" strokeWidth={THIN} />
-      <path d="M9 17v-2.6h2V17" />
     </Icon>
   );
 }
@@ -127,27 +117,6 @@ export function ReleaseIcon(props: IconProps) {
   );
 }
 
-// Log: a quill.
-export function LogIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M16.6 3.4C11.8 3.3 8 6.1 6.7 10.7l-.9 3 3.1-.9c4.6-1.3 7.5-4.5 7.7-9.4z" />
-      <path d="M4.9 15.3l6.6-6.7" strokeWidth={THIN} />
-      <path d="M4.3 16.5l-1.1 1.1" />
-    </Icon>
-  );
-}
-
-export function CalendarIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="3.2" y="5" width="13.6" height="11.6" rx="1.2" />
-      <path d="M3.2 8.6h13.6M7 3.2v3.2M13 3.2v3.2" />
-      <path d="M7 12.2h.01M10 12.2h.01M13 12.2h.01" strokeWidth={1.8} />
-    </Icon>
-  );
-}
-
 // The hourglass. The glass is the same in every state; the sand says how much time is left.
 //   empty:   no sand drawn, a plain glass (a follow-up that is still ahead)
 //   half:    sand in both bulbs and a thin stream (due today, or a day or two late)
@@ -173,11 +142,6 @@ export function HourglassIcon({ sand = "empty", ...props }: IconProps & { sand?:
       {/* drained: a heavy glass with no sand in either bulb */}
     </Icon>
   );
-}
-
-// The original single-state hourglass, kept for places that only need the glass.
-export function OverdueIcon(props: IconProps) {
-  return <HourglassIcon sand="empty" {...props} />;
 }
 
 // Duplicate: two overlapping slips.
@@ -293,6 +257,17 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+// More: three dots in a row, for every overflow control (the ⋯ menus, the phone's More tab).
+export function MoreIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="4.6" cy="10" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="10" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="15.4" cy="10" r="1.25" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -306,23 +281,6 @@ export function ExternalIcon(props: IconProps) {
     <Icon {...props}>
       <path d="M8.2 4.2H4.6a1 1 0 0 0-1 1v10.2a1 1 0 0 0 1 1h10.2a1 1 0 0 0 1-1v-3.6" />
       <path d="M11.4 3.6h5v5M16.4 3.6l-7 7" />
-    </Icon>
-  );
-}
-
-export function KeyIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="3" y="4.5" width="14" height="11" rx="1.6" />
-      <path d="M6.4 8.4h.01M9 8.4h.01M11.6 8.4h.01M14 8.4h.01M6.4 11.6h7.2" strokeWidth={1.4} />
-    </Icon>
-  );
-}
-
-export function PaperclipIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M13.8 7.2 8 13a1.9 1.9 0 0 1-2.7-2.7l6.3-6.3a3.1 3.1 0 0 1 4.4 4.4l-6.5 6.5a4.3 4.3 0 0 1-6-6" />
     </Icon>
   );
 }
@@ -342,7 +300,7 @@ export function StageGlyph({ stage, size = 14, ...rest }: Omit<SVGProps<SVGSVGEl
   );
 }
 
-// A sprout for empty states, small and drawn once. The big, engraved versions live in stool.tsx.
+// A sprout for empty states, small and drawn once. The big, engraved versions live in components/brand/stool.tsx.
 export function SproutIcon({ size = 36, ...rest }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 36 36" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...rest}>
@@ -452,22 +410,6 @@ export function EngravedLog(props: EngravedProps) {
   );
 }
 
-export function EngravedDuplicate(props: EngravedProps) {
-  return (
-    <Engraved
-      {...props}
-      shape={
-        <>
-          <rect x="7" y="15" width="22" height="26" rx="1.6" />
-          <path d="M17 11V8.600A1.600 1.600 0 0 1 18.600 7H39.400A1.600 1.600 0 0 1 41 8.600V30.400A1.600 1.600 0 0 1 39.400 32H33" />
-        </>
-      }
-      shade={<rect x="7" y="15" width="10" height="26" />}
-      detail={<path d="M21 24h4M21 30h4M21 36h4M23 12h12M23 17h12" />}
-    />
-  );
-}
-
 export function EngravedImport(props: EngravedProps) {
   return (
     <Engraved
@@ -516,28 +458,6 @@ export function EngravedFacts(props: EngravedProps) {
         <>
           <path d="M18 21h16M18 27h16M18 33h9" />
           <path d="M28.500 35.500l3 3 5-6" strokeWidth={1.6} />
-        </>
-      }
-    />
-  );
-}
-
-// History that survives turnover: a cut stump with its rings.
-export function EngravedHistory(props: EngravedProps) {
-  return (
-    <Engraved
-      {...props}
-      shape={
-        <>
-          <ellipse cx="24" cy="18" rx="15" ry="6.500" />
-          <path d="M9 18v14c0 3.600 6.700 6.500 15 6.500S39 35.600 39 32V18" />
-        </>
-      }
-      shade={<path d="M9 18v14c0 3.600 6.700 6.500 15 6.500V24.500z" />}
-      detail={
-        <>
-          <ellipse cx="24" cy="18" rx="9.500" ry="3.800" />
-          <ellipse cx="24" cy="18" rx="4.500" ry="1.800" />
         </>
       }
     />

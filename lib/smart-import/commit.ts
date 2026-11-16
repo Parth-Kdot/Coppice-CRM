@@ -1,11 +1,12 @@
 import { dbToday } from "@/lib/claims";
-import { runImport, type CheckedRow, type ImportResult, type RowExtras, type SmartExtras } from "@/lib/csv";
+import { namedFromEmail, runImport, type CheckedRow, type ImportResult, type RowExtras, type SmartExtras } from "@/lib/csv";
 import { addDays, localMidnight } from "@/lib/dates";
 import type { Tenant } from "@/lib/db";
+import { formatCount } from "@/lib/format";
 import { COMPANY_LIMITS, IMPORT_FIELDS, type ActionResult, type ImportMapping, type SmartDecision } from "@/lib/validation";
 import type { RowProposal } from "./check";
 import type { LookalikeGroup } from "./lookalikes";
-import { AI_OFF, aiOn, EXPIRED, FILE_CHANGED, loadSession, REVIEW_AGAIN, sessionSince, type Session, type Tx } from "./shared";
+import { AI_OFF_MIDWAY, aiOn, EXPIRED, FILE_CHANGED, loadSession, REVIEW_AGAIN, sessionSince, type Session, type Tx } from "./shared";
 
 // The import (lib/smart-import/): the file goes in the normal way (lib/csv.ts runImport), plus what
 // the person kept of the AI's reading, in that one transaction. Each decision is checked against
@@ -23,23 +24,24 @@ function checkDecision(r: CheckedRow, decision: SmartDecision | undefined, propo
   if (!decision) return null;
   // A field can only be kept if the AI proposed it for this row.
   if ((decision.stage && !proposal?.stage) || (decision.lastContactedOn && !proposal?.lastContactedOn) || (decision.followUpOn && !proposal?.followUpOn)) return REVIEW_AGAIN;
-  if ((decision.contact && (!proposal?.contact || r.contact)) || (decision.note && !proposal?.note)) return REVIEW_AGAIN;
-  if (decision.lastContactedOn && (decision.lastContactedOn > today || decision.lastContactedOn < addDays(today, -730))) {
-    return `Row ${r.row}: pick a last-contacted date in the last two years.`;
-  }
+  // A contact only for a row with none, or one named only from its email.
+  if ((decision.contact && (!proposal?.contact || (r.contact && !namedFromEmail(r)))) || (decision.note && !proposal?.note)) return REVIEW_AGAIN;
+  if (decision.lastContactedOn && decision.lastContactedOn > today) return `Row ${r.row}: a last-contacted date can't be in the future.`;
+  if (decision.lastContactedOn && decision.lastContactedOn < addDays(today, -730)) return `Row ${r.row}: pick a last-contacted date in the last two years.`;
   if (decision.followUpOn && (decision.followUpOn < addDays(today, -365) || decision.followUpOn > addDays(today, 365))) {
     return `Row ${r.row}: pick a follow-up date within a year of today.`;
   }
   const notes = [r.company.notes, decision.note].filter(Boolean).join("\n\n");
   if (notes.length > COMPANY_LIMITS.notes) {
-    return `Row ${r.row}: its notes and the line from Smart import are over ${COMPANY_LIMITS.notes.toLocaleString("en-US")} characters. Shorten the line.`;
+    return `Row ${r.row}: its notes and the line from Smart import are over ${formatCount(COMPANY_LIMITS.notes)} characters. Shorten the line.`;
   }
   return {
     stage: decision.stage ?? undefined,
     lastContactedAt: decision.lastContactedOn ? localMidnight(decision.lastContactedOn) : undefined,
     nextFollowUpAt: decision.followUpOn ? localMidnight(decision.followUpOn) : undefined,
     noteLine: decision.note ?? undefined,
-    contact: decision.contact ? { name: decision.contact.name, email: null, title: decision.contact.title } : undefined,
+    // The name found in the notes, with the email the row's own cell gave.
+    contact: decision.contact ? { name: decision.contact.name, email: r.contact?.email ?? null, title: decision.contact.title } : undefined,
   };
 }
 
@@ -66,7 +68,7 @@ export async function runSmartImport(
   text: string,
   { sessionId, mapping, skip, seen, decisions }: { sessionId: string; mapping: ImportMapping; skip: number[]; seen: string[]; decisions: SmartDecision[] },
 ): Promise<ActionResult<ImportResult>> {
-  if (!(await aiOn(tenant))) return { ok: false, error: AI_OFF };
+  if (!(await aiOn(tenant))) return { ok: false, error: AI_OFF_MIDWAY };
   const since = await sessionSince();
   const today = await dbToday();
   const byRow = new Map<number, SmartDecision>();

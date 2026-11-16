@@ -1,6 +1,7 @@
 // The names in an AI draft. The model writes {{firstName}}, {{senderName}} and {{orgName}}, and
-// code fills them in, so Gemini's free tier never sees a person's name. Before an edited draft
-// goes back to the AI for checking, unfill() turns the names back into placeholders.
+// code fills them in, so the drafting prompt carries placeholders, not names. Before saved text that
+// holds names goes back to the AI (an edited draft for the Claim Checker, an earlier draft's subject
+// in a follow-up prompt), unfill() turns the names back into placeholders.
 
 export const PLACEHOLDERS = ["firstName", "senderName", "orgName"] as const;
 export type Names = Record<(typeof PLACEHOLDERS)[number], string>;
@@ -9,14 +10,21 @@ export const fill = (text: string, names: Names) => text.replace(/\{\{\s*(\w+)\s
 
 // Longest name first, so "Sam Lee" is replaced before "Sam". A null name is left alone: with no
 // contact the greeting says "there", which must not turn every "there" into a placeholder.
+// Whole words only: a contact named "Ed" leaves "Education" and "Edison" as they are (a letter or
+// digit on either side means the name is part of another word).
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export function unfill(text: string, names: Partial<Record<keyof Names, string | null>>): string {
   const pairs = Object.entries(names)
     .filter((pair): pair is [string, string] => Boolean(pair[1]?.trim()))
     .sort((a, b) => b[1].length - a[1].length);
-  return pairs.reduce((out, [key, value]) => out.split(value).join(`{{${key}}}`), text);
+  return pairs.reduce(
+    (out, [key, value]) => out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(value)}(?![\\p{L}\\p{N}])`, "gu"), () => `{{${key}}}`),
+    text,
+  );
 }
 
-// Templates (Milestone 5) may use only the three placeholders above, so whatever fills them in later
+// Templates may use only the three placeholders above, so whatever fills them in later
 // (an officer by hand, or the drafter) knows every one. Returns what is wrong, or null if nothing is.
 export function placeholderProblem(text: string): string | null {
   const unknown = [...new Set([...text.matchAll(/\{\{([^{}]*)\}\}/g)].map((m) => m[1].trim()))].filter(
