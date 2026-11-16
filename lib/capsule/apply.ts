@@ -1,3 +1,4 @@
+import type { Via } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
 import { changeStage, setFollowUp } from "@/lib/claims";
 import { withTenant } from "@/lib/db";
@@ -25,8 +26,9 @@ const DECLINED_LEFT_ALONE = "This company declined, so it is left alone.";
 // (each is its own database call, never inside another transaction). A Declined company is listed
 // as left alone without being touched. A Committed company is skipped quietly and counted in
 // skippedClosed: a closed deal can't take a date, and its row has "Reopen for next year".
-// Applying again is fine: it sets the same dates again.
-export async function applyCalendar(actor: Membership, reportId: string): Promise<Done<AppliedDates>> {
+// Applying again is fine: it sets the same dates again. `via` is passed on to setFollowUp, which has no
+// history row to record it on yet.
+export async function applyCalendar(actor: Membership, reportId: string, via: Via = "APP"): Promise<Done<AppliedDates>> {
   if (!isOwner(actor)) return fail(OWNER_ONLY);
   const cards = await withTenant(actor, async (tx) => {
     const report = await findReport(tx, actor.workspaceId, reportId);
@@ -48,7 +50,7 @@ export async function applyCalendar(actor: Membership, reportId: string): Promis
     else if (card.company.stage === "COMMITTED") data.skippedClosed += 1;
     else if (card.company.stage === "DECLINED") data.refused.push({ companyId, name, reason: DECLINED_LEFT_ALONE });
     else {
-      const result = await setFollowUp(actor, companyId, date);
+      const result = await setFollowUp(actor, companyId, date, via);
       if (result.ok) data.set.push({ companyId, name, date });
       else data.refused.push({ companyId, name, reason: result.error });
     }
@@ -60,8 +62,9 @@ export type Reopened = { companyId: string; name: string };
 
 // "Reopen for next year": one Committed company with an approved card in this workspace's handoffs
 // goes back to Contacted, through changeStage (which records the move and checks any claim). Never
-// in bulk: it takes one card. The owner's confirmation is the page's, before this is called.
-export async function reopenForNextYear(actor: Membership, cardId: string): Promise<Done<Reopened>> {
+// in bulk: it takes one card. The owner's confirmation is the page's, before this is called. `via`
+// says who made the move (the app by default, or the owner's assistant); changeStage records it.
+export async function reopenForNextYear(actor: Membership, cardId: string, via: Via = "APP"): Promise<Done<Reopened>> {
   if (!isOwner(actor)) return fail(OWNER_ONLY);
   const card = await withTenant(actor, (tx) =>
     tx.relationshipCard.findFirst({
@@ -71,7 +74,7 @@ export async function reopenForNextYear(actor: Membership, cardId: string): Prom
   );
   if (!card) return fail(NO_CARD);
   if (card.company.stage !== "COMMITTED") return fail(`${card.company.name} is not Committed, so there is nothing to reopen.`);
-  const result = await changeStage(actor, card.companyId, "CONTACTED");
+  const result = await changeStage(actor, card.companyId, "CONTACTED", via);
   if (!result.ok) return fail(result.error);
   return { ok: true, data: { companyId: card.companyId, name: card.company.name } };
 }

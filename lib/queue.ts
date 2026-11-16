@@ -69,6 +69,13 @@ const freshWhere = (tenant: Tenant, now: Date): Prisma.CompanyWhereInput => ({
   ...notHeldByOthers(tenant.userId, now),
 });
 
+// Open companies you hold whose follow-up is not due yet, or has no date.
+const yoursNotDueWhere = (tenant: Tenant, now: Date): Prisma.CompanyWhereInput => ({
+  ...open(tenant.workspaceId),
+  ...heldBy(tenant.userId, now),
+  OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { gt: now } }],
+});
+
 export type QueueGroup = { rows: QueueRow[]; count: number };
 export type QueueHome = {
   now: Date;
@@ -105,9 +112,7 @@ export async function getQueueHome(tenant: Tenant, options: { upto?: number | nu
     const heldCount = heldRows.length < HELD_SHOWN ? heldRows.length : await tx.company.count({ where: heldWhere });
 
     const freshCount = await tx.company.count({ where: freshWhere(tenant, now) });
-    const yoursNotDue = await tx.company.count({
-      where: { ...open(tenant.workspaceId), ...heldBy(tenant.userId, now), OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { gt: now } }] },
-    });
+    const yoursNotDue = await tx.company.count({ where: yoursNotDueWhere(tenant, now) });
 
     return {
       now,
@@ -147,10 +152,18 @@ export type Queue = {
   dueCount: number;
   never: QueueRow[] | null;
   neverCount: number;
+  // Open companies you hold whose follow-up is not due yet (or has no date), as on the home screen.
+  yoursNotDue: number;
 };
 
-export async function getQueue(tenant: Tenant, filters: QueueFilters, at?: Date): Promise<Queue> {
+// The most rows a caller can skip: a page far past the end of any real workspace is just empty.
+export const QUEUE_MAX_OFFSET = 10_000;
+
+// `offset` skips that many rows of each list (due, and never contacted), for a caller that pages
+// through them. With no offset the behavior is the one the app and the tests have always had.
+export async function getQueue(tenant: Tenant, filters: QueueFilters, at?: Date, offset = 0): Promise<Queue> {
   const now = at ?? (await dbNow());
+  const skip = Math.min(QUEUE_MAX_OFFSET, Math.max(0, Math.floor(offset)));
   return withTenant(tenant, async (tx) => {
     const workspaceId = tenant.workspaceId;
     // "Only mine": companies I hold with a claim that hasn't expired.
@@ -159,8 +172,9 @@ export async function getQueue(tenant: Tenant, filters: QueueFilters, at?: Date)
     const dueWhere: Prisma.CompanyWhereInput = { ...open(workspaceId), ...mine, nextFollowUpAt: { lte: now } };
     // "All" is capped like every list: 200 rows at most.
     const dueLimit = filters.all === "due" ? QUEUE_CAP : QUEUE_SIZE;
-    const due = await tx.company.findMany({ where: dueWhere, select: ROW_WITH_NOTE, orderBy: DUE_ORDER, take: dueLimit });
-    const dueCount = due.length < dueLimit ? due.length : await tx.company.count({ where: dueWhere });
+    const due = await tx.company.findMany({ where: dueWhere, select: ROW_WITH_NOTE, orderBy: DUE_ORDER, skip, take: dueLimit });
+    // A count is only asked for when the page came back full, or when it started past the first row.
+    const dueCount = skip === 0 && due.length < dueLimit ? due.length : await tx.company.count({ where: dueWhere });
 
     // Fresh leads: never contacted, no follow-up yet, and not held by someone else.
     const neverWhere: Prisma.CompanyWhereInput = filters.mine
@@ -173,10 +187,13 @@ export async function getQueue(tenant: Tenant, filters: QueueFilters, at?: Date)
             where: neverWhere,
             select: ROW_WITH_NOTE,
             orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+            skip,
             take: filters.all === "never" ? QUEUE_CAP : QUEUE_SIZE,
           })
         : null;
 
-    return { now, due: due.map(withNote), dueCount, never: never?.map(withNote) ?? null, neverCount };
+    const yoursNotDue = await tx.company.count({ where: yoursNotDueWhere(tenant, now) });
+
+    return { now, due: due.map(withNote), dueCount, never: never?.map(withNote) ?? null, neverCount, yoursNotDue };
   });
 }

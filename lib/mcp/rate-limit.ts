@@ -4,8 +4,8 @@ import { prisma } from "@/lib/db";
 
 // How many MCP tool calls one person may make per minute, across every assistant they connected
 // and every server instance (the counts live in the McpRateLimit table, not in memory). Reads are
-// cheap; actions change shared data, so they get far fewer.
-export const MCP_LIMITS = { read: 60, action: 10 } as const;
+// cheap; actions change shared data, so they get fewer. An import counts as one action.
+export const MCP_LIMITS = { read: 60, action: 30 } as const;
 export type McpCallKind = keyof typeof MCP_LIMITS;
 
 export type RateLimitResult = { ok: true } | { ok: false; retryAfterSeconds: number; limit: number };

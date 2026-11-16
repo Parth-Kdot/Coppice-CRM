@@ -146,8 +146,8 @@ export const GUIDE: GuideTopic[] = [
     summary: "Outside assistants, if an owner allows.",
     body: [
       "An owner can allow outside AI assistants for the workspace in Settings. They are off by default.",
-      "Each person connects their own assistant and chooses whether it can only read, or can also claim companies, log outreach and move stages as them. What an assistant changes is marked in the company's history.",
-      `An assistant follows the same rules you do: a live claim held by someone else blocks it, and Committed or Declined need an explicit yes. Each person is limited to ${MCP_LIMITS.read} reads and ${MCP_LIMITS.action} changes a minute.`,
+      "Each person connects their own assistant and chooses whether it can only read, or can also make changes as them: companies, contacts, claims, outreach, follow-ups, stages and imports, and for owners facts, templates and the handoff. Claims, outreach and stage moves are marked via assistant in the company's history, and every change an assistant makes is listed in Settings for the whole workspace.",
+      `An assistant follows the same rules you do: a live claim held by someone else blocks it, and Committed, Declined, permanent deletes, verifying a fact, experiments, a CSV import and the handoff steps that change many companies or publish the handoff need an explicit yes. It cannot change members, roles, invitations, the claim window, the AI settings or the assistants switch. Each person is limited to ${MCP_LIMITS.read} reads and ${MCP_LIMITS.action} changes a minute.`,
       "Whatever an assistant reads, including contact names and notes, goes to the company behind that assistant. That is separate from Coppice's own AI.",
     ],
   },

@@ -105,11 +105,13 @@ export function toRow(workspaceId: string, source: RowSource, actor: Membership,
 // person's own included), the same reading as the queue's Up for grabs.
 const NOBODY = "";
 
-export function filterWhere(filter: CopilotFilter, member: Membership, now: Date, today: string): Prisma.CompanyWhereInput {
-  const all: Prisma.CompanyWhereInput[] = [
-    { workspaceId: member.workspaceId, archivedAt: null },
-    filter.stages.length > 0 ? { stage: { in: filter.stages } } : { stage: { notIn: TERMINAL_STAGES } },
-  ];
+// The pieces of a filter that read a company's industry, follow-up date, claim, outreach and notes.
+// Ask Coppice (filterWhere below) and the MCP tool list_companies both build their where from these,
+// so the two never read "overdue", "free" or "never contacted" differently.
+export type FilterPieces = Pick<CopilotFilter, "industry" | "due" | "claim" | "neverContacted" | "notesMention">;
+
+export function filterClauses(filter: FilterPieces, member: Membership, now: Date, today: string): Prisma.CompanyWhereInput[] {
+  const all: Prisma.CompanyWhereInput[] = [];
   if (filter.industry) all.push({ industry: { equals: filter.industry, mode: "insensitive" } });
   if (filter.due === "overdue") all.push({ nextFollowUpAt: { lte: now } });
   if (filter.due === "due_this_week") all.push({ nextFollowUpAt: { gt: now, lt: localMidnight(addDays(today, WEEK_DAYS + 1)) } });
@@ -118,13 +120,22 @@ export function filterWhere(filter: CopilotFilter, member: Membership, now: Date
   if (filter.claim === "free") all.push(notHeldByOthers(NOBODY, now));
   if (filter.claim === "held_by_others") all.push({ NOT: notHeldByOthers(member.userId, now) });
   if (filter.neverContacted) all.push({ lastContactedAt: null, outreach: { none: {} } });
-  if (filter.nameOrSite) {
-    const contains = { contains: literal(filter.nameOrSite), mode: "insensitive" } as const;
-    all.push({ OR: [{ name: contains }, { website: contains }] });
-  }
   if (filter.notesMention) {
     const contains = { contains: literal(filter.notesMention), mode: "insensitive" } as const;
     all.push({ OR: [{ notes: contains }, { outreach: { some: { workspaceId: member.workspaceId, note: contains } } }] });
+  }
+  return all;
+}
+
+export function filterWhere(filter: CopilotFilter, member: Membership, now: Date, today: string): Prisma.CompanyWhereInput {
+  const all: Prisma.CompanyWhereInput[] = [
+    { workspaceId: member.workspaceId, archivedAt: null },
+    filter.stages.length > 0 ? { stage: { in: filter.stages } } : { stage: { notIn: TERMINAL_STAGES } },
+    ...filterClauses(filter, member, now, today),
+  ];
+  if (filter.nameOrSite) {
+    const contains = { contains: literal(filter.nameOrSite), mode: "insensitive" } as const;
+    all.push({ OR: [{ name: contains }, { website: contains }] });
   }
   return { AND: all };
 }

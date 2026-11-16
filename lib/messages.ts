@@ -7,3 +7,6 @@ export const notFound = (noun: string) => ({ ok: false, error: notFoundMessage(n
 
 // The answer to an officer who tries an owner-only change (the templates have their own wording).
 export const OWNERS_ONLY = { ok: false, error: "Only the workspace owner can do that." } as const;
+
+// The answer for a change to a company that is archived: nothing about it can be edited until it is back.
+export const COMPANY_ARCHIVED = "This company is archived. Unarchive it first.";

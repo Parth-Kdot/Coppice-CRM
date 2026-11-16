@@ -530,7 +530,56 @@ describe("tools over the current protocol (the official MCP client)", () => {
     const client = await mcpClient(await tokenFor("ownerA"));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
-      ["change_stage", "claim_company", "get_company", "get_follow_up_queue", "list_companies", "list_my_claims", "list_workspaces", "log_outreach"].sort(),
+      [
+        "accept_brief_item",
+        "apply_handoff_calendar",
+        "approve_remaining_cards",
+        "build_handoff_cards",
+        "change_stage",
+        "claim_company",
+        "create_company",
+        "delete_permanently",
+        "end_experiment",
+        "fill_blank_dates",
+        "get_company",
+        "get_follow_up_queue",
+        "get_handoff",
+        "get_stats",
+        "get_workspace",
+        "list_companies",
+        "list_duplicate_pairs",
+        "list_facts",
+        "list_members",
+        "list_my_claims",
+        "list_research_sources",
+        "list_templates",
+        "list_workspaces",
+        "log_outreach",
+        "mark_reply",
+        "prepare_email",
+        "preview_import",
+        "release_claim",
+        "release_departing_claims",
+        "reopen_for_next_year",
+        "resolve_duplicate",
+        "review_handoff_card",
+        "run_import",
+        "save_contact",
+        "save_fact",
+        "save_recontact_dates",
+        "save_research_source",
+        "save_template",
+        "set_company_archived",
+        "set_departing",
+        "set_fact_verified",
+        "set_follow_up",
+        "set_handoff_published",
+        "set_research_source_archived",
+        "set_template_archived",
+        "start_experiment",
+        "start_handoff",
+        "update_company",
+      ].sort(),
     );
     // Closing a pitch is marked destructive, so the assistant's app asks the person first.
     const changeStageTool = (await client.listTools()).tools.find((t) => t.name === "change_stage");
@@ -556,13 +605,15 @@ describe("tools over the current protocol (the official MCP client)", () => {
     const client = await mcpClient(await tokenFor("ownerA"));
     const extra = await ACTION_ARGS();
     const tools = [
+      ["get_workspace", {}],
+      ["list_members", {}],
       ["list_companies", {}],
       ["get_company", { companyId: theirs.companyId }],
       ["get_follow_up_queue", {}],
       ["list_my_claims", {}],
       ...ACTIONS.map((name) => [name, { companyId: theirs.companyId, ...extra[name] }] as const),
     ] as const;
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(9);
     try {
       for (const workspaceId of ["b", "no-such-workspace"]) {
         for (const [name, args] of tools) {
@@ -593,6 +644,8 @@ describe("tools over the current protocol (the official MCP client)", () => {
     await setMcp("a", false);
     const client = await mcpClient(await tokenFor("ownerA"));
     for (const [name, args] of [
+      ["get_workspace", { workspaceId: "a" }],
+      ["list_members", { workspaceId: "a" }],
       ["list_companies", { workspaceId: "a" }],
       ["get_company", { workspaceId: "a", companyId: id }],
       ["get_follow_up_queue", { workspaceId: "a" }],
@@ -836,7 +889,7 @@ describe("rate limits", () => {
     const client = await mcpClient(await tokenFor("ownerA"));
     const result = await client.callTool({ name: "claim_company", arguments: { workspaceId: "a", companyId: id } });
     expect(result.isError).toBe(true);
-    expect(resultText(result)).toMatch(/Rate limit reached: 10 changes a minute/);
+    expect(resultText(result)).toMatch(/Rate limit reached: 30 changes a minute/);
     expect((await getCompanyDetail(OWNER, id))?.claimedById).toBeNull();
     // Reads still work.
     const read = await client.callTool({ name: "list_my_claims", arguments: { workspaceId: "a" } });
@@ -1155,7 +1208,7 @@ describe("change_stage confirmations", () => {
   const principal = (userId = "ownerA"): McpPrincipal => ({ userId, clientId: "test", scopes: new Set(["coppice:read", "coppice:write"]) });
   const actionCount = async () => (await prisma.mcpRateLimit.findMany({ where: { userId: "ownerA", kind: "action" } })).reduce((n, r) => n + r.count, 0);
 
-  it("asking first doesn't use up an action: 9 actions, COMMITTED without confirm, then with confirm, succeeds", async () => {
+  it("asking first doesn't use up an action: one under the limit, COMMITTED without confirm, then with confirm, succeeds", async () => {
     const id = await company();
     for (let i = 0; i < MCP_LIMITS.action - 1; i++) await takeMcpCall("ownerA", "action");
     const ask = await changeStageTool(principal(), { workspaceId: "a", companyId: id, stage: "COMMITTED" });
