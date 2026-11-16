@@ -11,15 +11,15 @@ vi.mock("next/headers", () => import("./helpers/next-request"));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 // Source-code guards: these read the code itself and fail the build if a dangerous pattern
-// appears. They turn the rules in rule 1.11 into something CI enforces, not something to remember.
+// appears. They turn the raw SQL allowlist and the claim-writing rule into something CI enforces, not something to remember.
 const APP_CODE = ["app/**/*.{ts,tsx}", "lib/**/*.ts", "components/**/*.tsx", "proxy.ts"];
 const ALL_CODE = [...APP_CODE, "scripts/**/*.ts"];
 const files = (patterns: string[]) => patterns.flatMap((pattern) => globSync(pattern));
 const source = (file: string) => readFileSync(file, "utf8");
 
-// Raw SQL may only appear in these places (rule 1.11). Migrations and tests are allowed too
+// Raw SQL may only appear in these places (the raw SQL allowlist). Migrations and tests are allowed too
 // but aren't scanned here.
-const RAW_SQL_ALLOWED = ["lib/claims.ts", "lib/db.ts", "lib/rls.ts", "lib/ai/vector.ts", "scripts/local-db.ts"];
+const RAW_SQL_ALLOWED = ["lib/claims.ts", "lib/db.ts", "scripts/local-db.ts"];
 
 describe("source guards", () => {
   it("finds the code to scan (so these tests can't pass by checking nothing)", () => {
@@ -47,7 +47,7 @@ describe("source guards", () => {
     expect(source(file)).not.toMatch(/\beval\(|new Function\(|dangerouslySetInnerHTML|\.innerHTML\s*=/);
   });
 
-  // Project rule 2: only lib/claims.ts may write a claim. Reading is fine (`claimedById: true` in a
+  // Only lib/claims.ts may write a claim. Reading is fine (`claimedById: true` in a
   // select, or `claimedBy` to show the holder); assigning anything else is a write.
   test.for(files(APP_CODE).filter((file) => file !== "lib/claims.ts"))("%s never writes a claim field", (file) => {
     // The lookahead skips the spaces itself, so `claimedById: true` (a read) never matches.
