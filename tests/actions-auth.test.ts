@@ -1,7 +1,7 @@
 import { globSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-// Project rule 1: every server action checks who you are before it touches anything.
+// Every server action checks who you are before it touches anything.
 // This reads each actions file (actions.ts, draft-actions.ts, ...) and checks that the first
 // awaited call in every exported action is one of the auth checks. Validating form input before
 // that is fine: it doesn't touch the database or the session.

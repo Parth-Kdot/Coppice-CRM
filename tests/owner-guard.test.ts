@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { changeMemberRole, leaveWorkspace } from "@/app/(app)/[workspaceId]/settings/actions";
-import { LAST_OWNER_MESSAGE } from "@/lib/actions";
+import { LAST_OWNER_MESSAGE } from "@/lib/action-failure";
 import { prisma } from "@/lib/db";
 import { form } from "./helpers/form";
 import { asUser } from "./helpers/next-request";

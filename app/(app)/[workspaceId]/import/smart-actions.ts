@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership } from "@/lib/authz";
 import type { ImportResult } from "@/lib/csv";
+import { readFile } from "@/lib/csv-file";
 import * as smart from "@/lib/smart-import";
 import { smartChunkSchema, smartImportSchema, smartStartSchema, smartSuggestSchema, type ActionResult } from "@/lib/validation";
-import { readFile } from "./read-file";
 
 // Smart import (lib/smart-import/): the same file is sent with every step and parsed again on
 // the server, like the normal import. Any member may use it while AI is on for the workspace; the

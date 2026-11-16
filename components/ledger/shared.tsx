@@ -3,12 +3,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SproutIcon, WarningIcon } from "./icons";
 
-// Small pieces every Ledger screen shares: a number that crossfades, a sprout for empty states,
+// Small pieces every Ledger screen shares: a number that crossfades when it changes, a sprout for empty states,
 // and the message that sits under the control that caused it.
 
+// The crossfade plays only when the number changes, never when the page first draws it.
 export function Count({ value, className = "" }: { value: number | string; className?: string }) {
+  const [first] = useState(value);
   return (
-    <span key={String(value)} className={`lg-count ${className}`}>
+    <span key={String(value)} className={`lg-count ${className}`} data-changed={value !== first || undefined}>
       {value}
     </span>
   );

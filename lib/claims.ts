@@ -1,25 +1,25 @@
-import type { Channel, Stage } from "@/generated/prisma/client";
+import { cache } from "react";
+import type { Channel, Stage, Via } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
-import { when } from "@/lib/dates";
+import { followUpClosed, followUpHeld } from "@/lib/claim-messages";
+import { day, TIME_ZONE } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
+import { notFound } from "@/lib/messages";
 import { REPLY_STAGES, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 
-// Everything that touches a claim lives here (project rule 2). A claim says "I'm pitching this
+// Everything that touches a claim lives here (only lib/claims.ts writes a claim). A claim says "I'm pitching this
 // company": while it's live, nobody else can log outreach on it, move its stage or archive it
 // (owners can). Claims expire on their own after the workspace's claim window.
 //
 // Rules this file keeps:
 // - Who wins a claim is decided by one conditional UPDATE, never by reading first in code, so two
-//   people clicking at the same moment can never both win (rule 2).
-// - Every expiry check uses the database clock, now() in SQL, never the server's (rule 3).
-// - Logging outreach is one transaction: if the claim check fails, nothing is written (rule 4).
+//   people clicking at the same moment can never both win.
+// - Every expiry check uses the database clock, now() in SQL, never the server's.
+// - Logging outreach is one transaction: if the claim check fails, nothing is written.
 
 type Tx = Prisma.TransactionClient;
-
-// Follow-up dates are calendar days in West Lafayette, whatever time zone the server runs in.
-const TIME_ZONE = "America/Indiana/Indianapolis";
 
 // The company's claim as the database sees it right now. `live` is worked out by Postgres.
 type ClaimRow = {
@@ -49,9 +49,10 @@ async function readClaim(tx: Tx, workspaceId: string, companyId: string, { lock 
   return rows[0] ?? null;
 }
 
-const NOT_FOUND = { ok: false, error: "Company not found." } as const;
+const NOT_FOUND = notFound("Company");
 const closedMessage = (stage: Stage) => `This company is ${STAGE_LABELS[stage]}, so it can't be claimed.`;
-const until = (row: ClaimRow) => when(row.claimExpiresAt as Date);
+// The short date used everywhere a claim's end is shown: "Nov 21".
+const until = (row: ClaimRow) => day(row.claimExpiresAt as Date);
 
 // A live claim by someone else blocks this person, unless they're an owner.
 function blockedBy(row: ClaimRow, actor: Membership): string | null {
@@ -59,11 +60,18 @@ function blockedBy(row: ClaimRow, actor: Membership): string | null {
   return `${row.holderName} holds this company until ${until(row)}. Ask them, or an owner.`;
 }
 
-// The database's clock, for pages that show whether a claim is still live ("held until",
-// "expired"). Comparing against the server's clock instead could disagree with the claim SQL.
+// The database's clock, read once per request: the time (for "held until", "expired") and today's
+// date in West Lafayette ("2026-10-25"). Comparing against the server's clock instead could
+// disagree with the claim SQL. React's cache shares one read between the layout, generateMetadata
+// and the page of the same request; outside a render (actions, tests) it simply reads again.
+const dbClock = cache(async (): Promise<{ now: Date; today: string }> => {
+  const [clock] = await prisma.$queryRaw<{ now: Date; today: string }[]>`
+    SELECT now() AS now, to_char((now() AT TIME ZONE ${TIME_ZONE})::date, 'YYYY-MM-DD') AS today`;
+  return clock;
+});
+
 export async function dbNow(): Promise<Date> {
-  const [{ now }] = await prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
-  return now;
+  return (await dbClock()).now;
 }
 
 // What a page should show for a company's claim, given the database's time (from dbNow) and who
@@ -73,6 +81,14 @@ export function claimState(claim: { claimedById: string | null; claimExpiresAt: 
   if (claim.claimedById === null || claim.claimExpiresAt === null) return "free";
   if (claim.claimExpiresAt <= now) return "expired";
   return claim.claimedById === userId ? "mine" : "theirs";
+}
+
+// The company page also tells your own expired claim apart from someone else's: it speaks to you
+// ("Your claim expired Nov 5") and still offers the log form, since logging renews it.
+export type ClaimView = ClaimState | "expired-mine";
+export function claimView(claim: { claimedById: string | null; claimExpiresAt: Date | null }, now: Date, userId: string): ClaimView {
+  const state = claimState(claim, now, userId);
+  return state === "expired" && claim.claimedById === userId ? "expired-mine" : state;
 }
 
 // Query filters for "who holds it", so claim rules stay in this file. `now` comes from dbNow().
@@ -85,21 +101,21 @@ export const notHeldByOthers = (userId: string, now: Date): Prisma.CompanyWhereI
 
 // Today's date in West Lafayette ("2026-10-25"), from the database clock.
 export async function dbToday(): Promise<string> {
-  const [{ today }] = await prisma.$queryRaw<{ today: string }[]>`
-    SELECT to_char((now() AT TIME ZONE ${TIME_ZONE})::date, 'YYYY-MM-DD') AS today`;
-  return today;
+  return (await dbClock()).today;
 }
 
 // Claims a company for the workspace's claim window. Succeeds if nobody holds it, the claim has
 // expired, or you already hold it (which renews it). The whole decision is the WHERE clause of
 // one UPDATE: Postgres locks the row, so of two simultaneous claims the second re-checks the
-// WHERE after the first commits and changes nothing.
-export function claimCompany(actor: Tenant, companyId: string): Promise<ActionResult<{ claimExpiresAt: Date }>> {
+// WHERE after the first commits and changes nothing. `via` records whether the person claimed in
+// the app or through their AI assistant (the MCP server).
+export function claimCompany(actor: Tenant, companyId: string, via: Via = "APP"): Promise<ActionResult<{ claimExpiresAt: Date }>> {
   return withTenant(actor, async (tx) => {
     const won = await tx.$queryRaw<{ claimExpiresAt: Date }[]>`
       UPDATE "Company"
       SET "claimedById" = ${actor.userId},
           "claimExpiresAt" = now() + make_interval(days => (SELECT "claimWindowDays" FROM public.workspace WHERE id = ${actor.workspaceId})),
+          "claimedVia" = ${via}::"Via",
           "updatedAt" = now()
       WHERE id = ${companyId} AND "workspaceId" = ${actor.workspaceId}
         AND "archivedAt" IS NULL
@@ -155,23 +171,114 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
   });
 }
 
+// One company given back by releaseMarkedClaims, with whoever held it a moment before.
+export type ReleasedCompany = { companyId: string; name: string; previousHolderId: string };
+
+// The members of this workspace marked as leaving, and the companies they held, given back in one
+// transaction (the owner's "release their claims", from the app or an assistant).
+//
+// 1. The marked membership rows are locked FOR SHARE, ordered by user id. A person unmarked at the
+//    same moment holds the row, so the lock waits for that change and then no longer matches: that
+//    person's claims are kept. A change to a locked row that comes after (an unmark, a role change
+//    or a removal) waits until this commits. A new mark on a member who was not marked does not
+//    wait, and that member is not in the locked set.
+// 2. The companies to give back are locked in a subquery, ordered by id (two releases lock in the
+//    same order, so they cannot deadlock), and cleared by one UPDATE joined to it. The holder
+//    reported for each company is the value that was locked, not an earlier read.
+// 3. It clears exactly what releaseClaimsOf clears: claimedById and claimExpiresAt, nothing else,
+//    and no history row (a claim has none).
+//
+// With refuseWhenEveryone (the assistant's release), the members of the workspace are counted in the
+// same transaction, after the lock: when the locked marked rows are every member, nothing is freed
+// and everyone is true. A mark committed after the lock is not in the locked set, so that person's
+// claims are not freed either way.
+//
+// All or nothing: if anything fails, no company is freed.
+export type MarkedRelease = { marked: { userId: string; name: string }[]; released: ReleasedCompany[]; everyone: boolean };
+export function releaseMarkedClaims(actor: Tenant, options: { refuseWhenEveryone?: boolean } = {}): Promise<MarkedRelease> {
+  return withTenant(actor, async (tx) => {
+    const locked = await tx.$queryRaw<{ userId: string; name: string; createdAt: Date }[]>`
+      SELECT m."userId", u.name, m."createdAt"
+      FROM public.membership m JOIN public."user" u ON u.id = m."userId"
+      WHERE m."workspaceId" = ${actor.workspaceId} AND m."departingAt" IS NOT NULL
+      ORDER BY m."userId"
+      FOR SHARE OF m`;
+    const marked = locked
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.userId < b.userId ? -1 : 1))
+      .map((m) => ({ userId: m.userId, name: m.name }));
+    if (marked.length === 0) return { marked, released: [], everyone: false };
+    if (options.refuseWhenEveryone) {
+      const members = await tx.membership.count({ where: { workspaceId: actor.workspaceId } });
+      if (marked.length === members) return { marked, released: [], everyone: true };
+    }
+    const released = await tx.$queryRaw<ReleasedCompany[]>`
+      UPDATE "Company" c
+      SET "claimedById" = NULL, "claimExpiresAt" = NULL
+      FROM (
+        SELECT id, "claimedById" FROM "Company"
+        WHERE "workspaceId" = ${actor.workspaceId} AND "claimedById" = ANY(${marked.map((m) => m.userId)}::text[])
+        ORDER BY id
+        FOR UPDATE
+      ) before
+      WHERE c.id = before.id
+      RETURNING c.id AS "companyId", c.name, before."claimedById" AS "previousHolderId"`;
+    return { marked, released, everyone: false };
+  });
+}
+
+// The follow-up date rule and its time-zone conversion, shared by logOutreach and setFollowUp so the
+// two can never disagree. A follow-up is a calendar date from today to a year out, "today" being
+// West Lafayette's date by the database clock; it is stored as midnight there.
+export const FOLLOW_UP_RANGE_MESSAGE = "Pick a follow-up date from today to a year from now.";
+const followUpAt = (followUpOn: string) => Prisma.sql`(${followUpOn}::date)::timestamp AT TIME ZONE ${TIME_ZONE}`;
+async function followUpInRange(tx: Tx, followUpOn: string): Promise<boolean> {
+  const [{ inRange }] = await tx.$queryRaw<{ inRange: boolean }[]>`
+    SELECT ${followUpOn}::date BETWEEN (now() AT TIME ZONE ${TIME_ZONE})::date
+                                   AND (now() AT TIME ZONE ${TIME_ZONE})::date + 365 AS "inRange"`;
+  return inRange;
+}
+// Whether the text is YYYY-MM-DD and a real calendar day ("2026-02-30" is not). Checked before the
+// text reaches Postgres, which would refuse it with an error instead of a message.
+export function isCalendarDate(text: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
+
 // aiDraftId: the AI draft this outreach sent, if any ("I sent it"), so stats can compare drafted
 // and hand-written emails. templateId: the template it was based on, if any, for template stats.
-export type OutreachInput = { channel: Channel; note: string | null; followUpOn: string; aiDraftId?: string | null; templateId?: string | null };
+// via: logged in the app (the default) or by the person's AI assistant. clientKey: the log form's
+// key for this entry (a UUID); the same key twice logs once.
+export type OutreachInput = {
+  channel: Channel;
+  note: string | null;
+  followUpOn: string;
+  aiDraftId?: string | null;
+  templateId?: string | null;
+  via?: Via;
+  clientKey?: string | null;
+};
 
 // Records that you contacted the company. One transaction:
-// 1. A conditional UPDATE that only matches if YOU hold a LIVE claim. It sets last contacted
-//    and the next follow-up, renews your claim, and moves Not contacted to Contacted. It also
-//    returns the stage from before, so the history is right.
+// 0. With a clientKey that is already logged in this workspace, it was this same entry (a double
+//    press, a retry): answer ok with that row and write nothing.
+// 1. A conditional UPDATE that only matches if YOU hold the claim: live, or your own that ran out
+//    and that nobody has taken since (logging renews it, so you can just log). It sets last
+//    contacted and the next follow-up, renews your claim, and moves Not contacted to Contacted. It
+//    also returns the stage from before, so the history is right.
 // 2. If it matched nothing, return why. Nothing has been written.
-// 3. Otherwise add the Outreach row, and a StageChange row if the stage moved.
+// 3. Otherwise add the Outreach row, and a StageChange row if the stage moved. Two submits with the
+//    same key at the same moment both reach this step (the row lock orders them); the unique
+//    (workspaceId, clientKey) index lets only the first insert, and the second answers ok too.
 export function logOutreach(actor: Tenant, companyId: string, input: OutreachInput): Promise<ActionResult<{ outreachId: string }>> {
   return withTenant(actor, async (tx) => {
+    const key = input.clientKey ?? null;
+    if (key) {
+      const done = await tx.outreach.findFirst({ where: { workspaceId: actor.workspaceId, clientKey: key }, select: { id: true, companyId: true } });
+      if (done) return done.companyId === companyId ? { ok: true, data: { outreachId: done.id } } : NOT_FOUND;
+    }
     // The follow-up must be from today to a year out, "today" being West Lafayette's date.
-    const [{ inRange }] = await tx.$queryRaw<{ inRange: boolean }[]>`
-      SELECT ${input.followUpOn}::date BETWEEN (now() AT TIME ZONE ${TIME_ZONE})::date
-                                         AND (now() AT TIME ZONE ${TIME_ZONE})::date + 365 AS "inRange"`;
-    if (!inRange) return { ok: false, error: "Pick a follow-up date from today to a year from now." };
+    if (!(await followUpInRange(tx, input.followUpOn))) return { ok: false, error: FOLLOW_UP_RANGE_MESSAGE };
     // Only your own draft of this company can be credited.
     if (input.aiDraftId) {
       const draft = await tx.aiDraft.findFirst({
@@ -193,13 +300,13 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
     const updated = await tx.$queryRaw<{ fromStage: Stage; toStage: Stage }[]>`
       UPDATE "Company" c
       SET "lastContactedAt" = now(),
-          "nextFollowUpAt" = (${input.followUpOn}::date)::timestamp AT TIME ZONE ${TIME_ZONE},
+          "nextFollowUpAt" = ${followUpAt(input.followUpOn)},
           "claimExpiresAt" = now() + make_interval(days => (SELECT "claimWindowDays" FROM public.workspace WHERE id = ${actor.workspaceId})),
           stage = CASE WHEN c.stage = 'NOT_CONTACTED' THEN 'CONTACTED'::"Stage" ELSE c.stage END,
           "updatedAt" = now()
       FROM (SELECT id, stage FROM "Company" WHERE id = ${companyId} AND "workspaceId" = ${actor.workspaceId} FOR UPDATE) before
       WHERE c.id = before.id
-        AND c."claimedById" = ${actor.userId} AND c."claimExpiresAt" > now()
+        AND c."claimedById" = ${actor.userId}
         AND c."archivedAt" IS NULL AND c.stage NOT IN ('COMMITTED', 'DECLINED')
       RETURNING before.stage AS "fromStage", c.stage AS "toStage"`;
 
@@ -208,31 +315,71 @@ export function logOutreach(actor: Tenant, companyId: string, input: OutreachInp
       if (!row || row.archived) return NOT_FOUND;
       if (TERMINAL_STAGES.includes(row.stage)) return { ok: false, error: `This company is ${STAGE_LABELS[row.stage]}. Nothing was saved.` };
       if (row.live) return { ok: false, error: `${row.holderName} holds this company now, until ${until(row)}. Nothing was saved.` };
-      if (row.claimedById === actor.userId) {
-        return { ok: false, error: "Your claim on this company has expired. Claim it again, then log your outreach. Nothing was saved." };
-      }
       return { ok: false, error: "Claim this company before logging outreach. Nothing was saved." };
     }
 
     const { fromStage, toStage } = updated[0];
-    const outreach = await tx.outreach.create({
-      data: {
-        workspaceId: actor.workspaceId,
-        companyId,
-        senderId: actor.userId,
-        channel: input.channel,
-        note: input.note,
-        aiDraftId: input.aiDraftId ?? null,
-        templateId: input.templateId ?? null,
-      },
-      select: { id: true },
-    });
+    const data = {
+      workspaceId: actor.workspaceId,
+      companyId,
+      senderId: actor.userId,
+      channel: input.channel,
+      note: input.note,
+      aiDraftId: input.aiDraftId ?? null,
+      templateId: input.templateId ?? null,
+      via: input.via ?? "APP",
+      clientKey: key,
+    };
+    const [created] = key
+      ? await tx.outreach.createManyAndReturn({ data: [data], skipDuplicates: true, select: { id: true } })
+      : [await tx.outreach.create({ data, select: { id: true } })];
+    if (!created) {
+      // The same entry, logged by the submit that held the row lock first.
+      const done = await tx.outreach.findFirstOrThrow({ where: { workspaceId: actor.workspaceId, clientKey: key }, select: { id: true } });
+      return { ok: true, data: { outreachId: done.id } };
+    }
+    const outreach = created;
     if (fromStage !== toStage) {
       await tx.stageChange.create({
-        data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage },
+        data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage, via: input.via ?? "APP" },
       });
     }
     return { ok: true, data: { outreachId: outreach.id } };
+  });
+}
+
+// Sets only the next follow-up date of a company: it does not claim, does not renew a claim, does not
+// touch last contacted and writes no Outreach row. One conditional UPDATE: the company is in the
+// workspace, not archived, not Committed or Declined, and not held by someone else under a live claim
+// (compared with now() in SQL; your own claim, an expired one and no claim all pass). The date rule
+// and the stored time are logOutreach's (followUpInRange, followUpAt). Owners are not exempt: the
+// app lets an owner move a stage past someone's claim, but nobody but the holder logs or reschedules.
+// `via` is part of the signature for callers that act for a person (an assistant, a later feature);
+// with no history row written there is nothing to record it on yet.
+export function setFollowUp(actor: Tenant, companyId: string, followUpOn: string, via: Via = "APP"): Promise<ActionResult<{ nextFollowUpAt: Date }>> {
+  void via;
+  return withTenant(actor, async (tx) => {
+    if (!isCalendarDate(followUpOn) || !(await followUpInRange(tx, followUpOn))) return { ok: false, error: FOLLOW_UP_RANGE_MESSAGE };
+    const updated = await tx.$queryRaw<{ nextFollowUpAt: Date }[]>`
+      UPDATE "Company"
+      SET "nextFollowUpAt" = ${followUpAt(followUpOn)},
+          "updatedAt" = now()
+      WHERE id = ${companyId} AND "workspaceId" = ${actor.workspaceId}
+        AND "archivedAt" IS NULL
+        AND stage NOT IN ('COMMITTED', 'DECLINED')
+        AND ("claimedById" IS NULL OR "claimExpiresAt" <= now() OR "claimedById" = ${actor.userId})
+      RETURNING "nextFollowUpAt"`;
+    if (updated.length === 1) return { ok: true, data: updated[0] };
+
+    // Refused: say why. Nothing has been written.
+    const row = await readClaim(tx, actor.workspaceId, companyId);
+    if (!row || row.archived) return NOT_FOUND;
+    if (TERMINAL_STAGES.includes(row.stage)) return { ok: false, error: followUpClosed(row.stage) };
+    // Only reachable if the claim changed in the instant between the UPDATE and this read, which no
+    // test can time reliably, so coverage skips it.
+    /* v8 ignore next */
+    if (!row.live) return { ok: false, error: "The claim on this company just changed. Try again." };
+    return { ok: false, error: followUpHeld(row.holderName, row.claimExpiresAt as Date) };
   });
 }
 
@@ -242,7 +389,8 @@ export type StageChangeResult = { changed: boolean; fromStage: Stage; toStage: S
 // so two people moving the same company at the same moment are handled one after the other and
 // the history's "from" stage is always right. A company someone else holds can only be moved by
 // them or an owner. Moving to Committed or Declined also clears the claim: the pitch is over.
-export function changeStage(actor: Membership, companyId: string, toStage: Stage): Promise<ActionResult<StageChangeResult>> {
+// `via` records whether the move was made in the app or by the person's AI assistant.
+export function changeStage(actor: Membership, companyId: string, toStage: Stage, via: Via = "APP"): Promise<ActionResult<StageChangeResult>> {
   return withTenant(actor, async (tx) => {
     const row = await readClaim(tx, actor.workspaceId, companyId, { lock: true });
     if (!row || row.archived) return NOT_FOUND;
@@ -258,7 +406,7 @@ export function changeStage(actor: Membership, companyId: string, toStage: Stage
       data: { stage: toStage, ...(closesTheDeal ? { claimedById: null, claimExpiresAt: null } : {}) },
     });
     await tx.stageChange.create({
-      data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage },
+      data: { workspaceId: actor.workspaceId, companyId, changedById: actor.userId, fromStage, toStage, via },
     });
     return { ok: true, data: { changed: true, fromStage, toStage } };
   });

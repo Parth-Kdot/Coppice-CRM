@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership } from "@/lib/authz";
 import * as claimCheck from "@/lib/claim-check";
 import type { DraftCheck } from "@/lib/claim-check";

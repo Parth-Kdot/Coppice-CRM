@@ -5,6 +5,8 @@ import { useState, type KeyboardEvent } from "react";
 // A number field with a minus and a plus button. The number is a real text box, so a person can
 // still type it (and the server's own message for a bad number stays reachable), and the arrow keys
 // step it. It submits under `name` like any input, so it sits inside a server action form.
+// At the minimum or maximum a button is aria-disabled and does nothing, rather than disabled:
+// a disabled button drops the focus it had to <body>, mid-press.
 
 export function Stepper({
   name,
@@ -43,7 +45,15 @@ export function Stepper({
   };
   return (
     <div className="lg-stepper" role="group" aria-label={label}>
-      <button type="button" className="lg-stepper-btn" aria-label={`Decrease ${label.toLowerCase()}`} disabled={current <= min} onClick={() => move(-step)}>
+      <button
+        type="button"
+        className="lg-stepper-btn"
+        aria-label={`Decrease ${label.toLowerCase()}`}
+        aria-disabled={current <= min || undefined}
+        onClick={() => {
+          if (current > min) move(-step);
+        }}
+      >
         <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
           <path d="M3.500 8h9" />
         </svg>
@@ -63,7 +73,15 @@ export function Stepper({
         onChange={(e) => change(e.target.value)}
         onKeyDown={onKey}
       />
-      <button type="button" className="lg-stepper-btn" aria-label={`Increase ${label.toLowerCase()}`} disabled={current >= max} onClick={() => move(step)}>
+      <button
+        type="button"
+        className="lg-stepper-btn"
+        aria-label={`Increase ${label.toLowerCase()}`}
+        aria-disabled={current >= max || undefined}
+        onClick={() => {
+          if (current < max) move(step);
+        }}
+      >
         <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
           <path d="M3.500 8h9M8 3.500v9" />
         </svg>
