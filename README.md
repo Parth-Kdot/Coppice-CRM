@@ -22,7 +22,13 @@ The name comes from coppicing, the old forestry practice of cutting a tree back 
 
 **Claim checker.** Every draft is checked for numbers no verified fact supports, claims of past history with the company and outside links. An optional AI pass reads the draft against the verified facts too.
 
+**Research briefs.** On a company page, "Who to contact" asks for a short brief on the company's official ways in: university relations, campus recruiting, giving programs. It reads only web pages an Owner approved in Settings, every line quotes the page it came from and links to it, and nothing reaches the company until someone adds a specific line to its notes. AI must be on for the workspace, and each person can ask for 10 briefs a day.
+
+**Getting started.** The first time someone opens a workspace, a short basics tour points at the real controls: the queue, claiming, logging a follow-up, the board, adding companies and search (and, for Owners, inviting officers). An optional AI tour covers the fact sheet, Smart import, the drafter and checker, research briefs and AI assistants. Either can be replayed from the account menu.
+
 **Sending and logging.** Coppice never sends email. Drafts open in your own Gmail, Outlook or mail app. Logging the outreach renews your claim and sets the next follow-up.
+
+**AI assistants (MCP).** Officers and owners can connect their own AI assistant (any assistant that supports remote MCP servers with OAuth) at `https://<your site>/api/mcp`. The assistant can list workspaces, search companies, read a company with its contacts and history, see the follow-up queue and your claims, and, if you allow changes, claim, log outreach and move stages as you, under the same claim rules as the app. Each owner turns it on per workspace in Settings (off by default). Sign-in is Google, and every new assistant gets a consent page that names it and what it asks for. Whatever an assistant reads, including contact names, emails and notes, goes to the company behind it. Its changes are marked "via assistant" in the history. Removing the connector in the assistant may not end its access; to end it, each person disconnects that assistant under Settings > AI assistants > Your connected assistants, which cuts it off at once (its next call is refused, in every workspace) and deletes its sign-in. Only the person who connected an assistant sees or disconnects it. Turning assistants off blocks every assistant in that workspace while it stays off, and turning it back on lets back in every assistant members already allowed. Removing a member blocks their assistant while they are out of the workspace.
 
 ## Stack
 
@@ -58,6 +64,12 @@ It creates 40 companies across all six stages, with contacts on most; 3 template
 - It refuses to run unless both `DATABASE_URL` and `DIRECT_URL` point at `localhost`, `127.0.0.1` or `::1`, so it cannot be run against Supabase by accident.
 - To open the demo workspace with your own account, sign in once locally, then run `SEED_OWNER_EMAIL=you@gmail.com npm run db:seed`. That adds you as an owner of the demo workspace.
 
+### The MCP server
+
+Built on Better Auth's MCP and OAuth provider plugins (`lib/auth.ts`) and the official MCP SDK (`lib/mcp/`). Assistants register themselves (open dynamic client registration), sign in with Google, and get access tokens that last an hour and work only for `/api/mcp`. Discovery lives at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server/api/auth`. `BETTER_AUTH_URL` must be the public site address, since tokens are bound to `<BETTER_AUTH_URL>/api/mcp`. Tool calls are limited to 60 reads and 10 changes a minute per person. Every request also checks that the grant behind the token still stands (`lib/mcp/grant.ts`). Disconnect in Settings (`lib/mcp/connections.ts`) deletes that person's consent and every access and refresh token of that assistant for them in one transaction, so its current access token is refused on the next call and its refresh token no longer works; other people's connections to the same assistant are untouched.
+
+While the Google OAuth app is in Testing mode, only the Google accounts listed as test users can sign in, through an assistant or otherwise.
+
 ## Checks
 
 ```bash
@@ -68,4 +80,4 @@ npm test                      # needs the local Postgres running
 
 ## Status
 
-The core workflow works end to end: import, claims, the queue and board, the fact sheet, drafts, the claim checker and logging outreach. Next up are reply rates for each pitch template, research briefs on a company before outreach, a pipeline assistant that only acts after you approve, an MCP server so AI assistants can read and update a pipeline, and a turnover summary for each incoming board.
+The core workflow works end to end: import (with Smart import for messy notes), claims, the queue and board, the fact sheet, drafts, the claim checker, logging outreach, reply rates for each pitch template, and research briefs from approved pages. Members can also connect their own AI assistant through the MCP server. Next up are a pipeline assistant that only acts after you approve, and a turnover summary for each incoming board.

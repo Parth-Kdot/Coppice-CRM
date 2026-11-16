@@ -1,6 +1,8 @@
 // Smart import's dates (lib/smart-import/): board years, and the one date written in a quote,
 // read by code so the AI never supplies a number. Pure, so tests can run them directly.
 
+import { addDays, formatYmd } from "@/lib/dates";
+
 // The board year a date is in, by its starting year: boards turn over in July (the board view's
 // rule, components/ledger/board-year.ts), so 2026-10-25 is in 2026-27 and 2026-05-01 in 2025-26.
 export const boardYearOf = (ymd: string) => (Number(ymd.slice(5, 7)) >= 7 ? Number(ymd.slice(0, 4)) : Number(ymd.slice(0, 4)) - 1);
@@ -37,14 +39,16 @@ export function parseDateText(quote: string): DateParts | null {
   if (dates.length !== 1) return null;
   const [d] = dates;
   if (d.month < 1 || d.month > 12) return null;
-  if (d.day !== null && (d.day < 1 || d.day > daysIn(d.year ?? 2024, d.month))) return null;
+  // A day no month ever has (2/30) is not a date. A day the written year lacks (2/29/2027) is
+  // read, and placing it says why it is dropped.
+  if (d.day !== null && (d.day < 1 || d.day > daysIn(2024, d.month))) return null;
   return d;
 }
 
 // Whether a cell mentions a date at all, for describing it without its text (column suggestions).
 export const hasDate = (text: string) => /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{1,2}-\d{1,2}\b/.test(text) || new RegExp(`\\b(${MONTH_WORD})\\b`, "i").test(text.replace(/\bmay\b/gi, ""));
 
-const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+export const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 const ymd = (year: number, month: number, day: number) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
 // A calendar date for parts read from a sheet of the board year starting in `cycleStart`. Without
@@ -66,6 +70,66 @@ export function resolveDate(parts: DateParts, cycleStart: number, { after, needD
   return date;
 }
 
+// Why a year-less date could not be placed: no such day that year (Feb 29), or it would be in the
+// future, or it is older than the server's two-year window.
+export type PlaceDrop = { drop: "no-day" | "future" | "old" | "far"; year: number; date: string | null };
+export type Placed = { date: string; moved: boolean } | PlaceDrop;
+
+// A last-contacted date placed for a sheet from the current board year (`today` is the database's).
+// A written year is never changed. Without one the date goes in the sheet's board year first; if
+// that is after today (or that year has no such day, like Feb 29), it is the most recent such day
+// not after today, as long as it is inside the two-year window the server allows. A day that
+// doesn't exist is a drop, not a guess.
+export function placeLastContacted(parts: DateParts, cycleStart: number, today: string): Placed | null {
+  if (parts.day === null) return null;
+  const oldest = addDays(today, -730);
+  if (parts.year !== null) {
+    if (parts.day > daysIn(parts.year, parts.month)) return { drop: "no-day", year: parts.year, date: null };
+    return { date: ymd(parts.year, parts.month, parts.day), moved: false };
+  }
+  const first = parts.month >= 7 ? cycleStart : cycleStart + 1;
+  const firstDate = parts.day <= daysIn(first, parts.month) ? ymd(first, parts.month, parts.day) : null;
+  // Back one year at a time; the window is two years, so three steps always reach past it.
+  for (let year = first; year >= first - 3; year--) {
+    if (parts.day > daysIn(year, parts.month)) continue;
+    const date = ymd(year, parts.month, parts.day);
+    if (date > today) continue;
+    if (date < oldest) break;
+    return { date, moved: firstDate !== null && firstDate > today };
+  }
+  if (firstDate === null) return { drop: "no-day", year: first, date: null };
+  return firstDate > today ? { drop: "future", year: first, date: firstDate } : { drop: "old", year: first, date: firstDate };
+}
+
+// A follow-up date placed for a sheet from the current board year. A written year is never
+// changed. Without one it goes in the sheet's board year; if that is before today (or before the
+// last contact) it moves to the next such date on or after today, which must be within a year of
+// today.
+export function placeFollowUp(parts: DateParts, cycleStart: number, today: string, after?: string): Placed | null {
+  const day = parts.day ?? 1;
+  const latest = addDays(today, 365);
+  if (parts.year !== null) {
+    if (day > daysIn(parts.year, parts.month)) return { drop: "no-day", year: parts.year, date: null };
+    return { date: ymd(parts.year, parts.month, day), moved: false };
+  }
+  const first = parts.month >= 7 ? cycleStart : cycleStart + 1;
+  const floor = after && after > today ? after : today;
+  // Feb 29 can be up to eight years away (2096 to 2104), so look that far for the real reason.
+  for (let year = first; year <= first + 8; year++) {
+    if (day > daysIn(year, parts.month)) continue;
+    const date = ymd(year, parts.month, day);
+    if (date < floor) continue;
+    return date > latest ? { drop: "far", year, date } : { date, moved: year !== first };
+  }
+  return { drop: "no-day", year: first, date: null };
+}
+
+// The review's one hint when several last-contacted dates had to be moved or dropped for being in
+// the future: the sheet may be from the year before. Null for two or fewer.
+export function futureHint(proposals: { future?: boolean }[], cycleStart: number): string | null {
+  if (proposals.filter((p) => p.future).length <= 2) return null;
+  return `Several dates would be in the future for ${yearLabel(cycleStart)}. Is the sheet from ${yearLabel(cycleStart - 1)}?`;
+}
+
 // "Mar 2, 2026", for notes and reasons a person reads.
-export const longDay = (date: string) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+export const longDay = (date: string) => formatYmd(date, { month: "short", day: "numeric", year: "numeric" });

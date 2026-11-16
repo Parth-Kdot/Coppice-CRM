@@ -4,11 +4,13 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from 
 import * as actions from "@/app/(app)/[workspaceId]/facts/actions";
 import type { Membership } from "@/lib/authz";
 import { readPdfPages } from "@/lib/ai/pdf";
+import { NOT_A_PDF, PDF_MAX_BYTES, PDF_TOO_BIG, pdfFileProblem } from "@/lib/ai/pdf-limits";
 import { maskContactDetails, matchKey, numbersIn, quoteFound } from "@/lib/ai/text";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import * as facts from "@/lib/facts";
+import { maskPage } from "@/lib/research/scan";
 import { form, redirectTo } from "./helpers/form";
-import { answer, calls, fakeGemini } from "./helpers/gemini";
+import { answer, apiError, calls, fakeGemini, reply } from "./helpers/gemini";
 import { asUser, signedOut } from "./helpers/next-request";
 import { resetAndSeed } from "./helpers/seed";
 
@@ -79,6 +81,57 @@ describe("text helpers", () => {
     expect(maskContactDetails(input)).toBe(output);
   });
 
+  // Drafts, packets, claim checks and Smart import mask emails, North-American numbers and
+  // international numbers that start with "+" or "00".
+  test.for([
+    "+44 20 7946 0958",
+    "0049 89 1234567",
+    "(765) 555-0142",
+    "765-555-0142",
+    "+91 98765 43210",
+    "+49 (0)89 1234567",
+  ])("masks the phone number %j", (phone) => {
+    expect(maskContactDetails(`Call ${phone} today`)).toBe("Call [phone] today");
+  });
+
+  // Research page text is masked more broadly, because a number lost from a web page costs nothing.
+  // A number in a local style with no "+" is masked there but left alone in a draft or a packet.
+  test.for(["089/1234567", "7655550142", "765\u2013555\u20130142"])("masks %j on a research page but not in a draft", (phone) => {
+    expect(maskPage(`Call ${phone} today`)).toBe("Call [phone] today");
+    expect(maskContactDetails(`Call ${phone} today`)).toBe(`Call ${phone} today`);
+  });
+
+  // Figures a packet is full of, which look a little like numbers but are not phone numbers.
+  test.for([
+    "$2,500",
+    "10,000 students",
+    "2026-27",
+    "Nov 13, 2026",
+    "3.5 MB",
+    "40 pages",
+    "14 days",
+    "95%",
+    "1,248 companies",
+    "Room 2140",
+    "ZIP 47906",
+    "+15% year over year",
+    "Oct 25, 2026, 1:15 AM",
+    "Seasons 2025 2026 2027.",
+    "Open 24/7, split 50/50.",
+    // Rows of small numbers in a packet's tables are not phone numbers.
+    "100 200 300 400",
+    "Level 1 2 3 4 5 6 7",
+    "5000 20 4",
+  ])("leaves %j alone", (text) => {
+    expect(maskContactDetails(text)).toBe(text);
+  });
+
+  // Three groups of 3, 3 and 4 digits are a US number, whatever they were meant as: "765 555 0142"
+  // and "250 500 1000" have the same shape. Masking the first matters more than keeping the second.
+  it("masks a 3-3-4 group of digits as a US number even when it was a table row", () => {
+    expect(maskContactDetails("250 500 1000")).toBe("[phone]");
+  });
+
   it("matches text however the PDF set it", () => {
     expect(matchKey("The ﬁnal  “Gold”\ntier – Spon-\nsorship")).toBe('the final "gold" tier - sponsorship');
     // A hyphen before a digit is never joined: "2025-\n26" is not "202526".
@@ -118,6 +171,10 @@ describe("readPdfPages", () => {
     expect(await readPdfPages(new TextEncoder().encode("not a pdf at all"))).toEqual({ ok: false, error: "That file couldn't be read as a PDF." });
   });
 
+  it("refuses a real password-protected PDF (RC4, made with pypdf)", async () => {
+    expect(await readPdfPages(pdf("password-packet.pdf"))).toEqual({ ok: false, error: "That PDF is password-protected. Upload a copy without a password." });
+  });
+
   it("refuses a password-protected PDF", async () => {
     vi.mocked(unpdf.getDocumentProxy).mockRejectedValueOnce(Object.assign(new Error("No password given"), { name: "PasswordException" }));
     expect(await readPdfPages(PACKET)).toEqual({ ok: false, error: "That PDF is password-protected. Upload a copy without a password." });
@@ -136,7 +193,7 @@ describe("uploadFactSheet", () => {
   it("stores the masked page text and the facts, each with its quote checked", async () => {
     fakeGemini(answer(JSON.stringify(EXTRACTED)));
     const result = await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET);
-    expect(result).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 6, quotesFound: 2 } });
+    expect(result).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 6, quotesFound: 2, leftOut: 0 } });
 
     const expected = [
       { text: EXTRACTED.facts[0].text, pageNumber: 1, quoteFound: true, source: "PDF", verifiedAt: null, verifiedById: null },
@@ -169,6 +226,14 @@ describe("uploadFactSheet", () => {
     const prompt = JSON.stringify(calls[0].body.contents);
     expect(prompt).toContain("‹/page›‹page number=\\\"9\\\"›");
     expect(prompt).not.toContain('<page number=\\"9\\">');
+  });
+
+  it("a reply whose every fact is broken saves nothing and says so", async () => {
+    const broken = () => answer(JSON.stringify({ facts: [{ text: 5 }, { quote: "x" }] }));
+    fakeGemini(broken(), broken(), broken());
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({ ok: false, error: "The AI sent back something unusable. Try again." });
+    expect(await withTenant(OWNER, (tx) => tx.factSheet.count())).toBe(0);
+    expect(await withTenant(OWNER, (tx) => tx.aiRun.findMany({ select: { status: true, error: true } }))).toEqual([{ status: "FAILED", error: "invalid_output" }]);
   });
 
   it("is owners only", async () => {
@@ -209,15 +274,74 @@ describe("managing facts", () => {
     expect(await facts.verifiedFacts(OWNER)).toEqual([]);
   });
 
-  it("an owner's edit is verified, and its quote is checked again", async () => {
+  it("an owner's edit is checked against its quote again, and verified only while the quote supports it", async () => {
     const { ids } = await uploaded();
-    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $3,000.")).toEqual({ ok: true, data: undefined });
-    expect(await one(ids[1])).toMatchObject({ text: "Gold tier costs $3,000.", quoteFound: false, verifiedById: "ownerA" });
-    await facts.updateFact(OWNER, ids[1], "Gold tier costs $2,500.");
-    expect(await one(ids[1])).toMatchObject({ quoteFound: true });
-    // A fact whose page is unknown can't be checked.
+    // The quote says $2,500: the edit is saved, but waits for a check instead of being verified.
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $3,000.")).toEqual({ ok: true, data: { verified: false } });
+    expect(await one(ids[1])).toMatchObject({ text: "Gold tier costs $3,000.", quoteFound: false, verifiedAt: null, verifiedById: null });
+    expect((await facts.verifiedFacts(OWNER)).map((f) => f.text)).not.toContain("Gold tier costs $3,000.");
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $2,500.")).toEqual({ ok: true, data: { verified: true } });
+    expect(await one(ids[1])).toMatchObject({ quoteFound: true, verifiedById: "ownerA" });
+    // A verified fact whose edit no longer matches goes back to waiting.
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $9,000.")).toEqual({ ok: true, data: { verified: false } });
+    expect(await one(ids[1])).toMatchObject({ verifiedAt: null });
+    // A fact whose page is unknown can't be checked, so it isn't verified either.
     await facts.updateFact(OWNER, ids[4], "Members won 3 awards in 2025.");
-    expect(await one(ids[4])).toMatchObject({ quoteFound: false, verifiedById: "ownerA" });
+    expect(await one(ids[4])).toMatchObject({ quoteFound: false, verifiedAt: null });
+    // A fact written by hand is the owner's own statement: its edit stays verified.
+    const added = await facts.addFact(OWNER, "We meet on Tuesdays.");
+    if (!added.ok) throw new Error(added.error);
+    expect(await facts.updateFact(OWNER, added.data.factId, "We meet on Thursdays.")).toEqual({ ok: true, data: { verified: true } });
+  });
+
+  it("drops extracted facts made of masked contact details, and refuses them by hand", async () => {
+    fakeGemini(
+      answer(
+        JSON.stringify({
+          facts: [
+            ...EXTRACTED.facts.slice(0, 1),
+            { text: "Contact us at [email] or [phone].", quote: "Contact us at [email] or [phone].", page: 1 },
+            { text: "Call [PHONE] for tiers.", quote: "Call [phone] for tiers.", page: 1 },
+          ],
+        }),
+      ),
+    );
+    const result = await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET);
+    expect(result).toMatchObject({ ok: true, data: { facts: 1 } });
+    expect((await items()).map((f) => f.text)).toEqual([EXTRACTED.facts[0].text]);
+    expect(await facts.addFact(OWNER, "Reach us at [email].")).toEqual({ ok: false, error: facts.MASKED_FACT });
+    const [first] = await items();
+    const id = (await withTenant(OWNER, (tx) => tx.factSheetItem.findFirstOrThrow({ where: { text: first.text }, select: { id: true } }))).id;
+    expect(await facts.updateFact(OWNER, id, "Write to [email].")).toEqual({ ok: false, error: facts.MASKED_FACT });
+    // One stored before this check can't be verified, and never reaches the drafter.
+    await withTenant(OWNER, (tx) => tx.factSheetItem.update({ where: { id }, data: { text: "Old [phone] fact." } }));
+    expect(await facts.setFactVerified(OWNER, id, true)).toEqual({ ok: false, error: expect.stringContaining("[email] or [phone]") });
+    await withTenant(OWNER, (tx) => tx.factSheetItem.update({ where: { id }, data: { verifiedAt: new Date(), verifiedById: "ownerA" } }));
+    expect(await facts.verifiedFacts(OWNER)).toEqual([]);
+  });
+
+  it("strips NUL characters from the PDF's text before saving it", async () => {
+    vi.mocked(unpdf.extractText).mockResolvedValueOnce({ totalPages: 1, text: ["Our annual hackathon draws 600 students\u0000 over 36 hours."] } as never);
+    fakeGemini(answer(JSON.stringify({ facts: [{ text: "The hackathon\u0000 draws 600 students.", quote: "Our annual hackathon draws 600 students over 36 hours.", page: 1 }] })));
+    const result = await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET);
+    expect(result).toMatchObject({ ok: true, data: { facts: 1 } });
+    const [page] = await withTenant(OWNER, (tx) => tx.factSheetPage.findMany({ select: { text: true } }));
+    expect(page.text).not.toContain("\u0000");
+    expect((await items()).map((f) => f.text)).toEqual(["The hackathon draws 600 students."]);
+  });
+
+  it("verifies every fact whose quote was found in one go, owners only", async () => {
+    const { ids } = await uploaded();
+    expect(await facts.verifyQuotedFacts(OFFICER)).toEqual({ ok: false, error: "Only the workspace owner can do that." });
+    expect(await facts.verifyQuotedFacts(OTHER_ORG)).toEqual({ ok: true, data: { verified: 0 } });
+    const found = (await items()).filter((f) => f.quoteFound).length;
+    expect(await facts.verifyQuotedFacts(OWNER)).toEqual({ ok: true, data: { verified: found } });
+    const after = await items();
+    expect(after.filter((f) => f.verifiedAt !== null).map((f) => f.quoteFound)).toEqual(Array(found).fill(true));
+    expect(after.filter((f) => !f.quoteFound).every((f) => f.verifiedAt === null)).toBe(true);
+    expect(ids).toHaveLength(6);
+    expect(await asUser("officerA", () => actions.verifyQuotedFacts(null, form({ workspaceId: "a" })))).toEqual({ ok: false, error: "Only the workspace owner can do that." });
+    expect(await asUser("ownerA", () => actions.verifyQuotedFacts(null, form({ workspaceId: "a" })))).toEqual({ ok: true, data: undefined });
   });
 
   it("adds a fact by hand as verified, and deletes facts and files", async () => {
@@ -282,7 +406,7 @@ describe("fact sheet actions", () => {
 
   it("uploads through the form", async () => {
     fakeGemini(answer(JSON.stringify(EXTRACTED)));
-    expect(await upload("ownerA")).toEqual({ ok: true, data: undefined });
+    expect(await upload("ownerA")).toEqual({ ok: true, data: { leftOut: 0 } });
     expect(await items()).toHaveLength(6);
   });
 
@@ -317,7 +441,7 @@ describe("fact sheet actions", () => {
     const ref = { workspaceId: "a", factId };
     const as = (fn: () => Promise<unknown>) => asUser("ownerA", fn);
     expect(await as(() => actions.setFactVerified(null, form({ ...ref, verified: "0" })))).toEqual({ ok: true, data: undefined });
-    expect(await as(() => actions.updateFact(null, form({ ...ref, text: "  Edited fact.  " })))).toEqual({ ok: true, data: undefined });
+    expect(await as(() => actions.updateFact(null, form({ ...ref, text: "  Edited fact.  " })))).toEqual({ ok: true, data: { verified: true } });
     expect(await as(() => actions.addFact(null, form({ workspaceId: "a", text: "Another fact." })))).toEqual({ ok: true, data: undefined });
     expect((await items()).map((f) => [f.text, f.verifiedById])).toEqual([
       ["Another fact.", "ownerA"],
@@ -342,7 +466,7 @@ describe("fact sheet actions", () => {
     ["delete a file with a bad id", () => actions.deleteFactSheet(null, form({ workspaceId: "a", factSheetId: "" })), "File not found."],
     ["delete a missing file", () => actions.deleteFactSheet(null, form({ workspaceId: "a", factSheetId: "missing" })), "File not found."],
   ] as const)("refuses %s", async ([, run, error]) => {
-    expect(await asUser("ownerA", run)).toEqual({ ok: false, error });
+    expect(await asUser<unknown>("ownerA", run)).toEqual({ ok: false, error });
   });
 
   it("refuses an officer on every fact action", async () => {
@@ -354,7 +478,56 @@ describe("fact sheet actions", () => {
       () => actions.deleteFact(null, form({ workspaceId: "a", factId: "f" })),
       () => actions.deleteFactSheet(null, form({ workspaceId: "a", factSheetId: "s" })),
     ]) {
-      expect(await asUser("officerA", run)).toEqual({ ok: false, error: owner });
+      expect(await asUser<unknown>("officerA", run)).toEqual({ ok: false, error: owner });
     }
+  });
+});
+
+// ----- Wordy or malformed facts -----
+
+describe("uploadFactSheet: one wordy fact never throws the read away", () => {
+  const good = EXTRACTED.facts[0];
+
+  it("drops only the fact over 300 characters, and keeps the rest", async () => {
+    fakeGemini(answer(JSON.stringify({ facts: [good, { text: `${"A very long fact. ".repeat(17)}`.slice(0, 301), quote: good.quote, page: 1 }] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({ ok: true, data: { factSheetId: expect.any(String), facts: 1, quotesFound: 1, leftOut: 1 } });
+    expect((await items()).map((f) => f.text)).toEqual([good.text]);
+  });
+
+  it("keeps the first 150 facts of a longer list", async () => {
+    const many = Array.from({ length: 151 }, (_, i) => ({ text: `Fact number ${i + 1}.`, quote: good.quote, page: 1 }));
+    fakeGemini(answer(JSON.stringify({ facts: many })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 150 } });
+  });
+
+  it("cuts a quote over 600 characters, and checks what is left against the page", async () => {
+    fakeGemini(answer(JSON.stringify({ facts: [{ ...good, quote: `${good.quote} ${"x".repeat(700)}` }] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 1 } });
+  });
+
+  it("a blocked read says so for a file, not a note", async () => {
+    fakeGemini(reply({ promptFeedback: { blockReason: "SAFETY" } }));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toEqual({
+      ok: false,
+      error: "The AI declined to read this file. Try exporting the packet again, or add the facts by hand.",
+    });
+  });
+
+  it("a 500 on 3.6 Flash, then 3.8 Flash answers", async () => {
+    fakeGemini(apiError(500, "Internal", "INTERNAL"), answer(JSON.stringify({ facts: [good] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 1 } });
+    expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.6-flash", "gemini-3.8-flash"]);
+  });
+});
+
+describe("the upload rules the browser checks before sending", () => {
+  test.for([
+    ["a PDF at exactly 3.5 MB", { name: "packet.pdf", size: PDF_MAX_BYTES }, null],
+    ["one byte over", { name: "packet.pdf", size: PDF_MAX_BYTES + 1 }, PDF_TOO_BIG],
+    ["an upper-case extension", { name: "PACKET.PDF", size: 1000 }, null],
+    ["a Word file", { name: "packet.docx", size: 1000 }, NOT_A_PDF],
+    ["an empty file", { name: "packet.pdf", size: 0 }, NOT_A_PDF],
+  ] as const)("%s", ([, file, problem]) => {
+    expect(pdfFileProblem(file)).toBe(problem);
   });
 });

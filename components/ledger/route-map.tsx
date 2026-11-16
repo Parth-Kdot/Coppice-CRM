@@ -6,7 +6,8 @@ import { STAGE_LABELS } from "@/lib/stages";
 // ones ahead are empty. Declined is a branch that drops off the line at the stage the company left
 // from; it is drawn dashed and empty until it happens. Every dot has its state in words for screen
 // readers, so the fill is never the only signal. It is drawn from the company's own stage and its
-// stage history, nothing else.
+// stage history, nothing else. On a very narrow phone only the current stage is named on screen
+// (the others keep their names for screen readers), so the five labels never run into each other.
 
 const LINE: Stage[] = ["NOT_CONTACTED", "CONTACTED", "REPLIED", "IN_CONVERSATION", "COMMITTED"];
 
@@ -41,7 +42,7 @@ export function RouteMap({ stage, stageChanges, hasOutreach }: { stage: Stage; s
             <li key={s} className="lg-route-stop" data-state={st}>
               <span className="lg-route-dot" aria-hidden="true" />
               <span className="lg-route-label">
-                {STAGE_LABELS[s]}
+                <span className="lg-route-name">{STAGE_LABELS[s]}</span>
                 <span className="lg-sr">, {words[st]}</span>
               </span>
             </li>

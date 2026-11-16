@@ -1,10 +1,8 @@
 import type { Channel, Prisma, Stage } from "@/generated/prisma/client";
-import { addDays } from "@/lib/dates";
+import { addDays, DAY_MS, TIME_ZONE } from "@/lib/dates";
 import { domainKey, nameKey } from "@/lib/duplicates";
 import { DEMO_WORKSPACE_ID, NOTES, PEOPLE, SPECS, TEMPLATES } from "./seed-data";
 
-const TIME_ZONE = "America/Indiana/Indianapolis";
-const DAY = 24 * 60 * 60 * 1000;
 const pick = <T,>(items: T[], i: number) => items[i % items.length];
 const senderOf = (index: number) => PEOPLE[index].id;
 
@@ -49,7 +47,7 @@ export function buildRows(today: string, claimWindowDays: number): DemoRows {
   // timestamps in the past, whatever time the seed runs.
   const dayStart = Date.parse(`${today}T00:00:00Z`);
   const at = (daysAgo: number, seq: number, salt: number) =>
-    new Date(dayStart - daysAgo * DAY + (14 * 60 + ((salt * 17) % 200) + seq * 11) * 60 * 1000);
+    new Date(dayStart - daysAgo * DAY_MS + (14 * 60 + ((salt * 17) % 200) + seq * 11) * 60 * 1000);
 
   const companies: Prisma.CompanyCreateManyInput[] = [];
   const contacts: Prisma.ContactCreateManyInput[] = [];
@@ -160,7 +158,7 @@ export function buildRows(today: string, claimWindowDays: number): DemoRows {
 
     if (spec.claim === "live") live.push({ id, by: spec.by });
     // A real claim runs for the workspace's window after the last touch.
-    if (spec.claim === "expired" && lastContacted) expired.push({ id, by: spec.by, expiresAt: new Date(lastContacted.getTime() + claimWindowDays * DAY) });
+    if (spec.claim === "expired" && lastContacted) expired.push({ id, by: spec.by, expiresAt: new Date(lastContacted.getTime() + claimWindowDays * DAY_MS) });
   });
 
   const templates = Object.values(TEMPLATES).map((t, k) => ({

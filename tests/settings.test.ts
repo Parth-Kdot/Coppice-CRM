@@ -2,16 +2,22 @@ import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import {
   cancelInvitation,
   changeMemberRole,
+  deleteWorkspace,
   inviteMember,
   leaveWorkspace,
   removeMember,
+  renameWorkspace,
+  updateAiSettings,
   updateClaimWindow,
 } from "@/app/(app)/[workspaceId]/settings/actions";
 import { checkMembership } from "@/lib/authz";
-import { prisma } from "@/lib/db";
+import { claimCompany } from "@/lib/claims";
+import { createCompany } from "@/lib/companies";
+import { prisma, withTenant } from "@/lib/db";
+import { DELETE_NAME_MISMATCH, ONLY_OWNER_MESSAGE } from "@/lib/workspaces";
 import { form, redirectTo } from "./helpers/form";
 import { asUser, signedOut } from "./helpers/next-request";
-import { invite, ownerCount, resetAndSeed, roleOf } from "./helpers/seed";
+import { invite, invite as seedInvite, ownerCount, resetAndSeed, roleOf } from "./helpers/seed";
 
 // Real server actions, real database. Only Next.js's request APIs are swapped for test ones.
 vi.mock("next/headers", () => import("./helpers/next-request"));
@@ -19,6 +25,8 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 const NOT_OK = { ok: false, error: expect.any(String) };
 const OK = { ok: true, data: undefined };
+// inviteMember also says who was invited, whether an older invitation was renewed, and until when.
+const INVITED = { ok: true, data: { email: "new@example.com", renewed: false, until: expect.stringMatching(/^[A-Z][a-z]{2} \d{1,2}$/) } };
 
 // Seed: workspace "a" (ownerA owner, officerA officer) and "b" (ownerB owner).
 beforeEach(resetAndSeed);
@@ -39,10 +47,13 @@ describe("every settings action when signed out", () => {
     ["removeMember", () => removeMember(null, form({ workspaceId: "a", memberId: "m-officerA" }))],
     ["leaveWorkspace", () => leaveWorkspace(null, form({ workspaceId: "a" }))],
     ["updateClaimWindow", () => updateClaimWindow(null, form({ workspaceId: "a", days: "30" }))],
-  ] as const)("%s sends you to /signin and changes nothing", async ([, run]) => {
+    ["renameWorkspace", () => renameWorkspace(null, form({ workspaceId: "a", name: "Renamed" }))],
+    ["deleteWorkspace", () => deleteWorkspace(null, form({ workspaceId: "a", confirmName: "Org A" }))],
+  ] as [string, () => Promise<unknown>][])("%s sends you to /signin and changes nothing", async ([, run]) => {
     await expect(signedOut(run)).rejects.toEqual(redirectTo("/signin"));
     expect(await roleOf("m-officerA")).toBe("member");
     expect(await prisma.invitation.count()).toBe(0);
+    expect(await prisma.workspace.findUnique({ where: { id: "a" }, select: { name: true } })).toEqual({ name: "Org A" });
   });
 });
 
@@ -51,7 +62,7 @@ describe("inviteMember", () => {
     inviteMember(null, form({ workspaceId: "a", email: "new@example.com", role: "member", ...fields }));
 
   it("lets the owner invite an officer", async () => {
-    expect(await asUser("ownerA", () => invite({}))).toEqual(OK);
+    expect(await asUser("ownerA", () => invite({}))).toEqual(INVITED);
     expect(await prisma.invitation.findFirst({ select: { email: true, role: true, status: true } })).toEqual({
       email: "new@example.com",
       role: "member",
@@ -60,7 +71,7 @@ describe("inviteMember", () => {
   });
 
   it("lets the owner invite another owner", async () => {
-    expect(await asUser("ownerA", () => invite({ role: "owner" }))).toEqual(OK);
+    expect(await asUser("ownerA", () => invite({ role: "owner" }))).toEqual(INVITED);
     expect((await prisma.invitation.findFirst())?.role).toBe("owner");
   });
 
@@ -83,6 +94,25 @@ describe("inviteMember", () => {
     await asUser("ownerA", () => invite({}));
     await asUser("ownerA", () => invite({}));
     expect(await prisma.invitation.count({ where: { status: "pending" } })).toBe(1);
+  });
+
+  it("says a repeat invitation renewed the old one, whatever the letter case", async () => {
+    expect(await asUser("ownerA", () => invite({}))).toEqual(INVITED);
+    const again = await asUser("ownerA", () => invite({ email: "NEW@Example.com" }));
+    expect(again).toEqual({ ...INVITED, data: { ...INVITED.data, renewed: true } });
+    expect(await prisma.invitation.count({ where: { status: "pending" } })).toBe(1);
+  });
+
+  it("finds an older invitation stored with capitals and still renews it", async () => {
+    await seedInvite({ id: "inv-old", email: "New@Example.com" });
+    const result = await asUser("ownerA", () => invite({}));
+    expect(result.ok && result.data.renewed).toBe(true);
+  });
+
+  it("does not count an expired or cancelled invitation as a renewal", async () => {
+    await seedInvite({ id: "inv-gone", email: "new@example.com", status: "canceled" });
+    await seedInvite({ id: "inv-late", email: "new@example.com", expiresAt: new Date(Date.now() - 1000) });
+    expect(await asUser("ownerA", () => invite({}))).toEqual(INVITED);
   });
 
   it("refuses inviting someone who is already a member", async () => {
@@ -247,6 +277,17 @@ describe("leaveWorkspace", () => {
     expect(await roleOf("m-ownerA")).toBe("owner");
   });
 
+  it("refuses the only owner before touching their claims, so nobody can take their companies", async () => {
+    const owner = { userId: "ownerA", workspaceId: "a", role: "owner" } as const;
+    const created = await createCompany(owner, { name: "Acme" });
+    if (created.status !== "saved") throw new Error("seed company flagged");
+    expect((await claimCompany(owner, created.companyId)).ok).toBe(true);
+
+    expect(await asUser("ownerA", () => leave())).toEqual({ ok: false, error: ONLY_OWNER_MESSAGE });
+    const held = await withTenant(owner, (tx) => tx.company.findUniqueOrThrow({ where: { id: created.companyId }, select: { claimedById: true } }));
+    expect(held.claimedById).toBe("ownerA");
+  });
+
   it("refuses someone who isn't a member", async () => {
     expect(await asUser("ownerB", () => leave())).toEqual(NOT_OK);
   });
@@ -289,5 +330,104 @@ describe("updateClaimWindow", () => {
     expect(await asUser("ownerB", () => update("30"))).toEqual(NOT_OK);
     expect(await windowOf("a")).toBe(14);
     expect(await windowOf("b")).toBe(14);
+  });
+});
+
+describe("updateAiSettings and updateClaimWindow say what a bad number is", () => {
+  test.for([
+    ["claim window", () => updateClaimWindow(null, form({ workspaceId: "a", days: "abc" })), "Enter a number of days."],
+    ["AI limit", () => updateAiSettings(null, form({ workspaceId: "a", enabled: "on", limit: "abc" })), "Enter a number."],
+  ] as [string, () => Promise<unknown>, string][])("%s: letters read as a plain sentence, not a zod message", async ([, run, message]) => {
+    expect(await asUser("ownerA", run)).toEqual({ ok: false, error: message });
+  });
+});
+
+describe("changeMemberRole guards", () => {
+  const change = (memberId: string, role: string) => changeMemberRole(null, form({ workspaceId: "a", memberId, role }));
+
+  it("refuses making the only owner an Officer, and they stay Owner", async () => {
+    expect(await asUser("ownerA", () => change("m-ownerA", "member"))).toEqual(NOT_OK);
+    expect(await ownerCount("a")).toBe(1);
+  });
+
+  it("lets a second owner step down once there are two", async () => {
+    await asUser("ownerA", () => change("m-officerA", "owner"));
+    expect(await asUser("officerA", () => change("m-officerA", "member"))).toEqual(OK);
+    expect(await roleOf("m-officerA")).toBe("member");
+  });
+
+  it("refuses an officer making anyone an Owner", async () => {
+    expect(await asUser("officerA", () => change("m-ownerA", "owner"))).toEqual(NOT_OK);
+    expect(await asUser("officerA", () => change("m-officerA", "owner"))).toEqual(NOT_OK);
+    expect(await ownerCount("a")).toBe(1);
+  });
+});
+
+describe("renameWorkspace", () => {
+  const nameOf = async (id: string) => (await prisma.workspace.findUnique({ where: { id }, select: { name: true } }))?.name;
+  const rename = (name: string, workspaceId = "a") => renameWorkspace(null, form({ workspaceId, name }));
+
+  it("lets the owner rename, trimmed", async () => {
+    expect(await asUser("ownerA", () => rename("  Robotics Club 2027  "))).toEqual(OK);
+    expect(await nameOf("a")).toBe("Robotics Club 2027");
+  });
+
+  test.for([
+    ["one character", "X"],
+    ["81 characters", "x".repeat(81)],
+    ["a NUL character", "Org\u0000A"],
+  ] as const)("rejects %s with a readable message", async ([, name]) => {
+    const result = await asUser("ownerA", () => rename(name));
+    expect(result).toEqual(NOT_OK);
+    expect(result.ok === false && result.error).not.toMatch(/expected|Too big|Invalid/);
+    expect(await nameOf("a")).toBe("Org A");
+  });
+
+  it("refuses an officer", async () => {
+    expect(await asUser("officerA", () => rename("Mine now"))).toEqual(NOT_OK);
+    expect(await nameOf("a")).toBe("Org A");
+  });
+
+  it("refuses another workspace's owner", async () => {
+    expect(await asUser("ownerB", () => rename("Mine now"))).toEqual(NOT_OK);
+    expect(await nameOf("a")).toBe("Org A");
+  });
+});
+
+describe("deleteWorkspace", () => {
+  const remove = (confirmName: string, workspaceId = "a") => deleteWorkspace(null, form({ workspaceId, confirmName }));
+  const exists = async (id: string) => (await prisma.workspace.count({ where: { id } })) === 1;
+
+  it("deletes the workspace and everything in it once the owner types its name, then opens the list", async () => {
+    const owner = { userId: "ownerA", workspaceId: "a", role: "owner" } as const;
+    const created = await createCompany(owner, { name: "Acme" });
+    if (created.status !== "saved") throw new Error("seed company flagged");
+    await seedInvite({ id: "inv-a", email: "new@example.com" });
+
+    await expect(asUser("ownerA", () => remove(" Org A "))).rejects.toEqual(redirectTo("/workspaces"));
+    expect(await exists("a")).toBe(false);
+    expect(await prisma.membership.count({ where: { workspaceId: "a" } })).toBe(0);
+    expect(await prisma.invitation.count({ where: { workspaceId: "a" } })).toBe(0);
+    expect(await exists("b")).toBe(true);
+  });
+
+  it("refuses a name that doesn't match and deletes nothing", async () => {
+    expect(await asUser("ownerA", () => remove("org a"))).toEqual({ ok: false, error: DELETE_NAME_MISMATCH });
+    expect(await exists("a")).toBe(true);
+  });
+
+  it("refuses an officer, even with the right name", async () => {
+    expect(await asUser("officerA", () => remove("Org A"))).toEqual(NOT_OK);
+    expect(await exists("a")).toBe(true);
+  });
+
+  it("refuses another workspace's owner, even with the right name", async () => {
+    expect(await asUser("ownerB", () => remove("Org A"))).toEqual(NOT_OK);
+    expect(await exists("a")).toBe(true);
+  });
+
+  it("refuses an empty confirmation", async () => {
+    expect(await asUser("ownerA", () => remove(""))).toEqual(NOT_OK);
+    expect(await exists("a")).toBe(true);
   });
 });
