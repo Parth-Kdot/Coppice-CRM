@@ -5,7 +5,7 @@ import { failure } from "@/lib/actions";
 import { requireMembership } from "@/lib/authz";
 import * as csv from "@/lib/csv";
 import { previewImportSchema, runImportSchema, type ActionResult } from "@/lib/validation";
-import { readFile } from "./read-file";
+import { readCsvFile, readFile } from "./read-file";
 
 // Both steps send the file itself; the server parses and checks it again every time (lib/csv.ts).
 // Any member may import.
@@ -17,9 +17,9 @@ export async function previewImport(_prev: ActionResult<csv.ImportPreview> | nul
 
   try {
     const { userId } = await requireMembership(workspaceId);
-    const text = await readFile(form);
-    if (!text.ok) return text;
-    return await csv.previewImport({ userId, workspaceId }, text.data, mapping);
+    const read = await readCsvFile(form);
+    if (!read.ok) return read;
+    return await csv.previewImport({ userId, workspaceId }, read.data.text, mapping, read.data.encoding === "windows-1252" ? "windows-1252" : undefined);
   } catch (e) {
     return failure(e);
   }

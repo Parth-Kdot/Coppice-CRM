@@ -1,5 +1,6 @@
 import { claimCompany, dbNow, dbToday } from "@/lib/claims";
 import { prisma, withTenant } from "@/lib/db";
+import { aiSteps, basicsSteps } from "@/lib/onboarding-steps";
 import { DEMO_WORKSPACE_ID, PEOPLE, TEMPLATES, emailOf } from "./seed-data";
 import { buildRows, type DemoRows } from "./seed-rows";
 
@@ -91,6 +92,27 @@ async function writeDemo(rows: DemoRows) {
   }
 }
 
+// The made-up people have already taken the onboarding tours, so a demo session (and every
+// screenshot of one) opens straight onto the page. Each row is written as its own person: the
+// table's row-level security lets nobody else write it. Someone added with SEED_OWNER_EMAIL is a
+// real person and still gets the tour.
+async function markToursDone(now: Date) {
+  for (const [index, person] of PEOPLE.entries()) {
+    // The saved step is the done card's index, taken from the card lists so it never drifts.
+    const role = person.role === "owner" ? "owner" : "member";
+    const basicsStep = basicsSteps({ role, empty: false, basicsRole: null }).length - 1;
+    const aiStep = aiSteps({ role, aiConfigured: true, aiOn: true, mcpOn: false }).length - 1;
+    const done = { basicsStep, basicsDoneAt: now, basicsRole: person.role, aiStep, aiDoneAt: now };
+    await withTenant(actor(index), (tx) =>
+      tx.onboardingProgress.upsert({
+        where: { workspaceId_userId: { workspaceId: DEMO_WORKSPACE_ID, userId: person.id } },
+        create: { workspaceId: DEMO_WORKSPACE_ID, userId: person.id, ...done },
+        update: {},
+      }),
+    );
+  }
+}
+
 export async function seedDemo({ ownerEmail }: { ownerEmail?: string } = {}): Promise<SeedResult> {
   const now = await dbNow();
   const today = await dbToday();
@@ -99,6 +121,7 @@ export async function seedDemo({ ownerEmail }: { ownerEmail?: string } = {}): Pr
 
   const rows = buildRows(today, workspace.claimWindowDays);
   await writeDemo(rows);
+  await markToursDone(now);
 
   return {
     workspaceId: DEMO_WORKSPACE_ID,

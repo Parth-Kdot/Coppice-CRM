@@ -16,8 +16,8 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/imp
 // Smart import's AI calls run in the page's server actions; the overall AI deadline is 100 s.
 export const maxDuration = 120;
 
-// Import: any member may add companies from a spreadsheet. The steps run in one ledger of numbered
-// entries; the server checks the file again at every step.
+// Import: any member may add companies from a spreadsheet. Drop a file, check what it will do,
+// import; the server checks the file again at every step.
 export default async function ImportPage({ params }: PageProps<"/[workspaceId]/import">) {
   const { workspaceId } = await params;
   const me = await requireMembershipOr404(workspaceId);
@@ -27,10 +27,7 @@ export default async function ImportPage({ params }: PageProps<"/[workspaceId]/i
 
   return (
     <div className="lg-page-import">
-      <PageHead
-        title="Import companies"
-        sub={`Upload a .csv file with a header row: up to 2,000 rows and 3 MB. In Google Sheets: File, Download, Comma-separated values. Companies are added as Not contacted${smart ? " unless you keep a stage Smart import proposes" : ""}, with at most one contact each.`}
-      />
+      <PageHead title="Import companies" sub="Add companies from a .csv file (up to 2,000 rows)." />
       <CsvImporter workspaceId={workspaceId} preview={previewImport} run={runImport} smart={smart} />
     </div>
   );

@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { Disclosure } from "@/components/ledger/disclosure";
 import { WarningIcon } from "@/components/ledger/icons";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { ImportPreview } from "@/lib/csv";
 import type { SmartStart } from "@/lib/smart-import";
-import { SMART_MAX_ROWS } from "@/lib/validation";
+import { SMART_MAX_ROWS } from "@/lib/limits";
 import { readingMatches, type SmartActions, type SmartState } from "./use-smart-import";
 import "@/components/ledger/smart-import.css";
 
@@ -27,7 +29,7 @@ function FreeTextColumns({ smart, view }: { smart: SmartState; view: ImportPrevi
               disabled={taken || smart.busy}
               checked={smart.freeText.includes(index)}
               onChange={(e) => {
-                smart.clearReading();
+                smart.discardReading();
                 smart.setFreeText(e.target.checked ? [...smart.freeText, index].sort((a, b) => a - b) : smart.freeText.filter((c) => c !== index));
               }}
             />
@@ -42,7 +44,7 @@ function FreeTextColumns({ smart, view }: { smart: SmartState; view: ImportPrevi
 function BoardYear({ smart, actions }: { smart: SmartState; actions: SmartActions }) {
   const { options } = actions;
   return (
-    <div className="lg-smart-year">
+    <div className="lg-smart-year" id="smart-year">
       <p className="lg-maplabel" aria-hidden="true">
         The sheet is from
       </p>
@@ -52,7 +54,7 @@ function BoardYear({ smart, actions }: { smart: SmartState; actions: SmartAction
         value={String(smart.cycle)}
         options={options.cycles.map((c) => ({ value: String(c.start), label: c.start === options.current ? `${c.label} (this year)` : c.label }))}
         onChange={(value) => {
-          smart.clearReading();
+          smart.discardReading();
           smart.setCycle(Number(value));
         }}
       />
@@ -73,28 +75,51 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
         Smart import
       </h3>
       <label className="lg-switch">
-        <input type="checkbox" className="lg-check" checked={smart.on} disabled={smart.busy || pending} onChange={(e) => smart.turn(e.target.checked)} />
+        <input type="checkbox" className="lg-check" checked={smart.on} disabled={smart.busy || pending} onChange={(e) => smart.turn(e.target.checked, view)} />
         <span>Read the free-text columns with AI</span>
       </label>
       <p className="lg-hint lg-smart-say">
         Coppice reads notes like &ldquo;emailed 3/2 by Sam, said reach out in Aug&rdquo; and proposes a stage, dates and a contact, each with the text it came from.
-        You keep, change or drop each one. Up to {SMART_MAX_ROWS} rows with free text are read per import; the rest import the normal way.
+        You use, change or leave out each one. Up to {SMART_MAX_ROWS} rows with free text are read per import; the rest import the normal way.
       </p>
       {smart.on && !options.groq && (
         <p className="lg-error" role="status">
           <WarningIcon size={16} />
-          <span>Smart import needs a Groq key on this server (GROQ_API_KEY), and it isn&apos;t set. The normal import below still works.</span>
+          <span>Smart import isn&apos;t set up on this server yet. Ask the app admin. The normal import below still works.</span>
         </p>
       )}
       {smart.on && options.groq && (
         <div className="lg-smart-body">
-          <p className="lg-hint">
-            What is sent: to suggest the columns, Google&apos;s Gemini gets the headers only when they are plain spreadsheet words (otherwise their shape,
-            like &ldquo;2 words&rdquo;), the company names and industries from columns plainly labeled as such (like &ldquo;Company&rdquo; or
-            &ldquo;Industry&rdquo;), and for up to 15 sample rows only the shape of the other cells (like &ldquo;6 words, has a date&rdquo;), not their words. Gemini also gets the company names to spot look-alikes. The free-text
-            cells, which can include names, go to Groq, with email addresses and phone numbers masked.
-          </p>
-          {smart.note && <p className="lg-hint">{smart.note}</p>}
+          <Disclosure variant="inline" summary="What is sent to AI?">
+            <p className="lg-hint">
+              To suggest the columns, Google&apos;s Gemini gets the headers only when they are plain spreadsheet words (otherwise their shape, like
+              &ldquo;2 words&rdquo;), the company names and industries from columns plainly labeled as such (like &ldquo;Company&rdquo; or
+              &ldquo;Industry&rdquo;), and for up to 15 sample rows only the shape of the other cells (like &ldquo;6 words, has a date&rdquo;), not their
+              words. To spot look-alikes, Gemini gets the company names, cut before any note in the cell (&ldquo;Acme (ask Dana)&rdquo; is sent as
+              &ldquo;Acme&rdquo;). The free-text cells, which can include names, go to Groq, with email addresses and phone numbers masked.
+            </p>
+          </Disclosure>
+          {smart.mappingNote && (
+            <div className="lg-smart-mapnote" role="status">
+              <p>
+                {smart.mappingNote.changes.join(". ")}.
+                {smart.mappingNote.why && ` ${smart.mappingNote.why}`}
+              </p>
+              <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={() => smart.undoMapping(view.mapping)}>
+                Undo
+              </button>
+            </div>
+          )}
+          {smart.note && (
+            <div className="lg-smart-mapnote" role="status">
+              <p>{smart.note}</p>
+              {smart.noteRetryable && (
+                <button type="button" className="lg-btn lg-btn-sm" disabled={smart.busy || pending} onClick={() => smart.turn(true, view)}>
+                  Try again
+                </button>
+              )}
+            </div>
+          )}
           <FreeTextColumns smart={smart} view={view} />
           <BoardYear smart={smart} actions={actions} />
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -118,6 +143,31 @@ export function SmartColumns({ smart, actions, view, pending }: { smart: SmartSt
         </div>
       )}
     </section>
+  );
+}
+
+// After Groq's per-minute limit, the reading goes on by itself once the minute is up. The seconds
+// are shown, not announced; the error line above already said what is happening.
+const WAIT_SECONDS = 60;
+function AutoContinue({ onGo }: { onGo: () => void }) {
+  const [left, setLeft] = useState(WAIT_SECONDS);
+  const go = useRef(onGo);
+  useEffect(() => {
+    go.current = onGo;
+  });
+  useEffect(() => {
+    if (left <= 0) {
+      go.current();
+      return;
+    }
+    const timer = window.setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [left]);
+  return (
+    <p className="lg-hint mt-1">
+      Going on by itself in <span aria-hidden="true">{left} s</span>
+      <span className="sr-only">a minute</span>.
+    </p>
   );
 }
 
@@ -148,9 +198,12 @@ function SmartProgress({ smart, done }: { smart: SmartState; done: boolean }) {
       {smart.readError && (
         <div className="mt-2">
           <ErrorLine>{smart.readError.error}</ErrorLine>
-          <button type="button" className="lg-btn lg-btn-sm mt-2" disabled={smart.busy} onClick={() => smart.readFrom(session, smart.next)}>
-            Continue
-          </button>
+          {smart.readError.retryable && (
+            <button type="button" className="lg-btn lg-btn-sm mt-2" disabled={smart.busy} onClick={() => smart.readFrom(session, smart.next)}>
+              Continue
+            </button>
+          )}
+          {smart.readError.rateLimited && !smart.busy && <AutoContinue key={smart.next} onGo={() => smart.readFrom(session, smart.next)} />}
           <p className="lg-hint mt-1">Or import now: rows not read yet import the normal way.</p>
         </div>
       )}

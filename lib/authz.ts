@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { safeNextPath } from "@/lib/validation";
 
 // Better Auth's built-in role names. The UI shows "member" as Officer.
 export type Role = "owner" | "member";
@@ -16,15 +18,31 @@ export function roleLabel(role: Role): string {
   return role === "owner" ? "Owner" : "Officer";
 }
 
+// The request header that carries the page's own path and query (set by proxy.ts), so a signed-out
+// visitor can be sent back to it after signing in. Only ever used through safeNextPath.
+export const REQUEST_PATH_HEADER = "x-coppice-path";
+
 // The signed-in user, or a redirect to /signin. For pages and actions that need a session.
-export async function requireUser() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/signin");
+// A page that was asked for while signed out is passed along as ?next= (a path on this site only),
+// so a shared company link opens that company after Google, not the workspace list.
+//
+// Cached per request (React cache): the layout, generateMetadata and the page each call this, and
+// before it each one looked the session and user up again. A cache lives for one server render;
+// server actions and route handlers are not inside one, so they always read afresh.
+export const requireUser = cache(async () => {
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  if (!session) {
+    const next = safeNextPath(requestHeaders.get(REQUEST_PATH_HEADER));
+    redirect(next && next !== "/workspaces" ? `/signin?next=${encodeURIComponent(next)}` : "/signin");
+  }
   return session.user;
-}
+});
 
 // The checks themselves take a userId so tests can call them without a browser session.
-export async function checkMembership(userId: string, workspaceId: string): Promise<Membership> {
+// Cached per request by (userId, workspaceId), for the same reason as requireUser. Membership is
+// still read once in every request, so someone removed from a workspace loses it on their next click.
+export const checkMembership = cache(async (userId: string, workspaceId: string): Promise<Membership> => {
   const row = await prisma.membership.findUnique({
     where: { workspaceId_userId: { workspaceId, userId } },
     select: { role: true },
@@ -32,7 +50,7 @@ export async function checkMembership(userId: string, workspaceId: string): Prom
   // Same error whether the workspace doesn't exist or you aren't in it, so ids can't be probed.
   if (!row) throw new AuthzError("You are not a member of this workspace.");
   return { userId, workspaceId, role: row.role === "owner" ? "owner" : "member" };
-}
+});
 
 export async function checkOwner(userId: string, workspaceId: string): Promise<Membership> {
   const membership = await checkMembership(userId, workspaceId);

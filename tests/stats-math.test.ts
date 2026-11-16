@@ -1,16 +1,23 @@
 import { describe, expect, it, test } from "vitest";
 import {
+  activeVerdict,
+  formatCount,
+  formatPct,
+  formatRange,
   isMature,
   MIN_SENDS,
   NO_INDUSTRY,
   rate,
   scorecard,
+  topParts,
   touchNumbers,
   touchOf,
   verdict,
   wilson,
   type OutreachRow,
+  type Part,
   type Rated,
+  type TemplateLine,
 } from "@/lib/stats-math";
 
 // The Scorecard's arithmetic on its own: no database, no AI. Expected values were worked out by hand
@@ -256,5 +263,79 @@ describe("scorecard", () => {
     expect(card.verdict).toEqual({ best: null, worst: null, rated: 0 });
     expect(card.noTemplate.stat).toMatchObject({ sent: 0, status: "none", rate: null, interval: null });
     expect(card.gaps).toEqual({ noTemplate: 0, repliedUnmarked: 0, maturing: 0 });
+  });
+});
+
+describe("formatting for the page", () => {
+  test.each([
+    [0, "0%"],
+    [0.0034, "<1%"],
+    [0.0099, "<1%"],
+    [0.01, "1%"],
+    [0.494, "49%"],
+    [0.995, ">99%"],
+    [1, "100%"],
+  ])("a rate of %d reads %s", (x, text) => {
+    expect(formatPct(x)).toBe(text);
+  });
+
+  it("never shows a thin rate as a certain 0% to 0%", () => {
+    // 3 replies in 890 sends: about 0.1% to 1%.
+    const i = wilson(3, 890) as { low: number; high: number };
+    expect(formatRange(i)).toBe("<1% to <1%");
+    expect(formatRange({ low: 0, high: 0.0043 })).toBe("0% to <1%");
+  });
+
+  it("puts thousands separators in counts", () => {
+    expect(formatCount(4440)).toBe("4,440");
+    expect(formatCount(12)).toBe("12");
+  });
+});
+
+describe("best and worst among active templates", () => {
+  const line = (key: string, replies: number, counted: number, archived = false): TemplateLine => ({
+    key,
+    name: key,
+    archived,
+    stat: rate({ sent: counted, counted, replies }),
+    parts: [],
+  });
+
+  it("never names a retired template, and notes one that did better", () => {
+    const templates = [line("Fall pitch", 490, 1000, true), line("Warm intro", 300, 1000), line("Cold pitch", 3, 1000)];
+    // Across every template the retired one would be best.
+    expect(verdict(templates.map((t) => ({ key: t.key, stat: t.stat }))).best).toBe("Fall pitch");
+    expect(activeVerdict(templates)).toEqual({
+      best: "Warm intro",
+      worst: "Cold pitch",
+      rated: 2,
+      retiredBetter: { key: "Fall pitch", name: "Fall pitch", rate: 0.49 },
+    });
+  });
+
+  it("notes nothing when the retired template did worse, or when no template in use is rated", () => {
+    expect(activeVerdict([line("Old", 1, 100, true), line("A", 50, 100), line("B", 10, 100)]).retiredBetter).toBeNull();
+    expect(activeVerdict([line("Old", 50, 100, true), line("New", 1, 5)])).toEqual({ best: null, worst: null, rated: 0, retiredBetter: null });
+  });
+
+  it("is part of the scorecard", () => {
+    const card = scorecard({
+      now: NOW,
+      rows: [],
+      templates: [{ id: "t1", name: "Only", archived: false }],
+      repliedCompanyIds: [],
+    });
+    expect(card.activeVerdict).toEqual({ best: null, worst: null, rated: 0, retiredBetter: null });
+  });
+});
+
+describe("the industries shown under a template", () => {
+  const part = (label: string, replies: number, counted: number): Part => ({ label, stat: rate({ sent: counted, counted, replies }) });
+
+  it("keeps the five with the most counted sends, ordered by rate; the rest stay one click away", () => {
+    const parts = [part("A", 1, 10), part("B", 9, 100), part("C", 5, 90), part("D", 40, 80), part("E", 7, 70), part("F", 33, 60), part("G", 0, 0)];
+    const { top, rest } = topParts(parts, 5);
+    expect(top.map((p) => p.label)).toEqual(["F", "D", "E", "B", "C"]);
+    expect(rest.map((p) => p.label)).toEqual(["A", "G"]);
   });
 });

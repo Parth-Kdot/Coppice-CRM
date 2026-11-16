@@ -9,11 +9,18 @@ export const fill = (text: string, names: Names) => text.replace(/\{\{\s*(\w+)\s
 
 // Longest name first, so "Sam Lee" is replaced before "Sam". A null name is left alone: with no
 // contact the greeting says "there", which must not turn every "there" into a placeholder.
+// Whole words only: a contact named "Ed" leaves "Education" and "Edison" as they are (a letter or
+// digit on either side means the name is part of another word).
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export function unfill(text: string, names: Partial<Record<keyof Names, string | null>>): string {
   const pairs = Object.entries(names)
     .filter((pair): pair is [string, string] => Boolean(pair[1]?.trim()))
     .sort((a, b) => b[1].length - a[1].length);
-  return pairs.reduce((out, [key, value]) => out.split(value).join(`{{${key}}}`), text);
+  return pairs.reduce(
+    (out, [key, value]) => out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(value)}(?![\\p{L}\\p{N}])`, "gu"), () => `{{${key}}}`),
+    text,
+  );
 }
 
 // Templates (Milestone 5) may use only the three placeholders above, so whatever fills them in later

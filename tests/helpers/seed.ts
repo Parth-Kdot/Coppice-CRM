@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { prisma, withTenant } from "@/lib/db";
 
 // Two workspaces: "a" has an owner and an officer, "b" has its own owner.
 // Wipes everything first; deleting workspaces and users cascades to memberships,
@@ -24,6 +24,22 @@ export async function resetAndSeed() {
       { id: "m-ownerB", workspaceId: "b", userId: "ownerB", role: "owner", createdAt: now },
     ],
   });
+  await markToursDone([
+    { userId: "ownerA", workspaceId: "a", role: "owner" },
+    { userId: "officerA", workspaceId: "a", role: "member" },
+    { userId: "ownerB", workspaceId: "b", role: "owner" },
+  ]);
+}
+
+// Test people have taken the onboarding tours, so nothing is gated on them. Each row is written
+// as its own person (row-level security allows nobody else). tests/onboarding.test.ts clears them.
+export async function markToursDone(members: { userId: string; workspaceId: string; role: "owner" | "member" }[]) {
+  const now = new Date();
+  for (const { userId, workspaceId, role } of members) {
+    await withTenant({ userId, workspaceId }, (tx) =>
+      tx.onboardingProgress.create({ data: { workspaceId, userId, basicsStep: 8, basicsDoneAt: now, basicsRole: role, aiStep: 7, aiDoneAt: now } }),
+    );
+  }
 }
 
 // A pending invitation into workspace "a", sent by its owner.
