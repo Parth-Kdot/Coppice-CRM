@@ -1,0 +1,114 @@
+// What assistants changed: the fixed vocabulary behind the AssistantActivity table and the list in
+// Settings. No free text is ever stored. A row holds the tool's name and one action key from the
+// list below (the table's CHECK constraint has the same list, and a test keeps the two equal), and
+// the line people read is built from the pair (tool, action) by ACTIVITY_LINES, with the company's
+// or target's name looked up when the list is drawn.
+//
+// Pure data: nothing here touches the database, so the Settings page and the tools both import it.
+
+export const ACTIVITY_ACTIONS = [
+  "added",
+  "updated",
+  "archived",
+  "unarchived",
+  "claimed",
+  "released",
+  "force_released",
+  "logged",
+  "replied",
+  "follow_up_set",
+  "stage_changed",
+  "kept_separate",
+  "archived_duplicate",
+  "deleted_contact",
+  "deleted_fact",
+  "deleted_fact_sheet",
+  "verified",
+  "unverified",
+  "started",
+  "ended",
+  "departing_set",
+  "departing_cleared",
+  "claims_released",
+  "cards_built",
+  "card_reviewed",
+  "cards_approved",
+  "dates_saved",
+  "dates_filled",
+  "calendar_applied",
+  "reopened",
+  "published",
+  "unpublished",
+  "imported",
+  "done",
+] as const;
+export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];
+
+// What a row's target is, so the list knows how to label it for the person looking. A company is its
+// name with a link and a contact, template or research source is its name; the rest are fixed
+// phrases that never show typed text (see ACTIVITY_PHRASES). "none" means the line stands alone.
+export type ActivityTarget = "company" | "contact" | "template" | "source" | "fact" | "fact_sheet" | "card" | "report" | "import" | "experiment" | "none";
+
+export const ACTIVITY_PHRASES: Record<"fact" | "fact_sheet" | "card" | "report" | "import" | "experiment", string> = {
+  fact: "a fact",
+  fact_sheet: "the fact sheet",
+  card: "a handoff card",
+  report: "the handoff",
+  import: "an import",
+  experiment: "an experiment",
+};
+
+type Line = { verb: string; target: ActivityTarget };
+const line = (verb: string, target: ActivityTarget): Line => ({ verb, target });
+
+// "<person>'s assistant <verb> <label>". One entry for every action tool, keyed by the tool's name
+// and then the action key it records. A tool that records an action not listed here, or a row from
+// an older version of Coppice, reads as "changed" (activityLine).
+export const ACTIVITY_LINES: Record<string, Partial<Record<ActivityAction, Line>>> = {
+  claim_company: { claimed: line("claimed", "company") },
+  log_outreach: { logged: line("logged outreach for", "company") },
+  change_stage: { stage_changed: line("moved the stage of", "company") },
+  create_company: { added: line("added", "company") },
+  update_company: { updated: line("edited", "company") },
+  set_company_archived: { archived: line("archived", "company"), unarchived: line("unarchived", "company") },
+  resolve_duplicate: { kept_separate: line("kept apart look-alikes of", "company"), archived_duplicate: line("archived as a duplicate", "company") },
+  release_claim: { released: line("released the claim on", "company"), force_released: line("released someone else's claim on", "company") },
+  mark_reply: { replied: line("marked a reply from", "company") },
+  set_follow_up: { follow_up_set: line("set a follow-up date for", "company") },
+  save_contact: { added: line("added a contact:", "contact"), updated: line("edited the contact", "contact") },
+  delete_permanently: {
+    deleted_contact: line("deleted", "contact"),
+    deleted_fact: line("deleted", "fact"),
+    deleted_fact_sheet: line("deleted", "fact_sheet"),
+  },
+  save_fact: { added: line("added", "fact"), updated: line("edited", "fact") },
+  set_fact_verified: { verified: line("verified", "fact"), unverified: line("took the verified mark off", "fact") },
+  save_template: { added: line("added the template", "template"), updated: line("edited the template", "template") },
+  set_template_archived: { archived: line("archived the template", "template"), unarchived: line("unarchived the template", "template") },
+  save_research_source: { added: line("added the research source", "source"), updated: line("renamed the research source", "source") },
+  set_research_source_archived: { archived: line("archived the research source", "source") },
+  accept_brief_item: { updated: line("added a research item to the notes of", "company") },
+  start_experiment: { started: line("started", "experiment") },
+  end_experiment: { ended: line("ended", "experiment") },
+  set_departing: { departing_set: line("marked a member as leaving", "none"), departing_cleared: line("cleared a member's leaving mark", "none") },
+  release_departing_claims: { claims_released: line("released the claims of members who are leaving", "none") },
+  start_handoff: { started: line("started", "report") },
+  build_handoff_cards: { cards_built: line("built the cards for", "report") },
+  review_handoff_card: { card_reviewed: line("reviewed", "card") },
+  approve_remaining_cards: { cards_approved: line("approved the remaining cards of", "report") },
+  save_recontact_dates: { dates_saved: line("saved re-contact dates in", "report") },
+  fill_blank_dates: { dates_filled: line("filled the blank re-contact dates in", "report") },
+  apply_handoff_calendar: { calendar_applied: line("applied the re-contact dates of", "report") },
+  reopen_for_next_year: { reopened: line("reopened for next year", "company") },
+  set_handoff_published: { published: line("published", "report"), unpublished: line("unpublished", "report") },
+  run_import: { imported: line("ran", "import") },
+};
+
+// The words for an unknown pair. The list shows the company's name after it when the row has one.
+export const ACTIVITY_FALLBACK: Line = { verb: "changed", target: "company" };
+
+export function activityLine(tool: string, action: string): Line {
+  const known = Object.hasOwn(ACTIVITY_LINES, tool) ? ACTIVITY_LINES[tool] : undefined;
+  const found = known && Object.hasOwn(known, action) ? known[action as ActivityAction] : undefined;
+  return found ?? ACTIVITY_FALLBACK;
+}

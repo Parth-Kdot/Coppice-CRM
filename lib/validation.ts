@@ -590,17 +590,51 @@ export const acceptBriefItemSchema = companyRefSchema.extend({ briefId: id, item
 
 // The arguments an assistant sends to each tool. The MCP SDK checks them against these before a
 // tool runs, and also publishes them (as JSON Schema) so the assistant knows what to send. That's
-// why they hold no transforms: the published schema has to describe the input as sent.
+// why they hold no transforms: the published schema has to describe the input as sent. Trimming
+// and the app's own form rules happen inside the tool, through the same schemas the app's forms use.
+//
+// Rules for every schema here: each string has a cap, each field a .describe(), free text goes
+// through mcpText (the NUL check is a refine, which the published schema ignores), enums come from
+// the Prisma enums, dates are z.iso.date() and flags are strict booleans.
 const mcpWorkspace = id.describe("The workspace's id, from list_workspaces.");
 const mcpCompany = id.describe("The company's id, from list_companies or get_follow_up_queue.");
+
+// Free text from an assistant: capped, and without the NUL character Postgres can't store.
+export const mcpText = (max: number, description: string) => z.string().max(max).refine(hasNoNul, NUL_MESSAGE).describe(description);
+// An id from another tool's answer, with the name of the tool it comes from.
+export const mcpId = (description: string) => id.describe(description);
+// Asked for as true after the person agrees, for anything that deletes or can't be undone.
+export const mcpConfirm = (description: string) => z.boolean().optional().describe(description);
+// The "more" cursor a list answer gives back. Opaque to the assistant; the tool decodes it.
+export const MCP_CURSOR_MAX = 200;
+export const mcpCursor = z.string().max(MCP_CURSOR_MAX).optional().describe("The cursor from the previous answer's more field, to get the next page. Leave out for the first page.");
 
 export const mcpWorkspaceSchema = z.object({ workspaceId: mcpWorkspace });
 
 export const MCP_LIST_LIMIT = 50;
+export const MCP_COMPANY_STATUS = ["active", "archived", "all"] as const;
+export const MCP_COMPANY_CLAIMS = ["mine", "free", "others"] as const;
+export const MCP_COMPANY_FOLLOW_UPS = ["overdue", "due_this_week", "none"] as const;
+export const MCP_COMPANY_SORTS = ["name", "follow_up", "last_contact", "created"] as const;
 export const mcpListCompaniesSchema = z.object({
   workspaceId: mcpWorkspace,
-  query: z.string().trim().max(100).optional().describe("Text to find in the company's name, website or industry. Leave out to list companies by name."),
+  query: z
+    .string()
+    .trim()
+    .max(100)
+    .refine(hasNoNul, NUL_MESSAGE)
+    .optional()
+    .describe("Text to find in the company's name, website or industry. Leave out to list companies by name."),
   stage: z.enum(Stage).optional().describe("Only companies at this stage."),
+  stages: z.array(z.enum(Stage)).max(Object.keys(Stage).length).optional().describe("Only companies at any of these stages. Combined with stage when both are given."),
+  status: z.enum(MCP_COMPANY_STATUS).optional().describe("active (the default), archived or all."),
+  claim: z.enum(MCP_COMPANY_CLAIMS).optional().describe("mine: you hold it. free: nobody holds it. others: someone else holds it."),
+  followUp: z.enum(MCP_COMPANY_FOLLOW_UPS).optional().describe("overdue (due today or earlier), due_this_week (the next 7 days) or none (no follow-up date)."),
+  neverContacted: z.boolean().optional().describe("Only companies nobody has logged outreach for."),
+  notesMention: mcpText(100, "Only companies whose notes or outreach notes mention this text.").optional(),
+  industry: mcpText(80, "Only companies in this industry (exact match, any case).").optional(),
+  sort: z.enum(MCP_COMPANY_SORTS).optional().describe("name (the default), follow_up (soonest first), last_contact (latest first) or created (newest first)."),
+  cursor: mcpCursor,
 });
 
 export const mcpCompanySchema = z.object({ workspaceId: mcpWorkspace, companyId: mcpCompany });
@@ -609,14 +643,23 @@ export const mcpQueueSchema = z.object({
   workspaceId: mcpWorkspace,
   onlyMine: z.boolean().optional().describe("Only companies you hold."),
   includeNeverContacted: z.boolean().optional().describe("Also list fresh leads nobody has contacted yet."),
+  cursor: mcpCursor,
 });
+
+export const mcpListMyClaimsSchema = z.object({ workspaceId: mcpWorkspace, cursor: mcpCursor });
+export const mcpListMembersSchema = z.object({ workspaceId: mcpWorkspace, cursor: mcpCursor });
 
 export const mcpLogOutreachSchema = z.object({
   workspaceId: mcpWorkspace,
   companyId: mcpCompany,
   channel: z.enum(Channel).describe("How you reached out."),
-  note: z.string().trim().max(NOTE_MAX).optional().describe("A short note on what was said."),
+  note: z.string().trim().max(NOTE_MAX).refine(hasNoNul, NUL_MESSAGE).optional().describe("A short note on what was said."),
   followUpOn: z.iso.date().describe("When to follow up, as YYYY-MM-DD: from today to a year out."),
+  clientKey: z
+    .uuid()
+    .optional()
+    .describe("A new random UUID for this entry. Send the same one when you retry, so a retry after a timeout logs once."),
+  templateId: id.optional().describe("The template the message was based on, from list_templates. It must be active."),
 });
 
 export const mcpChangeStageSchema = z.object({

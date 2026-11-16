@@ -195,7 +195,15 @@ export function verifyQuotedFacts(owner: Membership): Promise<ActionResult<{ ver
 // An owner's edit is their own statement. A hand-written fact stays verified; a fact from the PDF
 // keeps its quote, which is checked again, and is verified only while the quote still supports the
 // new text: change "$2,500" to "$3,000" and it goes back to waiting, with "quote doesn't match".
-export function updateFact(owner: Membership, factId: string, text: string): Promise<ActionResult<{ verified: boolean }>> {
+//
+// `unverified` (an assistant's edit, never the app's) saves the fact as waiting for an owner to
+// verify it, whatever it was before: verifiedAt and verifiedById are cleared in the same statement.
+export function updateFact(
+  owner: Membership,
+  factId: string,
+  text: string,
+  options: { unverified?: boolean } = {},
+): Promise<ActionResult<{ verified: boolean }>> {
   if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   if (hasMaskToken(text)) return Promise.resolve({ ok: false, error: MASKED_FACT });
   return withTenant(owner, async (tx) => {
@@ -212,7 +220,7 @@ export function updateFact(owner: Membership, factId: string, text: string): Pro
       });
       found = page !== null && quoteFound(fact.quote, page.text, text);
     }
-    const verified = fact.source === "MANUAL" || found;
+    const verified = !options.unverified && (fact.source === "MANUAL" || found);
     await tx.factSheetItem.updateMany({
       where: { id: factId, workspaceId: owner.workspaceId },
       data: { text, quoteFound: found, ...(verified ? { verifiedAt: new Date(), verifiedById: owner.userId } : { verifiedAt: null, verifiedById: null }) },
@@ -221,8 +229,9 @@ export function updateFact(owner: Membership, factId: string, text: string): Pro
   });
 }
 
-// A fact typed in by an owner: verified, with no quote to check.
-export function addFact(owner: Membership, text: string): Promise<ActionResult<{ factId: string }>> {
+// A fact typed in by an owner: verified, with no quote to check. With `unverified` (an assistant's
+// add, never the app's) it is saved waiting for an owner to verify it.
+export function addFact(owner: Membership, text: string, options: { unverified?: boolean } = {}): Promise<ActionResult<{ factId: string }>> {
   if (owner.role !== "owner") return Promise.resolve(OWNERS_ONLY);
   if (hasMaskToken(text)) return Promise.resolve({ ok: false, error: MASKED_FACT });
   return withTenant(owner, async (tx) => {
@@ -232,8 +241,8 @@ export function addFact(owner: Membership, text: string): Promise<ActionResult<{
         source: "MANUAL",
         text,
         createdById: owner.userId,
-        verifiedAt: new Date(),
-        verifiedById: owner.userId,
+        verifiedAt: options.unverified ? null : new Date(),
+        verifiedById: options.unverified ? null : owner.userId,
       },
       select: { id: true },
     });
