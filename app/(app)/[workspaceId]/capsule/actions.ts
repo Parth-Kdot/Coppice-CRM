@@ -51,8 +51,10 @@ export async function setDeparting(_prev: ActionResult | null, form: FormData): 
   try {
     const owner = await requireOwner(workspaceId);
     const result = await capsule.setDeparting(owner, userId, departing);
-    if (result.ok) page(workspaceId);
-    return result;
+    if (!result.ok) return result;
+    // A repeat tick changes nothing (the first time stays), and the page shows the same either way.
+    page(workspaceId);
+    return { ok: true, data: undefined };
   } catch (e) {
     return failure(e, "setDeparting");
   }

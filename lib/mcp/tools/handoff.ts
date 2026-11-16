@@ -6,6 +6,9 @@ import {
   approveRest,
   buildCodeCards,
   currentBoardYear,
+  EVERYONE_MARKED,
+  NONE_MARKED,
+  departingSummary,
   fillBlankDates,
   listMembers as listOwnerMembers,
   listYears,
@@ -29,6 +32,7 @@ import {
 } from "@/lib/capsule";
 import type { CardFacts } from "@/lib/capsule/types";
 import { withTenant } from "@/lib/db";
+import { returnMcpCall } from "@/lib/mcp/rate-limit";
 import {
   MCP_LIST_LIMIT,
   type mcpApplyHandoffCalendarSchema,
@@ -174,8 +178,10 @@ export async function getHandoffTool(principal: McpPrincipal, args: z.infer<type
   const reportId = view.report.id;
   const calendar = await loadCalendar(member, reportId);
   const rows = calendar.ok ? calendar.data : [];
-  const people = await listOwnerMembers(member);
-  const leaving = people.ok ? people.data.filter((m) => m.departingAt !== null) : [];
+  // The leaving marks belong to the current board year's turnover only, so a past year shows none.
+  const isCurrent = year === current;
+  const people = isCurrent ? await listOwnerMembers(member) : null;
+  const leaving = people?.ok ? people.data.filter((m) => m.departingAt !== null) : [];
   const book = offset === 0 ? await loadPlaybook(member, year) : null;
   const cards = view.cards.slice(offset, offset + MCP_LIST_LIMIT);
   const dated = rows.filter((r) => r.date !== null).length;
@@ -191,13 +197,14 @@ export async function getHandoffTool(principal: McpPrincipal, args: z.infer<type
       publishedAt: view.report.publishedAt,
       // Where each step stands, in the order of the page.
       steps: {
-        leaving: { markedAsLeaving: leaving.length, claimsTheyHold: leaving.reduce((n, m) => n + m.claims, 0) },
+        ...(isCurrent ? { leaving: { markedAsLeaving: leaving.length, claimsTheyHold: leaving.reduce((n, m) => n + m.claims, 0) } } : {}),
         cards: { companies: view.report.companies, withACard: view.counts.cards, withoutACard: Math.max(0, view.report.companies - view.counts.cards), aiOn: view.ai.on },
         review: { approved: view.counts.approved, hidden: view.counts.hidden, waiting: view.counts.pending },
         dates: { approvedCards: rows.length, withADate: dated, blank: rows.length - dated },
         published: view.report.status === "PUBLISHED",
       },
-      ...(offset === 0 ? { leavingMembers: leaving.map((m) => ({ userId: m.userId, name: untrusted(m.name), claimsHeld: m.claims })) } : {}),
+      ...(isCurrent ? {} : { leavingNote: "Who is leaving is only shown for the current board year. Call list_members to see who is marked now." }),
+      ...(offset === 0 && isCurrent ? { leavingMembers: leaving.map((m) => ({ userId: m.userId, name: untrusted(m.name), claimsHeld: m.claims })) } : {}),
       cards: cards.map(ownerCardOut),
       calendar: rows.slice(offset, offset + MCP_LIST_LIMIT).map((r) => ({
         cardId: r.cardId,
@@ -219,31 +226,68 @@ export async function setDepartingTool(principal: McpPrincipal, args: z.infer<ty
   const gate = await openWorkspace(principal, args.workspaceId, "action", { owner: true });
   if (gate.refused) return gate.refused;
   const { member } = gate;
-  // Only the leaving mark changes: nobody's access, role or membership.
-  const row = await withTenant(member, (tx) => tx.membership.findFirst({ where: { workspaceId: member.workspaceId, userId: args.userId }, select: { departingAt: true } }));
-  if (row && (row.departingAt !== null) === args.departing) return ok({ userId: args.userId, departing: args.departing, changed: false });
+  // Only the leaving mark changes: nobody's access, role or membership. The write itself decides
+  // whether anything changed, so identical calls at the same moment record one row.
   const result = await setDeparting(member, args.userId, args.departing);
-  return fromResult(result, async () => {
-    await recordActivity(principal, member, { tool: "set_departing", action: args.departing ? "departing_set" : "departing_cleared" });
+  return fromResult(result, async ({ changed }) => {
+    if (!changed) return ok({ userId: args.userId, departing: args.departing, changed: false });
+    await recordActivity(principal, member, { tool: "set_departing", action: args.departing ? "departing_set" : "departing_cleared", targetId: args.userId });
     return ok({ userId: args.userId, departing: args.departing, changed: true, note: "Nobody lost access. The mark only says whose claims release_departing_claims gives back." });
   });
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+// How many released companies the answer lists. The rest are counted, so the answer stays small.
+const RELEASED_LISTED = 200;
 
 export async function releaseDepartingClaimsTool(principal: McpPrincipal, args: z.infer<typeof mcpReleaseDepartingClaimsSchema>): Promise<ToolResult> {
   const gate = await openWorkspace(principal, args.workspaceId, "action", { owner: true });
   if (gate.refused) return gate.refused;
   const { member } = gate;
+  // Say what it would do before asking. The refusals below change nothing, so they give the call back.
+  const looked = await departingSummary(member);
+  if (!looked.ok) return refusedBy(looked.error);
+  const now = looked.data;
+  if (now.marked === 0 || now.companies === 0) {
+    await returnMcpCall(principal.userId, "action");
+    return ok({
+      released: 0,
+      people: [],
+      companies: [],
+      note: now.marked === 0 ? "No member is marked as leaving, so there is nothing to give back. Mark members with set_departing first." : "The members marked as leaving hold no companies, so there is nothing to give back.",
+    });
+  }
+  // Over MCP only: marking everyone and then releasing is never a real handoff. The app's own release still works.
+  if (now.everyoneMarked) {
+    await returnMcpCall(principal.userId, "action");
+    return fail(EVERYONE_MARKED);
+  }
   if (args.confirm !== true) {
     return confirmNeededLater(
       principal,
       "release_departing_claims",
-      "This gives back every company held by the members marked as leaving, live claims included. The members are not told, and anyone can claim those companies at once.",
+      `This gives back ${plural(now.companies, "company", "companies")} held by ${plural(now.marked, "member", "members")} marked as leaving. Call list_members to see who.${now.callerMarked ? " You are marked as leaving too, so your own claims are included." : ""}`,
     );
   }
-  const result = await releaseDepartingClaims(member);
+  const result = await releaseDepartingClaims(member, { refuseWhenEveryone: true });
+  // Decided inside the release, after the lock, so nothing was freed: give the call back and answer
+  // exactly as the early checks above do.
+  if (!result.ok && result.error === EVERYONE_MARKED) {
+    await returnMcpCall(principal.userId, "action");
+    return fail(EVERYONE_MARKED);
+  }
+  if (!result.ok && result.error === NONE_MARKED) {
+    await returnMcpCall(principal.userId, "action");
+    return ok({ released: 0, people: [], companies: [], note: "No member is marked as leaving, so there is nothing to give back. Mark members with set_departing first." });
+  }
   return fromResult(result, async (data) => {
     if (data.released > 0) await recordActivity(principal, member, { tool: "release_departing_claims", action: "claims_released" });
-    return ok({ released: data.released, people: data.people.map((p) => ({ userId: p.userId, name: untrusted(p.name), released: p.released })) });
+    return ok({
+      released: data.released,
+      people: data.people.map((p) => ({ userId: p.userId, name: untrusted(p.name), released: p.released })),
+      companies: data.companies.slice(0, RELEASED_LISTED).map((c) => ({ companyId: c.id, name: untrusted(c.name), previousHolderId: c.previousHolderId })),
+      ...(data.companies.length > RELEASED_LISTED ? { companiesNotListed: data.companies.length - RELEASED_LISTED } : {}),
+    });
   });
 }
 

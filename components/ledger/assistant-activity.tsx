@@ -34,7 +34,7 @@ export function AssistantActivityList({ items }: { items: ActivityItem[] }) {
                   ) : (
                     <> {item.label.text}</>
                   ))}
-                .
+                {item.after}.
               </p>
               <p className="lg-hint">
                 <time dateTime={item.at.toISOString()}>{when(item.at)}</time>

@@ -1,12 +1,14 @@
+import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { claimCompany, dbToday } from "@/lib/claims";
 import { addDays } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
-import { approveCard, approveRest, buildCodeCards, saveRecontactDates, setDeparting, setHidden, startReport } from "@/lib/capsule";
+import { approveCard, approveRest, buildCodeCards, releaseDepartingClaims, saveRecontactDates, setDeparting, setHidden, startReport } from "@/lib/capsule";
 import { activityRows, clearActivity, defineToolTables, tokenCache, type ToolRow } from "./helpers/mcp-tools";
 import { lastYear, NOTES, OFFICER, OWNER, seedHandoff } from "./helpers/capsule";
 import { deleteOAuthClients, mcpClient, resultJson, resultText, restoreFetch, routeAppFetches } from "./helpers/oauth";
 import { resetAndSeed } from "./helpers/seed";
+import { testDatabaseUrls } from "./test-db";
 
 // Group H of the MCP server, the year-end handoff, against the real database and the official
 // client. Nothing here calls a model: the handoff is built from plain cards, as it is for a
@@ -68,7 +70,7 @@ beforeEach(async () => {
   await withTenant(OWNER, (tx) => tx.handoffReport.deleteMany({ where: { workspaceId: "a" } }));
   await withTenant(OWNER, (tx) => tx.company.deleteMany({ where: { workspaceId: "a" } }));
   await withTenant(OWNER, (tx) => tx.template.deleteMany({ where: { workspaceId: "a" } }));
-  await prisma.membership.updateMany({ where: { workspaceId: "a" }, data: { departingAt: null } });
+  await withTenant(OWNER, (tx) => tx.membership.updateMany({ where: { workspaceId: "a" }, data: { departingAt: null } }));
   await prisma.workspace.update({ where: { id: "a" }, data: { aiEnabled: false, mcpEnabled: true } });
   year = await lastYear();
   today = await dbToday();
@@ -80,7 +82,7 @@ afterAll(async () => {
   await deleteOAuthClients();
   await prisma.session.deleteMany();
   await clearActivity();
-  await prisma.membership.updateMany({ where: { workspaceId: "a" }, data: { departingAt: null } });
+  await withTenant(OWNER, (tx) => tx.membership.updateMany({ where: { workspaceId: "a" }, data: { departingAt: null } }));
   await prisma.workspace.update({ where: { id: "a" }, data: { aiEnabled: false } });
   await prisma.$disconnect();
 });
@@ -107,7 +109,15 @@ const ROWS: ToolRow<Ctx>[] = [
     kind: "action",
     owner: true,
     args: () => ({}),
-    confirm: { args: () => ({}), says: /gives back every company held by the members marked as leaving/ },
+    confirm: {
+      // The question quotes what the release would do, so something must be marked and held first.
+      args: async () => {
+        must(await setDeparting(OWNER, "officerA", true));
+        must(await claimCompany(OFFICER, "co-echo"));
+        return {};
+      },
+      says: /This gives back 1 company held by 1 member marked as leaving\. Call list_members to see who\./,
+    },
     activity: {
       tool: "release_departing_claims",
       action: "claims_released",
@@ -261,16 +271,40 @@ describe("get_handoff", () => {
       reportId,
       status: "draft",
       steps: {
-        leaving: { markedAsLeaving: 0, claimsTheyHold: 0 },
         cards: { companies: 6, withACard: 6, withoutACard: 0, aiOn: false },
         review: { approved: 0, hidden: 0, waiting: 6 },
         dates: { approvedCards: 0, withADate: 0, blank: 0 },
         published: false,
       },
     });
+    // The leaving marks belong to the current board year, and this handoff is last year's.
+    expect(data.handoff.steps.leaving).toBeUndefined();
+    expect(data.handoff.leavingMembers).toBeUndefined();
+    expect(data.handoff.leavingNote).toMatch(/only shown for the current board year/);
+    expect(data.handoff.leavingNote).toMatch(/list_members/);
     expect(data.handoff.cards.map((c: { companyName: { untrusted_text: string } }) => c.companyName.untrusted_text)).toEqual(["Atlas", "Cedar", "Birch", "Delta", "Echo", "Fjord"]);
     expect(data.handoff.playbook).toMatchObject({ year: { start: year }, ratedTemplates: 0 });
     expect(data.handoffYears).toEqual([{ boardYearStart: year, label: expect.any(String), status: "draft", publishedAt: null }]);
+  });
+
+  it("shows who is leaving only for the current board year, and a past year gets a note instead", async () => {
+    must(await setDeparting(OWNER, "officerA", true));
+    await withTenant(OWNER, (tx) => tx.company.update({ where: { id: "co-echo" }, data: { claimedById: "officerA", claimExpiresAt: new Date(Date.now() + 1e9) } }));
+    // A handoff row for the current board year (the fixture has outreach only in last year's).
+    const current = year + 1;
+    await withTenant(OWNER, (tx) => tx.handoffReport.create({ data: { id: "hr-current", workspaceId: "a", boardYearStart: current, companyIds: [], chunkCount: 0, createdById: "ownerA" } }));
+    const now = await json("ownerA", "get_handoff", { boardYearStart: current });
+    expect(now.year.isCurrent).toBe(true);
+    expect(now.handoff.steps.leaving).toEqual({ markedAsLeaving: 1, claimsTheyHold: 1 });
+    expect(now.handoff.leavingMembers).toEqual([{ userId: "officerA", name: { untrusted_text: "officerA" }, claimsHeld: 1 }]);
+    expect(now.handoff.leavingNote).toBeUndefined();
+    await withTenant(OWNER, (tx) => tx.handoffReport.create({ data: { id: "hr-past", workspaceId: "a", boardYearStart: year, companyIds: [], chunkCount: 0, createdById: "ownerA" } }));
+    const past = await json("ownerA", "get_handoff", { boardYearStart: year });
+    expect(past.year.isCurrent).toBe(false);
+    expect(past.handoff.steps).not.toHaveProperty("leaving");
+    expect(past.handoff).not.toHaveProperty("leavingMembers");
+    expect(JSON.stringify(past)).not.toContain("officerA");
+    expect(past.handoff.leavingNote).toMatch(/current board year/);
   });
 
   it("wraps every name and quote on a card, and gives bullets their index and hidden flag to owners", async () => {
@@ -369,6 +403,28 @@ describe("set_departing and release_departing_claims", () => {
     expect(await departingOf("officerA")).toBeNull();
     expect(await memberships()).toEqual(before);
     expect((await activityRows("a")).map((r) => r.action)).toEqual(["departing_set", "departing_cleared"]);
+    // Each row names the member that was marked, so an owner's Settings line can say who.
+    expect((await activityRows("a")).map((r) => r.targetId)).toEqual(["officerA", "officerA"]);
+  });
+
+  it("lets exactly one of three identical calls at the same moment change the mark and write a row", async () => {
+    for (let round = 0; round < 10; round++) {
+      await withTenant(OWNER, (tx) => tx.membership.updateMany({ where: { workspaceId: "a" }, data: { departingAt: null } }));
+      await clearActivity();
+      await prisma.mcpRateLimit.deleteMany();
+      const answers = await Promise.all([1, 2, 3].map(() => json("ownerA", "set_departing", { userId: "officerA", departing: true })));
+      expect(answers.map((a) => a.changed).sort(), `round ${round}`).toEqual([false, false, true]);
+      expect(await activityRows("a"), `round ${round}`).toMatchObject([{ tool: "set_departing", action: "departing_set", targetId: "officerA" }]);
+    }
+  });
+
+  it("is marked destructive, because the mark feeds a release, and still idempotent and not read only", async () => {
+    const client = await mcpClient(await tokenFor("ownerA"));
+    const tools = (await client.listTools()).tools;
+    for (const name of ["set_departing", "release_departing_claims"]) {
+      expect(tools.find((t) => t.name === name)?.annotations, name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    }
+    expect(tools.find((t) => t.name === "set_departing")?.annotations?.idempotentHint).toBe(true);
   });
 
   it("says so, and writes no second row, when the mark is already as asked, and refuses someone who is not a member", async () => {
@@ -388,6 +444,8 @@ describe("set_departing and release_departing_claims", () => {
     await clearActivity();
     const asking = await callAs("ownerA", "release_departing_claims");
     expect(asking.isError).toBe(true);
+    expect(resultText(asking)).toContain("This gives back 2 companies held by 1 member marked as leaving. Call list_members to see who. ");
+    expect(resultText(asking)).not.toContain("You are marked");
     expect(resultText(asking)).toContain("Nothing was changed.");
     expect(await prisma.mcpRateLimit.findMany({ where: { userId: "ownerA", kind: "action" } })).toMatchObject([{ count: 1 }]);
     expect((await company("co-echo")).claimedById).toBe("officerA");
@@ -395,20 +453,113 @@ describe("set_departing and release_departing_claims", () => {
     const done = await json("ownerA", "release_departing_claims", { confirm: true });
     expect(done.released).toBe(2);
     expect(done.people).toEqual([{ userId: "officerA", name: { untrusted_text: "officerA" }, released: 2 }]);
+    // Each company that was given back, with its name wrapped and who held it, so it can be put back.
+    expect(done.companies.sort((a: { companyId: string }, b: { companyId: string }) => (a.companyId < b.companyId ? -1 : 1))).toEqual([
+      { companyId: "co-delta", name: { untrusted_text: "Delta" }, previousHolderId: "officerA" },
+      { companyId: "co-echo", name: { untrusted_text: "Echo" }, previousHolderId: "officerA" },
+    ]);
     expect((await company("co-echo")).claimedById).toBeNull();
     expect((await company("co-delta")).claimedById).toBeNull();
     expect((await company("co-cedar")).claimedById).toBe("ownerA");
     expect(await activityRows("a")).toMatchObject([{ tool: "release_departing_claims", action: "claims_released", companyId: null }]);
   });
 
-  it("refuses when nobody is marked, and writes no row when the people held nothing", async () => {
-    const nobody = await callAs("ownerA", "release_departing_claims", { confirm: true });
-    expect(said(nobody)).toBe("Tick the members who are leaving first.");
+  it("answers plainly, with no question and no row, when nobody is marked or the people hold nothing", async () => {
+    for (const args of [{}, { confirm: true }]) {
+      const nobody = await callAs("ownerA", "release_departing_claims", args);
+      expect(nobody.isError).toBeFalsy();
+      expect(resultJson(nobody)).toMatchObject({ released: 0, people: [], companies: [], note: expect.stringMatching(/No member is marked as leaving, so there is nothing to give back/) });
+      expect(resultText(nobody)).not.toContain("confirm: true");
+    }
     await callAs("ownerA", "set_departing", { userId: "officerA", departing: true });
     await clearActivity();
-    const none = await json("ownerA", "release_departing_claims", { confirm: true });
-    expect(none.released).toBe(0);
+    await prisma.mcpRateLimit.deleteMany();
+    for (const args of [{}, { confirm: true }]) {
+      const none = await callAs("ownerA", "release_departing_claims", args);
+      expect(none.isError).toBeFalsy();
+      expect(resultJson(none)).toMatchObject({ released: 0, note: expect.stringMatching(/hold no companies, so there is nothing to give back/) });
+      expect(resultText(none)).not.toContain("confirm: true");
+    }
     expect(await activityRows("a")).toEqual([]);
+    // Answering costs the person nothing: no change was made, so no call is kept.
+    expect(await prisma.mcpRateLimit.findMany({ where: { userId: "ownerA", kind: "action" } })).toMatchObject([{ count: 0 }]);
+  });
+
+  it("says in the question when the caller is marked too", async () => {
+    must(await claimCompany(OFFICER, "co-echo"));
+    must(await claimCompany(OWNER, "co-cedar"));
+    must(await setDeparting(OWNER, "ownerA", true));
+    must(await setDeparting(OWNER, "officerA", true));
+    must(await setDeparting(OWNER, "officerA", false));
+    const asking = await callAs("ownerA", "release_departing_claims");
+    expect(asking.isError).toBe(true);
+    expect(resultText(asking)).toContain("This gives back 1 company held by 1 member marked as leaving. Call list_members to see who. You are marked as leaving too, so your own claims are included.");
+    expect((await company("co-cedar")).claimedById).toBe("ownerA");
+  });
+
+  it("refuses over MCP, even with confirm, when every member is marked, and the app's release still works", async () => {
+    must(await claimCompany(OFFICER, "co-echo"));
+    must(await claimCompany(OWNER, "co-cedar"));
+    must(await setDeparting(OWNER, "officerA", true));
+    must(await setDeparting(OWNER, "ownerA", true));
+    await clearActivity();
+    for (const args of [{}, { confirm: true }]) {
+      const refused = await callAs("ownerA", "release_departing_claims", args);
+      expect(refused.isError).toBe(true);
+      expect(said(refused)).toBe("Every member of this workspace is marked as leaving, so this would free every claim. Do this in the app, where you can see who is marked.");
+    }
+    expect((await company("co-echo")).claimedById).toBe("officerA");
+    expect((await company("co-cedar")).claimedById).toBe("ownerA");
+    expect(await activityRows("a")).toEqual([]);
+    expect(await prisma.mcpRateLimit.findMany({ where: { userId: "ownerA", kind: "action" } })).toMatchObject([{ count: 0 }]);
+    // The owner still can, in the app, where the list of who is marked is in front of them.
+    expect(must(await releaseDepartingClaims(OWNER)).released).toBe(2);
+  });
+
+  it("refuses inside the release when the last member is marked between the summary and the release", async () => {
+    must(await claimCompany(OFFICER, "co-echo"));
+    must(await claimCompany(OWNER, "co-cedar"));
+    must(await setDeparting(OWNER, "officerA", true));
+    // Add a third member, sam, and mark officerA and sam, so ownerA is the last member to be marked.
+    await prisma.user.create({ data: { id: "sam", name: "Sam Lee", email: "sam@example.com", emailVerified: true } });
+    await prisma.membership.create({ data: { id: "m-sam", workspaceId: "a", userId: "sam", role: "member", createdAt: new Date() } });
+    try {
+      must(await setDeparting(OWNER, "sam", true));
+      await clearActivity();
+      // A lock on Company stops the early summary after it has read the memberships.
+      const holder = new Client({ connectionString: testDatabaseUrls().ownerUrl });
+      await holder.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query('LOCK TABLE "Company" IN ACCESS EXCLUSIVE MODE');
+        const releasing = callAs("ownerA", "release_departing_claims", { confirm: true });
+        // Wait until the summary is really blocked on the lock, so ownerA's mark lands after it has
+        // read the memberships and before the release locks them. Without that wait the early check
+        // would refuse instead, and this test would not reach the refusal inside the release.
+        let waiting = false;
+        for (let i = 0; i < 200 && !waiting; i++) {
+          const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%Company%' AND pid <> pg_backend_pid()`;
+          waiting = n > 0;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        if (!waiting) throw new Error("The release never waited on the Company lock, so the race was not set up.");
+        // The last member is marked while the release still waits.
+        must(await setDeparting(OWNER, "ownerA", true));
+        await holder.query("COMMIT");
+        const result = await releasing;
+        expect(result.isError).toBe(true);
+        expect(said(result)).toBe("Every member of this workspace is marked as leaving, so this would free every claim. Do this in the app, where you can see who is marked.");
+      } finally {
+        await holder.query("ROLLBACK").catch(() => undefined);
+        await holder.end();
+      }
+      expect((await company("co-echo")).claimedById).toBe("officerA");
+      expect((await company("co-cedar")).claimedById).toBe("ownerA");
+      expect(await activityRows("a")).toEqual([]);
+    } finally {
+      await prisma.membership.deleteMany({ where: { id: "m-sam" } });
+      await prisma.user.deleteMany({ where: { id: "sam" } });
+    }
   });
 });
 

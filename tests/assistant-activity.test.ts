@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
-import { ACTIVITY_ACTIONS, ACTIVITY_FALLBACK, ACTIVITY_LINES, activityLine } from "@/lib/mcp/activity";
+import { ACTIVITY_ACTIONS, ACTIVITY_FALLBACK, ACTIVITY_LINES, OWNER_ONLY_TOOLS, activityLine } from "@/lib/mcp/activity";
 import { recordActivity, type McpPrincipal } from "@/lib/mcp/tools";
 import { clearActivity } from "./helpers/mcp-tools";
 import { resetAndSeed } from "./helpers/seed";
@@ -140,6 +140,13 @@ describe("the fixed vocabulary", () => {
     ["claim_company", "toString", ACTIVITY_FALLBACK.verb],
   ] as const)("the line for %s and %s starts with %s", ([tool, action, verb]) => {
     expect(activityLine(tool, action).verb).toBe(verb);
+  });
+
+  it("a leaving mark names the member after the verb, and the leaving tools are the ones only owners are shown", () => {
+    expect(activityLine("set_departing", "departing_set")).toEqual({ verb: "marked", target: "member", after: " as leaving" });
+    expect(activityLine("set_departing", "departing_cleared")).toEqual({ verb: "cleared the leaving mark for", target: "member" });
+    expect([...OWNER_ONLY_TOOLS].sort()).toEqual(["release_departing_claims", "set_departing"]);
+    for (const tool of OWNER_ONLY_TOOLS) expect(ACTIVITY_LINES[tool], tool).toBeDefined();
   });
 
   it("the display wording follows the writing rules: no dashes, arrows or shorthand", () => {

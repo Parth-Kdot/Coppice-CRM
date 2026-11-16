@@ -21,7 +21,7 @@ export { applyCalendar, reopenForNextYear, type AppliedDates, type Reopened } fr
 export { askArchive, archiveTerms, type ArchiveAnswer, type Footnote } from "./archive";
 export { fillBlankDates, loadCalendar, proposeRecontact, saveRecontactDates, type CalendarRow, type SavedDates } from "./calendar";
 export * from "./limits";
-export { listMembers, releaseDepartingClaims, setDeparting, type HandoffMember, type ReleasedClaims } from "./members";
+export { EVERYONE_MARKED, NONE_MARKED, departingSummary, listMembers, releaseDepartingClaims, setDeparting, type DepartingSummary, type HandoffMember, type ReleasedClaims } from "./members";
 export { loadPlaybook, type Playbook } from "./playbook";
 export { publishReport, unpublishReport } from "./publish";
 export { loadRecap, type Recap } from "./recap";

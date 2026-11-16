@@ -175,6 +175,12 @@ model Membership {
   createdAt   DateTime
   // Time Capsule: set by an owner for a member who is leaving at the next turnover. Better Auth
   // never reads or writes it (lib/auth.ts maps only the fields it knows). Nothing is removed by it.
+  // The membership_departing_guard triggers (update and insert) let only an owner of the row's
+  // workspace write it, and a marked row cannot move to another workspace.
+  // Do not enable row-level security on this table unless the private helper functions first become
+  // SECURITY DEFINER functions owned by a role that bypasses it, and Better Auth's unscoped reads are
+  // planned for: the helpers read membership themselves, so a policy here that calls them recurses
+  // without end, and Better Auth reads this table with no workspace set.
   departingAt DateTime? @db.Timestamptz(3)
 
   // One membership per person per workspace, even if two joins race.

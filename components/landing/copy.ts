@@ -298,7 +298,7 @@ export const FEATURES = {
       title: "Your own AI assistant, if you connect one",
       short: "An assistant that supports remote MCP servers can do most of what you do in your workspace, as you.",
       tag: "Optional, off by default",
-      detail: "An owner turns assistants on for the workspace. Each member decides whether their assistant may only read, or also make changes as them: companies, contacts, claims, outreach, follow-ups, stages, imports and, for owners, facts, templates and the handoff. Permanent deletes need the member's yes, and an assistant cannot change members, roles, the claim window, the AI settings or the assistants switch. Claims, outreach and stage moves are marked via assistant, every change is listed in Settings for the whole team, and a member can disconnect it at any time.",
+      detail: "An owner turns assistants on for the workspace. Each member decides whether their assistant may only read, or also make changes as them: companies, contacts, claims, outreach, follow-ups, stages, imports and, for owners, facts, templates and the handoff. Permanent deletes need the member's yes, and an assistant cannot change members, roles, the claim window, the AI settings or the assistants switch. Claims, outreach and stage moves are marked via assistant, every change is listed in Settings for the whole team (lines about who is leaving show to owners only), and a member can disconnect it at any time.",
     },
     {
       icon: "ask",
@@ -338,7 +338,7 @@ export const TRUST = {
   items: [
     { title: "I left out a send button on purpose.", body: "A draft opens in your own Gmail or Outlook compose window, and you press Send from your own address. Coppice never connects to your inbox." },
     { title: "Nothing is merged for you.", body: "Look-alike companies are flagged and shown together. Nothing is merged, blocked or deleted until a person decides what to do with the group." },
-    { title: "Coppice's AI does not change your pipeline.", body: "Coppice's own AI drafts text and lists facts from a packet. A fact cannot be used in a draft until the owner verifies it, and a draft stays on the screen until you send it from your own inbox. A stage, a claim, a follow-up date or a log entry changes only when a member does it, in the app or through an assistant they connected and allowed to make changes. An assistant acts as that member, claims, outreach and stage moves are marked via assistant, and every change it makes is listed in Settings for the whole team." },
+    { title: "Coppice's AI does not change your pipeline.", body: "Coppice's own AI drafts text and lists facts from a packet. A fact cannot be used in a draft until the owner verifies it, and a draft stays on the screen until you send it from your own inbox. A stage, a claim, a follow-up date or a log entry changes only when a member does it, in the app or through an assistant they connected and allowed to make changes. An assistant acts as that member, claims, outreach and stage moves are marked via assistant, and every change it makes is listed in Settings for the whole team (lines about who is leaving show to owners only)." },
     { title: "One team cannot see another.", body: "Every workspace is separated inside the database, using row-level security in Postgres, so one team's companies, notes and members are not visible to another team's accounts." },
   ],
   alsoOut: "Also out of scope: payments, and public pages for companies to visit.",

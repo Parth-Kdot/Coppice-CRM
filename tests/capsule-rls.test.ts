@@ -184,19 +184,98 @@ describe("the table rules", () => {
 });
 
 describe("Membership.departingAt", () => {
+  // The mark is written the way the app writes it: inside withTenant, as an owner of the workspace.
+  const mark = (tenant: Tenant, where: { workspaceId: string; userId: string }, departingAt: Date | null) =>
+    withTenant(tenant, (tx) => tx.membership.updateMany({ where, data: { departingAt } }));
+
   it("starts empty for everyone, and can be set and cleared without touching the role", async () => {
     const before = await prisma.membership.findMany({ select: { userId: true, departingAt: true, role: true }, orderBy: { userId: "asc" } });
     expect(before.every((m) => m.departingAt === null)).toBe(true);
     const when = new Date("2026-06-01T12:00:00Z");
-    await prisma.membership.updateMany({ where: { workspaceId: "a", userId: "officerA" }, data: { departingAt: when } });
+    await mark(A, { workspaceId: "a", userId: "officerA" }, when);
     const set = await prisma.membership.findFirstOrThrow({ where: { workspaceId: "a", userId: "officerA" } });
     expect(set).toMatchObject({ role: "member", departingAt: when });
-    await prisma.membership.updateMany({ where: { workspaceId: "a", userId: "officerA" }, data: { departingAt: null } });
+    await mark(A, { workspaceId: "a", userId: "officerA" }, null);
     expect((await prisma.membership.findFirstOrThrow({ where: { workspaceId: "a", userId: "officerA" } })).departingAt).toBeNull();
   });
 
   it("is ignored by the owner-keeping rule: marking the only owner changes nothing about it", async () => {
-    await prisma.membership.updateMany({ where: { workspaceId: "b", userId: "ownerB" }, data: { departingAt: new Date() } });
+    await mark(B, { workspaceId: "b", userId: "ownerB" }, new Date());
     expect(await prisma.membership.count({ where: { workspaceId: "b", role: "owner" } })).toBe(1);
+  });
+});
+
+// The membership_departing_guard trigger (prisma/migrations/*_membership_departing_guard): only an
+// owner of the row's workspace, in a transaction opened for that workspace, may change the mark.
+describe("the departing guard", () => {
+  const REFUSED = /Only an owner of this workspace can change who is leaving/;
+  const markedUsers = async () => (await prisma.membership.findMany({ where: { departingAt: { not: null } }, select: { userId: true }, orderBy: { userId: "asc" } })).map((m) => m.userId);
+  const write = (tenant: Tenant, where: { workspaceId: string; userId: string }, departingAt: Date | null) =>
+    withTenant(tenant, (tx) => tx.membership.updateMany({ where, data: { departingAt } }));
+
+  it("is one of the triggers on membership, next to the keep-an-owner rule", async () => {
+    const rows = await prisma.$queryRaw<{ name: string }[]>`
+      SELECT tgname AS name FROM pg_trigger WHERE tgrelid = 'public.membership'::regclass AND NOT tgisinternal ORDER BY tgname`;
+    expect(rows.map((r) => r.name)).toEqual(["membership_departing_guard", "membership_departing_guard_insert", "membership_keep_an_owner"]);
+  });
+
+  it("lets an owner mark and clear a member of their own workspace", async () => {
+    await expect(write(A, { workspaceId: "a", userId: "officerA" }, new Date())).resolves.toEqual({ count: 1 });
+    expect(await markedUsers()).toEqual(["officerA"]);
+    await expect(write(A, { workspaceId: "a", userId: "officerA" }, null)).resolves.toEqual({ count: 1 });
+    expect(await markedUsers()).toEqual([]);
+  });
+
+  it("refuses an owner of workspace a writing workspace b's member row, even when naming b", async () => {
+    await expect(write(A, { workspaceId: "b", userId: "ownerB" }, new Date())).rejects.toThrow(REFUSED);
+    // The same owner acting for b is not an owner of b.
+    await expect(write({ userId: "ownerA", workspaceId: "b" }, { workspaceId: "b", userId: "ownerB" }, new Date())).rejects.toThrow(REFUSED);
+    expect(await markedUsers()).toEqual([]);
+  });
+
+  it("refuses an officer, and refuses a write with no workspace set", async () => {
+    await expect(write(OFFICER_A, { workspaceId: "a", userId: "officerA" }, new Date())).rejects.toThrow(REFUSED);
+    await expect(write(OFFICER_A, { workspaceId: "a", userId: "ownerA" }, new Date())).rejects.toThrow(REFUSED);
+    await expect(prisma.membership.updateMany({ where: { workspaceId: "a", userId: "officerA" }, data: { departingAt: new Date() } })).rejects.toThrow(REFUSED);
+    expect(await markedUsers()).toEqual([]);
+  });
+
+  it("refuses moving a marked row to another workspace in the same write", async () => {
+    await expect(
+      withTenant(A, (tx) => tx.membership.updateMany({ where: { workspaceId: "a", userId: "officerA" }, data: { departingAt: new Date(), workspaceId: "b" } })),
+    ).rejects.toThrow(REFUSED);
+    expect(await prisma.membership.count({ where: { workspaceId: "a", userId: "officerA" } })).toBe(1);
+  });
+
+  it("refuses moving a marked row to another workspace, with or without naming the mark, and an insert that carries a mark", async () => {
+    await write(A, { workspaceId: "a", userId: "officerA" }, new Date("2026-06-01T12:00:00Z"));
+    await expect(prisma.membership.updateMany({ where: { workspaceId: "a", userId: "officerA" }, data: { workspaceId: "b" } })).rejects.toThrow(/cannot move to another workspace/);
+    await expect(
+      prisma.$executeRaw`UPDATE membership SET "workspaceId" = 'b', "departingAt" = "departingAt" WHERE "workspaceId" = 'a' AND "userId" = 'officerA'`,
+    ).rejects.toThrow(/cannot move to another workspace/);
+    const data = { id: "m-ins", workspaceId: "b", userId: "ownerA", role: "member", createdAt: new Date(), departingAt: new Date() };
+    const insert = (tenant: Tenant | null) => (tenant ? withTenant(tenant, (tx) => tx.membership.create({ data })) : prisma.membership.create({ data }));
+    await expect(insert(null)).rejects.toThrow(REFUSED);
+    await expect(insert(A)).rejects.toThrow(REFUSED);
+    expect(await prisma.membership.count({ where: { id: "m-ins" } })).toBe(0);
+  });
+
+  it("allows a write that leaves the mark as it was, for anyone", async () => {
+    await expect(write(OFFICER_A, { workspaceId: "a", userId: "officerA" }, null)).resolves.toEqual({ count: 1 });
+    await write(A, { workspaceId: "a", userId: "officerA" }, new Date("2026-06-01T12:00:00Z"));
+    await expect(write(OFFICER_A, { workspaceId: "a", userId: "officerA" }, new Date("2026-06-01T12:00:00Z"))).resolves.toEqual({ count: 1 });
+  });
+
+  it("does not stand in the way of a role change or a removal, which never name the column", async () => {
+    await write(A, { workspaceId: "a", userId: "officerA" }, new Date());
+    // Better Auth changes a role and removes a member through the bare client.
+    await prisma.membership.update({ where: { id: "m-officerA" }, data: { role: "owner" } });
+    expect(await prisma.membership.findUniqueOrThrow({ where: { id: "m-officerA" } })).toMatchObject({ role: "owner" });
+    expect(await markedUsers()).toEqual(["officerA"]);
+    await prisma.membership.update({ where: { id: "m-officerA" }, data: { role: "member" } });
+    await prisma.membership.delete({ where: { id: "m-officerA" } });
+    expect(await markedUsers()).toEqual([]);
+    // The keep-an-owner rule still holds.
+    await expect(prisma.membership.update({ where: { id: "m-ownerA" }, data: { role: "member" } })).rejects.toThrow(/at least one owner/);
   });
 });

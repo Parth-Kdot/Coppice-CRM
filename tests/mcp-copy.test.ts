@@ -84,6 +84,21 @@ describe("what people are told about assistants", () => {
     expect(readme).toContain("the list of what assistants changed");
   });
 
+  it("says the leaving marks show to owners only, in each place that says every change is listed for everyone", () => {
+    for (const [name, text] of [
+      ["write scope label", SCOPE_LABELS[WRITE_SCOPE]],
+      ["consent page", consentSource],
+      ["Settings section", settingsSource],
+      ["README section", assistantsReadme],
+      ["landing feature card", featureCard.detail],
+      ["landing trust line", trustLine],
+      ["guide topic", assistantsGuide],
+    ] as const) {
+      expect(text, name).toMatch(/lines about who is leaving show to owners only/i);
+    }
+    expect(settingsSource).toContain("Every member sees this list, with each assistant&apos;s name. Lines about who is leaving show to owners only.");
+  });
+
   it("says via assistant only of claims, outreach and stage moves", () => {
     for (const [name, text] of sentences) {
       for (const sentence of text.split(/(?<=[.!?])\s+/).filter((s) => /via assistant/i.test(s))) {

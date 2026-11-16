@@ -493,9 +493,10 @@ function registerHandoffTools(server: McpServer, principal: McpPrincipal) {
     "set_departing",
     {
       title: "Mark a member as leaving",
-      description: "Owners only. Mark a member as leaving next year's board, or clear the mark. Nobody loses access: it only says whose claims release_departing_claims gives back.",
+      description: "Owners only. Mark a member as leaving next year's board, or clear the mark. Nobody loses access: it only says whose claims release_departing_claims gives back, so ask the person before marking.",
       inputSchema: mcpSetDepartingSchema,
-      annotations: { ...ACTION, idempotentHint: true },
+      // Destructive because the mark feeds a release, so assistants that ask before destructive tools ask here too.
+      annotations: { ...ACTION, destructiveHint: true, idempotentHint: true },
       scopeChallenge: needsWrite,
     },
     (args) => tools.guarded(() => tools.setDepartingTool(principal, args)),
@@ -504,7 +505,7 @@ function registerHandoffTools(server: McpServer, principal: McpPrincipal) {
     "release_departing_claims",
     {
       title: "Release leaving members' claims",
-      description: "Owners only. Give back every company held by members marked as leaving, live claims included. They are not told and it cannot be undone. Needs confirm: true after the person agrees.",
+      description: "Owners only. Give back every company held by members marked as leaving, live claims included. They are not told and it cannot be undone. Needs confirm: true after the person agrees. Refused when every member is marked.",
       inputSchema: mcpReleaseDepartingClaimsSchema,
       annotations: { ...ACTION, destructiveHint: true },
       scopeChallenge: needsWrite,

@@ -165,6 +165,58 @@ describe("the list on the Settings page", () => {
     expect(await activityRows("a")).toHaveLength(3);
   });
 
+  it("shows who is leaving to owners only: an owner reads the name, an officer reads no such line", async () => {
+    await prisma.user.create({ data: { id: "sam", name: "Sam Lee", email: "sam@example.com", emailVerified: true } });
+    await prisma.membership.create({ data: { id: "m-sam", workspaceId: "a", userId: "sam", role: "member", createdAt: new Date() } });
+    try {
+      const acme = await company("Acme Corp");
+      await callAs("sam", "claim_company", { companyId: acme });
+      await callAs("ownerA", "set_departing", { userId: "sam", departing: true });
+      await callAs("ownerA", "release_departing_claims", { confirm: true });
+      await callAs("ownerA", "set_departing", { userId: "sam", departing: false });
+      await callAs("ownerA", "set_departing", { userId: "sam", departing: true });
+      expect(await activityRows("a")).toHaveLength(5);
+
+      const owner = section(await page("ownerA"));
+      expect(owner).toContain("<bdi>ownerA</bdi>&#x27;s assistant marked <bdi>Sam Lee</bdi> as leaving.");
+      expect(owner).toContain("<bdi>ownerA</bdi>&#x27;s assistant cleared the leaving mark for <bdi>Sam Lee</bdi>.");
+      expect(owner).toContain("assistant released the claims of members who are leaving.");
+
+      // An officer sees the other lines, and nothing about who is leaving, not even that a mark was made.
+      const officer = section(await page("officerA"));
+      const list = officer.slice(officer.indexOf("<ul"), officer.indexOf("</ul>"));
+      expect(list).toContain("assistant claimed");
+      expect(list).not.toMatch(/leaving|marked|cleared/);
+      // Sam's name appears once, as the person whose assistant claimed the company.
+      expect(list.match(/Sam Lee/g)).toHaveLength(1);
+      const items = await listActivity({ ...OFFICER }, { aiOn: false });
+      expect(items.map((i) => i.verb)).toEqual(["claimed"]);
+
+      // The name is read now: once the member is gone the line says so in a fixed phrase.
+      await prisma.membership.delete({ where: { id: "m-sam" } });
+      const gone = section(await page("ownerA"));
+      expect(gone).toContain("marked a member who is no longer here as leaving.");
+      expect(gone).toContain("cleared the leaving mark for a member who is no longer here.");
+      expect(gone).not.toContain("marked <bdi>Sam Lee");
+    } finally {
+      // Sam's own claim row keeps the user from being deleted, so the log is cleared first.
+      await clearActivity();
+      await prisma.user.deleteMany({ where: { id: "sam" } });
+    }
+  });
+
+  it("does not let rows an officer may not see use up the officer's fifty lines", async () => {
+    const acme = await company("Acme Corp");
+    await withTenant(OWNER_A, async (tx) => {
+      await tx.assistantActivity.create({ data: { workspaceId: "a", userId: "ownerA", clientId: null, tool: "log_outreach", action: "logged", companyId: acme, createdAt: new Date(Date.now() - 3_600_000) } });
+      await tx.assistantActivity.createMany({
+        data: Array.from({ length: ACTIVITY_SHOWN + 5 }, () => ({ workspaceId: "a", userId: "ownerA", clientId: null, tool: "set_departing", action: "departing_set", targetId: "officerA" })),
+      });
+    });
+    expect((await listActivity({ ...OFFICER }, { aiOn: false })).map((i) => i.verb)).toEqual(["logged outreach for"]);
+    expect(await listActivity({ ...OWNER_A }, { aiOn: false })).toHaveLength(ACTIVITY_SHOWN);
+  });
+
   it("shows a deleted contact as a fixed phrase and an unknown pair as the plain fallback", async () => {
     const acme = await company("Acme Corp");
     const contact = resultJson(await callAs("ownerA", "save_contact", { companyId: acme, name: "Sam Lee" }));
@@ -204,6 +256,13 @@ describe("the list on the Settings page", () => {
     const beta2 = section(await page("ownerB", "b"));
     expect(beta2).toContain("Beta Only");
     expect(beta2).not.toContain("Acme Corp");
+  });
+
+  it("shows a fixed phrase for a leaving row that never recorded its member", async () => {
+    await withTenant(OWNER_A, (tx) => tx.assistantActivity.create({ data: { workspaceId: "a", userId: "ownerA", clientId: null, tool: "set_departing", action: "departing_set" } }));
+    const items = await listActivity({ ...OWNER_A }, { aiOn: false });
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toMatchObject({ text: "a member" });
   });
 
   it("reads the rows in one transaction and gives an unknown assistant no name", async () => {

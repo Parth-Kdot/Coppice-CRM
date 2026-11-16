@@ -1,3 +1,4 @@
+import { Client } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import {
   applyCalendar,
@@ -34,6 +35,7 @@ import { apiError, calls, fakeGemini } from "./helpers/gemini";
 import { groqAnswer, groqError } from "./helpers/groq";
 import { asUser, signedOut } from "./helpers/next-request";
 import { invite, resetAndSeed } from "./helpers/seed";
+import { testDatabaseUrls } from "./test-db";
 import { CHUNK0_REPLY, CHUNK1_REPLY, inYear, lastYear, OFFICER, OTHER_OWNER, OWNER, seedHandoff } from "./helpers/capsule";
 
 vi.mock("next/headers", () => import("./helpers/next-request"));
@@ -205,6 +207,10 @@ describe("2a: who is leaving", () => {
   };
   const claimedBy = (userId: string) => withTenant(OWNER, (tx) => tx.company.count({ where: { claimedById: userId } }));
   const departing = () => prisma.membership.findMany({ where: { departingAt: { not: null } }, select: { userId: true } });
+  const markBoth = async () => {
+    ok(await capsule.setDeparting(OWNER, "officerA", true));
+    ok(await capsule.setDeparting(OWNER, "ownerA", true));
+  };
 
   it("lists the members with what each holds", async () => {
     await hold("officerA", ["co-cedar", "co-echo"]);
@@ -233,18 +239,169 @@ describe("2a: who is leaving", () => {
     expect(await departing()).toEqual([]);
   });
 
-  it("releases the departing members' claims through releaseClaimsOf and says how many", async () => {
+  it("releases the departing members' claims in one step, and says how many and which companies", async () => {
     await hold("officerA", ["co-cedar", "co-echo", "co-fjord"]);
     await hold("ownerA", ["co-atlas"]);
     expect(await call("ownerA", releaseDepartingClaims)).toEqual({ ok: false, error: "Tick the members who are leaving first." });
     ok(await call("ownerA", setDeparting, { userId: "officerA", departing: "1" }));
     const released = ok(await call("ownerA", releaseDepartingClaims));
-    expect(released).toEqual({ released: 3, people: [{ userId: "officerA", name: "officerA", released: 3 }] });
+    expect(released).toEqual({
+      released: 3,
+      people: [{ userId: "officerA", name: "officerA", released: 3 }],
+      companies: [
+        { id: "co-cedar", name: "Cedar", previousHolderId: "officerA" },
+        { id: "co-echo", name: "Echo", previousHolderId: "officerA" },
+        { id: "co-fjord", name: "Fjord", previousHolderId: "officerA" },
+      ],
+    });
     expect(await claimedBy("officerA")).toBe(0);
     // The owner isn't leaving: their claim stays. And nobody was removed.
     expect(await claimedBy("ownerA")).toBe(1);
     expect(await prisma.membership.count({ where: { workspaceId: "a" } })).toBe(2);
-    expect(ok(await call("ownerA", releaseDepartingClaims))).toEqual({ released: 0, people: [{ userId: "officerA", name: "officerA", released: 0 }] });
+    expect(ok(await call("ownerA", releaseDepartingClaims))).toEqual({ released: 0, people: [{ userId: "officerA", name: "officerA", released: 0 }], companies: [] });
+  });
+
+  it("clears exactly what releaseClaimsOf clears: the holder and the expiry, nothing else", async () => {
+    await hold("officerA", ["co-cedar"]);
+    const row = (id: string) => withTenant(OWNER, (tx) => tx.company.findUniqueOrThrow({ where: { id } }));
+    const before = await row("co-cedar");
+    ok(await call("ownerA", setDeparting, { userId: "officerA", departing: "1" }));
+    ok(await call("ownerA", releaseDepartingClaims));
+    expect(await row("co-cedar")).toEqual({ ...before, claimedById: null, claimExpiresAt: null });
+  });
+
+  it("keeps the first time when a mark is repeated, and says nothing changed", async () => {
+    expect(ok(await capsule.setDeparting(OWNER, "officerA", false))).toEqual({ changed: false });
+    expect(ok(await capsule.setDeparting(OWNER, "officerA", true))).toEqual({ changed: true });
+    const first = (await prisma.membership.findFirstOrThrow({ where: { workspaceId: "a", userId: "officerA" } })).departingAt;
+    expect(first).not.toBeNull();
+    // The app's tick, sent again by a stale page or a double press.
+    ok(await call("ownerA", setDeparting, { userId: "officerA", departing: "1" }));
+    expect(ok(await capsule.setDeparting(OWNER, "officerA", true))).toEqual({ changed: false });
+    expect((await prisma.membership.findFirstOrThrow({ where: { workspaceId: "a", userId: "officerA" } })).departingAt).toEqual(first);
+    expect(ok(await capsule.setDeparting(OWNER, "officerA", false))).toEqual({ changed: true });
+    expect(ok(await capsule.setDeparting(OWNER, "officerA", false))).toEqual({ changed: false });
+    expect(await capsule.setDeparting(OWNER, "ownerB", true)).toEqual({ ok: false, error: "That person isn't a member of this workspace." });
+  });
+
+  it("lets exactly one of several identical calls at the same moment change the row", async () => {
+    for (let round = 0; round < 10; round++) {
+      await withTenant(OWNER, (tx) => tx.membership.updateMany({ where: { workspaceId: "a" }, data: { departingAt: null } }));
+      const marking = await Promise.all([1, 2, 3].map(() => capsule.setDeparting(OWNER, "officerA", true)));
+      expect(marking.map((r) => ok(r).changed).sort(), `mark, round ${round}`).toEqual([false, false, true]);
+      const clearing = await Promise.all([1, 2, 3].map(() => capsule.setDeparting(OWNER, "officerA", false)));
+      expect(clearing.map((r) => ok(r).changed).sort(), `clear, round ${round}`).toEqual([false, false, true]);
+    }
+  });
+
+  describe("the release is one step", () => {
+    const lockWaits = async (like: string) =>
+      (await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE ${like}`)[0].n;
+    // Waits until a statement matching the text is blocked on a lock: a latch, not a guess at timing.
+    const untilWaiting = async (like: string) => {
+      for (let i = 0; i < 200; i++) {
+        if ((await lockWaits(like)) > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`nothing is waiting on a lock for ${like}`);
+    };
+
+    it("keeps the claims of a person who is unmarked while the release waits for the mark", async () => {
+      await hold("officerA", ["co-cedar"]);
+      await hold("ownerA", ["co-atlas"]);
+      await markBoth();
+      let unmarkIsOpen!: () => void;
+      const open = new Promise<void>((resolve) => (unmarkIsOpen = resolve));
+      let commitUnmark!: () => void;
+      const commit = new Promise<void>((resolve) => (commitUnmark = resolve));
+      // An owner unticks ownerA and has not finished yet: the row is held.
+      const unmarking = withTenant(OWNER, async (tx) => {
+        await tx.membership.updateMany({ where: { workspaceId: "a", userId: "ownerA" }, data: { departingAt: null } });
+        unmarkIsOpen();
+        await commit;
+      });
+      await open;
+      const releasing = capsule.releaseDepartingClaims(OWNER);
+      await untilWaiting("%FOR SHARE OF m%");
+      commitUnmark();
+      await unmarking;
+      expect(ok(await releasing)).toMatchObject({ released: 1, people: [{ userId: "officerA", released: 1 }], companies: [{ id: "co-cedar", previousHolderId: "officerA" }] });
+      expect(await claimedBy("ownerA")).toBe(1);
+      expect(await claimedBy("officerA")).toBe(0);
+    });
+
+    it("makes an unmark wait until a release that already has the marks has finished", async () => {
+      await hold("officerA", ["co-cedar"]);
+      await hold("ownerA", ["co-atlas"]);
+      await markBoth();
+      // A lock on officerA's company stops the release after it has taken the marks.
+      const holder = new Client({ connectionString: testDatabaseUrls().ownerUrl });
+      await holder.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query(`SELECT id FROM "Company" WHERE id = 'co-cedar' FOR UPDATE`);
+        const releasing = capsule.releaseDepartingClaims(OWNER);
+        await untilWaiting('%UPDATE "Company"%');
+        const unmarking = capsule.setDeparting(OWNER, "ownerA", false);
+        await untilWaiting('%"membership" SET%');
+        await holder.query("COMMIT");
+        // The release counted ownerA as marked, because that was true when it began.
+        expect(ok(await releasing)).toMatchObject({ released: 2, people: [{ userId: "officerA", released: 1 }, { userId: "ownerA", released: 1 }] });
+        expect(ok(await unmarking)).toEqual({ changed: true });
+      } finally {
+        await holder.end();
+      }
+      expect(await claimedBy("ownerA")).toBe(0);
+    });
+
+    it("frees nothing when it fails after the first person's company", async () => {
+      await hold("officerA", ["co-cedar"]);
+      await hold("ownerA", ["co-fjord"]);
+      await markBoth();
+      const owner = new Client({ connectionString: testDatabaseUrls().ownerUrl });
+      await owner.connect();
+      try {
+        // Companies are freed in id order, so Cedar goes first and the failure comes at Fjord.
+        await owner.query(`CREATE FUNCTION public.test_fail_release() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END $$`);
+        await owner.query(
+          `CREATE TRIGGER test_fail_release BEFORE UPDATE ON "Company" FOR EACH ROW WHEN (OLD.id = 'co-fjord' AND NEW."claimedById" IS NULL) EXECUTE FUNCTION public.test_fail_release()`,
+        );
+        await expect(capsule.releaseDepartingClaims(OWNER)).rejects.toThrow(/injected failure/);
+      } finally {
+        await owner.query(`DROP TRIGGER IF EXISTS test_fail_release ON "Company"`);
+        await owner.query("DROP FUNCTION IF EXISTS public.test_fail_release()");
+        await owner.end();
+      }
+      expect(await claimedBy("officerA")).toBe(1);
+      expect(await claimedBy("ownerA")).toBe(1);
+      expect((await departing()).map((m) => m.userId).sort()).toEqual(["officerA", "ownerA"]);
+    });
+
+    it("reports the holder that was locked: two releases at once free each company once", async () => {
+      await hold("officerA", ["co-cedar", "co-echo"]);
+      ok(await capsule.setDeparting(OWNER, "officerA", true));
+      const both = await Promise.all([capsule.releaseDepartingClaims(OWNER), capsule.releaseDepartingClaims(OWNER)]);
+      expect(both.map((r) => ok(r).released).sort()).toEqual([0, 2]);
+    });
+  });
+
+  it("summarizes what a release would do, without changing anything", async () => {
+    await hold("officerA", ["co-cedar", "co-echo"]);
+    await hold("ownerA", ["co-atlas"]);
+    expect(ok(await capsule.departingSummary(OWNER))).toEqual({ marked: 0, companies: 0, callerMarked: false, everyoneMarked: false });
+    ok(await capsule.setDeparting(OWNER, "officerA", true));
+    expect(ok(await capsule.departingSummary(OWNER))).toEqual({ marked: 1, companies: 2, callerMarked: false, everyoneMarked: false });
+    ok(await capsule.setDeparting(OWNER, "ownerA", true));
+    expect(ok(await capsule.departingSummary(OWNER))).toEqual({ marked: 2, companies: 3, callerMarked: true, everyoneMarked: true });
+    expect(await capsule.departingSummary(OFFICER)).toEqual({ ok: false, error: OWNER_ONLY });
+    expect(await claimedBy("officerA")).toBe(2);
+  });
+
+  it("the app's own release still works when every member is marked", async () => {
+    await hold("officerA", ["co-cedar"]);
+    await hold("ownerA", ["co-atlas"]);
+    await markBoth();
+    expect(ok(await call("ownerA", releaseDepartingClaims))).toMatchObject({ released: 2 });
   });
 
   it("does not touch another workspace's members or claims", async () => {

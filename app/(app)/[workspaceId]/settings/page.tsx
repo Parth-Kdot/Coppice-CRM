@@ -338,7 +338,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               make changes as them: companies, contacts, claims, outreach, follow-ups, stages, imports and, for owners, facts, templates, research
               pages, template experiments and the year-end handoff. It follows the same rules as the member. Permanent deletes need the member&apos;s
               agreement, and an assistant cannot change members, roles, invitations, the claim window, the AI settings or this switch. Claims,
-              outreach and stage moves are marked &quot;via assistant&quot; in a company&apos;s history, and every change is listed below.
+              outreach and stage moves are marked &quot;via assistant&quot; in a company&apos;s history, and every change is listed below. Lines about who is leaving show to owners only.
             </p>
             <p className="lg-mcp-privacy max-w-[66ch]">
               <WarningIcon size={16} />
@@ -412,7 +412,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               What assistants changed
             </h3>
             <p className="lg-hint max-w-[66ch]">
-              Every member sees this list, with each assistant&apos;s name. It shows the last {ACTIVITY_SHOWN} changes in this workspace, newest first.
+              Every member sees this list, with each assistant&apos;s name. Lines about who is leaving show to owners only. It shows the last {ACTIVITY_SHOWN} changes in this workspace, newest first.
             </p>
             <AssistantActivityList items={activity} />
             {isOwner ? (

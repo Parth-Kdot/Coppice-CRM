@@ -46,8 +46,9 @@ export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];
 
 // What a row's target is, so the list knows how to label it for the person looking. A company is its
 // name with a link and a contact, template or research source is its name; the rest are fixed
-// phrases that never show typed text (see ACTIVITY_PHRASES). "none" means the line stands alone.
-export type ActivityTarget = "company" | "contact" | "template" | "source" | "fact" | "fact_sheet" | "card" | "report" | "import" | "experiment" | "none";
+// phrases that never show typed text (see ACTIVITY_PHRASES). A member is the person's name, shown to
+// owners only (see OWNER_ONLY_TOOLS). "none" means the line stands alone.
+export type ActivityTarget = "company" | "contact" | "template" | "source" | "member" | "fact" | "fact_sheet" | "card" | "report" | "import" | "experiment" | "none";
 
 export const ACTIVITY_PHRASES: Record<"fact" | "fact_sheet" | "card" | "report" | "import" | "experiment", string> = {
   fact: "a fact",
@@ -60,23 +61,32 @@ export const ACTIVITY_PHRASES: Record<"fact" | "fact_sheet" | "card" | "report" 
 
 // The noun in front of a name that is not a company's, so a line reads "added the template Alumni
 // angle" while one whose target is gone reads "added a template" (ACTIVITY_GONE_PHRASES).
-export const ACTIVITY_NAME_PREFIX: Record<"contact" | "template" | "source", string> = {
+export const ACTIVITY_NAME_PREFIX: Record<"contact" | "template" | "source" | "member", string> = {
+  member: "",
   contact: "the contact ",
   template: "the template ",
   source: "the research source ",
 };
 
-// What a line says when the company, contact, template or research source it was about is gone, or
+// What a line says when the company, contact, template, research source or member it was about is gone, or
 // when the person looking may not see its name. Never a name, so nothing typed is shown.
-export const ACTIVITY_GONE_PHRASES: Record<"company" | "contact" | "template" | "source", string> = {
+export const ACTIVITY_GONE_PHRASES: Record<"company" | "contact" | "template" | "source" | "member", string> = {
   company: "a company",
   contact: "a contact",
   template: "a template",
   source: "a research source",
+  member: "a member who is no longer here",
 };
+// A member line that never recorded who it was about (rows written before the target was stored).
+export const ACTIVITY_UNKNOWN_MEMBER = "a member";
 
-type Line = { verb: string; target: ActivityTarget };
-const line = (verb: string, target: ActivityTarget): Line => ({ verb, target });
+// The tools whose rows only owners are shown. Who is leaving is an owner's to see in the app, so the
+// list leaves these rows out for everyone else (lib/mcp/activity-list.ts).
+export const OWNER_ONLY_TOOLS = ["set_departing", "release_departing_claims"] as const;
+
+// `after` is the words that follow the label ("marked Sam Lee as leaving").
+type Line = { verb: string; target: ActivityTarget; after?: string };
+const line = (verb: string, target: ActivityTarget, after?: string): Line => ({ verb, target, ...(after ? { after } : {}) });
 
 // "<person>'s assistant <verb> <label>". One entry for every action tool, keyed by the tool's name
 // and then the action key it records. A tool that records an action not listed here, or a row from
@@ -107,7 +117,7 @@ export const ACTIVITY_LINES: Record<string, Partial<Record<ActivityAction, Line>
   accept_brief_item: { updated: line("added a research item to the notes of", "company") },
   start_experiment: { started: line("started", "experiment") },
   end_experiment: { ended: line("ended", "experiment") },
-  set_departing: { departing_set: line("marked a member as leaving", "none"), departing_cleared: line("cleared a member's leaving mark", "none") },
+  set_departing: { departing_set: line("marked", "member", " as leaving"), departing_cleared: line("cleared the leaving mark for", "member") },
   release_departing_claims: { claims_released: line("released the claims of members who are leaving", "none") },
   start_handoff: { started: line("started", "report") },
   build_handoff_cards: { cards_built: line("built the cards for", "report") },
