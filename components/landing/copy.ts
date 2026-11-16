@@ -1,3 +1,5 @@
+import { CAPSULE_PRIVACY } from "@/lib/capsule/limits";
+
 // Landing copy for Coppice. Items that are announced and not yet built are labeled "Coming next"
 // or "Later" wherever they appear. Company and people names in the examples are made up.
 
@@ -40,7 +42,7 @@ export const PROBLEM = {
     {
       title: "Nobody knows which pitch works",
       body: "Replies came back to six inboxes, and the sheet was not updated.",
-      fix: "Every entry records its channel, its date and who sent it. Reply rate per pitch template is the next feature being built.",
+      fix: "Every entry records its channel, its date and who sent it. The Template stats page shows the reply rate for each pitch template, with the range it likely falls in.",
       note: "which email worked?",
       sheet: { row: 31, cells: ["Intro v1, v2, v3", "Replied?", "", "last edit Oct"] },
     },
@@ -251,10 +253,24 @@ export const FEATURES = {
       detail: "Each entry shows the date, who logged it, the channel and what was said, plus the next follow-up date. The record is still there when the person who knew the contact has graduated.",
     },
     {
+      icon: "stats",
+      title: "Template stats, and one-change experiments",
+      short: "Which pitch gets replies, read out in plain words, and a way to test a small change.",
+      tag: "AI, optional",
+      detail: "The stats page shows each template's reply rate with its likely range, and says too few yet until a sample is big enough. Explain these numbers puts words around figures the page already shows. An owner can try a one-change variant of a template: code checks that it changes one thing, then it runs against the original while the log form suggests whichever has the fewest sends.",
+    },
+    {
       icon: "import",
       title: "Import, with look-alikes shown together",
       short: "Bring in last year's CSV and decide group by group.",
       detail: "Upload up to 2,000 rows and point each column at a field. Names are compared without capitals, punctuation or endings like Inc and LLC, and websites without www, so near-duplicates appear side by side.",
+    },
+    {
+      icon: "smart",
+      title: "Smart import for messy notes",
+      short: "Read the free-text cells of a sheet, and keep what you agree with.",
+      tag: "AI, optional",
+      detail: "A note like emailed 3/2 by Sam, said reach out in Aug becomes a proposed stage, dates and a contact, each with the text it came from. You use, change or leave out every proposal before anything is imported.",
     },
     {
       icon: "facts",
@@ -269,6 +285,33 @@ export const FEATURES = {
       short: "Two drafts from verified facts, checked before you send.",
       tag: "AI, optional",
       detail: "The draft opens in your own Gmail or Outlook, or you can copy it. Under each draft the claim check marks numbers, links and history lines that no fact supports.",
+    },
+    {
+      icon: "brief",
+      title: "Research briefs from approved pages",
+      short: "A brief on who to contact, quoted from pages an owner approved.",
+      tag: "AI, optional",
+      detail: "An owner lists the pages Coppice may read, such as a company's careers or giving page, in Settings. A brief on a company's page lists its official ways in, and every line quotes the page it came from.",
+    },
+    {
+      icon: "assistants",
+      title: "Your own AI assistant, if you connect one",
+      short: "An assistant that supports remote MCP servers can do most of what you do in your workspace, as you.",
+      tag: "Optional, off by default",
+      detail: "An owner turns assistants on for the workspace. Each member decides whether their assistant may only read, or also make changes as them: companies, contacts, claims, outreach, follow-ups, stages, imports and, for owners, facts, templates and the handoff. Permanent deletes need the member's yes, and an assistant cannot change members, roles, the claim window, the AI settings or the assistants switch. Claims, outreach and stage moves are marked via assistant, every change is listed in Settings for the whole team (lines about who is leaving show to owners only), and a member can disconnect it at any time.",
+    },
+    {
+      icon: "ask",
+      title: "Ask Coppice",
+      short: "Ask about your pipeline in plain words and get the matching companies, read from your workspace.",
+      detail: "One short AI call turns your question into a filter. Coppice then reads the answer from your own workspace, so every row, date and number on screen comes from your data. Anything it suggests changing waits as a card for you to confirm.",
+    },
+    {
+      icon: "capsule",
+      title: "A Time Capsule for the next board",
+      short: "Your year as a keepsake, and a handoff the incoming board can read.",
+      tag: "AI, optional",
+      detail: "Every member can page through a recap of the year: numbers counted by code from your outreach. At turnover an owner builds a handoff of relationship cards, a playbook and a re-contact calendar, approves each card, and publishes it. Optional AI reads the notes into the cards, and code keeps a line only if its quote is in the note. Anyone can then ask the archive a question and get an answer with the quotes behind it.",
     },
   ],
 };
@@ -295,26 +338,24 @@ export const TRUST = {
   items: [
     { title: "I left out a send button on purpose.", body: "A draft opens in your own Gmail or Outlook compose window, and you press Send from your own address. Coppice never connects to your inbox." },
     { title: "Nothing is merged for you.", body: "Look-alike companies are flagged and shown together. Nothing is merged, blocked or deleted until a person decides what to do with the group." },
-    { title: "AI does not change your pipeline by itself.", body: "AI drafts text and lists facts from a packet. A fact cannot be used in a draft until the owner verifies it, a draft stays on the screen until you send it from your own inbox, and a stage, a claim or a log entry changes only when an officer presses the button." },
+    { title: "Coppice's AI does not change your pipeline.", body: "Coppice's own AI drafts text and lists facts from a packet. A fact cannot be used in a draft until the owner verifies it, and a draft stays on the screen until you send it from your own inbox. A stage, a claim, a follow-up date or a log entry changes only when a member does it, in the app or through an assistant they connected and allowed to make changes. An assistant acts as that member, claims, outreach and stage moves are marked via assistant, and every change it makes is listed in Settings for the whole team (lines about who is leaving show to owners only)." },
     { title: "One team cannot see another.", body: "Every workspace is separated inside the database, using row-level security in Postgres, so one team's companies, notes and members are not visible to another team's accounts." },
   ],
   alsoOut: "Also out of scope: payments, and public pages for companies to visit.",
   comingTitle: "Coming next",
   comingNote: "Announced, not built yet. Nothing here exists in the app today.",
-  coming: [
-    { tag: "Next", title: "Reply rate per pitch template", body: "See which version of your pitch gets answers, so the next board starts from what worked." },
-    { tag: "Later", title: "Pipeline Copilot", body: "A chat that answers questions about your pipeline. Anything it proposes changing waits for a person to confirm." },
-    { tag: "Later", title: "Research briefs", body: "A short background read on a company before you reach out." },
-    { tag: "Later", title: "Turnover Time Capsule", body: "At the end of the term, a \"wrapped\"-style history of the year handed to the incoming board." },
-  ],
+  // Nothing is announced right now. The landing page hides this section while the list is empty.
+  coming: [] as { tag: string; title: string; body: string }[],
   privacyTitle: "Privacy notes",
   privacy: [
     { title: "AI is optional", body: "The owner turns it on or off for the whole workspace and sets how many AI calls the workspace may make in a 30-day period. With AI off, none of the text below is sent anywhere." },
-    { title: "What is kept from the AI", body: "The provider's free tier may use what it receives to improve its products. So a draft is written with placeholders for first name, sender name and organization name, and Coppice fills in the real names after it comes back. Email addresses and phone numbers are masked in everything sent. Other names can't be caught that way: a name in your packet, in a note, or typed into a draft you check again does reach the provider, so leave those out. The same goes for a template you base a draft on, so keep names out of templates. Smart import, if you turn it on for a CSV import, sends Gemini the sheet's headers only when they are plain spreadsheet words (like “Last contacted”), and otherwise their shape (like “2 words”), its company names and industries from columns plainly labeled as such (like “Company” or “Industry”), and only the shape of its other sample cells (like “6 words, has a date”), and sends its free-text cells, which can include names, to Groq instead, with email addresses and phone numbers masked; Groq says it doesn't keep what it's sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse." },
-    { title: "What does go to the provider", body: "While AI is on: the text of the packet you uploaded, your verified facts, the company's name, industry and website, the contact's job title, any note you add to a draft request, the dates and subjects of earlier outreach on a follow-up, and the text of each draft for the claim check. Keep anything private out of the packet and your notes. A template you base a draft on is sent as well, masked the same way." },
+    { title: "What is kept from the AI", body: "The provider's free tier may use what it receives to improve its products. So a draft is written with placeholders for first name, sender name and organization name, and Coppice fills in the real names after it comes back. Email addresses and phone numbers in US or international (+) format are masked in drafts, packets and claim checks. Other names can't be caught that way: a name in your packet, in a note, or typed into a draft you check again does reach the provider, so leave those out. The same goes for a template you base a draft on, so keep names out of templates. Smart import, if you turn it on for a CSV import, sends Gemini the sheet's headers only when they are plain spreadsheet words (like “Last contacted”), and otherwise their shape (like “2 words”), the company names and industries from columns plainly labeled as such (like “Company” or “Industry”), and, for up to 15 sample rows, only the shape of its other cells (like “6 words, has a date”). To spot look-alikes it also sends Gemini the sheet's company names and the names of the companies already saved in this workspace, archived ones included, each cut before any note (“Acme (ask Dana)” is sent as “Acme”) or left out if it is only a note; with more than 600 names in all, that check is skipped. It sends its free-text cells, which can include names, to Groq instead, with email addresses and phone numbers in US or international (+) format masked; Groq says it doesn't keep what it's sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse. A research brief sends Gemini only the public text and addresses of pages an owner approved, with email addresses and phone numbers masked (numbers of 7 or more digits written in groups with spaces, dashes, dots, slashes or brackets, as in most countries, and numbers of 10 or more digits written in one run, in any script's digits, fullwidth ones included; a date, or a run of dates and years, standing on its own is left alone), plus the company's name and website, never your notes or contacts. An AI assistant you connect to Coppice yourself is different: whatever it reads, including contact names and emails, notes, the values a change replaced in the last hour and outreach, members' names, facts, templates, stats and handoff cards, goes to the company behind that assistant, whether or not Coppice's own AI is on. Assistants have their own switch in Settings, off by default." },
+    { title: "The Time Capsule and Ask the Archive", body: CAPSULE_PRIVACY },
+    { title: "What does go to the provider", body: "While AI is on: the text of the packet you uploaded, your verified facts, the company's name, industry, website and stage, the contact's job title, any note you add to a draft request, on a follow-up the date and channel of each of the last five earlier outreach entries, whether they replied, and the subject of its AI draft with the names put back to placeholders, the text of each draft for the claim check, and for a research brief, the public text and addresses of the pages an owner approved. Keep anything private out of the packet and your notes. A template you base a draft on is sent as well, masked the same way. Explain these numbers on the stats page sends the template names and the numbers on that page, never a note, a company or a contact. The Template Lab sends the text of the one template an owner tries a variant of, masked the same way, and up to 40 verified facts. Ask Coppice sends Groq your question, your last few questions in that conversation, the names of companies it just showed you, and the industry names your workspace uses, and Groq keeps them as described above. Notes, contacts and outreach history are not sent; answers are read from your workspace by code." },
     { title: "Emails stay with owners", body: "Officers do not see other members' email addresses. Only owners can view them." },
     { title: "Contacts never log in", body: "Company contacts never log in and never receive anything from Coppice." },
     { title: "Archiving keeps the history", body: "An archived company leaves the board and queue, and it can be unarchived later." },
+    { title: "Previous versions last one hour", body: "When someone changes a company's name, industry, website or notes, or a contact's name, email or title, Coppice keeps the value it replaced for one hour so it can be put back. After that it is never shown again, and it is deleted from Coppice's database, usually within minutes and otherwise by a daily cleanup. Backups of the database can keep it for their retention period. Only the latest previous value of each field is kept. Coppice's own AI never reads it. An assistant you connect can read it, like the rest of the company page, so it goes to the company behind that assistant." },
   ],
 };
 
@@ -342,7 +383,7 @@ export const FAQ = [
   },
   {
     q: "What happens at board turnover?",
-    a: "The workspace and everything in it stays. The outgoing chair makes the incoming chair an Owner in Settings, then steps down to Officer or leaves, and the new board can open any company to read its outreach entries, notes and stage changes. Claims held by someone who leaves the workspace are released.",
+    a: "The workspace and everything in it stays. The outgoing chair makes the incoming chair an Owner in Settings, then steps down to Officer or leaves, and the new board can open any company to read its outreach entries, notes and stage changes. Claims held by someone who leaves the workspace are released. The Time Capsule gathers the year into a handoff the owners approve and publish, so the new board starts from what the old one learned.",
   },
 ];
 

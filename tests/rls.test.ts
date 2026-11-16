@@ -24,6 +24,12 @@ const TENANT_TABLES = [
   "AiDraft",
   "ImportSession",
   "ImportChunk",
+  "ResearchSource",
+  "CompanyBrief",
+  "CompanyBriefPage",
+  "OnboardingProgress",
+  "AssistantActivity",
+  "PreviousVersion",
 ] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {
@@ -31,6 +37,7 @@ async function seedTenantRows(tenant: Tenant, suffix: string) {
     const { workspaceId, userId } = tenant;
     await tx.company.create({ data: { id: `co-${suffix}`, workspaceId, name: `Company ${suffix}`, nameKey: `company ${suffix}` } });
     await tx.contact.create({ data: { id: `ct-${suffix}`, workspaceId, companyId: `co-${suffix}`, name: "Sam" } });
+    await tx.previousVersion.create({ data: { id: `pv-${suffix}`, workspaceId, companyId: `co-${suffix}`, subjectId: `co-${suffix}`, field: "NOTES", value: "old", replacedById: userId } });
     await tx.template.create({ data: { id: `tp-${suffix}`, workspaceId, name: "First touch", body: "Hi" } });
     await tx.outreach.create({
       data: { id: `or-${suffix}`, workspaceId, companyId: `co-${suffix}`, senderId: userId, templateId: `tp-${suffix}` },
@@ -266,5 +273,135 @@ describe("withTenant itself", () => {
     // ownerB is now a member of "a" only; "b" and its rows are gone.
     expect(await visibleIds({ userId: "ownerB", workspaceId: "b" })).toEqual(NOTHING);
     expect((await visibleIds({ userId: "ownerB", workspaceId: "a" })).companies).toEqual(["co-a"]);
+  });
+});
+
+describe("research tables", () => {
+  // A source, a brief and a brief page in each workspace, written as its owner.
+  async function seedResearch(tenant: Tenant, suffix: string) {
+    await withTenant(tenant, async (tx) => {
+      const { workspaceId, userId } = tenant;
+      await tx.researchSource.create({ data: { id: `rs-${suffix}`, workspaceId, url: `https://${suffix}.example/`, label: suffix, addedById: userId } });
+      await tx.companyBrief.create({ data: { id: `cb-${suffix}`, workspaceId, companyId: `co-${suffix}`, createdById: userId, status: "READY", brief: { items: [] } } });
+      await tx.companyBriefPage.create({ data: { id: `cp-${suffix}`, workspaceId, briefId: `cb-${suffix}`, position: 1, url: `https://${suffix}.example/` } });
+    });
+  }
+  const researchIds = (tenant: Tenant) =>
+    withTenant(tenant, async (tx) => ({
+      sources: (await tx.researchSource.findMany({ select: { id: true } })).map((r) => r.id),
+      briefs: (await tx.companyBrief.findMany({ select: { id: true } })).map((r) => r.id),
+      pages: (await tx.companyBriefPage.findMany({ select: { id: true } })).map((r) => r.id),
+    }));
+
+  beforeEach(async () => {
+    await seedResearch(A, "a");
+    await seedResearch(B, "b");
+  });
+
+  it("each workspace sees only its own sources, briefs and pages; outsiders and no tenant see nothing", async () => {
+    expect(await researchIds(A)).toEqual({ sources: ["rs-a"], briefs: ["cb-a"], pages: ["cp-a"] });
+    expect(await researchIds(OFFICER_A)).toEqual({ sources: ["rs-a"], briefs: ["cb-a"], pages: ["cp-a"] });
+    expect(await researchIds(B)).toEqual({ sources: ["rs-b"], briefs: ["cb-b"], pages: ["cp-b"] });
+    expect(await researchIds({ userId: "ownerB", workspaceId: "a" })).toEqual({ sources: [], briefs: [], pages: [] });
+    expect(await prisma.researchSource.count()).toBe(0);
+    expect(await prisma.companyBrief.count()).toBe(0);
+    expect(await prisma.companyBriefPage.count()).toBe(0);
+  });
+
+  it("A can't change or remove B's rows", async () => {
+    await withTenant(A, async (tx) => {
+      expect((await tx.researchSource.updateMany({ where: { id: "rs-b" }, data: { url: "https://evil.example/" } })).count).toBe(0);
+      expect((await tx.companyBrief.updateMany({ where: { id: "cb-b" }, data: { accepted: ["i1"] } })).count).toBe(0);
+      expect((await tx.companyBriefPage.deleteMany({ where: { id: "cp-b" } })).count).toBe(0);
+    });
+    expect(await researchIds(B)).toEqual({ sources: ["rs-b"], briefs: ["cb-b"], pages: ["cp-b"] });
+  });
+
+  const plant: [string, (tx: Prisma.TransactionClient) => Promise<unknown>][] = [
+    ["a source", (tx) => tx.researchSource.create({ data: { workspaceId: "b", url: "https://evil.example/", label: "x", addedById: "ownerA" } })],
+    ["a brief", (tx) => tx.companyBrief.create({ data: { workspaceId: "b", companyId: "co-b", createdById: "ownerA", status: "READY", brief: {} } })],
+    ["a brief page", (tx) => tx.companyBriefPage.create({ data: { workspaceId: "b", briefId: "cb-b", position: 2, url: "https://evil.example/" } })],
+  ];
+  test.for(plant)("A can't create %s in workspace B", async ([, create]) => {
+    await expect(withTenant(A, create)).rejects.toThrow(/row-level security/);
+    expect(await researchIds(B)).toEqual({ sources: ["rs-b"], briefs: ["cb-b"], pages: ["cp-b"] });
+  });
+
+  it("a brief can't point at another workspace's company, nor a page at another workspace's brief", async () => {
+    await expect(
+      withTenant(A, (tx) => tx.companyBrief.create({ data: { workspaceId: "a", companyId: "co-b", createdById: "ownerA", status: "READY", brief: {} } })),
+    ).rejects.toThrow(/foreign key/i);
+    await expect(
+      withTenant(A, (tx) => tx.companyBriefPage.create({ data: { workspaceId: "a", briefId: "cb-b", position: 2, url: "https://a.example/" } })),
+    ).rejects.toThrow(/foreign key/i);
+  });
+
+  it("only owners may write sources, even inside their own workspace", async () => {
+    await expect(
+      withTenant(OFFICER_A, (tx) => tx.researchSource.create({ data: { workspaceId: "a", url: "https://evil.example/", label: "x", addedById: "officerA" } })),
+    ).rejects.toThrow(/row-level security/);
+    expect((await withTenant(OFFICER_A, (tx) => tx.researchSource.updateMany({ data: { archivedAt: new Date() } }))).count).toBe(0);
+    expect((await withTenant(OFFICER_A, (tx) => tx.researchSource.deleteMany({}))).count).toBe(0);
+    expect((await withTenant(A, (tx) => tx.researchSource.updateMany({ data: { label: "renamed" } }))).count).toBe(1);
+  });
+});
+
+describe("previous versions", () => {
+  const versionIds = (tenant: Tenant) => withTenant(tenant, async (tx) => (await tx.previousVersion.findMany({ select: { id: true } })).map((r) => r.id));
+  const slot = (workspaceId: string, companyId: string, extra: { contactId?: string; subjectId?: string; field: "NAME" | "INDUSTRY" | "WEBSITE" | "NOTES" | "EMAIL" | "TITLE"; replacedById?: string }) => ({
+    workspaceId,
+    companyId,
+    contactId: extra.contactId ?? null,
+    subjectId: extra.subjectId ?? extra.contactId ?? companyId,
+    field: extra.field,
+    value: "x",
+    replacedById: extra.replacedById ?? "ownerA",
+  });
+
+  it("each workspace sees only its own slot; an officer sees the workspace's; outsiders and no tenant see none", async () => {
+    expect(await versionIds(A)).toEqual(["pv-a"]);
+    expect(await versionIds(OFFICER_A)).toEqual(["pv-a"]);
+    expect(await versionIds(B)).toEqual(["pv-b"]);
+    expect(await versionIds({ userId: "ownerB", workspaceId: "a" })).toEqual([]);
+    expect(await prisma.previousVersion.count()).toBe(0);
+  });
+
+  it("A can't create one in workspace B, nor one that points at B's company", async () => {
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("b", "co-b", { field: "INDUSTRY" }) }))).rejects.toThrow(/row-level security/);
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-b", { field: "INDUSTRY" }) }))).rejects.toThrow(/foreign key/i);
+    expect(await versionIds(B)).toEqual(["pv-b"]);
+  });
+
+  it("a slot can only be added as oneself", async () => {
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { field: "INDUSTRY", replacedById: "officerA" }) }))).rejects.toThrow(/row-level security/);
+  });
+
+  it("A can't delete B's slot, and nobody can update one", async () => {
+    expect((await withTenant(A, (tx) => tx.previousVersion.deleteMany({ where: { id: "pv-b" } }))).count).toBe(0);
+    expect(await versionIds(B)).toEqual(["pv-b"]);
+    await expect(withTenant(A, (tx) => tx.previousVersion.updateMany({ where: { id: "pv-a" }, data: { value: "changed" } }))).rejects.toThrow(/permission denied/);
+  });
+
+  it("a company slot of a contact field, and a contact slot whose subject is the company, are refused", async () => {
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { field: "EMAIL" }) }))).rejects.toThrow(/check constraint/);
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { contactId: "ct-a", subjectId: "co-a", field: "TITLE" }) }))).rejects.toThrow(/check constraint/);
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { contactId: "ct-a", field: "NOTES" }) }))).rejects.toThrow(/check constraint/);
+  });
+
+  it("deleting the contact removes its slot", async () => {
+    await withTenant(A, (tx) => tx.previousVersion.create({ data: { id: "pv-contact", ...slot("a", "co-a", { contactId: "ct-a", field: "TITLE" }) } }));
+    expect((await versionIds(A)).sort()).toEqual(["pv-a", "pv-contact"]);
+    await withTenant(A, (tx) => tx.contact.deleteMany({ where: { id: "ct-a" } }));
+    expect(await versionIds(A)).toEqual(["pv-a"]);
+  });
+
+  it("the cleanup function is SECURITY DEFINER, and the policy that lets the migration role use it names that role", async () => {
+    // Locally and in CI the migration role is a superuser and bypasses row-level security. On Supabase it
+    // may not, so the owner_purge_expired policy must be for the role that owns the function.
+    const [check] = await prisma.$queryRaw<{ ok: boolean; definer: boolean }[]>`
+      SELECT p.proowner = ANY(pol.polroles) AS ok, p.prosecdef AS definer
+      FROM pg_proc p, pg_policy pol
+      WHERE p.proname = 'purge_expired_previous_versions' AND pol.polname = 'owner_purge_expired'`;
+    expect(check).toEqual({ ok: true, definer: true });
   });
 });

@@ -30,8 +30,24 @@ export function connectionConfig(env: Record<string, string | undefined> = proce
   return { connectionString, ssl: { ca, rejectUnauthorized: true } };
 }
 
+// How many connections one server instance may hold at once. pg's own default is 10; on Vercel
+// every instance has its own pool, and Supabase's transaction pooler shares a fixed number of
+// connections between all of them, so each instance keeps to 5 unless DATABASE_POOL_MAX says
+// otherwise (a whole number from 1 to 50). A request that finds the pool full waits for a free
+// connection (withTenant's maxWait) rather than failing at once.
+export const DEFAULT_POOL_MAX = 5;
+export function poolMax(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.DATABASE_POOL_MAX?.trim();
+  if (!raw) return DEFAULT_POOL_MAX;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 50) {
+    throw new Error("DATABASE_POOL_MAX must be a whole number from 1 to 50.");
+  }
+  return n;
+}
+
 function createPrismaClient(): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg(connectionConfig()) });
+  return new PrismaClient({ adapter: new PrismaPg({ ...connectionConfig(), max: poolMax() }) });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
@@ -53,13 +69,58 @@ export type Tenant = { userId: string; workspaceId: string };
 // set_config(..., true) lasts only until the transaction ends. That matters with Supabase's
 // pooler, which hands the same connection to other requests afterwards. Never use plain SET.
 // Keep slow work (AI calls, network requests) outside: the transaction holds a connection.
-export function withTenant<T>(tenant: Tenant, run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+//
+// `isolationLevel: "Serializable"` is for a count followed by an insert that must not race with
+// the same thing in parallel (a limit): Postgres then fails all but one of the overlapping
+// transactions with a serialization error (Prisma's P2034, see isSerializationFailure), and the
+// caller retries or refuses.
+export function withTenant<T>(
+  tenant: Tenant,
+  run: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { isolationLevel?: Prisma.TransactionIsolationLevel } = {},
+): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.user_id', ${tenant.userId}, true), set_config('app.workspace_id', ${tenant.workspaceId}, true)`;
       return run(tx);
     },
     // Room for the pooler and network latency to Supabase.
-    { maxWait: 10_000, timeout: 15_000 },
+    { maxWait: 10_000, timeout: 15_000, ...options },
   );
+}
+
+// Whether a withTenant transaction failed only because a parallel one won (a serialization
+// failure or deadlock), so running it again may succeed. Prisma reports it as P2034, or, from the
+// pg driver adapter, as a DriverAdapterError whose cause has kind "TransactionWriteConflict" and
+// Postgres's code 40001 (40P01 for a deadlock).
+export function isSerializationFailure(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth++) {
+    const e = current as { code?: unknown; kind?: unknown; originalCode?: unknown; cause?: unknown };
+    if (e.code === "P2034" || e.kind === "TransactionWriteConflict" || e.originalCode === "40001" || e.originalCode === "40P01") return true;
+    current = e.cause;
+  }
+  return false;
+}
+
+// A transaction-scoped advisory lock on `key`, taken as the transaction's first statement so
+// two runs of the same work (two imports into one workspace) go one after the other: the second
+// waits until the first commits or rolls back, then sees what it wrote. Released with the
+// transaction, so nothing can leak it across the pooler.
+export async function advisoryXactLock(tx: Prisma.TransactionClient, key: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
+
+// The most rows private.purge_expired_previous_versions() deletes in one call (its LIMIT in the
+// previous_versions migration).
+export const PURGE_BATCH = 1000;
+
+// Deletes previous versions (lib/previous-versions.ts) replaced more than an hour ago, in every
+// workspace, and returns how many. It is the migration's SECURITY DEFINER function, which can delete
+// nothing else, so it needs no withTenant. It runs as one statement of its own, never inside an
+// edit's transaction, so it holds no lock an edit could wait on; rows an edit has locked are skipped
+// and caught on a later call.
+export async function purgeExpiredPreviousVersions(): Promise<number> {
+  const [row] = await prisma.$queryRaw<{ purged: number }[]>`SELECT private.purge_expired_previous_versions() AS purged`;
+  return row.purged;
 }

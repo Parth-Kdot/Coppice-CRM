@@ -1,6 +1,6 @@
 import { STAGE_LABELS } from "@/lib/stages";
 import { BoardIcon, FactsIcon, ImportIcon, QueueIcon, SearchIcon, SettingsIcon, StageGlyph } from "../ledger/icons";
-import { LogoMark } from "../ledger/logo";
+import { LogoMark } from "../brand/logo";
 import { Ribbon } from "../ledger/marks";
 import { OverdueMark, overdueLevel } from "../ledger/overdue";
 import { MINI_NEVER, MINI_ROWS, MINI_TOTAL, type MiniRow } from "./mini-data";

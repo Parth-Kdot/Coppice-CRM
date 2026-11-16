@@ -3,19 +3,20 @@
 import { useEffect, useRef } from "react";
 import { ClaimIcon } from "./icons";
 import { Ribbon } from "./marks";
+import { prefersReducedMotion } from "./motion-kit";
 import type { ClaimState } from "@/lib/claims";
 import "./claims.css";
 
 // The claim control, in three states that never rely on color alone.
 //   free:   an outlined "Claim" button (a submit button; the form around it runs the real claim action)
 //   yours:  a solid ink chip with the gilt ribbon, "Yours until Nov 11"
-//   theirs: a solid quiet chip with the holder's short name, "Priya R. until Oct 31"; the full name
-//           is in the tooltip and read out for screen readers
+//   theirs: a solid quiet chip with the holder's short name, "Priya R."; the full name and when the
+//           claim ends are in the tooltip and read out for screen readers
 // A claim that has run out (state "expired") reads as free, with the old holder in the tooltip.
 // The ribbon drops into the chip once, when a claim becomes yours.
 
 // "Priya Raman" becomes "Priya R."
-export function shortName(name: string | null): string {
+function shortName(name: string | null): string {
   if (!name) return "Someone";
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return parts[0];
@@ -23,11 +24,19 @@ export function shortName(name: string | null): string {
 }
 
 // "Priya Raman" becomes "PR"
-export function initials(name: string | null): string {
+function initials(name: string | null): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+// The free chip's tooltip: whose claim ran out, and how long a new claim lasts.
+function freeTitle(claim: ClaimView, holder: string, windowDays?: number): string | undefined {
+  const lasts = windowDays ? `Claim it for ${windowDays} ${windowDays === 1 ? "day" : "days"}` : undefined;
+  if (claim.state !== "expired") return lasts;
+  const expired = `${holder}'s claim expired ${claim.until ?? ""}`.trim();
+  return lasts ? `${expired}. ${lasts}` : expired;
 }
 
 export type ClaimView = {
@@ -45,9 +54,14 @@ type Props = {
   // tooltip and for screen readers.
   compact?: boolean;
   className?: string;
+  // The workspace's claim window, said in the free chip's tooltip ("Claim it for 14 days"), so no
+  // screen has to print it.
+  windowDays?: number;
+  // data-tour on the Claim button, for the onboarding tour.
+  dataTour?: string;
 };
 
-export function ClaimChip({ claim, companyName, pending = false, compact = false, className = "" }: Props) {
+export function ClaimChip({ claim, companyName, pending = false, compact = false, className = "", windowDays, dataTour }: Props) {
   const wrap = useRef<HTMLSpanElement>(null);
   const before = useRef(claim.state);
   const kind = claim.state === "mine" ? "mine" : claim.state === "theirs" ? "theirs" : "free";
@@ -58,7 +72,7 @@ export function ClaimChip({ claim, companyName, pending = false, compact = false
     const was = before.current;
     before.current = claim.state;
     if (was === claim.state || claim.state !== "mine") return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (prefersReducedMotion()) return;
     wrap.current?.querySelector(".lg-ribbon")?.animate([{ transform: "translateY(-100%)" }, { transform: "translateY(0)" }], {
       duration: 220,
       easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
@@ -71,8 +85,14 @@ export function ClaimChip({ claim, companyName, pending = false, compact = false
         <button
           type="submit"
           className="lg-chipbody lg-chip-free"
-          disabled={pending}
-          title={claim.state === "expired" ? `${holder}'s claim expired ${claim.until ?? ""}`.trim() : undefined}
+          // Not `disabled`: a disabled button drops focus to <body> mid-claim. A second press while
+          // the first is on its way is ignored instead.
+          aria-disabled={pending || undefined}
+          onClick={(event) => {
+            if (pending) event.preventDefault();
+          }}
+          data-tour={dataTour}
+          title={freeTitle(claim, holder, windowDays)}
         >
           <span className="lg-claimword" aria-hidden={compact || undefined}>
             {pending ? "Claiming" : "Claim"}
@@ -97,7 +117,7 @@ export function ClaimChip({ claim, companyName, pending = false, compact = false
           <span className="lg-sr">
             Held by {holder} until {claim.until}
           </span>
-          <span aria-hidden="true">{compact ? initials(claim.holderName) : `${shortName(claim.holderName)} until ${claim.until}`}</span>
+          <span aria-hidden="true">{compact ? initials(claim.holderName) : shortName(claim.holderName)}</span>
         </span>
       )}
     </span>
