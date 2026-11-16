@@ -49,28 +49,15 @@
   --pitch: 44px;
   --spine-w: 76px;
 
-  --background: var(--paper);
-  --foreground: var(--ink);
-
   color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --color-paper: var(--paper);
-  --color-paper-2: var(--paper-2);
-  --color-rule: var(--rule);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-moss: var(--moss);
   --color-moss-2: var(--moss-2);
-  --color-rust: var(--rust);
-  --color-gilt: var(--gilt);
-  --color-sheet: var(--sheet);
-  --color-edge: var(--edge);
-  --color-moss-wash: var(--moss-wash);
-  --color-rust-wash: var(--rust-wash);
 
   --font-display: var(--font-caslon), "Iowan Old Style", Georgia, "Times New Roman", serif;
   --font-sans: var(--font-public), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;

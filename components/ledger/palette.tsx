@@ -14,17 +14,22 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { searchCompanies, type FoundCompany } from "@/app/(app)/[workspaceId]/search-actions";
+import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
+import type { FoundCompany } from "@/lib/search";
 import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
-import { BoardIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StageGlyph, UserIcon } from "./icons";
+import { AiDraftIcon, BoardIcon, CapsuleIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
+import { asksQuestion } from "./ask/question";
 import { OverdueMark } from "./overdue";
 
 // The command palette: an index card on paper with ruled lines. Results are grouped under two
 // headers, Companies (found on the server, in this workspace) and Go to (the pages of the app).
 // Arrow keys move, Enter runs, Escape closes. It is a modal dialog, so focus stays inside it, and
 // focus goes back to where it was when it closes. `/` and Cmd K (Ctrl K elsewhere) open it from any
-// workspace screen unless the person is typing in a field. On a phone it fills the screen.
+// workspace screen unless the person is typing in a field. On a phone it fills the screen, the
+// placeholder is just "Search" and the close button reads "Cancel". With nothing typed it offers
+// three things (My follow-ups, Board, Add a company); every other page is found by typing. The key
+// legend shows only with a mouse or trackpad, and only for the first three opens.
 
 type PaletteApi = { open: () => void };
 const PaletteContext = createContext<PaletteApi>({ open: () => undefined });
@@ -33,7 +38,7 @@ export const usePalette = (): PaletteApi => useContext(PaletteContext);
 const subscribeNothing = () => () => undefined;
 
 // Whether to print the Command key or Ctrl in the keycaps. Server and first paint say Ctrl.
-export function useShortcutLabel(): string {
+function useShortcutLabel(): string {
   const apple = useSyncExternalStore(
     subscribeNothing,
     () => /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent),
@@ -47,43 +52,35 @@ const isTyping = (target: EventTarget | null) => {
   return Boolean(el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable));
 };
 
-// After the palette sends you to another page, focus goes to that page's heading (or the main region), so
-// keyboard and screen reader users start at the top of what they asked for.
-function focusPageStart() {
+// When the palette sends you somewhere on the page you are already on, focus goes to that page's
+// heading, or to the part a hash names ("#yours", "#fresh"), so keyboard and screen reader users
+// start at what they asked for. The page is told about the hash with an "lg-hash" event (a
+// same-page push fires no hashchange), so Fresh leads can open. A move to another page is the
+// shell's job (WorkspaceShell focuses the new page's h1 or hash target once it has loaded).
+function focusPageStart(hash = "") {
   const main = document.getElementById("main");
+  if (hash) window.dispatchEvent(new CustomEvent("lg-hash", { detail: hash }));
+  const anchor = hash ? document.getElementById(hash) : null;
   const heading = main?.querySelector<HTMLElement>("h1");
-  const target = heading ?? main;
+  const target = anchor ?? heading ?? main;
   if (!target) return;
   if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
   target.focus({ preventScroll: true });
 }
 
-export function PaletteProvider({ workspaceId, children }: { workspaceId: string; children: ReactNode }) {
+export function PaletteProvider({ workspaceId, askOn = false, children }: { workspaceId: string; askOn?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
-  const pendingPath = useRef<string | null>(null);
-
-  // Runs when the route changes after the palette asked for a navigation.
-  useEffect(() => {
-    if (pendingPath.current === null || pendingPath.current !== pathname) return;
-    pendingPath.current = null;
-    const frame = requestAnimationFrame(focusPageStart);
-    return () => cancelAnimationFrame(frame);
-  }, [pathname]);
 
   const navigate = useCallback(
     (href: string) => {
       const path = href.split(/[?#]/)[0];
+      const hash = href.includes("#") ? href.slice(href.indexOf("#") + 1) : "";
       opener.current = null;
-      if (path === window.location.pathname) {
-        pendingPath.current = null;
-        requestAnimationFrame(focusPageStart);
-      } else {
-        pendingPath.current = path;
-      }
       router.push(href);
+      // Same page: nothing loads, so focus moves here. Another page: the shell moves it once loaded.
+      if (path === window.location.pathname) requestAnimationFrame(() => focusPageStart(hash));
     },
     [router],
   );
@@ -121,7 +118,7 @@ export function PaletteProvider({ workspaceId, children }: { workspaceId: string
   return (
     <PaletteContext.Provider value={api}>
       {children}
-      {open && <CommandPalette workspaceId={workspaceId} onClose={close} onNavigate={navigate} />}
+      {open && <CommandPalette workspaceId={workspaceId} askOn={askOn} onClose={close} onNavigate={navigate} />}
     </PaletteContext.Provider>
   );
 }
@@ -131,7 +128,7 @@ export function SearchBar({ className = "" }: { className?: string }) {
   const { open } = usePalette();
   const shortcut = useShortcutLabel();
   return (
-    <button type="button" className={`lg-searchbar ${className}`} onClick={open} aria-haspopup="dialog" aria-keyshortcuts="/ Meta+K Control+K">
+    <button type="button" className={`lg-searchbar ${className}`} onClick={open} aria-haspopup="dialog" aria-keyshortcuts="/ Meta+K Control+K" data-tour="search">
       <SearchIcon size={18} />
       <span className="lg-searchbar-text">Search companies or pages</span>
       <span className="lg-keycaps" aria-hidden="true">
@@ -147,21 +144,34 @@ export function SearchBar({ className = "" }: { className?: string }) {
 type PageItem = { kind: "page"; key: string; label: string; hint: string; href: string; words: string; icon: ReactNode };
 type CompanyItem = { kind: "company"; key: string; company: FoundCompany; href: string };
 type Item = PageItem | CompanyItem;
-type Group = { id: "companies" | "pages"; title: string; items: Item[] };
+type Group = { id: "ask" | "companies" | "pages"; title: string; items: Item[] };
 
-function pageItems(workspaceId: string, query: string): PageItem[] {
+// With nothing typed, only these three; the rest are found by typing.
+const SUGGESTED = ["yours", "board", "new"];
+
+function pageItems(workspaceId: string, query: string, askOn: boolean): PageItem[] {
   const base = `/${workspaceId}`;
   const pages: PageItem[] = [
-    { kind: "page", key: "queue", label: "Go to Queue", hint: "Follow-ups that are due", href: base, words: "queue home due follow-ups today", icon: <QueueIcon size={18} /> },
+    { kind: "page", key: "yours", label: "My follow-ups", hint: "Due companies you hold", href: `${base}#yours`, words: "my mine yours follow-ups due claimed queue", icon: <QueueIcon size={18} /> },
     { kind: "page", key: "board", label: "Go to Board", hint: "Companies by stage", href: `${base}/board`, words: "board stages companies pipeline", icon: <BoardIcon size={18} /> },
     { kind: "page", key: "new", label: "Add a company", hint: "New company", href: `${base}/companies/new`, words: "add new create company", icon: <PlusIcon size={18} /> },
+    { kind: "page", key: "queue", label: "Go to Queue", hint: "Follow-ups that are due", href: base, words: "queue home due follow-ups today", icon: <QueueIcon size={18} /> },
+    { kind: "page", key: "fresh", label: "Fresh leads", hint: "Never contacted", href: `${base}#fresh`, words: "fresh leads never contacted new uncontacted", icon: <SproutIcon size={18} /> },
     { kind: "page", key: "import", label: "Go to Import", hint: "Bring in a CSV", href: `${base}/import`, words: "import csv spreadsheet upload sheet", icon: <ImportIcon size={18} /> },
     { kind: "page", key: "facts", label: "Go to Facts", hint: "The fact sheet", href: `${base}/facts`, words: "facts fact sheet packet pdf ai verify", icon: <FactsIcon size={18} /> },
+    { kind: "page", key: "stats", label: "Go to Template stats", hint: "Which templates get replies", href: `${base}/stats`, words: "stats templates reply rate", icon: <StatsIcon size={18} /> },
+    ...(askOn
+      ? [{ kind: "page" as const, key: "ask", label: "Go to Ask Coppice", hint: "Ask about your pipeline", href: `${base}/ask`, words: "ask coppice question copilot assistant ai help how", icon: <AiDraftIcon size={18} /> }]
+      : []),
+    { kind: "page", key: "capsule", label: "Go to Time Capsule", hint: "Your year, and the handoff", href: `${base}/capsule`, words: "time capsule year recap wrapped handoff turnover archive playbook", icon: <CapsuleIcon size={18} /> },
     { kind: "page", key: "settings", label: "Go to Settings", hint: "Members and claim window", href: `${base}/settings`, words: "settings members invite claim window ai owner", icon: <SettingsIcon size={18} /> },
     { kind: "page", key: "workspaces", label: "Switch workspace", hint: "Your workspaces", href: "/workspaces", words: "switch workspace workspaces club team", icon: <UserIcon size={18} /> },
   ];
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const found = tokens.length === 0 ? pages : pages.filter((p) => tokens.every((t) => `${p.label} ${p.words}`.toLowerCase().includes(t)));
+  const found =
+    tokens.length === 0
+      ? SUGGESTED.map((key) => pages.find((p) => p.key === key) as PageItem)
+      : pages.filter((p) => tokens.every((t) => `${p.label} ${p.words}`.toLowerCase().includes(t)));
   const text = query.trim().slice(0, 100);
   // Filtering the board is a real thing the board does with ?q=.
   if (text) {
@@ -178,8 +188,52 @@ function pageItems(workspaceId: string, query: string): PageItem[] {
   return found;
 }
 
-function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: string; onClose: () => void; onNavigate: (href: string) => void }) {
+// The first row for a question: Enter opens Ask Coppice with it in the question box, ready to ask.
+function askItem(workspaceId: string, query: string): PageItem {
+  const text = query.trim();
+  return {
+    kind: "page",
+    key: "ask-question",
+    label: `Ask Coppice: ${text.slice(0, 100)}`,
+    hint: "Ask a question",
+    href: `/${workspaceId}/ask?q=${encodeURIComponent(text.slice(0, 500))}`,
+    words: "",
+    icon: <AiDraftIcon size={18} />,
+  };
+}
+
+// A phone or tablet: no keyboard legend, a short placeholder and a "Cancel" button.
+const COARSE = "(pointer: coarse)";
+function useCoarsePointer(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(COARSE);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(COARSE).matches,
+    () => false,
+  );
+}
+
+// How many times this browser has opened the palette, so the key legend can stop after three.
+const OPENS_KEY = "lg-palette-opens";
+function countOpen(): number {
+  try {
+    const seen = Number(window.localStorage.getItem(OPENS_KEY)) || 0;
+    window.localStorage.setItem(OPENS_KEY, String(seen + 1));
+    return seen;
+  } catch {
+    return 0;
+  }
+}
+
+function CommandPalette({ workspaceId, askOn, onClose, onNavigate }: { workspaceId: string; askOn: boolean; onClose: () => void; onNavigate: (href: string) => void }) {
   const shortcut = useShortcutLabel();
+  const coarse = useCoarsePointer();
+  // Read once when the palette opens (it only ever renders in the browser).
+  const [opensBefore] = useState(countOpen);
+  const showLegend = !coarse && opensBefore < 3;
   const onBoard = usePathname() === `/${workspaceId}/board`;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -221,14 +275,15 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
       text && found?.query === text
         ? found.companies.map((company) => ({ kind: "company", key: `c-${company.id}`, company, href: `/${workspaceId}/companies/${company.id}` }))
         : [];
-    const pages = pageItems(workspaceId, query);
+    const pages = pageItems(workspaceId, query, askOn);
     // On the board, "Filter the board" is the first thing offered for typed text.
     const ordered = onBoard ? [...pages.filter((p) => p.key === "board-filter"), ...pages.filter((p) => p.key !== "board-filter")] : pages;
     const out: Group[] = [];
+    if (askOn && asksQuestion(query)) out.push({ id: "ask", title: "Ask", items: [askItem(workspaceId, query)] });
     if (companies.length > 0) out.push({ id: "companies", title: "Companies", items: companies });
     if (ordered.length > 0) out.push({ id: "pages", title: "Go to", items: ordered });
     return out;
-  }, [found, text, query, workspaceId, onBoard]);
+  }, [found, text, query, workspaceId, onBoard, askOn]);
 
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const optionId = (index: number) => `${id}-opt-${index}`;
@@ -308,7 +363,7 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
             type="text"
             role="combobox"
             className="lg-pal-input"
-            placeholder="Search companies or pages"
+            placeholder={coarse ? "Search" : "Search companies or pages"}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -322,9 +377,15 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
               setActive(0);
             }}
           />
-          <button type="button" className="lg-pal-close" onClick={onClose} aria-label="Close search">
-            <span aria-hidden="true">Esc</span>
-          </button>
+          {coarse ? (
+            <button type="button" className="lg-pal-cancel lg-linkbtn" onClick={onClose}>
+              Cancel
+            </button>
+          ) : (
+            <button type="button" className="lg-pal-close" onClick={onClose} aria-label="Close search">
+              <span aria-hidden="true">Esc</span>
+            </button>
+          )}
         </div>
 
         <div id={`${id}-list`} ref={list} role="listbox" aria-label="Results" className="lg-pal-list" tabIndex={-1}>
@@ -380,6 +441,7 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
           {text && found?.query === text ? `${found.companies.length} ${found.companies.length === 1 ? "company" : "companies"} found` : ""}
         </p>
 
+        {showLegend && (
         <div className="lg-pal-foot">
           <span>
             <kbd>Up</kbd> <kbd>Down</kbd> move
@@ -394,6 +456,7 @@ function CommandPalette({ workspaceId, onClose, onNavigate }: { workspaceId: str
             <kbd>{shortcut}</kbd> opens this from any page
           </span>
         </div>
+        )}
       </div>
     </dialog>
   );

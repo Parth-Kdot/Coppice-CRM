@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ErrorLine } from "@/components/ledger/shared";
-import { authClient } from "@/lib/auth-client";
 
 // The Google mark, in Google's own colors, as the sign-in button shows it.
 function GoogleMark() {
@@ -17,7 +16,9 @@ function GoogleMark() {
   );
 }
 
-export function GoogleSignInButton({ className = "" }: { className?: string }) {
+// `next` is where Google sends you back to: a path on this site, already checked by the page
+// (safeNextPath). Better Auth checks it again against the app's own origin.
+export function GoogleSignInButton({ className = "", next = "/workspaces" }: { className?: string; next?: string }) {
   const [going, setGoing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +26,10 @@ export function GoogleSignInButton({ className = "" }: { className?: string }) {
     setGoing(true);
     setError(null);
     try {
-      const result = await authClient.signIn.social({ provider: "google", callbackURL: "/workspaces" });
+      // Loaded on the click: the auth client is only needed here and at sign-out, so it stays out
+      // of every page's first load.
+      const { authClient } = await import("@/lib/auth-client");
+      const result = await authClient.signIn.social({ provider: "google", callbackURL: next });
       // On success the browser is already on its way to Google; only a refusal comes back here.
       if (result?.error) {
         setError("Google sign-in could not start. Try again in a moment.");
@@ -55,6 +59,7 @@ export function SignOutButton({ label = "Sign out", className = "lg-btn" }: { la
       type="button"
       className={className}
       onClick={async () => {
+        const { authClient } = await import("@/lib/auth-client");
         await authClient.signOut();
         router.push("/signin");
       }}

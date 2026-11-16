@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Logo } from "../ledger/logo";
+import { Logo } from "../brand/logo";
 import { NAV_LINKS } from "./copy";
 
 // The landing nav: the mark and word, the section links and the main button. The bar is

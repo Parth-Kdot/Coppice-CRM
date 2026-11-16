@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { SHOOTS_FIVE, Stool } from "../ledger/stool";
+import { SHOOTS_FIVE, Stool } from "../brand/stool";
 import { AUDIENCE, NAME, TRUST } from "./copy";
 
 // Who it is for, then the name: four kinds of team as a ruled column, then the old woodland
@@ -76,7 +76,7 @@ function Accordion({ title, note, children }: { title: string; note?: string; ch
   );
 }
 
-// Trust, in my own voice where it is a choice I made. The two notes under it open on request so the
+// Trust, in my own voice where it is a choice I made. The note under it opens on request so the
 // section stays short.
 export function Trust() {
   return (
@@ -111,19 +111,21 @@ export function Trust() {
             </ul>
           </Accordion>
 
-          <Accordion title={TRUST.comingTitle} note={TRUST.comingNote}>
-            <ul className="ld-coming">
-              {TRUST.coming.map((item) => (
-                <li key={item.title}>
-                  <span className="ld-coming-tag">{item.tag}</span>
-                  <div>
-                    <p className="ld-coming-title">{item.title}</p>
-                    <p>{item.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Accordion>
+          {TRUST.coming.length > 0 && (
+            <Accordion title={TRUST.comingTitle} note={TRUST.comingNote}>
+              <ul className="ld-coming">
+                {TRUST.coming.map((item) => (
+                  <li key={item.title}>
+                    <span className="ld-coming-tag">{item.tag}</span>
+                    <div>
+                      <p className="ld-coming-title">{item.title}</p>
+                      <p>{item.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Accordion>
+          )}
         </div>
       </div>
     </section>
