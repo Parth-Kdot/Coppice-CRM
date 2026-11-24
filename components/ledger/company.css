@@ -117,12 +117,6 @@
   .lg-followon {
     margin-top: 6px;
   }
-  .lg-logfoot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px 14px;
-  }
 
   /* ---------- The ruled calendar ---------- */
   .lg-cal {
@@ -264,7 +258,7 @@
     transition: opacity var(--dur-base) var(--ease-out);
   }
   /* Archiving: the working column slides away and the rest dims and holds until the archived page
-     replaces it (company-blocks.tsx), so the page is never blank in between. */
+     replaces it (company/header.tsx), so the page is never blank in between. */
   .lg-cogrid[data-archiving] > :not(.lg-co-side) {
     opacity: 0.45;
     pointer-events: none;
@@ -272,12 +266,13 @@
   @media (min-width: 1101px) {
     .lg-company[data-layout="spread"] .lg-cogrid {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-rows: auto auto auto 1fr;
+      grid-template-rows: auto auto auto 1fr auto;
       grid-template-areas:
         "head side"
         "route side"
         "contacts side"
-        "history side";
+        "history side"
+        "outreach outreach";
       padding: 0;
     }
     .lg-company[data-layout="spread"] .lg-co-head {
@@ -292,6 +287,25 @@
     .lg-company[data-layout="spread"] .lg-co-history {
       grid-area: history;
       align-self: start;
+    }
+    /* The outreach ledger runs under both pages, so a long list never leaves the left page empty.
+       Its entries sit in two columns, ruled where the pages meet. */
+    .lg-company[data-layout="spread"] .lg-co-outreach {
+      grid-area: outreach;
+      padding: 0 26px 20px;
+      border-top: 1px solid var(--edge);
+    }
+    .lg-company[data-layout="spread"] .lg-co-outreach > .lg-block {
+      border-top: 0;
+      padding-top: 18px;
+    }
+    .lg-company[data-layout="spread"] .lg-co-outreach .lg-entries {
+      columns: 2;
+      column-gap: 52px;
+      column-rule: 1px solid var(--edge);
+    }
+    .lg-company[data-layout="spread"] .lg-co-outreach .lg-entry {
+      break-inside: avoid;
     }
     .lg-company[data-layout="spread"] .lg-co-side {
       grid-area: side;
@@ -461,25 +475,6 @@
   .lg-clamp-toggle {
     margin-top: 2px;
     font-size: var(--fs-2);
-  }
-
-  .lg-archivedbanner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 18px;
-    padding: 12px 16px;
-    border: 1px solid var(--edge);
-    background: var(--paper-2);
-  }
-  .lg-archivedbanner:focus {
-    outline: 2px solid var(--moss-2);
-    outline-offset: 2px;
-  }
-  .lg-archivedbanner form {
-    flex: none;
   }
 
   /* ---------- The route map ---------- */
@@ -739,12 +734,13 @@
   .lg-ticket + .lg-block {
     margin-top: 4px;
   }
-  /* The archived banner's form. */
-  .lg-strip-form {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
+  /* An archived company's ticket: the same stub and body, a wider stub for the longer word, and
+     the plain paper of a ticket nobody holds. */
+  .lg-ticket[data-kind="archived"] {
+    --stub: 88px;
+  }
+  .lg-ticket[data-kind="archived"] .lg-ticket-word {
+    letter-spacing: 0.03em;
   }
 
   /* ---------- Contacts ---------- */
@@ -927,18 +923,6 @@
   .lg-newform {
     display: grid;
     gap: 14px;
-  }
-  .lg-readonly {
-    display: grid;
-    grid-template-columns: 90px minmax(0, 1fr);
-    gap: 6px 12px;
-  }
-  .lg-readonly dt {
-    color: var(--ink-2);
-  }
-  .lg-readonly dd {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .lg-matches {
     list-style: none;
@@ -1303,6 +1287,9 @@
     }
     .lg-ticket {
       --stub: 58px;
+    }
+    .lg-ticket[data-kind="archived"] {
+      --stub: 80px;
     }
     .lg-ticket-stub {
       min-height: 76px;

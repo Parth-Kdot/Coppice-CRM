@@ -7,16 +7,14 @@ import {
   getCompanyDetail,
   getCompanyPage,
   MATCH_LIMIT,
-  listPossibleDuplicatePairs,
-  markSeparate,
   removeContact,
-  resolveAsDuplicate,
   unarchiveCompany,
   updateCompany,
   updateContact,
   type CompanyFields,
   type SaveResult,
 } from "@/lib/companies";
+import { listPossibleDuplicatePairs, markSeparate, resolveAsDuplicate } from "@/lib/company-pairs";
 import type { Membership } from "@/lib/authz";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { resetAndSeed } from "./helpers/seed";

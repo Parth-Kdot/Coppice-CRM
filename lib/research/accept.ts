@@ -1,6 +1,7 @@
-import { aiUsage } from "@/lib/ai/run";
+import { AI_OFF_MESSAGE, aiUsage } from "@/lib/ai/run";
 import { updateCompany } from "@/lib/companies";
 import { withTenant, type Tenant } from "@/lib/db";
+import { notFound } from "@/lib/messages";
 import { loadBrief, type BriefView } from "@/lib/research/brief";
 import { DOOR_LABELS } from "@/lib/research/doors";
 import { COMPANY_LIMITS, type ActionResult } from "@/lib/validation";
@@ -24,9 +25,9 @@ function noteLine(brief: BriefView, itemId: string): string | null {
 export async function acceptBriefItem(tenant: Tenant, companyId: string, briefId: string, itemId: string): Promise<ActionResult> {
   // The feature is hidden while AI is off, and refused here too.
   const usage = await aiUsage(tenant);
-  if (!usage.enabled) return { ok: false, error: "AI is turned off for this workspace. An owner can turn it on in Settings." };
+  if (!usage.enabled) return { ok: false, error: AI_OFF_MESSAGE };
   const brief = await loadBrief(tenant, { id: briefId, companyId });
-  if (!brief) return { ok: false, error: "Brief not found." };
+  if (!brief) return notFound("Brief");
   const line = noteLine(brief, itemId);
   if (!line) return { ok: false, error: "That item isn't in this brief." };
   const already = brief.items.some((i) => i.id === itemId && i.accepted) || brief.inboxes.some((i) => i.id === itemId && i.accepted);
@@ -35,7 +36,7 @@ export async function acceptBriefItem(tenant: Tenant, companyId: string, briefId
   const company = await withTenant(tenant, (tx) =>
     tx.company.findFirst({ where: { id: companyId, workspaceId: tenant.workspaceId }, select: { name: true, industry: true, website: true, notes: true, archivedAt: true } }),
   );
-  if (!company) return { ok: false, error: "Company not found." };
+  if (!company) return notFound("Company");
   if (company.archivedAt) return { ok: false, error: "This company is archived. Unarchive it first." };
 
   const original = { name: company.name, industry: company.industry, website: company.website, notes: company.notes };

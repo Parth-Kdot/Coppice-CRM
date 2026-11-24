@@ -260,8 +260,9 @@
   }
 
   /* ---------- Phone: the card is a sheet docked above the tab bar ---------- */
-  /* Room after the page's end while the sheet is open (tour.tsx sets the sheet's height). */
-  :root[data-tour-sheet] #main::after {
+  /* Room after the page's end while the sheet is open (tour.tsx sets the sheet's height). The board
+     is not a page that scrolls: it fits the window, and board.css ends it at the sheet's top. */
+  :root[data-tour-sheet] #main:not(:has(.lg-board))::after {
     content: "";
     display: block;
     height: var(--lg-tour-sheet, 0px);

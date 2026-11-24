@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership } from "@/lib/authz";
 import { disconnect } from "@/lib/mcp/connections";
+import { notFound } from "@/lib/messages";
 import { disconnectAssistantSchema, type ActionResult } from "@/lib/validation";
 
 // Settings > AI assistants: Disconnect one of your own connected assistants.
@@ -17,7 +18,7 @@ import { disconnectAssistantSchema, type ActionResult } from "@/lib/validation";
 // refreshed); the person is always the signed-in user, never anything in the form.
 export async function disconnectAssistant(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = disconnectAssistantSchema.safeParse({ workspaceId: form.get("workspaceId"), clientId: form.get("clientId") });
-  if (!parsed.success) return { ok: false, error: "Assistant not found." };
+  if (!parsed.success) return notFound("Assistant");
   const { workspaceId, clientId } = parsed.data;
 
   try {

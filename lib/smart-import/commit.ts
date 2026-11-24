@@ -2,6 +2,7 @@ import { dbToday } from "@/lib/claims";
 import { namedFromEmail, runImport, type CheckedRow, type ImportResult, type RowExtras, type SmartExtras } from "@/lib/csv";
 import { addDays, localMidnight } from "@/lib/dates";
 import type { Tenant } from "@/lib/db";
+import { formatCount } from "@/lib/format";
 import { COMPANY_LIMITS, IMPORT_FIELDS, type ActionResult, type ImportMapping, type SmartDecision } from "@/lib/validation";
 import type { RowProposal } from "./check";
 import type { LookalikeGroup } from "./lookalikes";
@@ -32,7 +33,7 @@ function checkDecision(r: CheckedRow, decision: SmartDecision | undefined, propo
   }
   const notes = [r.company.notes, decision.note].filter(Boolean).join("\n\n");
   if (notes.length > COMPANY_LIMITS.notes) {
-    return `Row ${r.row}: its notes and the line from Smart import are over ${COMPANY_LIMITS.notes.toLocaleString("en-US")} characters. Shorten the line.`;
+    return `Row ${r.row}: its notes and the line from Smart import are over ${formatCount(COMPANY_LIMITS.notes)} characters. Shorten the line.`;
   }
   return {
     stage: decision.stage ?? undefined,

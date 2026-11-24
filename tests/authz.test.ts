@@ -52,7 +52,7 @@ describe("checkOwner", () => {
   });
 });
 
-describe("canCreateWorkspace (Option B allowlist)", () => {
+describe("canCreateWorkspace (the creator allowlist)", () => {
   it("allows only listed emails, ignoring case and spaces", () => {
     process.env.WORKSPACE_CREATOR_EMAILS = " Chair@Example.com , admin@example.com";
     expect(canCreateWorkspace("chair@example.com")).toBe(true);

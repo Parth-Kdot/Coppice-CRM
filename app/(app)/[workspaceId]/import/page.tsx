@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CsvImporter } from "@/components/csv-importer";
+import { CsvImporter } from "@/components/importer/importer";
 import { PageHead } from "@/components/ledger/shared";
 import { requireMembershipOr404 } from "@/lib/authz";
 import { smartOptions } from "@/lib/smart-import";

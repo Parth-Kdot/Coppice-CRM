@@ -4,15 +4,17 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership, requireOwner } from "@/lib/authz";
 import { releaseClaimsOf } from "@/lib/claims";
 import { prisma } from "@/lib/db";
+import { notFound } from "@/lib/messages";
 import {
   DELETE_NAME_MISMATCH,
   ONLY_OWNER_MESSAGE,
   deleteWorkspace as deleteWorkspaceRow,
   inviteExpiryLabel,
+  memberUserId,
   renameWorkspace as renameWorkspaceRow,
   setAiSettings,
   setClaimWindow,
@@ -57,7 +59,7 @@ export async function inviteMember(_prev: ActionResult<InviteResult> | null, for
       where: { workspaceId, status: "pending", expiresAt: { gt: new Date() }, email: { equals: email, mode: "insensitive" } },
       select: { id: true },
     });
-    // No email is sent (rule 6). The invitee sees a Join button after signing in with this email.
+    // No email is sent: the app never sends email. The invitee sees a Join button after signing in with this email.
     // Better Auth cancels an older pending invitation for the same email (cancelPendingInvitationsOnReInvite).
     const invitation = await auth.api.createInvitation({
       body: { email, role, organizationId: workspaceId },
@@ -76,7 +78,7 @@ export async function cancelInvitation(_prev: ActionResult | null, form: FormDat
     workspaceId: form.get("workspaceId"),
     invitationId: form.get("invitationId"),
   });
-  if (!parsed.success) return { ok: false, error: "Invitation not found." };
+  if (!parsed.success) return notFound("Invitation");
   const { workspaceId, invitationId } = parsed.data;
 
   try {
@@ -97,7 +99,7 @@ export async function changeMemberRole(_prev: ActionResult | null, form: FormDat
     memberId: form.get("memberId"),
     role: form.get("role"),
   });
-  if (!parsed.success) return { ok: false, error: "Member not found." };
+  if (!parsed.success) return notFound("Member");
   const { workspaceId, memberId, role } = parsed.data;
 
   try {
@@ -117,18 +119,18 @@ export async function changeMemberRole(_prev: ActionResult | null, form: FormDat
 // claims expire. Released after the removal succeeds, by the owner doing the removing.
 export async function removeMember(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = memberSchema.safeParse({ workspaceId: form.get("workspaceId"), memberId: form.get("memberId") });
-  if (!parsed.success) return { ok: false, error: "Member not found." };
+  if (!parsed.success) return notFound("Member");
   const { workspaceId, memberId } = parsed.data;
 
   try {
     const owner = await requireOwner(workspaceId);
-    const member = await prisma.membership.findFirst({ where: { id: memberId, workspaceId }, select: { userId: true } });
-    if (!member) return { ok: false, error: "Member not found." };
+    const memberUser = await memberUserId(workspaceId, memberId);
+    if (!memberUser) return notFound("Member");
     await auth.api.removeMember({
       body: { memberIdOrEmail: memberId, organizationId: workspaceId },
       headers: await headers(),
     });
-    await releaseClaimsOf(owner, member.userId);
+    await releaseClaimsOf(owner, memberUser);
   } catch (e) {
     return failure(e, "removeMember");
   }
@@ -142,7 +144,7 @@ export async function removeMember(_prev: ActionResult | null, form: FormData): 
 // Better Auth checks the last owner again, and the keep-an-owner trigger stops a race.
 export async function leaveWorkspace(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = workspaceIdSchema.safeParse(form.get("workspaceId"));
-  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  if (!parsed.success) return notFound("Workspace");
   const workspaceId = parsed.data;
 
   try {
@@ -195,7 +197,7 @@ export async function updateAiSettings(_prev: ActionResult | null, form: FormDat
 
 export async function updateMcpSettings(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = mcpSettingsSchema.safeParse({ workspaceId: form.get("workspaceId"), enabled: form.get("enabled") });
-  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  if (!parsed.success) return notFound("Workspace");
   const { workspaceId, enabled } = parsed.data;
 
   try {

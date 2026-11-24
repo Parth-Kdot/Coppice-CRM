@@ -11,7 +11,8 @@ import { promptName } from "./columns";
 
 // Company names that look alike though the exact checks miss them (lib/duplicates.ts decides which
 // pairs are flagged): "Lilly" and "Eli Lilly" by code, "CAT" and "Caterpillar" from Gemini
-// (IMPORT_LOOKALIKES), which gets company names only, under ids instead of row numbers. They join
+// (IMPORT_LOOKALIKES), which gets company names only, the sheet's and those already saved in the
+// workspace (archived ones too), under ids instead of row numbers. They join
 // the import's duplicate review with a reason, are only ever flagged, and Import or Skip stays per row.
 
 // The AI look-alike check only runs on sheets and workspaces up to this size.

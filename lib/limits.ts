@@ -19,6 +19,8 @@ export const AI_LIMIT_MAX = 5000;
 // ----- Companies, outreach and drafts -----
 
 export const COMPANY_LIMITS = { name: 120, industry: 80, website: 300, notes: 5000 } as const;
+// A contact's name and title.
+export const CONTACT_LIMITS = { name: 120, title: 120 } as const;
 export const NOTE_MAX = 2000;
 export const DRAFT_NOTE_MAX = 300;
 

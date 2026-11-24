@@ -50,7 +50,7 @@ describe("checkRules", () => {
     "We'd love your continued support.",
     "As a past sponsor, you know our work.",
     "It was great working with you before.",
-    // Typed into a live draft on 2026-11-07; only the AI check caught it then.
+    // An invented past sponsorship, which only the AI check used to catch.
     "Last year Ferncliff Foods sponsored our Gold tier.",
     "Globex sponsored our hackathon before.",
     "In the past, your team was sponsoring the robotics expo.",
@@ -61,7 +61,7 @@ describe("checkRules", () => {
     expect(checkRules(text, RULES)).toMatchObject([{ kind: "history", reason: "Check this company really has a history with you." }]);
   });
 
-  it("the invented sponsorship from the live test is flagged together with its number", () => {
+  it("an invented sponsorship is flagged together with its number", () => {
     const text = "Last year Ferncliff Foods sponsored our Gold tier, and 40 companies backed us in total.";
     expect(checkRules(text, RULES).map((f) => [f.kind, f.quote])).toEqual([
       ["number", "40"],
@@ -211,7 +211,7 @@ describe("the AI check", () => {
     expect(await aiCheck(OWNER, [draft], NAMES)).toEqual([{ ...draft, ai: [], error: "The AI is busy right now. Try again in a minute." }]);
   });
 
-  // Recorded from the live test on 2026-11-07: a draft listed the Gold benefits the way the facts
+  // Recorded reply: a draft listed the Gold benefits the way the facts
   // define them ("everything in Silver, plus ..."), and the check flagged it: "The Gold tier
   // description combines benefits from multiple tiers instead of just the Gold tier benefits."
   it("tells the check to read the facts together, following one tier to the tier it builds on", async () => {

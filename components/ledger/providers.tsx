@@ -13,7 +13,7 @@ import "./ledger.css";
 // A note may carry one follow-up (e.g. "See it" after a slip moved off screen); it then holds longer.
 // `avoid` names what the note must not cover (the heading a fact just landed on): the lane moves to
 // the top of the screen instead while it would.
-export type NoteOptions = { action?: { label: string; onSelect: () => void }; avoid?: Element | null };
+type NoteOptions = { action?: { label: string; onSelect: () => void }; avoid?: Element | null };
 type Note = { id: number; text: string; tone: "ok" | "error"; action?: NoteOptions["action"] };
 type Notify = (text: string, tone?: "ok" | "error", options?: NoteOptions) => void;
 

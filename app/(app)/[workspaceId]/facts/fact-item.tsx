@@ -5,7 +5,8 @@ import { focusSoon } from "@/components/ledger/focus";
 import { CheckIcon, WarningIcon } from "@/components/ledger/icons";
 import { OverflowMenu } from "@/components/ledger/overflow-menu";
 import { ErrorLine } from "@/components/ledger/shared";
-import { FACT_MAX, type ActionResult } from "@/lib/validation";
+import { FACT_MAX } from "@/lib/limits";
+import type { ActionResult } from "@/lib/validation";
 import { groupByPage } from "./fact-groups";
 
 // One fact on the fact sheet, everything about it at a glance: the fact in the display serif, the
@@ -28,7 +29,7 @@ export type FactView = {
   masked: boolean;
 };
 
-export const MASKED_REASON = "It holds [email] or [phone], so drafts can't use it. Edit it first.";
+const MASKED_REASON = "It holds [email] or [phone], so drafts can't use it. Edit it first.";
 export const factDomId = (id: string) => `fact-${id}`;
 const short = (text: string) => (text.length > 48 ? `${text.slice(0, 47)}…` : text);
 

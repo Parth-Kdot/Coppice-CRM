@@ -14,7 +14,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { searchCompanies, type FoundCompany } from "@/app/(app)/[workspaceId]/search-actions";
+import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
+import type { FoundCompany } from "@/lib/search";
 import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { BoardIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
@@ -36,7 +37,7 @@ export const usePalette = (): PaletteApi => useContext(PaletteContext);
 const subscribeNothing = () => () => undefined;
 
 // Whether to print the Command key or Ctrl in the keycaps. Server and first paint say Ctrl.
-export function useShortcutLabel(): string {
+function useShortcutLabel(): string {
   const apple = useSyncExternalStore(
     subscribeNothing,
     () => /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent),

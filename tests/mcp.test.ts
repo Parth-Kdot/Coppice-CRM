@@ -929,7 +929,7 @@ describe("the database", () => {
   });
 });
 
-// ----- Found in the MCP stress run (each was checked live, and is recorded here) -----
+// ----- Client names on the consent page, and the rest of the OAuth flow -----
 
 describe("client names on the consent page", () => {
   test.for([
@@ -1049,7 +1049,7 @@ describe("a revoked grant stops working at once", () => {
   });
 });
 
-describe("the rest of the OAuth flow, as the stress run walked it", () => {
+describe("the rest of the OAuth flow", () => {
   it("a second authorize for a client the person already allowed skips the consent page, with iss on the callback", async () => {
     const clientId = (await registerClient()).body.client_id as string;
     const first = await authorize(clientId, "ownerA", { scope: ALL, challenge: pkce().challenge });

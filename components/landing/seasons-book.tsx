@@ -24,7 +24,7 @@ function Chip({ label, on, className = "" }: { label: string; on: boolean; class
   );
 }
 
-// Kestrel's stage glyph: a ring with the first quarter filled (Contacted) and the second quarter
+// Dunmore Engineering's stage glyph: a ring with the first quarter filled (Contacted) and the second quarter
 // added when the reply is logged (Replied).
 function DueGlyph() {
   return (
@@ -120,7 +120,7 @@ export function RightPage() {
         </div>
       </section>
 
-      {/* Winter: the claim ticket for Kestrel, then a second officer's attempt. */}
+      {/* Winter: the claim ticket for Dunmore Engineering, then a second officer's attempt. */}
       <section className="ld-pane ld-pane-claim" data-i="1">
         <p className="lg-sc ld-pane-season">Winter</p>
         <p className="lg-sc ld-ledger-title">{claim.title}</p>

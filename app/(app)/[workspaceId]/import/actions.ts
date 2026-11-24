@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { requireMembership } from "@/lib/authz";
 import * as csv from "@/lib/csv";
+import { readCsvFile, readFile } from "@/lib/csv-file";
 import { previewImportSchema, runImportSchema, type ActionResult } from "@/lib/validation";
-import { readCsvFile, readFile } from "./read-file";
 
 // Both steps send the file itself; the server parses and checks it again every time (lib/csv.ts).
 // Any member may import.

@@ -4,7 +4,7 @@ import { literal } from "@/lib/board";
 import { changeStage, claimCompany, claimState, dbNow, heldBy, logOutreach } from "@/lib/claims";
 import { getCompanyDetail } from "@/lib/companies";
 import { prisma, withTenant } from "@/lib/db";
-import { WORKSPACES_SHOWN } from "@/lib/limits";
+import { notFoundMessage } from "@/lib/messages";
 import { WRITE_SCOPE } from "@/lib/mcp/config";
 import { MCP_LIMITS, returnMcpCall, takeMcpCall, type McpCallKind } from "@/lib/mcp/rate-limit";
 import { getQueue, type QueueRow } from "@/lib/queue";
@@ -19,6 +19,8 @@ import {
   type mcpQueueSchema,
   type mcpWorkspaceSchema,
 } from "@/lib/validation";
+import { roleLabel, toRole } from "@/lib/roles";
+import { listMyWorkspaces } from "@/lib/workspaces";
 
 // What each MCP tool does (lib/mcp/server.ts registers them). Every tool that touches a workspace
 // goes through openWorkspace first: the person's rate limit, the same membership check as
@@ -121,15 +123,10 @@ const offNote = (n: number) => (n === 1 ? "1 more of your workspaces has assista
 export async function listWorkspaces(principal: McpPrincipal): Promise<ToolResult> {
   const tooMany = await limited(principal, "read");
   if (tooMany) return tooMany;
-  const rows = await prisma.membership.findMany({
-    where: { userId: principal.userId },
-    select: { role: true, workspace: { select: { id: true, name: true, mcpEnabled: true } } },
-    orderBy: { createdAt: "asc" },
-    take: WORKSPACES_SHOWN,
-  });
+  const rows = await listMyWorkspaces(principal.userId);
   const open = rows.filter((r) => r.workspace.mcpEnabled);
   return ok({
-    workspaces: open.map((r) => ({ id: r.workspace.id, name: untrusted(r.workspace.name), yourRole: r.role === "owner" ? "Owner" : "Officer" })),
+    workspaces: open.map((r) => ({ id: r.workspace.id, name: untrusted(r.workspace.name), yourRole: roleLabel(toRole(r.role)) })),
     ...(rows.length > open.length ? { note: offNote(rows.length - open.length) } : {}),
   });
 }
@@ -183,7 +180,7 @@ export async function getCompany(principal: McpPrincipal, args: z.infer<typeof m
   const { member } = gate;
   const now = await dbNow();
   const c = await getCompanyDetail(member, args.companyId);
-  if (!c) return fail("Company not found.");
+  if (!c) return fail(notFoundMessage("Company"));
   return ok({
     company: {
       id: c.id,

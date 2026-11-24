@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useId, useMemo, useRef, useState } from "react";
+import { formatCount } from "@/lib/format";
 import type { DisclosureProps } from "./disclosure";
 import { focusSoon } from "./focus";
 import { ChevronRightIcon } from "./icons";
@@ -33,7 +34,7 @@ export function LazyDisclosure({
   const [open, setOpen] = useState(defaultOpen);
   const [mounted, setMounted] = useState(defaultOpen);
   const button = useRef<HTMLButtonElement>(null);
-  const shown = typeof count === "number" ? count.toLocaleString("en-US") : count;
+  const shown = typeof count === "number" ? formatCount(count) : count;
   const api = useMemo(
     () => ({
       close: () => {

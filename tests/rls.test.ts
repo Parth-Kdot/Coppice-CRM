@@ -273,7 +273,7 @@ describe("withTenant itself", () => {
   });
 });
 
-describe("research tables (AI feature 2)", () => {
+describe("research tables", () => {
   // A source, a brief and a brief page in each workspace, written as its owner.
   async function seedResearch(tenant: Tenant, suffix: string) {
     await withTenant(tenant, async (tx) => {

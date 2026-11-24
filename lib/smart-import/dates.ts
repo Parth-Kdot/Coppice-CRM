@@ -1,7 +1,7 @@
 // Smart import's dates (lib/smart-import/): board years, and the one date written in a quote,
 // read by code so the AI never supplies a number. Pure, so tests can run them directly.
 
-import { addDays } from "@/lib/dates";
+import { addDays, formatYmd } from "@/lib/dates";
 
 // The board year a date is in, by its starting year: boards turn over in July (the board view's
 // rule, components/ledger/board-year.ts), so 2026-10-25 is in 2026-27 and 2026-05-01 in 2025-26.
@@ -132,5 +132,4 @@ export function futureHint(proposals: { future?: boolean }[], cycleStart: number
 }
 
 // "Mar 2, 2026", for notes and reasons a person reads.
-export const longDay = (date: string) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+export const longDay = (date: string) => formatYmd(date, { month: "short", day: "numeric", year: "numeric" });

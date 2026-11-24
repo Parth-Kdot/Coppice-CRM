@@ -1,26 +1,24 @@
 import { cache } from "react";
 import type { Channel, Stage, Via } from "@/generated/prisma/client";
 import type { Membership } from "@/lib/authz";
-import { day } from "@/lib/dates";
+import { day, TIME_ZONE } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
+import { notFound } from "@/lib/messages";
 import { REPLY_STAGES, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import type { Prisma } from "@/generated/prisma/client";
 
-// Everything that touches a claim lives here (project rule 2). A claim says "I'm pitching this
+// Everything that touches a claim lives here (only lib/claims.ts writes a claim). A claim says "I'm pitching this
 // company": while it's live, nobody else can log outreach on it, move its stage or archive it
 // (owners can). Claims expire on their own after the workspace's claim window.
 //
 // Rules this file keeps:
 // - Who wins a claim is decided by one conditional UPDATE, never by reading first in code, so two
-//   people clicking at the same moment can never both win (rule 2).
-// - Every expiry check uses the database clock, now() in SQL, never the server's (rule 3).
-// - Logging outreach is one transaction: if the claim check fails, nothing is written (rule 4).
+//   people clicking at the same moment can never both win.
+// - Every expiry check uses the database clock, now() in SQL, never the server's.
+// - Logging outreach is one transaction: if the claim check fails, nothing is written.
 
 type Tx = Prisma.TransactionClient;
-
-// Follow-up dates are calendar days in West Lafayette, whatever time zone the server runs in.
-const TIME_ZONE = "America/Indiana/Indianapolis";
 
 // The company's claim as the database sees it right now. `live` is worked out by Postgres.
 type ClaimRow = {
@@ -50,7 +48,7 @@ async function readClaim(tx: Tx, workspaceId: string, companyId: string, { lock 
   return rows[0] ?? null;
 }
 
-const NOT_FOUND = { ok: false, error: "Company not found." } as const;
+const NOT_FOUND = notFound("Company");
 const closedMessage = (stage: Stage) => `This company is ${STAGE_LABELS[stage]}, so it can't be claimed.`;
 // The short date used everywhere a claim's end is shown: "Nov 21".
 const until = (row: ClaimRow) => day(row.claimExpiresAt as Date);

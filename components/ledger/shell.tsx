@@ -4,7 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { BoardIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
-import { LogoMark } from "./logo";
+import { LogoMark } from "@/components/brand/logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { useNoteLane } from "./providers";
 import { initialsOf, UserMenu, UserMenuPanel, type Me } from "./user-menu";
@@ -312,9 +312,9 @@ export type ShellProps = {
   // "2026-27": the board year the book is for, printed after the workspace name like a volume.
   volume?: string;
   me: Me;
-  // Reserved for the onboarding round: drawn after the shell, inside the palette's provider.
+  // Drawn after the shell, inside the palette's provider (the onboarding tour).
   overlay?: ReactNode;
-  // Reserved: extra rows in the account menu and the phone's account row ("Replay the basics").
+  // Extra rows in the account menu and the phone's account row ("Replay the basics").
   accountItems?: ReactNode;
   children: ReactNode;
 };

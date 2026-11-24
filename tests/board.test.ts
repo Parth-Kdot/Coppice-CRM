@@ -14,7 +14,7 @@ import {
   type Board,
   type BoardPaging,
 } from "@/lib/board";
-import { countPossibleDuplicates, listPossibleDuplicatePairs, markSeparate } from "@/lib/companies";
+import { countPossibleDuplicates, listPossibleDuplicatePairs, markSeparate } from "@/lib/company-pairs";
 import { day, when } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { nameKey } from "@/lib/duplicates";
@@ -216,7 +216,7 @@ describe("dates are shown in Purdue's time zone", () => {
   });
 });
 
-// ----- Paging, the just-moved slip, and the look-alike count (de-bloat pass) -----
+// ----- Paging, the just-moved slip, and the look-alike count -----
 
 const page = (changes: Partial<BoardPaging>): BoardPaging => ({ ...NO_PAGING, ...changes });
 const many = (n: number, extra: Partial<Seed> = {}): Seed[] =>

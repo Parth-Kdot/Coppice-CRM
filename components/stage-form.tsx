@@ -9,7 +9,7 @@ import { useConfirm, useNotify } from "@/components/ledger/providers";
 import { ReplyPrompt } from "@/components/ledger/reply-prompt";
 import type { Stage } from "@/generated/prisma/enums";
 import type { ReplyChoice } from "@/lib/companies";
-import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
+import { closeQuestion, STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 // The stage menu is the board's own (MoveMenu); its look lives with the board.
@@ -32,12 +32,12 @@ type MoveAction = (prev: ActionResult<MoveResult> | null, form: FormData) => Pro
 const RANK: Record<Stage, number> = { NOT_CONTACTED: 0, CONTACTED: 1, REPLIED: 2, IN_CONVERSATION: 3, COMMITTED: 4, DECLINED: 5 };
 const NEXT: Partial<Record<Stage, Stage>> = { NOT_CONTACTED: "CONTACTED", CONTACTED: "REPLIED", REPLIED: "IN_CONVERSATION", IN_CONVERSATION: "COMMITTED" };
 
-export const nextStage = (stage: Stage): Stage | null => NEXT[stage] ?? null;
+const nextStage = (stage: Stage): Stage | null => NEXT[stage] ?? null;
 
 // What to ask before a move, or null to move at once.
-export function moveQuestion(companyName: string, from: Stage, to: Stage): { message: string; confirmLabel: string } | null {
+function moveQuestion(companyName: string, from: Stage, to: Stage): { message: string; confirmLabel: string } | null {
   if (TERMINAL_STAGES.includes(to)) {
-    return { message: `Move ${companyName} to ${STAGE_LABELS[to]}? This closes the pitch and releases any claim.`, confirmLabel: `Move to ${STAGE_LABELS[to]}` };
+    return closeQuestion(companyName, to);
   }
   if (RANK[to] < RANK[from]) {
     return TERMINAL_STAGES.includes(from)

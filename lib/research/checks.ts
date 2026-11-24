@@ -1,13 +1,13 @@
+import { maskPhones } from "@/lib/ai/phones";
 import { maskContactDetails, matchKey, quoteFound } from "@/lib/ai/text";
 import type { Door } from "@/lib/research/doors";
-import { maskPhones } from "@/lib/research/scan";
 import { isApprovedHost, isSameSite } from "@/lib/research/urls";
 
 // The checks on what the AI wrote for a research brief (lib/research/brief.ts). Model output is
 // untrusted: anything that fails is dropped, never repaired.
 
-export const PASSAGES_MAX = 25;
-export const ITEMS_MAX = 12;
+const PASSAGES_MAX = 25;
+const ITEMS_MAX = 12;
 
 // A page as the checks see it: its number in the prompt, where it was fetched from, and the
 // stored text the AI was shown (null when it was skipped).

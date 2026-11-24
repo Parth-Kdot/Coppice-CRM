@@ -1,10 +1,226 @@
 /* ==========================================================================================
-   Ledger, Settings: Members open at the top, then one collapsed line per section. Plain
-   CSS in a file, so the strict style-src policy allows it. The older margin-and-rows rules for
-   Settings stay in pages.css (the research pages section still draws itself with them).
+   Ledger, Settings: a margin of labels beside ruled rows, Members open at the top, then one
+   collapsed line per section. The research pages section and the page widths are drawn with
+   rules from pages.css too. Plain CSS in a file, so the strict style-src policy allows it.
    ========================================================================================== */
 
 @layer components {
+  /* ---------- Research sources: rename a page in place ---------- */
+  .lg-factedit {
+    align-self: center;
+  }
+  .lg-factedit[open] {
+    flex: 1 1 100%;
+  }
+  .lg-factedit > summary {
+    cursor: pointer;
+    color: var(--moss);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .lg-factedit[open] > summary {
+    margin-bottom: 8px;
+  }
+  .lg-editform {
+    display: grid;
+    gap: 8px;
+    max-width: 640px;
+  }
+  .lg-editform > .lg-btn {
+    justify-self: start;
+  }
+
+  /* ---------- Settings: a margin of labels beside ruled rows ---------- */
+  .lg-sec {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    border-bottom: 1px solid var(--edge);
+  }
+  .lg-sec:last-child {
+    border-bottom: 0;
+  }
+  .lg-sec-label {
+    padding: 22px 20px 22px 28px;
+    border-right: 1px solid var(--rule);
+  }
+  .lg-sec-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--fs-4);
+    line-height: 1.2;
+  }
+  .lg-sec-sub {
+    margin-top: 6px;
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-sec-body {
+    min-width: 0;
+    padding: 18px 28px 22px 24px;
+  }
+  .lg-sec-body > p + p {
+    margin-top: 8px;
+  }
+  .lg-membermeta {
+    color: var(--ink-2);
+    font-size: var(--fs-1);
+  }
+  .lg-invitelist {
+    list-style: none;
+    display: grid;
+    margin-bottom: 4px;
+  }
+  .lg-invitelist li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lg-inviteform {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) auto auto;
+    align-items: end;
+    gap: 12px;
+    max-width: 700px;
+    margin-top: 16px;
+  }
+  .lg-inviteform .lg-chipset {
+    min-width: 0;
+  }
+  .lg-inviteform .lg-error {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+  .lg-setrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+  }
+  .lg-stepper {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--sheet);
+  }
+  .lg-stepper-btn {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    min-height: 40px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) ease;
+  }
+  .lg-stepper-btn:hover:not(:disabled, [aria-disabled="true"]) {
+    background: var(--paper-2);
+  }
+  .lg-stepper-btn:disabled,
+  .lg-stepper-btn[aria-disabled="true"] {
+    color: var(--ink-2);
+    opacity: 0.45;
+    cursor: default;
+  }
+  .lg-stepper-btn:focus-visible,
+  .lg-stepper-num:focus-visible {
+    outline: 2px solid var(--moss-2);
+    outline-offset: -2px;
+  }
+  .lg-stepper-num {
+    width: 68px;
+    border: 0;
+    border-right: 1px solid var(--rule);
+    border-left: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: var(--fs-4);
+    text-align: center;
+  }
+  .lg-aiform {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+  }
+  .lg-aiform > .lg-btn,
+  .lg-aiform > .lg-saved-slot {
+    justify-self: start;
+  }
+  .lg-aiform > .lg-btn + .lg-saved-slot {
+    margin-top: -6px;
+  }
+  /* AI assistants (MCP): the privacy line, the connection steps and the server address. */
+  .lg-mcp-privacy {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 12px;
+    font-weight: 500;
+  }
+  .lg-mcp-privacy svg {
+    flex: none;
+    margin-top: 3px;
+  }
+  .lg-mcp-steps {
+    display: grid;
+    gap: 8px;
+    max-width: 66ch;
+    margin-top: 8px;
+    padding-left: 22px;
+    list-style: decimal;
+  }
+  .lg-mcp-url {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--edge);
+    background: var(--sheet);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: var(--fs-2);
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+  @media (max-width: 480px) {
+    .lg-mcp-url {
+      font-size: var(--fs-1);
+    }
+  }
+  .lg-usage-detail {
+    max-width: 66ch;
+    margin-top: 4px;
+    color: var(--ink-2);
+  }
+
+  /* ---------- Phones ---------- */
+  @media (max-width: 860px) {
+    .lg-sec {
+      grid-template-columns: 1fr;
+    }
+    .lg-sec-label {
+      padding: 18px 18px 0;
+      border-right: 0;
+    }
+    .lg-sec-body {
+      padding: 10px 18px 20px;
+    }
+  }
+  @media (max-width: 760px) {
+    .lg-inviteform {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* ---------- Members ---------- */
   .lg-set-members {
     min-width: 0;

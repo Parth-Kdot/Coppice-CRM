@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { boardYear } from "./board-year";
 
-// Small shared marks: the pen-stroke check, the gilt ribbon bookmark, the board-year margin.
+// Small shared marks: the pen-stroke check, the gilt ribbon bookmark.
 
 // A moss check mark that draws like a pen stroke: the short arm first, then the long arm, about
 // 300 ms. It is one path with pathLength 1; a CSS keyframe on stroke-dashoffset runs when the class
@@ -52,22 +51,24 @@ export function Ribbon({ drop = false, className = "", size = "md" }: { drop?: b
   );
 }
 
-export function YearMargin({ iso, className = "" }: { iso: Date | string | null; className?: string }) {
-  if (!iso) return <span className={`lg-margin ${className}`} aria-hidden="true">-</span>;
-  const y = boardYear(iso);
-  return (
-    <span className={`lg-margin ${className}`} title={`Board of ${y.long}`}>
-      <span className="sr-only">Board of {y.long}</span>
-      <span aria-hidden="true">{y.label}</span>
-    </span>
-  );
-}
-
 // The double rule where one board's entries end and the next board's begin.
 export function TurnoverRule({ endsYear }: { endsYear: string }) {
   return (
     <div className="lg-turnover" role="separator" aria-label={`Board of ${endsYear} ends`}>
       <span className="lg-turnover-label">Board of {endsYear} ends</span>
+    </div>
+  );
+}
+
+// While a draft is on its way a quill writes a wavy rule across the area: the one loop in the app,
+// and only while waiting.
+export function QuillWait({ label }: { label: string }) {
+  return (
+    <div className="lg-quill-wait" role="status">
+      <svg viewBox="0 0 240 28" preserveAspectRatio="none" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
+        <path pathLength={1} d="M2 15 C14 3 26 3 38 15 S62 27 74 15 S98 3 110 15 S134 27 146 15 S170 3 182 15 S206 27 218 15 S232 6 238 12" />
+      </svg>
+      <span>{label}</span>
     </div>
   );
 }

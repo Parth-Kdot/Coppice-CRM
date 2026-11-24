@@ -1,5 +1,5 @@
 // The board's "Possible duplicates" sheet as plain data (components/ledger/duplicate-pairs.tsx
-// shows it). The pairs come from the server (lib/companies.ts listPossibleDuplicatePairs) and are
+// shows it). The pairs come from the server (lib/company-pairs.ts listPossibleDuplicatePairs) and are
 // re-sent each time an action revalidates the board, so a resolved pair is simply missing from the
 // next list. To let it leave with the same motion as the import review, the list on screen keeps
 // it a little longer: a pair the server dropped stays in its place, marked leaving, until its exit

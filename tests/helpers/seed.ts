@@ -33,7 +33,7 @@ export async function resetAndSeed() {
 
 // Test people have taken the onboarding tours, so nothing is gated on them. Each row is written
 // as its own person (row-level security allows nobody else). tests/onboarding.test.ts clears them.
-export async function markToursDone(members: { userId: string; workspaceId: string; role: "owner" | "member" }[]) {
+async function markToursDone(members: { userId: string; workspaceId: string; role: "owner" | "member" }[]) {
   const now = new Date();
   for (const { userId, workspaceId, role } of members) {
     await withTenant({ userId, workspaceId }, (tx) =>

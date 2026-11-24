@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogoMark } from "@/components/ledger/logo";
+import { LogoMark } from "@/components/brand/logo";
 
 // The page a person sees if something unexpected breaks while a screen is drawn. Our own markup
 // with utility classes only, so it carries no inline style for the Content-Security-Policy to block.

@@ -78,7 +78,7 @@ export function BoardSheet({ title, count, closeHref, children }: { title: strin
 // "Show 50 more" at the foot. After an unarchive the row slides away (the motion kit's removeAway)
 // and focus moves to the next row's name (or the one above, or the sheet's heading), so it never
 // falls to <body>.
-export const ARCHIVED_FILTER_FROM = 20;
+const ARCHIVED_FILTER_FROM = 20;
 
 type ArchivedProps = {
   workspaceId: string;

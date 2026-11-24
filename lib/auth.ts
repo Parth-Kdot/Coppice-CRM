@@ -10,8 +10,8 @@ import { MCP_SCOPES, mcpResourceUrl } from "@/lib/mcp/config";
 import { endGrantsWithoutConsent } from "@/lib/mcp/connections";
 import { SCOPE_CHECKED_PATHS, registrationProblem, scopeProblem } from "@/lib/mcp/oauth-limits";
 
-// Option B (owner decision 2026-10-21): only emails listed in WORKSPACE_CREATOR_EMAILS
-// can create workspaces. Everyone else joins through an invitation.
+// Only emails listed in WORKSPACE_CREATOR_EMAILS can create workspaces. Everyone else joins through
+// an invitation.
 export function canCreateWorkspace(email: string): boolean {
   const allowed = (process.env.WORKSPACE_CREATOR_EMAILS ?? "")
     .split(",")
@@ -34,7 +34,7 @@ requireEnv("BETTER_AUTH_SECRET");
 const workspaces = organization({
   // Enforced on the server, so hiding the create form is not the only guard.
   allowUserToCreateOrganization: (user) => canCreateWorkspace(user.email),
-  // Invitations are accepted from inside the app (rule 6: the app never sends email).
+  // Invitations are accepted from inside the app (the app never sends email).
   sendInvitationEmail: async () => {},
   invitationExpiresIn: 60 * 60 * 24 * 7,
   cancelPendingInvitationsOnReInvite: true,

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "@/components/auth-buttons";
-import { SHOOTS_THREE, Stool } from "@/components/ledger/stool";
+import { SHOOTS_THREE, Stool } from "@/components/brand/stool";
 import { auth } from "@/lib/auth";
 import { safeNextPath } from "@/lib/validation";
 import "@/components/ledger/ledger.css";

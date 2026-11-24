@@ -18,7 +18,7 @@ import { oauthScopeListSchema } from "@/lib/validation";
 export const OAUTH_PATH_PREFIX = "/api/auth/oauth2/";
 export const REGISTRATION_PATH = "/api/auth/oauth2/register";
 export const OAUTH_BODY_LIMIT = 16 * 1024;
-export const CLIENT_NAME_LIMIT = 100;
+const CLIENT_NAME_LIMIT = 100;
 const REFUSED_FIELDS = ["backchannel_logout_uri", "jwks_uri"] as const;
 
 // The Better Auth paths (relative to /api/auth) whose scope list is checked.

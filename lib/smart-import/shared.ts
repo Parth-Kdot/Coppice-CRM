@@ -4,6 +4,7 @@ import { aiUsage } from "@/lib/ai/run";
 import { promptSafe } from "@/lib/ai/text";
 import { dbNow } from "@/lib/claims";
 import type { CheckedRow, Table } from "@/lib/csv";
+import { DAY_MS } from "@/lib/dates";
 import type { Tenant } from "@/lib/db";
 import type { ActionResult, ImportMapping } from "@/lib/validation";
 import type { Quote, ReadRow } from "./check";
@@ -15,7 +16,6 @@ export type Tx = Prisma.TransactionClient;
 
 // Longer cells are cut here, before the AI sees them; quotes are checked against the cut text.
 const CELL_MAX = 500;
-const SESSION_MS = 24 * 60 * 60 * 1000;
 // How many earlier board years a sheet can be from.
 export const PAST_YEARS = 5;
 
@@ -33,7 +33,7 @@ export async function aiOn(tenant: Tenant): Promise<boolean> {
 export const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
 
 // Sessions started before this moment (by the database's clock) are ignored.
-export const sessionSince = async () => new Date((await dbNow()).getTime() - SESSION_MS);
+export const sessionSince = async () => new Date((await dbNow()).getTime() - DAY_MS);
 
 // Every cell of a valid row that code checks for a do-not-contact line: all of them but the company
 // name and the contact's email (a name or an address can't say it). This is code, not AI, so

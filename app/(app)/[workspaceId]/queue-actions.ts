@@ -3,6 +3,7 @@
 import { AuthzError, requireMembership } from "@/lib/authz";
 import { claimState, type ClaimState } from "@/lib/claims";
 import { day } from "@/lib/dates";
+import { notFound } from "@/lib/messages";
 import { getFreshLeads } from "@/lib/queue";
 import { freshLeadsSchema, type ActionResult } from "@/lib/validation";
 
@@ -25,7 +26,7 @@ export async function loadFreshLeads(workspaceId: string, offset: number): Promi
   try {
     member = await requireMembership(parsed.data.workspaceId);
   } catch (e) {
-    if (e instanceof AuthzError) return { ok: false, error: "Workspace not found." };
+    if (e instanceof AuthzError) return notFound("Workspace");
     throw e;
   }
 

@@ -82,6 +82,13 @@
     min-height: 40px;
     padding-left: 36px;
   }
+  /* Phone-only controls (the media query below shows them): the search icon button, the field's
+     clear button and the industry name on the filter chip. */
+  .lg-bsearch-btn,
+  .lg-bsearch-clear,
+  .lg-fchip-text {
+    display: none;
+  }
   .lg-bfilter {
     display: flex;
     flex: 0 1 auto;
@@ -944,7 +951,9 @@
       flex-wrap: wrap;
       gap: 8px;
     }
-    /* First line: the title and a compact "+". Second: search, the filter and the More button. */
+    /* First line: the title, the search button, a compact "+" and the ⋯ menu. A second line only
+       when needed: the search field once opened (it stays open while a search is on), and the chip
+       for an active industry filter, which the ⋯ menu sets. */
     .lg-btop-title {
       order: 0;
       flex: 1 0 auto;
@@ -954,8 +963,29 @@
     .lg-btools-end {
       display: contents;
     }
-    .lg-btop-add {
+    .lg-bsearch-btn {
+      position: relative;
+      display: inline-flex;
       order: 1;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+    }
+    .lg-bsearch-btn[data-active]::after {
+      content: "";
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--paper);
+      border-radius: 50%;
+      background: var(--moss);
+    }
+    .lg-btop-add {
+      order: 2;
       width: 44px;
       min-height: 44px;
       padding: 0;
@@ -964,35 +994,72 @@
     .lg-btop-addword {
       display: none;
     }
-    .lg-bsearch {
-      order: 2;
-      flex: 1 1 110px;
-      min-width: 0;
-    }
-    .lg-bsearch .lg-input {
-      min-height: 44px;
-    }
-    .lg-bfilter {
-      order: 3;
-    }
-    .lg-bfilter .lg-lmenu-btn {
-      max-width: 112px;
-      min-height: 44px;
-    }
-    .lg-bfilter .lg-lmenu-list {
-      position: fixed;
-      top: auto;
-      left: 16px;
-      right: 16px;
-      min-width: 0;
-      width: auto;
-    }
     .lg-bmore {
-      order: 4;
+      order: 3;
     }
     .lg-bmore .lg-omenu-btn {
       min-height: 44px;
       min-width: 44px;
+    }
+    .lg-bsearch {
+      display: none;
+      order: 4;
+      flex: 1 1 160px;
+      min-width: 0;
+    }
+    .lg-bsearch[data-open] {
+      display: block;
+    }
+    .lg-bsearch .lg-input {
+      min-height: 44px;
+      padding-right: 44px;
+    }
+    .lg-bsearch-clear {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: inline-grid;
+      place-items: center;
+      width: 44px;
+      height: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--ink-2);
+      cursor: pointer;
+    }
+    .lg-bsearch-clear:hover {
+      color: var(--ink);
+    }
+    /* The field has its own clear button here, which also closes it. */
+    .lg-bsearch .lg-input::-webkit-search-cancel-button {
+      display: none;
+    }
+    /* The industry is chosen in the ⋯ menu; only its chip shows here, and only while one is on. */
+    .lg-bfilter {
+      order: 5;
+      flex: 0 1 auto;
+      max-width: 100%;
+    }
+    .lg-bfilter:not([data-active]),
+    .lg-bfilter .lg-lmenu {
+      display: none;
+    }
+    .lg-fchip {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      width: auto;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 0 12px;
+    }
+    .lg-fchip-text {
+      display: inline;
+      min-width: 0;
+      overflow: hidden;
+      font-size: var(--fs-2);
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     /* The strip names the column in view and its count, so a column's own head is left out, except
        in the split Committed and Declined column, where it tells the halves apart. */
@@ -1001,6 +1068,16 @@
     }
     .lg-board[data-empty] .lg-btop {
       flex-wrap: nowrap;
+    }
+    /* The tour's bottom sheet covers the tab bar and the foot of the window. tour.tsx sets
+       --lg-tour-sheet on the root (the sheet's height, from its top edge to the window's foot) while
+       it is open, so the board's fixed-height viewport ends at the sheet's top and no band is left
+       between the two. */
+    :root[data-tour-sheet] .lg-pagecol:has(.lg-board) {
+      height: calc(100dvh - var(--lg-tour-sheet, 0px));
+    }
+    :root[data-tour-sheet] .lg-main:has(.lg-board) {
+      padding-bottom: 8px;
     }
     .lg-bstrip {
       display: flex;

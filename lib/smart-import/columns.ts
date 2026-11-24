@@ -199,7 +199,7 @@ const PLAIN_HEADERS: Partial<Record<keyof ImportMapping, Set<string>>> = {
   website: new Set(["website", "web site", "url", "site", "domain", "web address", "homepage"]),
   name: new Set(["company", "company name", "companies", "sponsor", "sponsor name", "sponsors", "organization", "organisation", "organization name", "business", "employer"]),
   industry: new Set(["industry", "sector", "industries"]),
-  // "Notes / status" is how the live test sheet headed its notes (2026-11-07).
+  // "Notes / status" is a common heading for a notes column.
   notes: new Set(["notes", "note", "comments", "comment", "notes status", "status notes", "status", "remarks", "notes comments", "comments notes"]),
   contactName: new Set(["contact", "contact name", "contact person", "contacts"]),
 };
@@ -227,7 +227,7 @@ export function cleanSuggestion(headers: string[], suggested: z.output<typeof Su
   const sample = rows.slice(0, SAMPLE_ROWS);
   // Whether column c's sample cells fit the field: most filled cells pass the field's test. A
   // column that is empty in every sample row fits no field but the one the code itself guessed for
-  // it (the live test moved Notes to an empty "misc" column, and the notes were lost). With no
+  // it (the AI once moved Notes to an empty "misc" column, and the notes were lost). With no
   // sample rows at all there is nothing to judge, so only the email and website keep to the
   // code's guess.
   const fits = (field: keyof ImportMapping, c: number) => {

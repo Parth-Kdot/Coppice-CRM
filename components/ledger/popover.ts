@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode, type ReactPortal, t
 import { createPortal } from "react-dom";
 
 // Positioning for every small floating card (OverflowMenu, and any later popover). Lifted from the
-// board's Move to menu (move-menu.tsx), which keeps its own copy for now.
+// board's Move to menu (move-menu.tsx).
 //
 //   usePopover(anchor, open, options?)  Returns the ref for the card. While `open`, the card (position:
 //                                      fixed, drawn in a portal) sits under the anchor, flips above it

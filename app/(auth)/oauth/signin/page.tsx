@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GoogleSignInButton } from "@/components/auth-buttons";
-import { SHOOTS_THREE, Stool } from "@/components/ledger/stool";
+import { SHOOTS_THREE, Stool } from "@/components/brand/stool";
 import "@/components/ledger/ledger.css";
 import "@/components/ledger/auth.css";
 

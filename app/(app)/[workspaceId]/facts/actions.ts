@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { failure } from "@/lib/actions";
+import { failure } from "@/lib/action-failure";
 import { pdfFileProblem } from "@/lib/ai/pdf-limits";
 import { requireOwner } from "@/lib/authz";
 import * as facts from "@/lib/facts";
+import { notFound } from "@/lib/messages";
 import {
   addFactSchema,
   factRefSchema,
@@ -22,7 +23,7 @@ const factsPath = (workspaceId: string) => `/${workspaceId}/facts`;
 // `leftOut`: how many facts the AI listed that couldn't be kept, so the owner can add them by hand.
 export async function uploadFactSheet(_prev: ActionResult<{ leftOut: number }> | null, form: FormData): Promise<ActionResult<{ leftOut: number }>> {
   const parsed = workspaceIdSchema.safeParse(form.get("workspaceId"));
-  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  if (!parsed.success) return notFound("Workspace");
   const workspaceId = parsed.data;
 
   let leftOut = 0;
@@ -44,7 +45,7 @@ export async function uploadFactSheet(_prev: ActionResult<{ leftOut: number }> |
 
 export async function setFactVerified(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = verifyFactSchema.safeParse({ workspaceId: form.get("workspaceId"), factId: form.get("factId"), verified: form.get("verified") });
-  if (!parsed.success) return { ok: false, error: "Fact not found." };
+  if (!parsed.success) return notFound("Fact");
   const { workspaceId, factId, verified } = parsed.data;
 
   try {
@@ -80,7 +81,7 @@ export async function updateFact(_prev: ActionResult<{ verified: boolean }> | nu
 // "Verify all n with quotes found": one action and one revalidation for the whole list.
 export async function verifyQuotedFacts(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = workspaceIdSchema.safeParse(form.get("workspaceId"));
-  if (!parsed.success) return { ok: false, error: "Workspace not found." };
+  if (!parsed.success) return notFound("Workspace");
   const workspaceId = parsed.data;
 
   try {
@@ -112,7 +113,7 @@ export async function addFact(_prev: ActionResult | null, form: FormData): Promi
 
 export async function deleteFact(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = factRefSchema.safeParse({ workspaceId: form.get("workspaceId"), factId: form.get("factId") });
-  if (!parsed.success) return { ok: false, error: "Fact not found." };
+  if (!parsed.success) return notFound("Fact");
   const { workspaceId, factId } = parsed.data;
 
   try {
@@ -128,7 +129,7 @@ export async function deleteFact(_prev: ActionResult | null, form: FormData): Pr
 
 export async function deleteFactSheet(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const parsed = factSheetRefSchema.safeParse({ workspaceId: form.get("workspaceId"), factSheetId: form.get("factSheetId") });
-  if (!parsed.success) return { ok: false, error: "File not found." };
+  if (!parsed.success) return notFound("File");
   const { workspaceId, factSheetId } = parsed.data;
 
   try {

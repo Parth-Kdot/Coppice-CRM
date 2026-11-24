@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import { decisionsFrom } from "@/components/csv-importer-smart/use-smart-import";
+import { decisionsFrom } from "@/components/importer/smart/use-smart-import";
 import {
   bulkAnswers,
   carryDecisions,

@@ -45,7 +45,7 @@ describe("basicsSteps", () => {
     expect(by(officer, "add").anchors).toEqual(["firstrun-add"]);
   });
 
-  it("anchors on the hooks the de-bloat packages added, phone first where the control moves", () => {
+  it("anchors on the data-tour hooks, phone first where the control moves", () => {
     const steps = basicsSteps({ role: "owner", empty: false, basicsRole: null });
     const by = (key: string) => steps.find((s) => s.key === key)!;
     expect(by("queue").anchors).toEqual(["queue-list"]);
@@ -105,7 +105,7 @@ describe("aiSteps", () => {
   it("with AI off, owners are sent to Settings and officers told everything else works", () => {
     const owner = aiSteps({ role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }).find((s) => s.key === "ai-off")!;
     const officer = aiSteps({ role: "member", aiConfigured: true, aiOn: false, mcpOn: false }).find((s) => s.key === "ai-off")!;
-    expect(owner.body).toBe("AI is off for this workspace. Turn it on in Settings > AI.");
+    expect(owner.body).toBe("AI is off for this workspace. Turn it on in Settings, under AI.");
     expect(owner.link?.route).toBe("settings");
     expect(officer.body).toBe("AI is not available here yet. Everything else works.");
     expect(officer.link).toBeUndefined();

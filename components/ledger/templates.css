@@ -6,31 +6,8 @@
 
 @layer components {
   /* ---------- Settings: the template list ---------- */
-  .lg-tpls {
-    list-style: none;
-    margin: -6px 0 0;
-  }
-  .lg-tpl {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  .lg-tpl:last-child {
-    border-bottom: 0;
-  }
-  .lg-tpl[data-archived] .lg-tplname {
-    color: var(--ink-2);
-  }
-  .lg-tplhead {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 10px;
-  }
   .lg-tplname {
     overflow-wrap: anywhere;
-  }
-  .lg-tplhead .lg-muted {
-    font-size: var(--fs-1);
   }
   /* A template's text, as written: line breaks kept, long ones scroll inside the box. */
   .lg-tpltext {
@@ -44,19 +21,6 @@
     overflow-wrap: anywhere;
     font-size: var(--fs-2);
     line-height: 1.45;
-  }
-  .lg-tplgroup {
-    margin-top: 18px;
-  }
-  .lg-tplgroup .lg-tpls {
-    margin-top: 0;
-  }
-  .lg-tpladd {
-    display: grid;
-    gap: 8px;
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid var(--rule);
   }
 
   /* ---------- The log form's picker ---------- */
@@ -81,9 +45,6 @@
   }
 
   /* ---------- Reply marks on outreach entries ---------- */
-  .lg-entryreply {
-    margin-top: 6px;
-  }
   .lg-replied {
     border-color: var(--moss);
     background: var(--moss-wash);

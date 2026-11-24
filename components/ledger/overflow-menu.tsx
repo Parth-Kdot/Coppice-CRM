@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import type { ActionResult } from "@/lib/validation";
 import { useFocusAfterCommit } from "./focus";
 import { removeAway } from "./motion-kit";
-import { ChevronDownIcon, MoreIcon } from "./icons";
+import { CheckIcon, ChevronDownIcon, MoreIcon } from "./icons";
 import { menuIndex, popoverPortal, usePopover, type MenuKey } from "./popover";
 import { useConfirm, useNotify } from "./providers";
 
@@ -33,6 +33,10 @@ import { useConfirm, useNotify } from "./providers";
 // on from the button. It also closes on focusout, a click outside, or a scroll that carries the
 // button away. role=menu / menuitem; positioning is usePopover (popover.ts).
 //
+// A choice: give consecutive items the same `group` (a label, "Industry") and a boolean `checked`.
+// They are drawn under that label as one group of menuitemradio items, the current one ticked;
+// picking one runs its onSelect and closes the menu like any other item.
+//
 // The button shows MoreIcon alone unless `buttonText` is given; `label` is its accessible name, so
 // when there is visible text, start `label` with it ("More actions for Acme" for "More"). `icon`
 // replaces MoreIcon (the queue's "+ Add" menu passes PlusIcon) and `caret` adds a small chevron.
@@ -49,7 +53,23 @@ type ActionFields = {
   leaveRow?: boolean;
 };
 
-export type OverflowItem = { key: string; label: string; hint?: string; danger?: boolean; disabled?: boolean; disabledReason?: string } & ({ href: string } | { onSelect: () => void } | ActionFields);
+export type OverflowItem = { key: string; label: string; hint?: string; danger?: boolean; disabled?: boolean; disabledReason?: string; group?: string; checked?: boolean } & (
+  | { href: string }
+  | { onSelect: () => void }
+  | ActionFields
+);
+
+// The items in order, with consecutive items of one `group` gathered into a chunk (each keeps its
+// place in the list, so arrow keys and refs follow the order on screen).
+function groups(items: OverflowItem[]): { group?: string; rows: { item: OverflowItem; i: number }[] }[] {
+  const chunks: { group?: string; rows: { item: OverflowItem; i: number }[] }[] = [];
+  items.forEach((item, i) => {
+    const last = chunks.at(-1);
+    if (last && item.group && last.group === item.group) last.rows.push({ item, i });
+    else chunks.push({ group: item.group, rows: [{ item, i }] });
+  });
+  return chunks;
+}
 
 export function OverflowMenu({
   label,
@@ -169,7 +189,7 @@ export function OverflowMenu({
       <button
         ref={setAnchor}
         type="button"
-        className="lg-btn lg-omenu-btn"
+        className={`lg-btn lg-omenu-btn${buttonText ? "" : " lg-omenu-icononly"}`}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -194,40 +214,59 @@ export function OverflowMenu({
       {open &&
         popoverPortal(
           <div ref={card} id={menuId} className="lg-omenu" role="menu" aria-label={label} onKeyDown={onMenuKey} onBlur={onMenuBlur}>
-            {items.map((item, i) => {
-              const note = item.disabled ? item.disabledReason : item.hint;
-              const noteId = note ? `${id}-note-${i}` : undefined;
-              const common = {
-                ref: (el: HTMLElement | null) => {
-                  refs.current[i] = el;
-                },
-                role: "menuitem",
-                tabIndex: -1,
-                className: `lg-omenu-item${item.danger ? " lg-omenu-danger" : ""}`,
-                "aria-disabled": item.disabled || undefined,
-                "aria-describedby": noteId,
-              } as const;
-              const body = (
-                <>
-                  <span className="lg-omenu-label">{item.label}</span>
-                  {note && (
-                    <span id={noteId} className="lg-omenu-hint">
-                      {note}
-                    </span>
-                  )}
-                </>
-              );
-              if ("href" in item && !item.disabled) {
-                return (
-                  <Link key={item.key} href={item.href} {...common} onClick={() => close(true)}>
-                    {body}
-                  </Link>
+            {groups(items).map((chunk) => {
+              const rows = chunk.rows.map(({ item, i }) => {
+                const note = item.disabled ? item.disabledReason : item.hint;
+                const noteId = note ? `${id}-note-${i}` : undefined;
+                const choice = item.checked !== undefined;
+                const common = {
+                  ref: (el: HTMLElement | null) => {
+                    refs.current[i] = el;
+                  },
+                  role: choice ? "menuitemradio" : "menuitem",
+                  "aria-checked": choice ? item.checked : undefined,
+                  tabIndex: -1,
+                  className: `lg-omenu-item${item.danger ? " lg-omenu-danger" : ""}${choice ? " lg-omenu-choice" : ""}`,
+                  "aria-disabled": item.disabled || undefined,
+                  "aria-describedby": noteId,
+                } as const;
+                const body = (
+                  <>
+                    {choice && (
+                      <span className="lg-omenu-mark" aria-hidden="true">
+                        {item.checked && <CheckIcon size={14} />}
+                      </span>
+                    )}
+                    <span className="lg-omenu-label">{item.label}</span>
+                    {note && (
+                      <span id={noteId} className="lg-omenu-hint">
+                        {note}
+                      </span>
+                    )}
+                  </>
                 );
-              }
+                if ("href" in item && !item.disabled) {
+                  return (
+                    <Link key={item.key} href={item.href} {...common} onClick={() => close(true)}>
+                      {body}
+                    </Link>
+                  );
+                }
+                return (
+                  <button key={item.key} type="button" {...common} onClick={() => activate(item)}>
+                    {body}
+                  </button>
+                );
+              });
+              if (!chunk.group) return <Fragment key={chunk.rows[0].item.key}>{rows}</Fragment>;
+              const headId = `${id}-group-${chunk.rows[0].i}`;
               return (
-                <button key={item.key} type="button" {...common} onClick={() => activate(item)}>
-                  {body}
-                </button>
+                <div key={chunk.rows[0].item.key} role="group" aria-labelledby={headId} className="lg-omenu-group">
+                  <span id={headId} className="lg-omenu-heading">
+                    {chunk.group}
+                  </span>
+                  {rows}
+                </div>
               );
             })}
           </div>,

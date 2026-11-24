@@ -9,6 +9,7 @@ import { ErrorLine } from "@/components/ledger/shared";
 import { pdfFileProblem } from "@/lib/ai/pdf-limits";
 import type { ActionResult } from "@/lib/validation";
 import "./pages.css";
+import "./facts.css";
 
 // A quill line that writes itself while the packet is being read.
 function Quill({ label }: { label: string }) {

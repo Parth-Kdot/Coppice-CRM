@@ -8,7 +8,7 @@ import { contentSecurityPolicy, createNonce, securityHeaders } from "@/lib/secur
 import { notFound, redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { APIError } from "better-auth";
-import { BUSY_MESSAGE, LAST_OWNER_MESSAGE, SAVE_FAILED_MESSAGE, failure } from "@/lib/actions";
+import { BUSY_MESSAGE, LAST_OWNER_MESSAGE, SAVE_FAILED_MESSAGE, failure } from "@/lib/action-failure";
 import { AuthzError } from "@/lib/authz";
 import { DEFAULT_POOL_MAX, poolMax } from "@/lib/db";
 import * as limits from "@/lib/limits";

@@ -1,7 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it, test, vi } from "vitest";
 import type { Stage } from "@/generated/prisma/enums";
+import { overdueText } from "@/components/ledger/overdue";
 import { dbNow } from "@/lib/claims";
-import { daysBetween, overdueLabel } from "@/lib/dates";
+import { DAY_MS, daysBetween } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { nameKey } from "@/lib/duplicates";
 import { loadFreshLeads } from "@/app/(app)/[workspaceId]/queue-actions";
@@ -18,7 +19,6 @@ const OWNER: Tenant = { userId: "ownerA", workspaceId: "a" };
 const OFFICER: Tenant = { userId: "officerA", workspaceId: "a" };
 const OTHER_ORG: Tenant = { userId: "ownerB", workspaceId: "b" };
 const NONE: QueueFilters = { mine: false, never: false, all: null };
-const DAY = 24 * 60 * 60 * 1000;
 
 type Seed = {
   name: string;
@@ -35,7 +35,7 @@ type Seed = {
 // never does outside lib/claims.ts.
 async function seed(tenant: Tenant, rows: Seed[]) {
   const now = (await dbNow()).getTime();
-  const at = (days: number | null | undefined) => (days === null || days === undefined ? null : new Date(now + days * DAY));
+  const at = (days: number | null | undefined) => (days === null || days === undefined ? null : new Date(now + days * DAY_MS));
   const ids = rows.map((_, i) => `${tenant.workspaceId}-q${String(i).padStart(4, "0")}`);
   await withTenant(tenant, (tx) =>
     tx.company.createMany({
@@ -121,9 +121,9 @@ describe("Due", () => {
     await withTenant(OWNER, (tx) =>
       tx.outreach.createMany({
         data: [
-          { workspaceId: "a", companyId: acme, senderId: "ownerA", note: "First email", sentAt: new Date(now - 3 * DAY) },
-          { workspaceId: "a", companyId: acme, senderId: "ownerA", note: "Followed up", sentAt: new Date(now - 2 * DAY) },
-          { workspaceId: "a", companyId: acme, senderId: "ownerA", note: null, sentAt: new Date(now - DAY) },
+          { workspaceId: "a", companyId: acme, senderId: "ownerA", note: "First email", sentAt: new Date(now - 3 * DAY_MS) },
+          { workspaceId: "a", companyId: acme, senderId: "ownerA", note: "Followed up", sentAt: new Date(now - 2 * DAY_MS) },
+          { workspaceId: "a", companyId: acme, senderId: "ownerA", note: null, sentAt: new Date(now - DAY_MS) },
         ],
       }),
     );
@@ -184,7 +184,7 @@ describe("overdue labels, in West Lafayette calendar days", () => {
     // 11 pm on Oct 25 in Indiana is already Oct 26 in UTC; it's still the same local day.
     ["2026-10-25T04:00:00Z", "2026-10-26T03:00:00Z", "Due today"],
   ] as const)("due %s, now %s: %s", ([due, now, label]) => {
-    expect(overdueLabel(new Date(due), new Date(now))).toBe(label);
+    expect(overdueText(daysBetween(new Date(due), new Date(now)))).toBe(label);
   });
 
   it("counts days between two moments by local date", () => {
@@ -317,7 +317,7 @@ describe("home groups: yours, up for grabs, held by others, fresh leads", () => 
           companyId: acme,
           senderId: "ownerA",
           note: i === 59 ? "Newest ".repeat(100) : `Older note ${i}`,
-          sentAt: new Date(now - (60 - i) * DAY),
+          sentAt: new Date(now - (60 - i) * DAY_MS),
         })),
       }),
     );

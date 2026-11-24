@@ -12,7 +12,8 @@ import { daysBetween, day } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { clampUpto, getQueueHome, QUEUE_STEP, type QueueGroup, type QueueRow as QueueRecord } from "@/lib/queue";
 import { queueFiltersSchema, queueQuery } from "@/lib/validation";
-import { loadWorkspace, pageTitle } from "./page-title";
+import { loadWorkspace } from "./load-workspace";
+import { pageTitle } from "./page-title";
 
 export async function generateMetadata({ params }: PageProps<"/[workspaceId]">): Promise<Metadata> {
   const { workspaceId } = await params;

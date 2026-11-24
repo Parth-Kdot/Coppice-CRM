@@ -1,6 +1,7 @@
 // The names in an AI draft. The model writes {{firstName}}, {{senderName}} and {{orgName}}, and
-// code fills them in, so Gemini's free tier never sees a person's name. Before an edited draft
-// goes back to the AI for checking, unfill() turns the names back into placeholders.
+// code fills them in, so the drafting prompt carries placeholders, not names. Before saved text that
+// holds names goes back to the AI (an edited draft for the Claim Checker, an earlier draft's subject
+// in a follow-up prompt), unfill() turns the names back into placeholders.
 
 export const PLACEHOLDERS = ["firstName", "senderName", "orgName"] as const;
 export type Names = Record<(typeof PLACEHOLDERS)[number], string>;
@@ -23,7 +24,7 @@ export function unfill(text: string, names: Partial<Record<keyof Names, string |
   );
 }
 
-// Templates (Milestone 5) may use only the three placeholders above, so whatever fills them in later
+// Templates may use only the three placeholders above, so whatever fills them in later
 // (an officer by hand, or the drafter) knows every one. Returns what is wrong, or null if nothing is.
 export function placeholderProblem(text: string): string | null {
   const unknown = [...new Set([...text.matchAll(/\{\{([^{}]*)\}\}/g)].map((m) => m[1].trim()))].filter(

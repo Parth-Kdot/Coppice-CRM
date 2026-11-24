@@ -55,7 +55,7 @@ const withNote = ({ outreach, ...row }: NoteRecord): QueueRow => ({ ...row, last
 
 const DUE_ORDER: Prisma.CompanyOrderByWithRelationInput[] = [{ nextFollowUpAt: "asc" }, { name: "asc" }, { id: "asc" }];
 const open = (workspaceId: string) => ({ workspaceId, archivedAt: null, stage: { notIn: TERMINAL_STAGES } });
-// Claim rules stay in lib/claims.ts (project rule 2); these only combine its filters.
+// Claim rules stay in lib/claims.ts (only it writes a claim); these only combine its filters.
 // Up for grabs: nobody holds it (never claimed, or anyone's claim ran out, yours included). User ids
 // are never empty, so "not held by anyone but ''" is "not held by anyone".
 const NOBODY = "";

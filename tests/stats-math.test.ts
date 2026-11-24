@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { DAY_MS } from "@/lib/dates";
 import {
   activeVerdict,
   formatCount,
@@ -23,9 +24,8 @@ import {
 // The Scorecard's arithmetic on its own: no database, no AI. Expected values were worked out by hand
 // (Wilson: centre = (p + z²/2n) / (1 + z²/n), half-width = z·√(p(1-p)/n + z²/4n²) / (1 + z²/n), z = 1.96).
 
-const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-11-05T12:00:00Z");
-const ago = (days: number) => new Date(NOW.getTime() - days * DAY);
+const ago = (days: number) => new Date(NOW.getTime() - days * DAY_MS);
 
 describe("wilson", () => {
   test.each([

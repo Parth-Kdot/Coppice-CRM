@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { createContext, useActionState, useContext, useEffect, useId, useState } from "react";
-import "@/components/ledger/zod-jitless";
 import { LazyDisclosure } from "@/components/ledger/disclosure";
 import { DuplicateIcon, WarningIcon } from "@/components/ledger/icons";
 import { IndustryField } from "@/components/ledger/industry-field";
@@ -10,7 +9,8 @@ import { Tick } from "@/components/ledger/marks";
 import { useNotify } from "@/components/ledger/providers";
 import { ErrorLine } from "@/components/ledger/shared";
 import type { SaveResult } from "@/lib/companies";
-import { COMPANY_LIMITS, type ActionResult } from "@/lib/validation";
+import { COMPANY_LIMITS } from "@/lib/limits";
+import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 
 export type CompanyValues = { name: string; industry: string; website: string; notes: string };

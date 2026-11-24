@@ -57,7 +57,7 @@ export const SKIP_MESSAGES: Record<SkipReason, string> = {
 
 // LinkedIn, people-search sites and contact-data brokers. Never fetched, even if an owner lists
 // one: briefs are about a company's official doors, not about finding people.
-export const BLOCKED_DOMAINS = [
+const BLOCKED_DOMAINS = [
   "linkedin.com",
   "lnkd.in",
   "licdn.com",
@@ -101,15 +101,15 @@ export const BLOCKED_DOMAINS = [
 ] as const;
 
 // Lowercase, without a trailing dot ("Example.com." and "example.com" are one host).
-export const normalizeHost = (host: string) => host.toLowerCase().replace(/\.+$/, "");
+const normalizeHost = (host: string) => host.toLowerCase().replace(/\.+$/, "");
 
 // After WHATWG parsing every IPv4 spelling (0x7f.1, 2130706433, 017700000001) has become dotted
 // decimal, and IPv6 is in brackets, so these two shapes cover every IP literal.
-export function isIpLiteral(host: string): boolean {
+function isIpLiteral(host: string): boolean {
   return host.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
-export function isBlockedDomain(host: string): boolean {
+function isBlockedDomain(host: string): boolean {
   const h = normalizeHost(host);
   return BLOCKED_DOMAINS.some((d) => h === d || h.endsWith(`.${d}`));
 }

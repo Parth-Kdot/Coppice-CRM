@@ -27,7 +27,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("createWorkspace (Option B: only listed emails can create)", () => {
+describe("createWorkspace (only listed emails can create)", () => {
   const create = (name: string) => createWorkspace(null, form({ name }));
 
   it("says how long a name may be, in plain words, when it is too long", async () => {
