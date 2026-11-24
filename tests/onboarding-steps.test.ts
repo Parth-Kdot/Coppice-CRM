@@ -93,8 +93,8 @@ describe("basicsSteps", () => {
 
 describe("aiSteps", () => {
   test.each<[string, AiContext, string[]]>([
-    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
-    ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "mcp", "usage", "done"]],
+    ["AI on, owner", { role: "owner", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "ask", "mcp", "usage", "done"]],
+    ["AI on, officer", { role: "member", aiConfigured: true, aiOn: true, mcpOn: true }, ["facts", "smart", "drafter", "checker", "research", "ask", "mcp", "usage", "done"]],
     ["AI off for the workspace", { role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
     ["AI not set up on the server", { role: "owner", aiConfigured: false, aiOn: true, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
     ["AI not set up, officer", { role: "member", aiConfigured: false, aiOn: false, mcpOn: false }, ["facts", "ai-off", "mcp", "done"]],
@@ -138,6 +138,13 @@ describe("aiSteps", () => {
     expect(officer.body).toMatch(/owners upload/);
   });
 
+  it("the Ask Coppice card points at the question box and is only in the tour when AI works", () => {
+    const on = aiSteps({ role: "member", aiConfigured: true, aiOn: true, mcpOn: false }).find((s) => s.key === "ask")!;
+    expect(on).toMatchObject({ route: "ask", anchors: ["ask-coppice"], kind: "coach" });
+    expect(aiSteps({ role: "owner", aiConfigured: true, aiOn: false, mcpOn: false }).some((s) => s.key === "ask")).toBe(false);
+    expect(aiSteps({ role: "owner", aiConfigured: false, aiOn: true, mcpOn: false }).some((s) => s.key === "ask")).toBe(false);
+  });
+
   it("the company-page cards open the AI tools first", () => {
     const steps = aiSteps({ role: "member", aiConfigured: true, aiOn: true, mcpOn: false });
     for (const key of ["drafter", "checker", "research"]) expect(steps.find((s) => s.key === key)?.open).toBe("ai-tools");
@@ -145,7 +152,7 @@ describe("aiSteps", () => {
 
   it("grouped by page: each page is visited once, and the tour ends back on the queue", () => {
     const routes = aiSteps({ role: "owner", aiConfigured: true, aiOn: true, mcpOn: false }).map((s) => s.route);
-    expect(routes).toEqual(["facts", "import", "company", "company", "company", "settings", "settings", "queue"]);
+    expect(routes).toEqual(["facts", "import", "company", "company", "company", "ask", "settings", "settings", "queue"]);
     expect(basicsSteps({ role: "owner", empty: false, basicsRole: null }).at(-1)?.route).toBe("queue");
   });
 
