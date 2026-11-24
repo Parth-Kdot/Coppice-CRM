@@ -104,7 +104,12 @@ export type LookalikeReason = "contained" | "ai";
 // Names where one is a whole-word part of the other: "Lilly" and "Eli Lilly". At least 4 letters,
 // so "AI" or "Co" don't match everything.
 export function containedName(a: string, b: string): boolean {
-  const [short, long] = [nameKey(a), nameKey(b)].sort((x, y) => x.length - y.length);
+  return containedKey(nameKey(a), nameKey(b));
+}
+
+// The same check on two name keys already worked out (lookalikePairs compares many).
+export function containedKey(a: string, b: string): boolean {
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short === long || short.replace(/ /g, "").length < 4) return false;
   return ` ${long} `.includes(` ${short} `);
 }
@@ -121,27 +126,44 @@ const COMMON_WORD = 200;
 // first the code's contained names, then the AI's suggestions that name two real, different items.
 // Pairs the exact keys already join (same name key or website) are left to that review. At most
 // `max` pairs.
+//
+// The code's check runs on every preview against every saved company, so it only compares what
+// can become a pair: for each word, the rows that have it with each other and with the saved
+// companies that have it (never two saved companies), and it stops once `max` pairs are found.
 export function lookalikePairs<T extends LookalikeItem>(items: T[], suggested: { a: string; b: string; reason: string }[], max: number): LookalikePair<T>[] {
   const pairs = new Map<string, LookalikePair<T>>();
+  const full = () => pairs.size >= max;
   const add = (x: T, y: T, reason: LookalikeReason, why: string) => {
     if (x === y || (!x.isRow && !y.isRow)) return;
     if (x.nameKey === y.nameKey || (x.domainKey !== null && x.domainKey === y.domainKey)) return;
-    const id = [x.key, y.key].sort().join("|");
-    if (!pairs.has(id) && pairs.size < max) pairs.set(id, { members: [x, y], reason, why });
+    const id = x.key < y.key ? `${x.key}|${y.key}` : `${y.key}|${x.key}`;
+    if (!pairs.has(id) && !full()) pairs.set(id, { members: [x, y], reason, why });
+  };
+  const contained = (x: T, y: T) => {
+    if (containedKey(x.nameKey, y.nameKey)) add(x, y, "contained", `"${x.name}" and "${y.name}" share a name`);
   };
 
   // Code: one name inside the other, compared only between names sharing a word.
-  const byWord = new Map<string, T[]>();
-  for (const item of items) for (const word of new Set(item.nameKey.split(" "))) byWord.set(word, [...(byWord.get(word) ?? []), item]);
-  for (const group of byWord.values()) {
-    if (group.length > COMMON_WORD) continue;
-    for (let i = 0; i < group.length; i++)
-      for (let j = i + 1; j < group.length; j++)
-        if (containedName(group[i].name, group[j].name)) add(group[i], group[j], "contained", `"${group[i].name}" and "${group[j].name}" share a name`);
+  const byWord = new Map<string, { rows: T[]; saved: T[] }>();
+  for (const item of items) {
+    for (const word of new Set(item.nameKey.split(" "))) {
+      let bucket = byWord.get(word);
+      if (!bucket) byWord.set(word, (bucket = { rows: [], saved: [] }));
+      (item.isRow ? bucket.rows : bucket.saved).push(item);
+    }
+  }
+  compare: for (const { rows, saved } of byWord.values()) {
+    if (rows.length === 0 || rows.length + saved.length > COMMON_WORD) continue;
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) contained(rows[i], rows[j]);
+      for (const company of saved) contained(rows[i], company);
+      if (full()) break compare;
+    }
   }
 
   const byKey = new Map(items.map((i) => [i.key, i]));
   for (const pair of suggested) {
+    if (full()) break;
     const x = byKey.get(pair.a.trim());
     const y = byKey.get(pair.b.trim());
     const reason = pair.reason.trim();

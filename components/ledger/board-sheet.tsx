@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { CloseIcon } from "./icons";
+import { useSheetNoteLane } from "./providers";
 
 // Two things the board keeps out of the way: look-alike companies and archived ones. Each is a sheet
 // from the right (from the bottom on a phone) opened by a link in the board's toolbar. Whether it is
@@ -13,6 +14,8 @@ export function BoardSheet({ title, count, closeHref, children }: { title: strin
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const close = () => router.replace(closeHref, { scroll: false });
+  // Margin notes written while the sheet is open (an archive, "Separate entries") show at its foot.
+  const setNoteLane = useSheetNoteLane();
 
   useEffect(() => {
     const el = dialog.current;
@@ -44,6 +47,7 @@ export function BoardSheet({ title, count, closeHref, children }: { title: strin
         </button>
       </div>
       {children}
+      <div className="lg-bsheet-notes" ref={setNoteLane} aria-live="polite" aria-atomic="false" />
     </dialog>
   );
 }
