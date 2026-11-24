@@ -3,7 +3,7 @@ import { disconnectAssistant } from "@/app/(app)/[workspaceId]/settings/assistan
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { appUrl } from "@/lib/mcp/config";
-import { NOT_CONNECTED, accessLabel, disconnect, endGrantsWithoutConsent, listConnections, redirectLabel } from "@/lib/mcp/connections";
+import { NOT_CONNECTED, accessLabel, disconnect, endGrantsWithoutConsent, identityHost, listConnections, redirectLabel } from "@/lib/mcp/connections";
 import { form, redirectTo } from "./helpers/form";
 import { asUser, signedOut } from "./helpers/next-request";
 import { authorize, consent, deleteOAuthClients, exchangeCode, fromNewIp, mcpClient, mcpPost, pkce, refresh, registerClient, restoreFetch, routeAppFetches } from "./helpers/oauth";
@@ -139,6 +139,34 @@ test.each([
   [[], "an unknown address"],
 ])("redirectLabel(%j) is %s", (uris, label) => {
   expect(redirectLabel(uris)).toBe(label);
+});
+
+// The site a Client ID Metadata Document came from, shown beside the assistant's name. Only a client
+// the plugin found that way ("cimd") has one.
+test.each([
+  ["https://vscode.dev/oauth/client-metadata.json", "cimd", "vscode.dev"],
+  ["https://Assistant.Example/a/b.json?x=1", "cimd", "assistant.example"],
+  ["https://user:secret@assistant.example/a.json", "cimd", "assistant.example"],
+  ["https://assistant.example:8443/a.json", "cimd", "assistant.example:8443"],
+  ["https://assistant.example/a.json", null, null],
+  ["https://assistant.example/a.json", undefined, null],
+  ["https://assistant.example/a.json", "something-else", null],
+  ["http://assistant.example/a.json", "cimd", null],
+  ["javascript:alert(1)", "cimd", null],
+  ["not a url", "cimd", null],
+  ["", "cimd", null],
+  ["generated-client-id-123", null, null],
+])("identityHost(%j, %j) is %j", (clientId, discoveryId, host) => {
+  expect(identityHost(clientId, discoveryId)).toBe(host);
+});
+
+describe("a registered assistant in the list", () => {
+  it("has no site line, because nothing vouches for where its details came from", async () => {
+    const clientId = await newClient("Registered Bot");
+    await connect(clientId, "ownerA");
+    const [connection] = await listConnections("ownerA");
+    expect(connection).toMatchObject({ clientId, name: "Registered Bot", returnsTo: "an app on this computer", identifiedBy: null });
+  });
 });
 
 describe("disconnect", () => {
@@ -378,7 +406,10 @@ describe("disconnectAssistant (the Settings action)", () => {
     await connect(clientId, "ownerA");
     const before = await rows("ownerA", clientId);
     expect(await action("ownerA", { workspaceId: "a" })).toEqual({ ok: false, error: "Assistant not found." });
-    expect(await action("ownerA", { workspaceId: "a", clientId: "x".repeat(65) })).toEqual({ ok: false, error: "Assistant not found." });
+    // A client id may be a URL of up to 512 characters (Client ID Metadata Documents), so 65 is
+    // valid input that matches nothing, and 513 is refused as input.
+    expect(await action("ownerA", { workspaceId: "a", clientId: "x".repeat(513) })).toEqual({ ok: false, error: "Assistant not found." });
+    expect(await action("ownerA", { workspaceId: "a", clientId: "x".repeat(65) })).toEqual({ ok: false, error: NOT_CONNECTED });
     expect(await action("ownerA", { clientId })).toEqual({ ok: false, error: "Assistant not found." });
     expect(await rows("ownerA", clientId)).toEqual(before);
   });

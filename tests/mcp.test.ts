@@ -487,12 +487,34 @@ describe("the token check at /api/mcp", () => {
 
   it("a JWT signed with our key that isn't an assistant's access token (a session JWT): 401", async () => {
     // Better Auth signs session JWTs with the same key. Even one with the MCP audience and scopes
-    // must not pass: it has no client (azp).
+    // must not pass: it has no client (azp). The 401 must come from the verifier inside
+    // requireMcpAuth, not from the grant check, which would also say no to a missing client. A
+    // consent for this person exists (tokenFor makes one), so only the missing azp can be the reason.
+    await tokenFor("ownerA");
+    const issuer = new URL("/api/auth", appUrl()).toString();
     const { token } = await auth.api.signJWT({
-      body: { payload: { sub: "ownerA", iss: new URL("/api/auth", appUrl()).toString(), aud: mcpResourceUrl(), scope: "coppice:read coppice:write" } },
+      body: { payload: { sub: "ownerA", iss: issuer, aud: mcpResourceUrl(), scope: "coppice:read coppice:write" } },
     });
-    expect(JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString())).toMatchObject({ iss: new URL("/api/auth", appUrl()).toString() });
-    expect((await mcpPost(listTools, token)).status).toBe(401);
+    const claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    expect(claims).toMatchObject({ iss: issuer });
+    expect(claims).not.toHaveProperty("azp");
+    const { status, headers, json } = await mcpPost(listTools, token);
+    expect(status).toBe(401);
+    expect(json.error.message).toBe("invalid access token");
+    expect(headers.get("www-authenticate")).toContain("resource_metadata=");
+  });
+
+  it("a JWT signed with our key whose azp isn't a string never reaches the grant lookup", async () => {
+    // Only our own key can sign this, but if it did get through, a lookup with no usable client
+    // would drop the client filter and match any consent the person has. The handler refuses to
+    // go on: an error that should never happen, never a 200.
+    await tokenFor("ownerA");
+    const { token } = await auth.api.signJWT({
+      body: {
+        payload: { sub: "ownerA", azp: 123, iss: new URL("/api/auth", appUrl()).toString(), aud: mcpResourceUrl(), scope: "coppice:read coppice:write" },
+      },
+    });
+    await expect(mcpPost(listTools, token)).rejects.toThrow("without a verified assistant token");
   });
 
   it("a token without coppice:read: 403 insufficient_scope", async () => {

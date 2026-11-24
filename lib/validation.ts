@@ -631,7 +631,10 @@ export const mcpChangeStageSchema = z.object({
 
 // Settings > AI assistants: Disconnect one of your own assistants (lib/mcp/connections.ts). The
 // client id comes from the row's hidden field; who it belongs to comes from the session, never the form.
-export const disconnectAssistantSchema = z.object({ workspaceId: id, clientId: id });
+// A client id from a Client ID Metadata Document is a URL (up to 512 characters, the same cap the
+// fetch policy puts on it), not a short generated id, so it gets its own cap.
+const oauthClientId = z.string().min(1).max(512);
+export const disconnectAssistantSchema = z.object({ workspaceId: id, clientId: oauthClientId });
 
 // A space-separated scope list sent to the OAuth endpoints (authorize, consent, token). The plugin
 // checks that each name is one it allows, but not how often a name appears, and it copies the list
