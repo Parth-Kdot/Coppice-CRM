@@ -2,19 +2,77 @@ import { z } from "zod";
 import { Channel, DraftKind, Stage } from "@/generated/prisma/enums";
 import { domainKey } from "@/lib/duplicates";
 import { placeholderProblem } from "@/lib/placeholders";
+import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
+import { MCP_SCOPES } from "@/lib/mcp/config";
+import {
+  AI_LIMIT_MAX,
+  BOARD_QUERY_MAX,
+  CLAIM_WINDOW_MAX_DAYS,
+  CLAIM_WINDOW_MIN_DAYS,
+  COMPANY_LIMITS,
+  FACT_MAX,
+  IMPORT_MAX_COLUMNS,
+  IMPORT_MAX_ROWS,
+  NOTE_MAX,
+  SMART_MAX_ROWS,
+  SMART_NOTE_MAX,
+  SMART_STAGES,
+  SOURCE_LABEL_MAX,
+  BRIEF_SOURCES_MAX,
+  TEMPLATE_LIMITS,
+  DRAFT_NOTE_MAX,
+  WORKSPACE_NAME_MAX,
+  type BoardFilters,
+  type StageName,
+} from "@/lib/limits";
+
+// The plain limits live in lib/limits.ts so client components can read them without loading zod.
+// Re-exported here so server code keeps one place to import from.
+export {
+  AI_LIMIT_MAX,
+  BOARD_QUERY_MAX,
+  BRIEF_SOURCES_MAX,
+  CLAIM_WINDOW_MAX_DAYS,
+  CLAIM_WINDOW_MIN_DAYS,
+  COMPANY_LIMITS,
+  DRAFT_NOTE_MAX,
+  FACT_MAX,
+  IMPORT_FIELDS,
+  IMPORT_MAX_BYTES,
+  IMPORT_MAX_COLUMNS,
+  IMPORT_MAX_ROWS,
+  NOTE_MAX,
+  SMART_MAX_ROWS,
+  SMART_NOTE_MAX,
+  SMART_STAGES,
+  SOURCE_LABEL_MAX,
+  STAGES,
+  TEMPLATE_LIMITS,
+  WORKSPACE_NAME_MAX,
+  WORKSPACES_SHOWN,
+  boardQuery,
+} from "@/lib/limits";
+export type { BoardFilters, ImportField, StageName } from "@/lib/limits";
+
+// Postgres can't store a NUL character (U+0000) in text: the insert fails with an error page
+// instead of a message. Every free-text field refuses it up front.
+const NUL_MESSAGE = "This text has a character Coppice can't save.";
+const hasNoNul = (v: string | null) => v === null || !v.includes("\0");
 
 // Every server action parses its input with one of these before touching the database.
 
-export const createWorkspaceSchema = z.object({
-  name: z.string().trim().min(2, "Name must be at least 2 characters.").max(80),
-});
+const workspaceName = z
+  .string()
+  .trim()
+  .min(2, "Name must be at least 2 characters.")
+  .max(WORKSPACE_NAME_MAX, `Keep the name to ${WORKSPACE_NAME_MAX} characters or fewer.`)
+  .refine(hasNoNul, NUL_MESSAGE);
+
+export const createWorkspaceSchema = z.object({ name: workspaceName });
 
 // Our ids are 25 to 36 characters. The cap stops anyone sending megabytes into a lookup.
 const id = z.string().min(1).max(64);
 const role = z.enum(["member", "owner"]);
-
-export const CLAIM_WINDOW_MIN_DAYS = 1;
-export const CLAIM_WINDOW_MAX_DAYS = 60;
 
 export const inviteMemberSchema = z.object({
   workspaceId: id,
@@ -28,6 +86,33 @@ export const invitationIdSchema = id;
 
 export const workspaceIdSchema = id;
 
+// Settings > Workspace (owner): rename, and delete confirmed by typing the workspace's name.
+export const renameWorkspaceSchema = z.object({ workspaceId: id, name: workspaceName });
+export const deleteWorkspaceSchema = z.object({
+  workspaceId: id,
+  // Compared with the stored name in the action; capped so a huge paste is refused cheaply.
+  confirmName: z.string().trim().max(200, "Type the workspace's name exactly.").min(1, "Type the workspace's name to delete it."),
+});
+
+// Where to go after signing in (?next=), from a link someone opened while signed out. Only a path
+// on this site: it must start with one "/" (not "//", which is another site), have no backslash
+// (browsers read "/\\evil.com" as "//evil.com"), no control characters, and not loop back to sign-in.
+export const NEXT_PATH_MAX = 512;
+export function safeNextPath(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > NEXT_PATH_MAX) return null;
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
+  if (/[\u0000-\u001f\u007f]/.test(value)) return null;
+  let url: URL;
+  try {
+    url = new URL(value, "http://coppice.invalid");
+  } catch {
+    return null;
+  }
+  if (url.origin !== "http://coppice.invalid") return null;
+  if (url.pathname === "/signin" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/oauth/")) return null;
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export const cancelInvitationSchema = z.object({ workspaceId: id, invitationId: id });
 
 export const memberSchema = z.object({ workspaceId: id, memberId: id });
@@ -37,15 +122,14 @@ export const changeRoleSchema = memberSchema.extend({ role });
 export const claimWindowSchema = z.object({
   workspaceId: id,
   days: z.coerce
-    .number()
+    .number({ error: "Enter a number of days." })
     .int("Use whole days.")
     .min(CLAIM_WINDOW_MIN_DAYS, `Use ${CLAIM_WINDOW_MIN_DAYS} to ${CLAIM_WINDOW_MAX_DAYS} days.`)
     .max(CLAIM_WINDOW_MAX_DAYS, `Use ${CLAIM_WINDOW_MIN_DAYS} to ${CLAIM_WINDOW_MAX_DAYS} days.`),
 });
 
 // AI settings (owner): the switch is a checkbox ("on" when ticked, missing when not), and the
-// limit counts AI calls per 30 days across the workspace. 0 pauses AI without switching it off.
-export const AI_LIMIT_MAX = 5000;
+// limit counts AI calls per 30 days across the workspace (AI_LIMIT_MAX in lib/limits).
 export const aiSettingsSchema = z.object({
   workspaceId: id,
   enabled: z
@@ -53,10 +137,19 @@ export const aiSettingsSchema = z.object({
     .nullable()
     .transform((v) => v === "on"),
   limit: z.coerce
-    .number()
+    .number({ error: "Enter a number." })
     .int("Use a whole number.")
     .min(0, `Use 0 to ${AI_LIMIT_MAX}.`)
     .max(AI_LIMIT_MAX, `Use 0 to ${AI_LIMIT_MAX}.`),
+});
+
+// The switch for outside AI assistants (MCP), owner only: a checkbox, "on" when ticked.
+export const mcpSettingsSchema = z.object({
+  workspaceId: id,
+  enabled: z
+    .string()
+    .nullable()
+    .transform((v) => v === "on"),
 });
 
 // Shape every server action returns (project convention).
@@ -86,13 +179,17 @@ const optionalText = (max: number, label: string) =>
     .string()
     .trim()
     .max(max, `${label} can be at most ${max} characters.`)
+    .refine(hasNoNul, NUL_MESSAGE)
     .nullable()
     .transform((v) => v || null);
 
-export const COMPANY_LIMITS = { name: 120, industry: 80, website: 300, notes: 5000 } as const;
-
 export const companyFieldsSchema = z.object({
-  name: z.string().trim().min(1, "Enter a company name.").max(COMPANY_LIMITS.name, `Name can be at most ${COMPANY_LIMITS.name} characters.`),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Enter a company name.")
+    .max(COMPANY_LIMITS.name, `Name can be at most ${COMPANY_LIMITS.name} characters.`)
+    .refine(hasNoNul, NUL_MESSAGE),
   industry: optionalText(COMPANY_LIMITS.industry, "Industry"),
   website: optionalText(COMPANY_LIMITS.website, "Website").refine((v) => v === null || isWebAddress(v), {
     message: "Enter a website like acme.com or https://acme.com.",
@@ -106,7 +203,7 @@ const separateFrom = z
   .string()
   .nullable()
   .transform((v) => (v ? v.split(",") : []))
-  .pipe(z.array(id).max(20));
+  .pipe(z.array(id).max(20, "Too many look-alikes to keep apart at once; save again."));
 
 export const createCompanySchema = companyFieldsSchema.extend({ workspaceId: id, separateFrom });
 
@@ -135,7 +232,6 @@ export const moveStageSchema = companyRefSchema.extend({ stage: z.enum(Stage) })
 
 // Logging outreach (Milestone 3). The follow-up is a calendar date ("2026-11-01"); lib/claims.ts
 // checks it is from today to a year out, using the database's idea of "today".
-export const NOTE_MAX = 2000;
 export const logOutreachSchema = companyRefSchema.extend({
   channel: z.enum(Channel, "Pick how you reached out."),
   note: optionalText(NOTE_MAX, "Note"),
@@ -144,9 +240,10 @@ export const logOutreachSchema = companyRefSchema.extend({
   aiDraftId: id.nullish(),
   // The template the email was based on, if one was picked ("" is "No template").
   templateId: z.string().max(64).nullish().transform((v) => v || null),
+  // The log form's key for this entry, so the same submit twice logs once (lib/claims.ts).
+  clientKey: z.string().uuid().optional(),
 });
 
-export const DRAFT_NOTE_MAX = 300;
 // "Draft an email": what kind, to whom (optional), and an optional note on what to emphasize.
 export const draftEmailSchema = companyRefSchema.extend({
   kind: z.enum(DraftKind, "Pick first email or follow-up."),
@@ -184,7 +281,7 @@ export const archiveDuplicateSchema = z.object({ workspaceId: id, keepId: id, ar
 export const sameCompanySchema = companyRefSchema.extend({ keepId: id });
 
 export const contactFieldsSchema = z.object({
-  name: z.string().trim().min(1, "Enter the contact's name.").max(120, "Name can be at most 120 characters."),
+  name: z.string().trim().min(1, "Enter the contact's name.").max(120, "Name can be at most 120 characters.").refine(hasNoNul, NUL_MESSAGE),
   email: z
     .string()
     .trim()
@@ -204,14 +301,22 @@ export const contactRefSchema = companyRefSchema.extend({ contactId: id });
 
 // The board's URL: ?q=acme&industry=Tech&show=COMMITTED&all=CONTACTED&archived=1. A URL can be
 // typed or edited by hand, so anything malformed is dropped (`catch`) instead of failing the page.
+// Search text that is too long (a pasted or shared link) is cut, not dropped: dropping it would show
+// every company with an empty search box and no hint the search was lost.
 const stageList = z
   .string()
   .transform((v) => v.split(","))
   .pipe(z.array(z.enum(Stage)));
 
 export const boardFiltersSchema = z.object({
-  q: z.string().trim().max(100).catch(""),
-  industry: z.string().trim().max(COMPANY_LIMITS.industry).catch(""),
+  q: z
+    .string()
+    .transform((v) => v.trim().slice(0, BOARD_QUERY_MAX).trim())
+    .catch(""),
+  industry: z
+    .string()
+    .transform((v) => v.trim().slice(0, COMPANY_LIMITS.industry).trim())
+    .catch(""),
   // Committed and Declined start collapsed; these are the ones opened.
   show: stageList.catch([]),
   // One column showing every card instead of the first 50.
@@ -229,20 +334,13 @@ export const boardFiltersSchema = z.object({
     .catch(false),
 });
 
-export type BoardFilters = z.infer<typeof boardFiltersSchema>;
-
-// The query string for a board view: the inverse of boardFiltersSchema. Empty values are left out.
-export function boardQuery(filters: BoardFilters): string {
-  const params = new URLSearchParams();
-  if (filters.q) params.set("q", filters.q);
-  if (filters.industry) params.set("industry", filters.industry);
-  if (filters.show.length > 0) params.set("show", filters.show.join(","));
-  if (filters.all) params.set("all", filters.all);
-  if (filters.archived) params.set("archived", "1");
-  if (filters.dupes) params.set("dupes", "1");
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
+// BoardFilters and boardQuery live in lib/limits (the board's search box is a client component).
+// These fail to compile if the schema, the Stage enum and lib/limits ever drift apart.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const STAGES_MATCH: Same<StageName, Stage> = true;
+const BOARD_FILTERS_MATCH: Same<BoardFilters, z.infer<typeof boardFiltersSchema>> = true;
+void STAGES_MATCH;
+void BOARD_FILTERS_MATCH;
 
 // ----- Queue filters (from the URL) -----
 
@@ -260,6 +358,16 @@ export const queueFiltersSchema = z.object({
   never: flag,
   // One section showing everything instead of the first 50.
   all: z.enum(["due", "never"]).nullable().catch(null),
+  // How many rows each queue group loads: 50, 100, 150 or 200 ("Show 50 more"). Anything
+  // else is dropped, so the page falls back to the first 50.
+  upto: z
+    .string()
+    .nullish()
+    .transform((v) => {
+      const n = v && /^\d{2,3}$/.test(v) ? Number(v) : NaN;
+      return n >= 50 && n <= 200 && n % 50 === 0 ? n : undefined;
+    })
+    .optional(),
 });
 
 export type QueueFilters = z.infer<typeof queueFiltersSchema>;
@@ -270,20 +378,20 @@ export function queueQuery(filters: QueueFilters): string {
   if (filters.mine) params.set("mine", "1");
   if (filters.never) params.set("never", "1");
   if (filters.all) params.set("all", filters.all);
+  if (filters.upto) params.set("upto", String(filters.upto));
   const query = params.toString();
   return query ? `?${query}` : "";
 }
 
+// The queue's Fresh leads list, loaded 20 at a time when it is opened, up to 100.
+export const freshLeadsSchema = z.object({
+  workspaceId: workspaceIdSchema,
+  offset: z.number().int().min(0).max(80),
+});
+
 // ----- CSV import (Milestone 4) -----
 
-export const IMPORT_MAX_ROWS = 2000;
-export const IMPORT_MAX_BYTES = 3 * 1024 * 1024;
-// No real sponsor sheet has more columns than this; the cap keeps a mapping small.
-export const IMPORT_MAX_COLUMNS = 200;
-
-// Coppice fields a CSV column can fill, in the order the mapper shows them.
-export const IMPORT_FIELDS = ["name", "industry", "website", "notes", "contactName", "contactEmail"] as const;
-export type ImportField = (typeof IMPORT_FIELDS)[number];
+// IMPORT_MAX_ROWS, IMPORT_MAX_BYTES, IMPORT_MAX_COLUMNS and IMPORT_FIELDS: lib/limits.
 
 // Which column (by position) fills each field; null leaves it empty. Name is required, and a
 // column can only fill one field.
@@ -342,8 +450,12 @@ export const runImportSchema = z.object({
 
 // ----- Fact sheet (AI feature 1) -----
 
-export const FACT_MAX = 300;
-export const factTextSchema = z.string().trim().min(1, "Write the fact.").max(FACT_MAX, `A fact can be at most ${FACT_MAX} characters.`);
+export const factTextSchema = z
+  .string()
+  .trim()
+  .min(1, "Write the fact.")
+  .max(FACT_MAX, `A fact can be at most ${FACT_MAX} characters.`)
+  .refine(hasNoNul, NUL_MESSAGE);
 export const addFactSchema = z.object({ workspaceId: id, text: factTextSchema });
 export const factRefSchema = z.object({ workspaceId: id, factId: id });
 export const updateFactSchema = factRefSchema.extend({ text: factTextSchema });
@@ -352,16 +464,26 @@ export const factSheetRefSchema = z.object({ workspaceId: id, factSheetId: id })
 
 // ----- Templates and stats (Milestone 5) -----
 
-export const TEMPLATE_LIMITS = { name: 80, body: 5000 } as const;
-
 // A template's name and body. Line breaks are normalized like a checked draft's, and the body may
 // only use the three placeholders (lib/placeholders.ts).
 export const templateFieldsSchema = z.object({
-  name: z.string().trim().min(1, "Name the template.").max(TEMPLATE_LIMITS.name, `A name can be at most ${TEMPLATE_LIMITS.name} characters.`),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name the template.")
+    .max(TEMPLATE_LIMITS.name, `A name can be at most ${TEMPLATE_LIMITS.name} characters.`)
+    .refine(hasNoNul, NUL_MESSAGE),
   body: z
     .string()
     .transform(lf)
-    .pipe(z.string().trim().min(1, "Write the template.").max(TEMPLATE_LIMITS.body, `A template can be at most ${TEMPLATE_LIMITS.body} characters.`))
+    .pipe(
+      z
+        .string()
+        .trim()
+        .min(1, "Write the template.")
+        .max(TEMPLATE_LIMITS.body, `A template can be at most ${TEMPLATE_LIMITS.body} characters.`)
+        .refine(hasNoNul, NUL_MESSAGE),
+    )
     .superRefine((body, ctx) => {
       const problem = placeholderProblem(body);
       if (problem) ctx.addIssue({ code: "custom", message: problem });
@@ -382,10 +504,7 @@ export const statsFiltersSchema = z.object({
 
 // ----- Smart import (AI feature 3) -----
 
-// At most this many rows with free text are read per Smart import (owner decision); the rest of
-// the sheet imports the normal way.
-export const SMART_MAX_ROWS = 300;
-export const SMART_NOTE_MAX = 600;
+// SMART_MAX_ROWS, SMART_NOTE_MAX and SMART_STAGES: lib/limits.
 const STALE = "This Smart import is out of date. Start it again.";
 
 export const smartSuggestSchema = z.object({ workspaceId: id });
@@ -415,7 +534,6 @@ export const smartChunkSchema = z.object({
 // What the person kept of the AI's reading for one row, after editing. Only the stages before an
 // outcome: Smart import never sets Committed or Declined. lib/smart-import/commit.ts checks every field
 // against what was actually proposed for that row.
-export const SMART_STAGES = ["CONTACTED", "REPLIED", "IN_CONVERSATION"] as const;
 const smartDecisionSchema = z.object({
   row: z.number(STALE).int(STALE).min(2, STALE).max(100_000, STALE),
   stage: z.enum(SMART_STAGES, STALE).nullable(),
@@ -432,3 +550,111 @@ export const smartImportSchema = runImportSchema.extend({
   sessionId: id,
   decisions: json(z.array(smartDecisionSchema).max(IMPORT_MAX_ROWS, STALE), STALE),
 });
+// ----- Research Agent (AI feature 2) -----
+
+// An approved source: an http(s) page with no user:password, no IP address, no non-standard port,
+// and not LinkedIn or a people-search site (lib/research/urls.ts). Stored as the parsed URL.
+const sourceUrl = z.string().transform((value, ctx) => {
+  const checked = parseSourceUrl(value);
+  if (!checked.ok) {
+    ctx.addIssue({ code: "custom", message: SKIP_MESSAGES[checked.reason] });
+    return z.NEVER;
+  }
+  return checked.url.href;
+});
+export const addResearchSourceSchema = z.object({
+  workspaceId: id,
+  url: sourceUrl,
+  label: optionalText(SOURCE_LABEL_MAX, "Label"),
+});
+export const researchSourceRefSchema = z.object({ workspaceId: id, sourceId: id });
+export const renameResearchSourceSchema = researchSourceRefSchema.extend({
+  label: z
+    .string()
+    .trim()
+    .min(1, "Write a label.")
+    .max(SOURCE_LABEL_MAX, `A label can be at most ${SOURCE_LABEL_MAX} characters.`)
+    .refine(hasNoNul, NUL_MESSAGE),
+});
+
+// "Research who to contact": which approved sources to read for this company (checkboxes).
+export const requestBriefSchema = companyRefSchema.extend({
+  sourceIds: z
+    .array(id)
+    .transform((ids) => [...new Set(ids)])
+    .pipe(z.array(id).min(1, "Pick at least one source.").max(BRIEF_SOURCES_MAX, `Pick at most ${BRIEF_SOURCES_MAX} sources.`)),
+});
+// "Add to notes" on one item of a brief.
+export const acceptBriefItemSchema = companyRefSchema.extend({ briefId: id, itemId: z.string().min(1).max(40) });
+// ----- MCP tools (outside AI assistants, lib/mcp) -----
+
+// The arguments an assistant sends to each tool. The MCP SDK checks them against these before a
+// tool runs, and also publishes them (as JSON Schema) so the assistant knows what to send. That's
+// why they hold no transforms: the published schema has to describe the input as sent.
+const mcpWorkspace = id.describe("The workspace's id, from list_workspaces.");
+const mcpCompany = id.describe("The company's id, from list_companies or get_follow_up_queue.");
+
+export const mcpWorkspaceSchema = z.object({ workspaceId: mcpWorkspace });
+
+export const MCP_LIST_LIMIT = 50;
+export const mcpListCompaniesSchema = z.object({
+  workspaceId: mcpWorkspace,
+  query: z.string().trim().max(100).optional().describe("Text to find in the company's name, website or industry. Leave out to list companies by name."),
+  stage: z.enum(Stage).optional().describe("Only companies at this stage."),
+});
+
+export const mcpCompanySchema = z.object({ workspaceId: mcpWorkspace, companyId: mcpCompany });
+
+export const mcpQueueSchema = z.object({
+  workspaceId: mcpWorkspace,
+  onlyMine: z.boolean().optional().describe("Only companies you hold."),
+  includeNeverContacted: z.boolean().optional().describe("Also list fresh leads nobody has contacted yet."),
+});
+
+export const mcpLogOutreachSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  channel: z.enum(Channel).describe("How you reached out."),
+  note: z.string().trim().max(NOTE_MAX).optional().describe("A short note on what was said."),
+  followUpOn: z.iso.date().describe("When to follow up, as YYYY-MM-DD: from today to a year out."),
+});
+
+export const mcpChangeStageSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  stage: z.enum(Stage).describe("The stage to move the company to."),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe("Required as true for COMMITTED or DECLINED, which end the pitch and release the claim. Ask the person first."),
+});
+
+// Settings > AI assistants: Disconnect one of your own assistants (lib/mcp/connections.ts). The
+// client id comes from the row's hidden field; who it belongs to comes from the session, never the form.
+export const disconnectAssistantSchema = z.object({ workspaceId: id, clientId: id });
+
+// A space-separated scope list sent to the OAuth endpoints (authorize, consent, token). The plugin
+// checks that each name is one it allows, but not how often a name appears, and it copies the list
+// into every consent, code and token row. So a name may appear only once, and the list can't be
+// longer than the scopes Coppice defines.
+export const oauthScopeListSchema = z
+  .string()
+  // Single spaces only, matching how the OAuth plugin splits the list (it keeps empty entries).
+  .regex(/^[\x21\x23-\x5B\x5D-\x7E]+( [\x21\x23-\x5B\x5D-\x7E]+)*$/, "Scopes are separated by single spaces.")
+  .refine((scope) => {
+    const names = scope.split(" ").filter(Boolean);
+    return names.length <= MCP_SCOPES.length && new Set(names).size === names.length;
+  }, "Each scope can be asked for once.");
+
+// Onboarding (the basics and AI tours, app/(app)/[workspaceId]/onboarding-actions.ts). Added by the
+// onboarding round. `step` is the index of the next unseen card; `event` says what happened: a card
+// was passed ("step"), the last card was reached ("done"), or the AI tour was put off ("later").
+export const tourProgressSchema = z.object({
+  workspaceId: id,
+  tour: z.enum(["basics", "ai"]),
+  step: z.number().int().min(0).max(20),
+  // "hide" and "show": the basics' Hide, and Resume from the pill.
+  event: z.enum(["step", "done", "later", "hide", "show"]),
+})
+  .refine((v) => v.event !== "later" || v.tour === "ai", "Only the AI tour can be put off.")
+  .refine((v) => (v.event !== "hide" && v.event !== "show") || v.tour === "basics", "Only the basics can be hidden.");

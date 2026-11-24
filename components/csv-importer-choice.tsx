@@ -26,7 +26,8 @@ export function ImportChoice<T extends string>({
   value: T;
   options: readonly ImportChoiceOption<T>[];
   onChange: (value: T) => void;
-  caption: string;
+  // One line under the choice; the "Already set" note shows there too.
+  caption?: string;
   layout?: "switch" | "list";
   className?: string;
 }) {
@@ -78,7 +79,7 @@ export function ImportChoice<T extends string>({
             Already set{chosen && <span className="lg-sr">: {chosen.label}</span>}.{" "}
           </span>
         )}
-        <span>{caption}</span>
+        {caption && <span>{caption}</span>}
       </p>
     </div>
   );

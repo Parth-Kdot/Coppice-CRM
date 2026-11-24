@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TEMPLATE_LIMITS } from "@/lib/validation";
+import { TEMPLATE_LIMITS } from "@/lib/limits";
 
 // A template's name and text boxes. They hold their own values, so a refused save (an unknown
 // placeholder, a name already taken) leaves what was typed in place instead of clearing the form.

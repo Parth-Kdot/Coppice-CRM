@@ -1,12 +1,15 @@
 import { describe, expect, it, test } from "vitest";
 import { decisionsFrom } from "@/components/csv-importer-smart/use-smart-import";
 import {
+  bulkAnswers,
+  carryDecisions,
   choiceEffects,
   chosenOption,
   CONTAINED_WHY,
   groupCaption,
   groupOptions,
   groupOutcome,
+  generations,
   groupsLeft,
   kindOf,
   mappingChanges,
@@ -14,6 +17,7 @@ import {
   mergeGroups,
   nameIn,
   openChanged,
+  previewSources,
   unconfirmedNote,
   type ReviewGroup,
   type ReviewSource,
@@ -75,7 +79,8 @@ describe("kindOf: two entries are decided at once, more row by row", () => {
     [[r(2, "A")], [initech], "existing"],
     [[r(2, "A"), r(3, "A"), r(4, "A")], [], "rows"],
     [[r(2, "A"), r(3, "A")], [initech], "rows"],
-    [[r(2, "A")], [initech, { ...initech, id: "c2" }], "rows"],
+    // One row matching two saved companies is still one answer: skip it or add it.
+    [[r(2, "A")], [initech, { ...initech, id: "c2" }], "existing"],
   ] as const)("%j with %j existing is %s", ([rows, existing, kind]) => {
     expect(kindOf(group([...rows], [...existing]))).toBe(kind);
   });
@@ -259,5 +264,90 @@ describe("revertSmartMapping: turning Smart import off or Undo", () => {
     // The person moved column 3 to Contact name by hand, so Notes can't take it back.
     const current = { ...after, contactName: 3 };
     expect(revertSmartMapping(current, before, after)).toEqual({ ...after, contactName: 3 });
+  });
+});
+
+describe("one row and two saved companies is one answer", () => {
+  const twice = group([r(8, "Quillon Software")], [{ ...initech, id: "c1", name: "Quillon Software" }, { ...initech, id: "c2", name: "Quillon Software Inc." }]);
+
+  it("asks skip or add, and says how many it matched", () => {
+    expect(kindOf(twice)).toBe("existing");
+    expect(groupOptions(twice).map((o) => o.label)).toEqual(["Skip, it's already in Coppice (2 matches)", "Add it as a separate company"]);
+    expect(chosenOption(twice, skips(8))).toBe("skip");
+  });
+});
+
+describe("carryDecisions: a new preview keeps what didn't change", () => {
+  const acme = { key: "r2-4", reasons: ["Same name"], existing: [], rows: [r(2, "Acme"), r(4, "Acme")] };
+  const init = { key: "r11_cc-initech", reasons: ["Same name"], existing: [initech], rows: [r(11, "Initech")] };
+  const globex = { key: "r5-6", reasons: ["Same name"], existing: [], rows: [r(5, "Globex"), r(6, "Globex")] };
+
+  it("keeps the choices and Confirm of groups whose members are the same, and resets the rest", () => {
+    // Acme was confirmed as "keep both"; Initech was confirmed as "add it"; then a column changed.
+    const before = { groups: [acme, init], skips: skips(), confirmed: new Set([acme.key, init.key]) };
+    const changedInit = { ...init, key: "r11-12_cc-initech", rows: [r(11, "Initech"), r(12, "Initech")] };
+    const kept = carryDecisions(before, { groups: [acme, changedInit, globex], suggested: [4, 11, 12, 6] });
+    expect([...kept.skips].sort((a, b) => a - b)).toEqual([6, 11, 12]);
+    expect([...kept.confirmed]).toEqual([acme.key]);
+    expect(kept.lost).toBe(1);
+  });
+
+  it("changes nothing when the groups are the same", () => {
+    const before = { groups: [acme], skips: skips(2), confirmed: new Set([acme.key]) };
+    expect(carryDecisions(before, { groups: [acme], suggested: [4] })).toEqual({ skips: skips(2), confirmed: new Set([acme.key]), lost: 0 });
+  });
+});
+
+describe("bulkAnswers: five or more groups of one kind are decided in one go", () => {
+  const existing = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `e${i}`, reasons: [], existing: [{ ...initech, id: `c${i}` }], rows: [r(i + 2, `Co ${i}`)] }));
+  const pairs = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `p${i}`, reasons: [], existing: [], rows: [r(100 + 2 * i, "P"), r(101 + 2 * i, "P")] }));
+
+  it("offers nothing under five", () => {
+    expect(bulkAnswers([...existing(4), ...pairs(4)])).toEqual([]);
+  });
+
+  it("skips every row already in Coppice, and keeps the first of every pair", () => {
+    const [skipAll, keepFirst] = bulkAnswers([...existing(12), ...pairs(5)]);
+    expect(skipAll.label).toBe("Skip all 12 already in Coppice");
+    expect(skipAll.effects.every((e) => e.skip)).toBe(true);
+    expect(skipAll.groups).toHaveLength(12);
+    expect(keepFirst.label).toBe("Keep the first of each pair (5)");
+    expect(keepFirst.effects.slice(0, 2)).toEqual([
+      { row: 100, skip: false },
+      { row: 101, skip: true },
+    ]);
+  });
+});
+
+describe("previewSources", () => {
+  it("labels rows from the preview and says why each group was flagged", () => {
+    const sources = previewSources({
+      groups: [{ rows: [2, 4], existing: [], matchedOn: ["name", "website"] }],
+      contained: [],
+      labels: [
+        { row: 2, name: "Acme", website: "acme.com" },
+        { row: 4, name: "ACME Inc", website: null },
+      ],
+    });
+    expect(sources).toEqual([{ reason: "Same name and website", existing: [], rows: [r(2, "Acme", "acme.com"), r(4, "ACME Inc")] }]);
+  });
+});
+
+describe("generations: an answer for an older file never lands", () => {
+  it("drops a slow answer once another file is chosen, and turns a throw into a message", async () => {
+    const gens = generations();
+    let finish: (v: string) => void = () => {};
+    const slow = gens.guard(() => new Promise<string>((resolve) => (finish = resolve)), "stale", "failed");
+    gens.next();
+    const first = slow();
+    // The person picks another file while the suggestion for the first is still on its way.
+    gens.next();
+    finish("suggestion for smart.csv");
+    expect(await first).toBe("stale");
+
+    const fresh = gens.guard(async () => "suggestion for other.csv", "stale", "failed");
+    expect(await fresh()).toBe("suggestion for other.csv");
+    const broken = gens.guard(async () => Promise.reject(new Error("network")), "stale", "failed");
+    expect(await broken()).toBe("failed");
   });
 });

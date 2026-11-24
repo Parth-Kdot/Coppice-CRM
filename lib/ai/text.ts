@@ -2,7 +2,9 @@
 // and checking that a quote the model returned really appears in a page of text.
 
 // Emails and phone numbers are replaced before any text is sent to the AI (free tier).
-const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
+// Each part is bounded (64 before the "@", 63 per label, as in RFC 5321), so a long run of word
+// characters can't make the match backtrack for seconds.
+const EMAIL = /[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+/g;
 // 765-555-0142, (765) 555 0142, +1 765.555.0142 ...
 const PHONE = /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b/g;
 

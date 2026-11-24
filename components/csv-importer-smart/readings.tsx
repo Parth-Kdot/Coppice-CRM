@@ -5,7 +5,7 @@ import { ImportChoice } from "@/components/csv-importer-choice";
 import { LedgerMenu } from "@/components/ledger/ledger-menu";
 import type { Quote, RowProposal } from "@/lib/smart-import";
 import { STAGE_LABELS } from "@/lib/stages";
-import { SMART_NOTE_MAX, SMART_STAGES } from "@/lib/validation";
+import { SMART_NOTE_MAX, SMART_STAGES } from "@/lib/limits";
 import type { RowEdits, SmartState } from "./use-smart-import";
 
 // One row's readings in Smart import's review (./review.tsx): each with the cell text it came

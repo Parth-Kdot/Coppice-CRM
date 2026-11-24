@@ -30,6 +30,15 @@ afterAll(async () => {
 describe("createWorkspace (Option B: only listed emails can create)", () => {
   const create = (name: string) => createWorkspace(null, form({ name }));
 
+  it("says how long a name may be, in plain words, when it is too long", async () => {
+    expect(await asUser("ownerA", () => create("x".repeat(81)))).toEqual({ ok: false, error: "Keep the name to 80 characters or fewer." });
+  });
+
+  it("refuses a name with a NUL character instead of failing in Postgres", async () => {
+    expect(await asUser("ownerA", () => create("Robotics\u0000Club"))).toEqual({ ok: false, error: "This text has a character Coppice can't save." });
+    expect(await prisma.workspace.count()).toBe(2);
+  });
+
   it("creates the workspace, makes the creator its owner, and opens it", async () => {
     const error = await asUser("ownerA", () => create("  Robotics Club  ")).catch((e) => e);
     const workspace = await prisma.workspace.findFirstOrThrow({ where: { name: "Robotics Club" } });

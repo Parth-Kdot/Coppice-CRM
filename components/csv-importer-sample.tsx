@@ -1,25 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useId } from "react";
+import { Disclosure } from "@/components/ledger/disclosure";
 import { WarningIcon } from "@/components/ledger/icons";
 import type { CheckedRow } from "@/lib/csv";
 
-// Step 3 of the importer (components/csv-importer.tsx): the first rows of the file, as they'll be
-// imported, with their problems.
+// Step 3 of the importer (components/csv-importer.tsx): the first rows of the file, with their
+// problems, folded unless there is a reason to look (a file read as Windows text).
 
 const COLUMNS = ["Row", "Name", "Industry", "Website", "Contact", "Notes"] as const;
 
-// The first rows of the file. On a phone the table is a tall stack of cards, so it starts folded.
-export function SampleRows({ sample }: { sample: CheckedRow[] }) {
-  const [open, setOpen] = useState(() => !window.matchMedia("(max-width: 640px)").matches);
-  // The Problems column only appears when one of the shown rows has a problem; the list under the table names every bad row.
+export function SampleRows({ sample, defaultOpen = false }: { sample: CheckedRow[]; defaultOpen?: boolean }) {
+  const titleId = useId();
+  // The Problems column only appears when one of the shown rows has a problem.
   const showProblems = sample.some((r) => r.errors.length > 0);
   return (
-    <details className="lg-sample" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>{open ? `The first ${sample.length} rows, as they'll be imported` : `Show the first ${sample.length} rows`}</summary>
+    <Disclosure variant="inline" className="lg-impnote" defaultOpen={defaultOpen} summary={<span id={titleId}>First {sample.length} rows of the file</span>}>
       <div className="lg-tablewrap mt-2">
-        <table className="lg-table" role="table">
-          <caption className="sr-only">The first {sample.length} rows, as they will be imported</caption>
+        <table className="lg-table" role="table" aria-labelledby={titleId}>
           <thead>
             <tr role="row">
               {[...COLUMNS, ...(showProblems ? ["Problems"] : [])].map((h) => (
@@ -74,6 +72,6 @@ export function SampleRows({ sample }: { sample: CheckedRow[] }) {
           </tbody>
         </table>
       </div>
-    </details>
+    </Disclosure>
   );
 }

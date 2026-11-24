@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { LogoMark } from "@/components/ledger/logo";
+
+// The tab title for an unknown address. The <title> element below covers a layout calling notFound()
+// in the production build, where this export did not reach the head.
+export const metadata: Metadata = { title: { absolute: "Page not found" } };
 
 // Shown for any address the app does not have, and for a workspace or company the signed-in
 // person cannot open. It is our own page because the framework's default one adds an inline
@@ -16,10 +21,10 @@ export default function NotFound() {
         <span className="font-display text-[1.375rem] text-ink">Coppice</span>
       </Link>
       <h1 className="mt-7 font-display text-[1.875rem] leading-[1.1] tracking-[-0.015em] text-balance sm:text-[2.625rem]">
-        That page is not in the book.
+        Page not found
       </h1>
       <p className="max-w-[46ch] text-[1.0625rem] text-ink-2">
-        The address may be old, or the workspace may belong to another account. Check the link, or go back to your workspaces.
+        The link may be old, or the workspace may belong to another account.
       </p>
       <p className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-3">
         <Link

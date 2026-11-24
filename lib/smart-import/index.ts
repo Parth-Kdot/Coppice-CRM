@@ -27,7 +27,7 @@ import { PAST_YEARS } from "./shared";
 // time the same person starts another.
 
 export { cellShape, cleanSuggestion, sampleSheet, shownColumns, suggestColumns, type ColumnSuggestion } from "./columns";
-export { checkRowsRead, findDoNotContact, quoteInCell, type Quote, type RowProposal, type RowsReadOutput } from "./check";
+export { checkRowsRead, findDoNotContact, plantedInstruction, quoteInCell, type Quote, type RowProposal, type RowsReadOutput } from "./check";
 export { runSmartImport } from "./commit";
 export { boardYearOf, futureHint, parseDateText, resolveDate, yearLabel } from "./dates";
 export { type LookalikeGroup } from "./lookalikes";
