@@ -171,6 +171,61 @@ export function releaseClaimsOf(actor: Tenant, userId: string): Promise<number> 
   });
 }
 
+// One company given back by releaseMarkedClaims, with whoever held it a moment before.
+export type ReleasedCompany = { companyId: string; name: string; previousHolderId: string };
+
+// The members of this workspace marked as leaving, and the companies they held, given back in one
+// transaction (the owner's "release their claims", from the app or an assistant).
+//
+// 1. The marked membership rows are locked FOR SHARE, ordered by user id. A person unmarked at the
+//    same moment holds the row, so the lock waits for that change and then no longer matches: that
+//    person's claims are kept. A change to a locked row that comes after (an unmark, a role change
+//    or a removal) waits until this commits. A new mark on a member who was not marked does not
+//    wait, and that member is not in the locked set.
+// 2. The companies to give back are locked in a subquery, ordered by id (two releases lock in the
+//    same order, so they cannot deadlock), and cleared by one UPDATE joined to it. The holder
+//    reported for each company is the value that was locked, not an earlier read.
+// 3. It clears exactly what releaseClaimsOf clears: claimedById and claimExpiresAt, nothing else,
+//    and no history row (a claim has none).
+//
+// With refuseWhenEveryone (the assistant's release), the members of the workspace are counted in the
+// same transaction, after the lock: when the locked marked rows are every member, nothing is freed
+// and everyone is true. A mark committed after the lock is not in the locked set, so that person's
+// claims are not freed either way.
+//
+// All or nothing: if anything fails, no company is freed.
+export type MarkedRelease = { marked: { userId: string; name: string }[]; released: ReleasedCompany[]; everyone: boolean };
+export function releaseMarkedClaims(actor: Tenant, options: { refuseWhenEveryone?: boolean } = {}): Promise<MarkedRelease> {
+  return withTenant(actor, async (tx) => {
+    const locked = await tx.$queryRaw<{ userId: string; name: string; createdAt: Date }[]>`
+      SELECT m."userId", u.name, m."createdAt"
+      FROM public.membership m JOIN public."user" u ON u.id = m."userId"
+      WHERE m."workspaceId" = ${actor.workspaceId} AND m."departingAt" IS NOT NULL
+      ORDER BY m."userId"
+      FOR SHARE OF m`;
+    const marked = locked
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.userId < b.userId ? -1 : 1))
+      .map((m) => ({ userId: m.userId, name: m.name }));
+    if (marked.length === 0) return { marked, released: [], everyone: false };
+    if (options.refuseWhenEveryone) {
+      const members = await tx.membership.count({ where: { workspaceId: actor.workspaceId } });
+      if (marked.length === members) return { marked, released: [], everyone: true };
+    }
+    const released = await tx.$queryRaw<ReleasedCompany[]>`
+      UPDATE "Company" c
+      SET "claimedById" = NULL, "claimExpiresAt" = NULL
+      FROM (
+        SELECT id, "claimedById" FROM "Company"
+        WHERE "workspaceId" = ${actor.workspaceId} AND "claimedById" = ANY(${marked.map((m) => m.userId)}::text[])
+        ORDER BY id
+        FOR UPDATE
+      ) before
+      WHERE c.id = before.id
+      RETURNING c.id AS "companyId", c.name, before."claimedById" AS "previousHolderId"`;
+    return { marked, released, everyone: false };
+  });
+}
+
 // The follow-up date rule and its time-zone conversion, shared by logOutreach and setFollowUp so the
 // two can never disagree. A follow-up is a calendar date from today to a year out, "today" being
 // West Lafayette's date by the database clock; it is stored as midnight there.

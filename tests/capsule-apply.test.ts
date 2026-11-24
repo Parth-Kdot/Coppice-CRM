@@ -209,6 +209,14 @@ describe("Reopen for next year: one Committed company, through changeStage", () 
     expect(change).toMatchObject({ fromStage: "COMMITTED", toStage: "CONTACTED", changedById: "ownerA", via: "APP" });
   });
 
+  it("records who made the move: an assistant's reopen is marked ASSISTANT, and the default is APP", async () => {
+    const reportId = await approvedHandoff();
+    const atlas = await cardOf(reportId, "co-atlas");
+    ok(await capsule.reopenForNextYear(OWNER, atlas.id, "ASSISTANT"));
+    const change = await withTenant(OWNER, (tx) => tx.stageChange.findFirstOrThrow({ where: { companyId: "co-atlas", toStage: "CONTACTED" } }));
+    expect(change.via).toBe("ASSISTANT");
+  });
+
   it("lets Apply set the date once the company is reopened", async () => {
     const reportId = await approvedHandoff();
     const atlas = await cardOf(reportId, "co-atlas");

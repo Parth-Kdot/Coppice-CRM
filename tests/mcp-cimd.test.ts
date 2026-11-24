@@ -1604,7 +1604,7 @@ describe("a full connection with a metadata document", () => {
     expect(row).toMatchObject({ clientDiscoveryId: "cimd", tokenEndpointAuthMethod: "none", clientSecret: null, name: "Doc Assistant", redirectUris: [REDIRECT_URI] });
 
     const client = await mcpClient(token.body.access_token);
-    expect((await client.listTools()).tools).toHaveLength(8);
+    expect((await client.listTools()).tools).toHaveLength(48);
 
     const renewed = await refresh(url, token.body.refresh_token);
     expect(renewed.status).toBe(200);

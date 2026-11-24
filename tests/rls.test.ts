@@ -28,6 +28,7 @@ const TENANT_TABLES = [
   "CompanyBrief",
   "CompanyBriefPage",
   "OnboardingProgress",
+  "AssistantActivity",
 ] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {

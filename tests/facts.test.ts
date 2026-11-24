@@ -294,6 +294,24 @@ describe("managing facts", () => {
     expect(await facts.updateFact(OWNER, added.data.factId, "We meet on Thursdays.")).toEqual({ ok: true, data: { verified: true } });
   });
 
+  it("with unverified, a fact is saved waiting for an owner: added, edited when it was verified by hand, and edited from a PDF", async () => {
+    const added = await facts.addFact(OWNER, "We meet on Tuesdays.", { unverified: true });
+    if (!added.ok) throw new Error(added.error);
+    expect(await one(added.data.factId)).toMatchObject({ source: "MANUAL", verifiedAt: null, verifiedById: null, createdById: "ownerA" });
+    // Without the option nothing changes: a hand-written fact is verified when added and when edited.
+    const verified = await facts.addFact(OWNER, "We meet on Wednesdays.");
+    if (!verified.ok) throw new Error(verified.error);
+    expect(await one(verified.data.factId)).toMatchObject({ verifiedById: "ownerA" });
+    // An unverified edit of a verified MANUAL fact takes the verified mark off in the same statement.
+    expect(await facts.updateFact(OWNER, verified.data.factId, "We meet on Fridays.", { unverified: true })).toEqual({ ok: true, data: { verified: false } });
+    expect(await one(verified.data.factId)).toMatchObject({ text: "We meet on Fridays.", verifiedAt: null, verifiedById: null });
+    // A PDF fact whose quote still supports the edit would stay verified, but not through an unverified edit.
+    const { ids } = await uploaded();
+    expect(await facts.setFactVerified(OWNER, ids[1], true)).toEqual({ ok: true, data: undefined });
+    expect(await facts.updateFact(OWNER, ids[1], "Gold tier costs $2,500.", { unverified: true })).toEqual({ ok: true, data: { verified: false } });
+    expect(await one(ids[1])).toMatchObject({ quoteFound: true, verifiedAt: null, verifiedById: null });
+  });
+
   it("drops extracted facts made of masked contact details, and refuses them by hand", async () => {
     fakeGemini(
       answer(

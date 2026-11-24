@@ -387,3 +387,47 @@ describe("fresh leads, loaded when the list is opened", () => {
     expect(await asUser("officerA", () => loadFreshLeads("a", 1.5))).toMatchObject({ ok: false });
   });
 });
+
+describe("Paging the flat queue (for the assistant tool)", () => {
+  it("skips rows with an offset, counts them all and keeps the totals right", async () => {
+    await seed(
+      OWNER,
+      Array.from({ length: 60 }, (_, i) => ({ name: `Late ${String(i).padStart(2, "0")}`, followUpDays: -(100 - i) })),
+    );
+    const first = await getQueue(OWNER, { ...NONE });
+    expect(first.due).toHaveLength(QUEUE_SIZE);
+    expect(first.dueCount).toBe(60);
+    const second = await getQueue(OWNER, { ...NONE }, undefined, QUEUE_SIZE);
+    expect(names(second.due)).toEqual(Array.from({ length: 10 }, (_, i) => `Late ${50 + i}`));
+    // Past the end, the rows are empty and the count is still the real total.
+    const past = await getQueue(OWNER, { ...NONE }, undefined, 500);
+    expect(past.due).toEqual([]);
+    expect(past.dueCount).toBe(60);
+  });
+
+  it("skips never-contacted leads the same way, and clamps a huge or negative offset", async () => {
+    await seed(OWNER, Array.from({ length: 55 }, (_, i) => ({ name: `Lead ${String(i).padStart(2, "0")}`, stage: "NOT_CONTACTED" as const, followUpDays: null })));
+    const first = await getQueue(OWNER, { ...NONE, never: true });
+    expect(first.never).toHaveLength(QUEUE_SIZE);
+    const second = await getQueue(OWNER, { ...NONE, never: true }, undefined, QUEUE_SIZE);
+    expect(second.never).toHaveLength(5);
+    expect(second.neverCount).toBe(55);
+    expect(names((await getQueue(OWNER, { ...NONE, never: true }, undefined, -20)).never)).toEqual(names(first.never));
+    expect((await getQueue(OWNER, { ...NONE, never: true }, undefined, 10 ** 9)).never).toEqual([]);
+  });
+
+  it("yoursNotDue counts open companies you hold that are not due: no date or a later date, never closed, archived or others'", async () => {
+    await seed(OWNER, [
+      { name: "Mine later", followUpDays: 5, holder: "ownerA" },
+      { name: "Mine no date", followUpDays: null, holder: "ownerA" },
+      { name: "Mine due", followUpDays: -1, holder: "ownerA" },
+      { name: "Mine closed", followUpDays: 5, holder: "ownerA", stage: "COMMITTED" },
+      { name: "Mine archived", followUpDays: 5, holder: "ownerA", archived: true },
+      { name: "Mine claim ended", followUpDays: 5, holder: "ownerA", claimDays: -1 },
+      { name: "Theirs later", followUpDays: 5, holder: "officerA" },
+    ]);
+    expect((await load(OWNER)).yoursNotDue).toBe(2);
+    expect((await load(OWNER)).yoursNotDue).toBe((await getQueueHome(OWNER)).yoursNotDue);
+    expect((await load(OFFICER)).yoursNotDue).toBe(1);
+  });
+});

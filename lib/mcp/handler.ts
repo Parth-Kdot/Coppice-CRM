@@ -85,7 +85,7 @@ function revoked(): Response {
 // batches, so they are refused before the SDK sees them.
 async function singleMessage(request: Request): Promise<Request | Response> {
   const body = await readCappedText(request, BODY_LIMIT);
-  if (body === null) return rpcError(413, -32600, "The request is too large.");
+  if (body === null) return rpcError(413, -32600, "The request is too large. A request can be at most 64 KB. If it holds CSV text, split the file and send each part.");
   if (body.trimStart().startsWith("[")) return rpcError(400, -32600, "Batch requests are not supported. Send one message per request.");
   return withBody(request, body);
 }
