@@ -95,11 +95,17 @@ export default async function CapsulePage({ params, searchParams }: PageProps<"/
           </h2>
           <p className="lg-muted">
             {recap.empty
-              ? "Nothing is logged yet this year, so there is nothing to look back on."
+              ? "Nothing is logged yet this year, so there is nothing to look back on. Log outreach and this fills in."
               : `${plural(team.outreachLogged, "outreach entry", "outreach entries")} to ${plural(team.companiesContacted, "company", "companies")} this year. A few pages, one number each.`}
           </p>
           <div className="lg-cap-heroact">
-            <RecapReader pages={pages} label={recap.year.label} primary={!owner} />
+            {recap.empty ? (
+              <Link href={`/${workspaceId}`} className={`lg-btn ${owner ? "" : "lg-btn-primary"}`}>
+                Go to the queue
+              </Link>
+            ) : (
+              <RecapReader pages={pages} label={recap.year.label} primary={!owner} />
+            )}
           </div>
         </div>
       </section>

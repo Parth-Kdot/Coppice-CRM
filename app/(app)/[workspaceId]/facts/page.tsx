@@ -82,7 +82,7 @@ export default async function FactSheetPage({ params }: PageProps<"/[workspaceId
   const hasPacket = sheet.sheets.length > 0;
 
   const addForm = (
-    <ActionForm action={addFact} submitLabel="Add fact" successMessage="Added and verified." className="lg-addfact" primary={empty}>
+    <ActionForm action={addFact} submitLabel="Add fact" successMessage="Added and verified." className="lg-addfact" primary={empty} focusAfter=".lg-factadd .lg-disc-summary">
       {ids}
       <div className="lg-addfact-field">
         <label className="lg-label" htmlFor="facts-new">

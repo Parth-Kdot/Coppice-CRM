@@ -286,6 +286,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
       olderHref={olderOutreachHref}
       older={olderOutreach}
       canMarkReply={canControl && REPLY_STAGES.includes(company.stage)}
+      claimable={!archived && !closed}
     />
   );
 

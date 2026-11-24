@@ -156,10 +156,12 @@ export function OutreachBlock({
   olderHref,
   older,
   canMarkReply,
+  claimable,
 }: {
   workspaceId: string;
   companyId: string;
   companyName: string;
+  claimable: boolean;
   outreach: OutreachData[];
   total: number;
   thisYear: number;
@@ -176,6 +178,7 @@ export function OutreachBlock({
       {outreach.length === 0 ? (
         <Empty kind="outreach">
           <p className="lg-empty-title">No outreach logged yet.</p>
+          {claimable && <p>Claim it if it is free, then log your first email or call.</p>}
         </Empty>
       ) : (
         <>
