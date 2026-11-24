@@ -17,48 +17,50 @@ datasource db {
 }
 
 model User {
-  id                  String                @id
-  name                String
-  email               String
-  emailVerified       Boolean               @default(false)
-  image               String?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  sessions            Session[]
-  accounts            Account[]
-  memberships         Membership[]
-  invitations         Invitation[]
+  id                       String                @id
+  name                     String
+  email                    String
+  emailVerified            Boolean               @default(false)
+  image                    String?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  sessions                 Session[]
+  accounts                 Account[]
+  memberships              Membership[]
+  invitations              Invitation[]
   // App relations (not from the generator).
-  claimedCompanies    Company[]             @relation("CompanyClaims")
-  outreach            Outreach[]
-  stageChanges        StageChange[]
-  pairDecisions       CompanyPairDecision[]
-  aiRuns              AiRun[]
-  factSheets          FactSheet[]
-  factsCreated        FactSheetItem[]       @relation("FactCreatedBy")
-  factsVerified       FactSheetItem[]       @relation("FactVerifiedBy")
-  aiDrafts            AiDraft[]
-  importSessions      ImportSession[]
-  researchSources     ResearchSource[]
-  companyBriefs       CompanyBrief[]
-  onboarding          OnboardingProgress[]
-  copilotThreads      CopilotThread[]
-  copilotTurns        CopilotTurn[]
+  claimedCompanies         Company[]             @relation("CompanyClaims")
+  outreach                 Outreach[]
+  stageChanges             StageChange[]
+  pairDecisions            CompanyPairDecision[]
+  aiRuns                   AiRun[]
+  factSheets               FactSheet[]
+  factsCreated             FactSheetItem[]       @relation("FactCreatedBy")
+  factsVerified            FactSheetItem[]       @relation("FactVerifiedBy")
+  aiDrafts                 AiDraft[]
+  importSessions           ImportSession[]
+  researchSources          ResearchSource[]
+  companyBriefs            CompanyBrief[]
+  onboarding               OnboardingProgress[]
+  copilotThreads           CopilotThread[]
+  copilotTurns             CopilotTurn[]
   // App relations (not from the generator): AI feature 7.
-  scorecardNarratives ScorecardNarrative[]
-  startedExperiments  TemplateExperiment[]
+  scorecardNarratives      ScorecardNarrative[]
+  startedExperiments       TemplateExperiment[]
   // From the MCP plugin (lib/auth.ts), via the generator.
-  oauthclients        OauthClient[]
-  oauthrefreshtokens  OauthRefreshToken[]
-  oauthaccesstokens   OauthAccessToken[]
-  oauthconsents       OauthConsent[]
+  oauthclients             OauthClient[]
+  oauthrefreshtokens       OauthRefreshToken[]
+  oauthaccesstokens        OauthAccessToken[]
+  oauthconsents            OauthConsent[]
   // App relation (not from the generator): the MCP rate limit.
-  mcpRateLimits       McpRateLimit[]
+  mcpRateLimits            McpRateLimit[]
   // Time Capsule.
-  handoffReports      HandoffReport[]
-  cardsApproved       RelationshipCard[]    @relation("CardApprovedBy")
-  assistantActivity   AssistantActivity[]
-  redactionsMade      ArchiveRedaction[]
+  handoffReports           HandoffReport[]
+  cardsApproved            RelationshipCard[]    @relation("CardApprovedBy")
+  assistantActivity        AssistantActivity[]
+  redactionsMade           ArchiveRedaction[]
+  // Previous versions this person replaced.
+  previousVersionsReplaced PreviousVersion[]     @relation("PreviousVersionReplacedBy")
 
   @@unique([email])
   @@map("user")
@@ -160,6 +162,7 @@ model Workspace {
   archiveRedactions   ArchiveRedaction[]
   // MCP: what assistants changed.
   assistantActivity   AssistantActivity[]
+  previousVersions    PreviousVersion[]
 
   @@unique([slug])
   @@map("workspace")
@@ -445,11 +448,22 @@ enum Channel {
   OTHER
 }
 
-// Where a claim, an outreach entry or a stage move was made: in the app, or by the person's AI
-// assistant through the MCP server. The company page marks assistant-made history.
+// Where a claim, an outreach entry, a stage move or a previous version was made: in the app, or by
+// the person's AI assistant through the MCP server. The company page marks assistant-made history.
 enum Via {
   APP
   ASSISTANT
+}
+
+// Which field a previous version is of: a company's name, industry, website or notes, or a
+// contact's name, email or title (lib/previous-versions.ts).
+enum VersionField {
+  NAME
+  INDUSTRY
+  WEBSITE
+  NOTES
+  EMAIL
+  TITLE
 }
 
 model Company {
@@ -489,6 +503,8 @@ model Company {
   relationshipCards RelationshipCard[]
   // MCP: what assistants changed on this company.
   assistantActivity AssistantActivity[]
+  // Values replaced in the last hour.
+  previousVersions  PreviousVersion[]
 
   // Lets contacts and outreach point at (company, workspace) together, so a row can never
   // link to a company in a different workspace.
@@ -555,10 +571,14 @@ model Contact {
   title       String?
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  company   Company   @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
-  aiDrafts  AiDraft[]
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  aiDrafts         AiDraft[]
+  previousVersions PreviousVersion[]
 
+  // Lets previous versions point at (contact, company, workspace) together, so a slot can never
+  // name a contact of another company or workspace.
+  @@unique([id, companyId, workspaceId])
   @@index([companyId, workspaceId])
   @@index([workspaceId])
 }
@@ -1232,4 +1252,37 @@ model AssistantActivity {
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([companyId])
   @@index([userId])
+}
+
+// ----- Previous versions -----
+
+// The value a field held before its latest change, kept for one hour so a person or their assistant
+// can put it back (lib/previous-versions.ts). One row ("slot") per company field or contact field:
+// subjectId is the company's id for a company field and the contact's id for a contact field (a
+// CHECK in the migration keeps the two straight), and (subjectId, field) is unique, so a new change
+// to a field replaces its slot. value is null when the field was empty. replacedAt is set by the
+// database clock; rows older than an hour are never read and are deleted. Deleting the company, the
+// contact, the workspace or the person removes the row with it.
+model PreviousVersion {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  companyId    String
+  contactId    String?
+  subjectId    String
+  field        VersionField
+  value        String?
+  replacedById String
+  via          Via          @default(APP)
+  replacedAt   DateTime     @default(dbgenerated("statement_timestamp()")) @db.Timestamptz(3)
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company    Company   @relation(fields: [companyId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  contact    Contact?  @relation(fields: [contactId, companyId, workspaceId], references: [id, companyId, workspaceId], onDelete: Cascade)
+  replacedBy User      @relation("PreviousVersionReplacedBy", fields: [replacedById], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, field])
+  @@index([workspaceId, companyId, replacedAt])
+  @@index([replacedAt])
+  @@index([contactId, companyId, workspaceId])
+  @@index([replacedById])
 }

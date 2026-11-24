@@ -184,6 +184,10 @@ export function websiteHref(website: string | null): string | null {
   return /^https?:\/\//i.test(website) ? website : `https://${website}`;
 }
 
+// Plain LF line breaks. Browsers send form text with CRLF, while "Add to notes" and the assistant
+// tools write LF, so text is compared and stored with LF only.
+export const lf = (v: string) => v.replace(/\r\n?/g, "\n");
+
 // Optional text: trimmed, and an empty box is stored as null rather than "".
 const optionalText = (max: number, label: string) =>
   z
@@ -205,7 +209,7 @@ export const companyFieldsSchema = z.object({
   website: optionalText(COMPANY_LIMITS.website, "Website").refine((v) => v === null || isWebAddress(v), {
     message: "Enter a website like acme.com or https://acme.com.",
   }),
-  notes: optionalText(COMPANY_LIMITS.notes, "Notes"),
+  notes: optionalText(COMPANY_LIMITS.notes, "Notes").transform((v) => (v === null ? null : lf(v))),
 });
 
 // The ids of look-alikes the person said are separate, sent as one comma-separated value.
@@ -224,7 +228,7 @@ const originalText = z
   .string()
   .max(COMPANY_LIMITS.notes)
   .nullable()
-  .transform((v) => v || null);
+  .transform((v) => (v ? lf(v) : null));
 
 export const updateCompanySchema = z.object({
   workspaceId: id,
@@ -235,6 +239,17 @@ export const updateCompanySchema = z.object({
 });
 
 export const companyRefSchema = z.object({ workspaceId: id, companyId: id });
+
+// "Restore" under a previous version on the company page: which one, and a digest of the value the
+// page showed as current (lib/previous-versions.ts valueDigest), so a change since it loaded is caught.
+// field and contactId (empty for a company field) name the field the row was for, so a refusal can
+// say the field was changed again when the row's own id is gone.
+export const restoreVersionSchema = companyRefSchema.extend({
+  versionId: id,
+  expected: z.string().regex(/^[0-9a-f]{64}$/),
+  field: z.enum(["NAME", "INDUSTRY", "WEBSITE", "NOTES", "EMAIL", "TITLE"]),
+  contactId: optionalId,
+});
 
 // stay=board keeps the person on the board after unarchiving; otherwise their page opens.
 export const unarchiveSchema = companyRefSchema.extend({ stay: z.enum(["board"]).nullable() });
@@ -267,7 +282,6 @@ export const draftEmailSchema = companyRefSchema.extend({
 // "Check again" on an edited draft: the text as it is in the boxes now. Browsers send form text with
 // CRLF line breaks while the page holds plain LF, so line breaks are normalized first; otherwise the
 // stored check would never match the text on screen.
-const lf = (v: string) => v.replace(/\r\n?/g, "\n");
 export const checkDraftSchema = z.object({
   workspaceId: id,
   draftId: id,
@@ -718,6 +732,24 @@ export const mcpUpdateCompanySchema = z.object({
       notes: mcpClearable(COMPANY_LIMITS.notes, "The notes as get_company returned them, null if there were none."),
     })
     .describe("The current value of every field in changes, exactly as get_company returned it. If someone changed it since, nothing is saved."),
+  separateFrom: mcpSeparateFrom,
+});
+
+export const mcpRestorePreviousVersionSchema = z.object({
+  workspaceId: mcpWorkspace,
+  companyId: mcpCompany,
+  versionId: mcpId("The previous version's id, from previousVersions in get_company."),
+  field: z
+    .enum(["name", "industry", "website", "notes", "email", "title"])
+    .optional()
+    .describe("The version's field, from previousVersions in get_company. Send it with contactId, so a field that was changed again is reported as changed."),
+  contactId: z.string().max(64).nullable().optional().describe("The version's contactId from previousVersions in get_company, null for a company field."),
+  current: z
+    .string()
+    .max(COMPANY_LIMITS.notes)
+    .refine(hasStorableText, NUL_MESSAGE)
+    .nullable()
+    .describe("The field's value now, exactly as get_company returned it, or null if it is empty. If it changed since, nothing is restored."),
   separateFrom: mcpSeparateFrom,
 });
 

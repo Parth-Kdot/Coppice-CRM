@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { CONTACT_LIMITS } from "@/lib/limits";
+import type { PreviousItem } from "@/lib/previous-versions-copy";
 import { Disclosure, LazyDisclosure, useLazyDisclosure } from "../disclosure";
 import { focusSoon } from "../focus";
 import { CopyLinkIcon } from "../icons";
 import { OverflowMenu } from "../overflow-menu";
 import { useNotify } from "../providers";
 import { ShowMore } from "../show-more";
+import { PreviousVersions } from "./previous-versions";
 import type { Action } from "./types";
 import "../company.css";
 import "../templates.css";
@@ -36,7 +38,24 @@ function ContactInputs({ name, email, title }: { name?: string; email?: string |
 
 type ContactActions = { add: Action; update: Action; remove: Action };
 
-function ContactRow({ contact, ids, actions, readOnly }: { contact: ContactData; ids: { workspaceId: string; companyId: string }; actions: ContactActions; readOnly: boolean }) {
+function ContactRow({
+  contact,
+  ids,
+  actions,
+  readOnly,
+  previous,
+  restore,
+  stamp,
+}: {
+  contact: ContactData;
+  ids: { workspaceId: string; companyId: string };
+  actions: ContactActions;
+  readOnly: boolean;
+  // The values this contact's fields held before their latest change, each with a Restore.
+  previous: PreviousItem[];
+  restore?: Action;
+  stamp: number;
+}) {
   const [editing, setEditing] = useState(false);
   const notify = useNotify();
   const rowId = `contact-${contact.id}`;
@@ -99,6 +118,7 @@ function ContactRow({ contact, ids, actions, readOnly }: { contact: ContactData;
           />
         )}
       </div>
+      {!editing && !readOnly && restore && previous.length > 0 && <PreviousVersions items={previous} ids={ids} restore={restore} boxed={false} drawnAt={stamp} />}
       {editing && (
         <div className="lg-contactedit">
           <ActionForm
@@ -112,6 +132,10 @@ function ContactRow({ contact, ids, actions, readOnly }: { contact: ContactData;
             <input type="hidden" name="workspaceId" value={ids.workspaceId} />
             <input type="hidden" name="companyId" value={ids.companyId} />
             <input type="hidden" name="contactId" value={contact.id} />
+            {/* What the form loaded, so a save sends only the boxes that were changed. */}
+            <input type="hidden" name="original.name" value={contact.name} />
+            <input type="hidden" name="original.email" value={contact.email ?? ""} />
+            <input type="hidden" name="original.title" value={contact.title ?? ""} />
             <ContactInputs name={contact.name} email={contact.email} title={contact.title} />
           </ActionForm>
           <button
@@ -147,12 +171,20 @@ export function ContactsBlock({
   contacts,
   readOnly,
   actions,
+  previous,
+  restore,
+  stamp = 0,
 }: {
   workspaceId: string;
   companyId: string;
   contacts: ContactData[];
   readOnly: boolean;
   actions: ContactActions;
+  // Previous versions by contact id, the Restore action, and the database time of this render.
+  // A contact past the first three stays behind "Show more", and so do its previous versions.
+  previous?: Record<string, PreviousItem[]>;
+  restore?: Action;
+  stamp?: number;
 }) {
   const ids = { workspaceId, companyId };
   const list =
@@ -161,7 +193,7 @@ export function ContactsBlock({
     ) : (
       <ShowMore initial={3} label="contacts" as="ul" listClassName="lg-contacts">
         {contacts.map((c) => (
-          <ContactRow key={c.id} contact={c} ids={ids} actions={actions} readOnly={readOnly} />
+          <ContactRow key={c.id} contact={c} ids={ids} actions={actions} readOnly={readOnly} previous={previous?.[c.id] ?? []} restore={restore} stamp={stamp} />
         ))}
       </ShowMore>
     );

@@ -29,6 +29,7 @@ const TENANT_TABLES = [
   "CompanyBriefPage",
   "OnboardingProgress",
   "AssistantActivity",
+  "PreviousVersion",
 ] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {
@@ -36,6 +37,7 @@ async function seedTenantRows(tenant: Tenant, suffix: string) {
     const { workspaceId, userId } = tenant;
     await tx.company.create({ data: { id: `co-${suffix}`, workspaceId, name: `Company ${suffix}`, nameKey: `company ${suffix}` } });
     await tx.contact.create({ data: { id: `ct-${suffix}`, workspaceId, companyId: `co-${suffix}`, name: "Sam" } });
+    await tx.previousVersion.create({ data: { id: `pv-${suffix}`, workspaceId, companyId: `co-${suffix}`, subjectId: `co-${suffix}`, field: "NOTES", value: "old", replacedById: userId } });
     await tx.template.create({ data: { id: `tp-${suffix}`, workspaceId, name: "First touch", body: "Hi" } });
     await tx.outreach.create({
       data: { id: `or-${suffix}`, workspaceId, companyId: `co-${suffix}`, senderId: userId, templateId: `tp-${suffix}` },
@@ -341,5 +343,65 @@ describe("research tables", () => {
     expect((await withTenant(OFFICER_A, (tx) => tx.researchSource.updateMany({ data: { archivedAt: new Date() } }))).count).toBe(0);
     expect((await withTenant(OFFICER_A, (tx) => tx.researchSource.deleteMany({}))).count).toBe(0);
     expect((await withTenant(A, (tx) => tx.researchSource.updateMany({ data: { label: "renamed" } }))).count).toBe(1);
+  });
+});
+
+describe("previous versions", () => {
+  const versionIds = (tenant: Tenant) => withTenant(tenant, async (tx) => (await tx.previousVersion.findMany({ select: { id: true } })).map((r) => r.id));
+  const slot = (workspaceId: string, companyId: string, extra: { contactId?: string; subjectId?: string; field: "NAME" | "INDUSTRY" | "WEBSITE" | "NOTES" | "EMAIL" | "TITLE"; replacedById?: string }) => ({
+    workspaceId,
+    companyId,
+    contactId: extra.contactId ?? null,
+    subjectId: extra.subjectId ?? extra.contactId ?? companyId,
+    field: extra.field,
+    value: "x",
+    replacedById: extra.replacedById ?? "ownerA",
+  });
+
+  it("each workspace sees only its own slot; an officer sees the workspace's; outsiders and no tenant see none", async () => {
+    expect(await versionIds(A)).toEqual(["pv-a"]);
+    expect(await versionIds(OFFICER_A)).toEqual(["pv-a"]);
+    expect(await versionIds(B)).toEqual(["pv-b"]);
+    expect(await versionIds({ userId: "ownerB", workspaceId: "a" })).toEqual([]);
+    expect(await prisma.previousVersion.count()).toBe(0);
+  });
+
+  it("A can't create one in workspace B, nor one that points at B's company", async () => {
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("b", "co-b", { field: "INDUSTRY" }) }))).rejects.toThrow(/row-level security/);
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-b", { field: "INDUSTRY" }) }))).rejects.toThrow(/foreign key/i);
+    expect(await versionIds(B)).toEqual(["pv-b"]);
+  });
+
+  it("a slot can only be added as oneself", async () => {
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { field: "INDUSTRY", replacedById: "officerA" }) }))).rejects.toThrow(/row-level security/);
+  });
+
+  it("A can't delete B's slot, and nobody can update one", async () => {
+    expect((await withTenant(A, (tx) => tx.previousVersion.deleteMany({ where: { id: "pv-b" } }))).count).toBe(0);
+    expect(await versionIds(B)).toEqual(["pv-b"]);
+    await expect(withTenant(A, (tx) => tx.previousVersion.updateMany({ where: { id: "pv-a" }, data: { value: "changed" } }))).rejects.toThrow(/permission denied/);
+  });
+
+  it("a company slot of a contact field, and a contact slot whose subject is the company, are refused", async () => {
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { field: "EMAIL" }) }))).rejects.toThrow(/check constraint/);
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { contactId: "ct-a", subjectId: "co-a", field: "TITLE" }) }))).rejects.toThrow(/check constraint/);
+    await expect(withTenant(A, (tx) => tx.previousVersion.create({ data: slot("a", "co-a", { contactId: "ct-a", field: "NOTES" }) }))).rejects.toThrow(/check constraint/);
+  });
+
+  it("deleting the contact removes its slot", async () => {
+    await withTenant(A, (tx) => tx.previousVersion.create({ data: { id: "pv-contact", ...slot("a", "co-a", { contactId: "ct-a", field: "TITLE" }) } }));
+    expect((await versionIds(A)).sort()).toEqual(["pv-a", "pv-contact"]);
+    await withTenant(A, (tx) => tx.contact.deleteMany({ where: { id: "ct-a" } }));
+    expect(await versionIds(A)).toEqual(["pv-a"]);
+  });
+
+  it("the cleanup function is SECURITY DEFINER, and the policy that lets the migration role use it names that role", async () => {
+    // Locally and in CI the migration role is a superuser and bypasses row-level security. On Supabase it
+    // may not, so the owner_purge_expired policy must be for the role that owns the function.
+    const [check] = await prisma.$queryRaw<{ ok: boolean; definer: boolean }[]>`
+      SELECT p.proowner = ANY(pol.polroles) AS ok, p.prosecdef AS definer
+      FROM pg_proc p, pg_policy pol
+      WHERE p.proname = 'purge_expired_previous_versions' AND pol.polname = 'owner_purge_expired'`;
+    expect(check).toEqual({ ok: true, definer: true });
   });
 });

@@ -19,9 +19,9 @@ export const SCOPE_LABELS: Record<string, string> = {
   email: "See your email address",
   offline_access: "Stay connected without asking again (access renews every hour)",
   [READ_SCOPE]:
-    "Read what you can see in workspaces that allow assistants: companies, contacts, notes, outreach history, claims, the follow-up queue, members' names (owners also see emails), facts, templates, stats, research briefs and the year-end handoff",
+    "Read what you can see in workspaces that allow assistants: companies, contacts, notes, the values a change replaced in the last hour, outreach history, claims, the follow-up queue, members' names (owners also see emails), facts, templates, stats, research briefs and the year-end handoff",
   [WRITE_SCOPE]:
-    "Make changes as you in workspaces that allow assistants: add and edit companies and contacts, claim and release, log outreach, set follow-up dates and stages, resolve duplicates and import companies. For owners also facts, templates, research pages, template experiments and the handoff. Permanent deletes happen only after you agree. Every change is listed in Settings, and lines about who is leaving show to owners only",
+    "Make changes as you in workspaces that allow assistants: add and edit companies and contacts and put back a value changed in the last hour, claim and release, log outreach, set follow-up dates and stages, resolve duplicates and import companies. For owners also facts, templates, research pages, template experiments and the handoff. Permanent deletes happen only after you agree. Every change is listed in Settings, and lines about who is leaving show to owners only",
 };
 
 // The site's public address. BETTER_AUTH_URL is already required for Google sign-in; locally it

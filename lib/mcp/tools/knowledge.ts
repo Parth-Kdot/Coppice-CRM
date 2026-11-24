@@ -334,7 +334,7 @@ export async function acceptBriefItemTool(principal: McpPrincipal, args: z.infer
   // An item that is already in the notes is accepted again without a change, so it is not logged again.
   const brief = await loadBrief(member, { id: args.briefId, companyId: args.companyId });
   const already = brief ? [...brief.items, ...brief.inboxes].some((i) => i.id === args.itemId && i.accepted) : false;
-  const result = await acceptBriefItem(member, args.companyId, args.briefId, args.itemId);
+  const result = await acceptBriefItem(member, args.companyId, args.briefId, args.itemId, "ASSISTANT");
   return fromResult(result, async () => {
     if (!already) await recordActivity(principal, member, { tool: "accept_brief_item", action: "updated", companyId: args.companyId });
     return ok({ added: !already, alreadyThere: already });

@@ -37,6 +37,7 @@ export function CompanyHeader({
   notes,
   menu,
   editForm,
+  previous,
 }: {
   name: string;
   industry: string | null;
@@ -48,6 +49,9 @@ export function CompanyHeader({
   notes: string | null;
   menu: HeaderMenu | null;
   editForm: ReactNode;
+  // The previous versions of the company's fields (previous-versions.tsx), hidden while Edit details
+  // is open, like the notes, so nobody restores under an open form.
+  previous?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const stage = useStageMove();
@@ -170,6 +174,7 @@ export function CompanyHeader({
         </p>
       )}
       {notes && !editing && <Clamp text={notes} className="lg-conotes" />}
+      {previous && !editing && previous}
       {editing && (
         <div className="lg-coedit">
           <EditDetailsContext value={ctx}>{editForm}</EditDetailsContext>

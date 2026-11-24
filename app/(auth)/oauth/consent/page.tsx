@@ -174,7 +174,7 @@ export default async function ConsentPage({ searchParams }: PageProps<"/oauth/co
               {workspaces.length === 0
                 ? "None of your workspaces allow assistants yet, so it can't see any workspace data until an owner turns assistants on in Settings."
                 : `It can reach ${workspaces.map((w) => w.workspace.name).join(", ")}: the workspaces where an owner turned assistants on.`}{" "}
-              What it reads, including contact names and emails, company notes, outreach, facts and templates, goes to the AI company behind the assistant.
+              What it reads, including contact names and emails, company notes, the values a change replaced in the last hour, outreach, facts and templates, goes to the AI company behind the assistant.
               If you allow changes, it acts as you and every change it makes is listed in Settings for the whole workspace (lines about who is leaving show to owners only). Claims, outreach and stage
               moves are also marked &quot;via assistant&quot; in the history.
             </p>

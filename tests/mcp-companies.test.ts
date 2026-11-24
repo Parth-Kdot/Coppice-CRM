@@ -1,13 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
 import type { Stage } from "@/generated/prisma/enums";
 import { changeStage, claimCompany, dbToday, logOutreach, markReply } from "@/lib/claims";
-import { addContact, createCompany, getCompanyDetail } from "@/lib/companies";
+import { addContact, createCompany, getCompanyDetail, updateCompany, updateContact } from "@/lib/companies";
 import { addFact } from "@/lib/facts";
 import { addDays } from "@/lib/dates";
 import { domainKey, nameKey } from "@/lib/duplicates";
 import { prisma, withTenant } from "@/lib/db";
 import { clearActivity, activityRows, defineToolTables, OWNER_A, setMcp, tokenCache, type ToolRow } from "./helpers/mcp-tools";
 import { deleteOAuthClients, mcpClient, resultJson, resultText, restoreFetch, routeAppFetches } from "./helpers/oauth";
+import { ageVersion, allVersions, insertVersionAsOwner } from "./helpers/previous-versions";
+import { VERSION_GONE_ASSISTANT } from "@/lib/previous-versions-copy";
 import { resetAndSeed } from "./helpers/seed";
 
 // Groups C and P of the MCP server, against the real database and the official client: the tools
@@ -70,7 +72,7 @@ afterAll(async () => {
 
 // ----- The shared refusal tables -----
 
-type Ctx = { companyId: string; theirs: string; twin: string; contactId: string; repliedId: string; outreachId: string; factId: string };
+type Ctx = { companyId: string; theirs: string; twin: string; contactId: string; versionId: string; repliedId: string; outreachId: string; factId: string };
 const makeContext = async (): Promise<Ctx> => {
   const companyId = await company("Typed Name Co", { industry: "Typed Industry", notes: "Typed notes about the company" });
   const result = await createCompany(B, { name: "Their Co" });
@@ -82,6 +84,9 @@ const makeContext = async (): Promise<Ctx> => {
   );
   const contact = await addContact(OWNER_A, companyId, { name: "Sam Lee", email: "sam@typed.example.com", title: "Typed title" });
   if (!contact.ok) throw new Error("seed");
+  // One previous version, on the contact's title (the company's own fields are used by other rows).
+  await updateContact(OWNER_A, contact.data.contactId, { name: "Sam Lee", title: "Typed title now" });
+  const version = await withTenant(OWNER_A, (tx) => tx.previousVersion.findFirstOrThrow({ select: { id: true } }));
   // A company in a reply stage with one logged email, for mark_reply.
   const repliedId = await company("Replied Co");
   await claimCompany(OWNER_A, repliedId);
@@ -90,7 +95,7 @@ const makeContext = async (): Promise<Ctx> => {
   await changeStage(OWNER_A, repliedId, "REPLIED");
   const fact = await addFact(OWNER_A, "We host 600 students.");
   if (!fact.ok) throw new Error("seed");
-  return { companyId, theirs: result.companyId, twin, contactId: contact.data.contactId, repliedId, outreachId: logged.data.outreachId, factId: fact.data.factId };
+  return { companyId, theirs: result.companyId, twin, contactId: contact.data.contactId, versionId: version.id, repliedId, outreachId: logged.data.outreachId, factId: fact.data.factId };
 };
 const claimed = async (ctx: Ctx) => {
   await claimCompany(OWNER_A, ctx.companyId);
@@ -123,6 +128,12 @@ const ROWS: ToolRow<Ctx>[] = [
       company: true,
       success: (c) => ({ companyId: c.companyId, changes: { industry: "Changed Industry" }, original: { industry: "Typed Industry" } }),
     },
+  },
+  {
+    name: "restore_previous_version",
+    kind: "action",
+    args: (c) => ({ companyId: c.companyId, versionId: c.versionId, current: "Typed title now" }),
+    activity: { tool: "restore_previous_version", action: "updated", company: true },
   },
   {
     name: "set_company_archived",
@@ -436,6 +447,57 @@ describe("get_company", () => {
   });
 });
 
+describe("get_company previousVersions", () => {
+  const edited = async () => {
+    const id = await company("Acme", { notes: "Old notes" });
+    const data = await json("ownerA", "update_company", { companyId: id, changes: { notes: "New notes" }, original: { notes: "Old notes" } });
+    expect(data.saved).toBe(true);
+    return id;
+  };
+
+  it("lists the assistant's own edit with the field, the old value wrapped, who and how, and when it can be restored until", async () => {
+    const id = await edited();
+    const data = await json("officerA", "get_company", { companyId: id });
+    expect(data.previousVersions).toHaveLength(1);
+    const [version] = data.previousVersions;
+    expect(version).toMatchObject({
+      contactId: null,
+      field: "notes",
+      value: { untrusted_text: "Old notes" },
+      replacedBy: { untrusted_text: "ownerA" },
+      via: "ASSISTANT",
+    });
+    expect(version.id).toEqual(expect.any(String));
+    expect(Date.parse(version.restorableUntil) - Date.parse(version.replacedAt)).toBe(60 * 60 * 1000);
+  });
+
+  it("an empty previous value is null, and a contact's field names the contact", async () => {
+    const id = await company("Acme");
+    const added = await addContact(OWNER_A, id, { name: "Sam", email: null, title: "Head" });
+    if (!added.ok) throw new Error("seed");
+    await callAs("ownerA", "save_contact", { companyId: id, contactId: added.data.contactId, email: "sam@acme.example.com" });
+    const data = await json("ownerA", "get_company", { companyId: id });
+    expect(data.previousVersions).toMatchObject([{ contactId: added.data.contactId, field: "email", value: null }]);
+  });
+
+  it("a version past its hour is missing, and an archived company gives an empty list", async () => {
+    const id = await edited();
+    const [slot] = await allVersions();
+    await ageVersion(slot.id, "61 minutes");
+    expect((await json("ownerA", "get_company", { companyId: id })).previousVersions).toEqual([]);
+    const again = await company("Globex", { notes: "Old" });
+    await callAs("ownerA", "update_company", { companyId: again, changes: { notes: "New" }, original: { notes: "Old" } });
+    await patch(again, { archivedAt: new Date() });
+    expect((await json("ownerA", "get_company", { companyId: again })).previousVersions).toEqual([]);
+  });
+
+  it("names the replacer by display name and never returns a member's email", async () => {
+    const id = await edited();
+    const text = resultText(await callAs("officerA", "get_company", { companyId: id }));
+    expect(text).not.toContain("@example.com");
+  });
+});
+
 // ----- The queue and claims -----
 
 describe("get_follow_up_queue", () => {
@@ -719,6 +781,12 @@ describe("update_company", () => {
     expect(data).toMatchObject({ saved: true, changed: true });
     expect(await read(id)).toMatchObject({ name: "Acme", industry: null, website: "acme.example.com", notes: "New notes" });
     expect(await activityRows("a", "officerA")).toMatchObject([{ tool: "update_company", action: "updated", companyId: id }]);
+  });
+
+  it("keeps the replaced value as a previous version made by the assistant", async () => {
+    const id = await company("Acme", { notes: "Old notes" });
+    await callAs("officerA", "update_company", { companyId: id, changes: { notes: "New notes" }, original: { notes: "Old notes" } });
+    expect(await allVersions()).toMatchObject([{ field: "NOTES", value: "Old notes", via: "ASSISTANT", replacedById: "officerA", contactId: null }]);
   });
 
   it("a change someone else made in between is a conflict: both values come back wrapped, nothing is saved or logged", async () => {
@@ -1028,6 +1096,29 @@ describe("save_contact", () => {
     expect((await activityRows("a")).length).toBe(before);
   });
 
+  it("keeps the replaced title as a previous version made by the assistant", async () => {
+    const id = await company("Acme");
+    const added = await addContact(OWNER_A, id, { name: "Sam", email: "sam@acme.example.com", title: "Head" });
+    if (!added.ok) throw new Error("seed");
+    await callAs("officerA", "save_contact", { companyId: id, contactId: added.data.contactId, title: "Director" });
+    expect(await allVersions()).toMatchObject([{ field: "TITLE", value: "Head", via: "ASSISTANT", replacedById: "officerA", contactId: added.data.contactId }]);
+  });
+
+  it("changing only the title leaves an email someone else changed, and the email's previous version, alone", async () => {
+    const id = await company("Acme");
+    const added = await addContact(OWNER_A, id, { name: "Sam", email: "sam@acme.example.com", title: "Head" });
+    if (!added.ok) throw new Error("seed");
+    const contactId = added.data.contactId;
+    await updateContact(OWNER_A, contactId, { email: "sam@new.example.com" });
+    const [emailSlot] = await allVersions();
+    expect(emailSlot).toMatchObject({ field: "EMAIL", value: "sam@acme.example.com" });
+    await callAs("ownerA", "save_contact", { companyId: id, contactId, title: "Director" });
+    expect((await getCompanyDetail(OWNER_A, id))?.contacts[0]).toMatchObject({ email: "sam@new.example.com", title: "Director" });
+    const rows = await allVersions();
+    expect(rows.find((r) => r.field === "EMAIL")?.id).toBe(emailSlot.id);
+    expect(rows.find((r) => r.field === "TITLE")).toMatchObject({ value: "Head" });
+  });
+
   it("refuses a contact that belongs to another company, in this or another workspace, and changes nothing", async () => {
     const mine = await company("Acme");
     const elsewhere = await company("Elsewhere");
@@ -1057,6 +1148,116 @@ describe("save_contact", () => {
       expect(resultText(refused)).toBe("This company is archived. Unarchive it first.");
     }
     expect((await getCompanyDetail(OWNER_A, id))?.contacts).toMatchObject([{ name: "Sam" }]);
+    expect(await activityRows("a")).toEqual([]);
+  });
+});
+
+describe("restore_previous_version", () => {
+  const notesEdited = async () => {
+    const id = await company("Acme", { notes: "Old notes" });
+    await callAs("ownerA", "update_company", { companyId: id, changes: { notes: "New notes" }, original: { notes: "Old notes" } });
+    const [slot] = await allVersions();
+    return { id, slot };
+  };
+  const notesOf = async (id: string) => (await getCompanyDetail(OWNER_A, id))?.notes;
+
+  it("puts a company field back, keeps the value it replaced as the new version, and get_company shows it", async () => {
+    const { id, slot } = await notesEdited();
+    await clearActivity();
+    const data = await json("officerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "New notes" });
+    expect(data).toMatchObject({ restored: true, field: "notes", contactId: null });
+    expect(data.note).toMatch(/can be undone the same way/);
+    expect(await notesOf(id)).toBe("Old notes");
+    const shown = (await json("ownerA", "get_company", { companyId: id })).previousVersions;
+    expect(shown).toMatchObject([{ field: "notes", value: { untrusted_text: "New notes" }, replacedBy: { untrusted_text: "officerA" }, via: "ASSISTANT" }]);
+    expect(shown[0].id).not.toBe(slot.id);
+    expect(await activityRows("a", "officerA")).toMatchObject([{ tool: "restore_previous_version", action: "updated", companyId: id, targetId: null }]);
+  });
+
+  it("puts a contact field back, and the activity row names the contact", async () => {
+    const id = await company("Acme");
+    const added = await addContact(OWNER_A, id, { name: "Sam", email: "sam@acme.example.com" });
+    if (!added.ok) throw new Error("seed");
+    const contactId = added.data.contactId;
+    await updateContact(OWNER_A, contactId, { email: "sam@new.example.com" });
+    const [slot] = await allVersions();
+    const data = await json("ownerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "sam@new.example.com" });
+    expect(data).toMatchObject({ restored: true, field: "email", contactId });
+    expect((await getCompanyDetail(OWNER_A, id))?.contacts[0].email).toBe("sam@acme.example.com");
+    expect(await activityRows("a")).toMatchObject([{ tool: "restore_previous_version", action: "updated", companyId: id, targetId: contactId }]);
+  });
+
+  it("a wrong current value restores nothing, says so, and writes no activity row", async () => {
+    const { id, slot } = await notesEdited();
+    await clearActivity();
+    const refused = await callAs("ownerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "Not what is there" });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toMatch(/nothing was restored/);
+    expect(await notesOf(id)).toBe("New notes");
+    expect(await activityRows("a")).toEqual([]);
+  });
+
+  it("a version past its hour answers with the no longer kept sentence", async () => {
+    const { id, slot } = await notesEdited();
+    await clearActivity();
+    await ageVersion(slot.id, "61 minutes");
+    const refused = await callAs("ownerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "New notes" });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toContain("That previous version is no longer kept.");
+    expect(resultText(refused)).toBe(`${VERSION_GONE_ASSISTANT} Read the company again with get_company.`);
+    expect(resultText(refused)).not.toContain("page");
+    expect(await notesOf(id)).toBe("New notes");
+    expect(await activityRows("a")).toEqual([]);
+  });
+
+  it("an archived company gets the app's sentence", async () => {
+    const { id, slot } = await notesEdited();
+    await patch(id, { archivedAt: new Date() });
+    const refused = await callAs("ownerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "New notes" });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toBe("This company is archived. Unarchive it first.");
+  });
+
+  it("another workspace's version with this workspace's company is gone", async () => {
+    const { id } = await notesEdited();
+    const theirs = await createCompany(B, { name: "Theirs", notes: "Old" });
+    if (theirs.status !== "saved") throw new Error("seed");
+    await updateCompany(B, theirs.companyId, { original: { name: "Theirs", notes: "Old" }, changes: { name: "Theirs", notes: "Newer" } });
+    const foreign = (await allVersions()).find((r) => r.workspaceId === "b");
+    const refused = await callAs("ownerA", "restore_previous_version", { companyId: id, versionId: foreign?.id ?? "none", current: "New notes" });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toContain("no longer kept");
+    expect(await notesOf(id)).toBe("New notes");
+  });
+
+  it("a name restore that meets a look-alike lists it, and with separateFrom it restores", async () => {
+    const id = await company("Acme");
+    await callAs("ownerA", "update_company", { companyId: id, changes: { name: "Initech" }, original: { name: "Acme" } });
+    const [slot] = await allVersions();
+    const newer = await company("Acme");
+    const stopped = await json("ownerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "Initech" });
+    expect(stopped.saved).toBe(false);
+    expect(stopped.possibleDuplicates).toMatchObject([{ id: newer, name: { untrusted_text: "Acme" } }]);
+    expect((await getCompanyDetail(OWNER_A, id))?.name).toBe("Initech");
+    const done = await json("ownerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "Initech", separateFrom: [newer] });
+    expect(done).toMatchObject({ restored: true, field: "name" });
+    expect((await getCompanyDetail(OWNER_A, id))?.name).toBe("Acme");
+  });
+
+  it("an officer may restore, on a company the owner holds", async () => {
+    const { id, slot } = await notesEdited();
+    await claimCompany(OWNER_A, id);
+    const data = await json("officerA", "restore_previous_version", { companyId: id, versionId: slot.id, current: "New notes" });
+    expect(data.restored).toBe(true);
+    expect(await notesOf(id)).toBe("Old notes");
+  });
+
+  it("a previous version equal to the value now changes nothing and writes no row", async () => {
+    const { id } = await notesEdited();
+    await insertVersionAsOwner({ id: "same-as-now", workspaceId: "a", companyId: id, contactId: null, field: "INDUSTRY", value: null, replacedById: "ownerA" });
+    await clearActivity();
+    const data = await json("ownerA", "restore_previous_version", { companyId: id, versionId: "same-as-now", current: null });
+    expect(data).toEqual(expect.objectContaining({ restored: false, changed: false }));
     expect(await activityRows("a")).toEqual([]);
   });
 });

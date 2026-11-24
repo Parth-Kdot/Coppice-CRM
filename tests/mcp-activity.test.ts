@@ -8,6 +8,7 @@ import { ACTIVITY_SHOWN, listActivity } from "@/lib/mcp/activity-list";
 import { OWNER_A, activityRows, clearActivity, tokenCache } from "./helpers/mcp-tools";
 import { deleteOAuthClients, mcpClient, resultJson, restoreFetch, routeAppFetches } from "./helpers/oauth";
 import { asUser } from "./helpers/next-request";
+import { allVersions } from "./helpers/previous-versions";
 import { resetAndSeed } from "./helpers/seed";
 
 vi.mock("next/headers", () => import("./helpers/next-request"));
@@ -227,6 +228,20 @@ describe("the list on the Settings page", () => {
     expect(text).toContain("assistant deleted a contact.");
     expect(text).toContain("assistant changed <a class=\"lg-link\"");
     expect(text).not.toContain("Sam Lee");
+  });
+
+  it("shows a restore as \"restored a previous version on\" with the company's name, and never the value", async () => {
+    const made = await createCompany(OWNER_A, { name: "Acme Corp", notes: "Secret old notes" });
+    if (made.status !== "saved") throw new Error("seed flagged");
+    const acme = made.companyId;
+    await callAs("ownerA", "update_company", { companyId: acme, changes: { notes: "Newer private notes" }, original: { notes: "Secret old notes" } });
+    const [slot] = await allVersions();
+    expect((await callAs("officerA", "restore_previous_version", { companyId: acme, versionId: slot.id, current: "Newer private notes" })).isError).toBeFalsy();
+    const text = section(await page("officerA"));
+    expect(text).toContain("assistant restored a previous version on <a class=\"lg-link\"");
+    expect(text).toContain("Acme Corp");
+    expect(text).not.toContain("Secret old notes");
+    expect(text).not.toContain("Newer private notes");
   });
 
   it("shows only the last 50 rows, newest first, with Show all for the older ones, and never another workspace's rows", async () => {

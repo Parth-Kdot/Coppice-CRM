@@ -110,3 +110,17 @@ export function isSerializationFailure(error: unknown): boolean {
 export async function advisoryXactLock(tx: Prisma.TransactionClient, key: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 }
+
+// The most rows private.purge_expired_previous_versions() deletes in one call (its LIMIT in the
+// previous_versions migration).
+export const PURGE_BATCH = 1000;
+
+// Deletes previous versions (lib/previous-versions.ts) replaced more than an hour ago, in every
+// workspace, and returns how many. It is the migration's SECURITY DEFINER function, which can delete
+// nothing else, so it needs no withTenant. It runs as one statement of its own, never inside an
+// edit's transaction, so it holds no lock an edit could wait on; rows an edit has locked are skipped
+// and caught on a later call.
+export async function purgeExpiredPreviousVersions(): Promise<number> {
+  const [row] = await prisma.$queryRaw<{ purged: number }[]>`SELECT private.purge_expired_previous_versions() AS purged`;
+  return row.purged;
+}

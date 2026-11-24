@@ -284,7 +284,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               look into errors or abuse.
               Ask Coppice sends Groq your question, your last few questions in that conversation, the names of companies it just showed you, and the industry names your workspace uses,
               and Groq keeps them as described above. Notes, contacts and outreach history are not sent; answers are read from your workspace by code.
-              An AI assistant a member connects is separate (see AI assistants below): what it reads, including contact names and emails, notes,
+              An AI assistant a member connects is separate (see AI assistants below): what it reads, including contact names and emails, notes and the values a change replaced in the last hour,
               facts, templates and stats, goes to the company behind it, and Coppice&apos;s masking does not apply.
             </p>
             <p className="max-w-[66ch]">{CAPSULE_PRIVACY}</p>
@@ -344,7 +344,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               <WarningIcon size={16} />
               <span>
                 Everything an assistant reads here goes to the AI company behind it, under that company&apos;s terms: company names and
-                notes, contact names, emails and titles, outreach notes, members&apos; names, facts, templates, stats and handoff cards. Owners&apos;
+                notes, contact names, emails and titles, the values a change replaced in the last hour, outreach notes, members&apos; names, facts, templates, stats and handoff cards. Owners&apos;
                 assistants also get members&apos; emails and unverified facts. Coppice&apos;s own masking does not apply.
               </span>
             </p>

@@ -17,10 +17,10 @@ import { resetAndSeed } from "./helpers/seed";
 const text = (id: string) => GUIDE.find((t) => t.id === id)!.body.join("\n");
 
 describe("the guide's shape", () => {
-  it("has about 14 topics with distinct ids, titles and summaries", () => {
-    expect(GUIDE).toHaveLength(14);
-    expect(new Set(GUIDE.map((t) => t.id)).size).toBe(14);
-    expect(new Set(GUIDE.map((t) => t.title)).size).toBe(14);
+  it("has about 15 topics with distinct ids, titles and summaries", () => {
+    expect(GUIDE).toHaveLength(15);
+    expect(new Set(GUIDE.map((t) => t.id)).size).toBe(15);
+    expect(new Set(GUIDE.map((t) => t.title)).size).toBe(15);
     expect(GUIDE_IDS).toEqual(GUIDE.map((t) => t.id));
   });
 
@@ -32,6 +32,7 @@ describe("the guide's shape", () => {
       "queue",
       "stages",
       "duplicates",
+      "previous-versions",
       "import",
       "templates-stats",
       "drafts",

@@ -1,11 +1,12 @@
 import type { Membership } from "@/lib/authz";
-import { releaseForArchive } from "@/lib/claims";
+import { dbNow, releaseForArchive } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
 import { domainKey, matchReasons, nameKey, orderedPair, type MatchReason } from "@/lib/duplicates";
 import { notFound } from "@/lib/messages";
+import { COMPANY_VERSION_FIELDS, CONTACT_VERSION_FIELDS, purgeQuietly, readPreviousVersions, savePreviousVersions, type ContactKey } from "@/lib/previous-versions";
 import { activeTemplatesIn } from "@/lib/templates";
-import type { ActionResult } from "@/lib/validation";
-import type { Channel, Prisma } from "@/generated/prisma/client";
+import { lf, type ActionResult } from "@/lib/validation";
+import type { Channel, Prisma, Via } from "@/generated/prisma/client";
 
 // Company and contact logic. Every function runs inside withTenant, so row-level security limits
 // it to the caller's workspace; each query also names workspaceId itself.
@@ -130,28 +131,38 @@ export function createCompany(tenant: Tenant, fields: CompanyFields, separateFro
 
 const EDITABLE: EditableField[] = ["name", "industry", "website", "notes"];
 const value = (fields: CompanyFields, field: EditableField) => fields[field] ?? null;
+// Equal, or equal apart from CRLF against LF line breaks (a form sends CRLF, an assistant writes LF).
+export const sameText = (a: string | null, b: string | null) => (a ?? null) === (b ?? null) || (a !== null && b !== null && lf(a) === lf(b));
 
 // Saves only the fields the person actually changed, and only if each one still holds the value
 // their form loaded. That check and the write are one UPDATE, so two people editing at the same
 // moment can't overwrite each other: editing different fields both succeed, the same field is a
 // conflict the second person sees (with the other value) instead of a silent overwrite.
-export function updateCompany(
+// After a save, each changed field's previous value is kept for an hour (lib/previous-versions.ts).
+export async function updateCompany(
   tenant: Tenant,
   companyId: string,
   edit: CompanyEdit,
   separateFrom: string[] = [],
+  // Who made the change, for its previous version: the app, or the person's assistant (MCP).
+  via: Via = "APP",
 ): Promise<ActionResult<SaveResult>> {
-  return withTenant(tenant, async (tx) => {
+  const result = await withTenant<ActionResult<SaveResult>>(tenant, async (tx) => {
     const where = { id: companyId, workspaceId: tenant.workspaceId };
     const current = await tx.company.findFirst({ where, select: { name: true, industry: true, website: true, notes: true } });
     if (!current) return notFound("Company");
 
-    const changed = EDITABLE.filter((f) => value(edit.changes, f) !== value(edit.original, f));
+    // A field whose original differs from what is stored only in its line breaks is the stored value,
+    // so a note an assistant saved with LF can still be edited from a form that sends CRLF.
+    const original = { ...edit.original };
+    for (const f of EDITABLE) if (sameText(value(original, f), value(current, f))) (original as Record<string, string | null>)[f] = value(current, f);
+    const changed = EDITABLE.filter((f) => !sameText(value(edit.changes, f), value(original, f)));
     if (changed.length === 0) return { ok: true, data: { status: "saved", companyId } };
 
-    const conflictsWith = (now: CompanyFields): FieldConflict[] =>
+    // exact: after a failed guarded UPDATE, where even a line-break difference means a change landed.
+    const conflictsWith = (now: CompanyFields, exact = false): FieldConflict[] =>
       changed
-        .filter((f) => value(now, f) !== value(edit.original, f))
+        .filter((f) => (exact ? value(now, f) !== value(original, f) : !sameText(value(now, f), value(original, f))))
         .map((f) => ({ field: f, theirs: value(now, f), yours: value(edit.changes, f) }));
     const early = conflictsWith(current);
     if (early.length > 0) return { ok: true, data: { status: "conflict", conflicts: early } };
@@ -165,16 +176,21 @@ export function updateCompany(
       await recordSeparate(tx, tenant, companyId, confirmedSeparate);
     }
 
-    const originals = Object.fromEntries(changed.map((f) => [f, value(edit.original, f)]));
+    const originals = Object.fromEntries(changed.map((f) => [f, value(original, f)]));
     const { count } = await tx.company.updateMany({ where: { ...where, ...originals }, data: { ...changes, ...keys } });
     if (count === 0) {
       // Someone saved the same field between our read and our write. (Companies are never
       // deleted, only archived, so the row is still there.)
       const now = await tx.company.findFirstOrThrow({ where, select: { name: true, industry: true, website: true, notes: true } });
-      return { ok: true, data: { status: "conflict", conflicts: conflictsWith(now) } };
+      return { ok: true, data: { status: "conflict", conflicts: conflictsWith(now, true) } };
     }
+    // The value each changed field held is the one the guarded UPDATE just matched (original),
+    // so it is what the field held right before this change. Same transaction, same row lock.
+    await savePreviousVersions(tx, tenant, { companyId, contactId: null }, changed.map((f) => ({ field: COMPANY_VERSION_FIELDS[f], value: value(original, f) })), via);
     return { ok: true, data: { status: "saved", companyId } };
   });
+  if (result.ok && result.data.status === "saved") await purgeQuietly();
+  return result;
 }
 
 // Hidden from the board and queue, kept with all its history, and recoverable. A company someone
@@ -277,10 +293,12 @@ async function readCompanyDetail(tx: Tx, tenant: Tenant, companyId: string, opti
 export type LookAlike = { id: string; name: string };
 
 // The whole company page in one transaction, one query after another: the company, the
-// workspace's industries (for Edit details), its templates (for the log form) and up to three
-// active look-alikes. One pooled connection per page view instead of one per list.
-export function getCompanyPage(tenant: Tenant, companyId: string, options: DetailOptions = {}) {
-  return withTenant(tenant, async (tx) => {
+// workspace's industries (for Edit details), its templates (for the log form), up to three
+// active look-alikes and the values replaced in the last hour (previous versions). One pooled
+// connection per page view instead of one per list.
+export async function getCompanyPage(tenant: Tenant, companyId: string, options: DetailOptions = {}) {
+  const now = await dbNow();
+  const page = await withTenant(tenant, async (tx) => {
     const company = await readCompanyDetail(tx, tenant, companyId, options);
     if (!company) return null;
     const industries = await readIndustries(tx, tenant);
@@ -296,8 +314,13 @@ export function getCompanyPage(tenant: Tenant, companyId: string, options: Detai
         take: 3,
       });
     }
-    return { company, industries, templates, lookAlikes };
+    // Values replaced in the last hour, for the page's Restore and get_company. None on an
+    // archived company: nothing about it can be edited until it is back.
+    const previousVersions = company.archivedAt === null ? await readPreviousVersions(tx, tenant.workspaceId, companyId, now) : [];
+    return { company, industries, templates, lookAlikes, previousVersions };
   });
+  await purgeQuietly();
+  return page;
 }
 
 // The latest outreach on a company, for "Which outreach got the reply?" after a stage move.
@@ -359,11 +382,47 @@ export function addContact(tenant: Tenant, companyId: string, fields: ContactFie
   });
 }
 
-export function updateContact(tenant: Tenant, contactId: string, fields: ContactFields): Promise<ActionResult> {
-  return withTenant(tenant, async (tx) => {
-    const { count } = await tx.contact.updateMany({ where: { id: contactId, workspaceId: tenant.workspaceId }, data: fields });
-    return count === 1 ? { ok: true, data: undefined } : notFound("Contact");
+const CONTACT_KEYS: ContactKey[] = ["name", "email", "title"];
+export type ContactSave = { status: "saved" | "unchanged" | "changed" };
+const CONTACT_RACE = "Someone else changed this contact at the same moment. Try again.";
+
+// Changes a contact. A field left out (undefined) keeps its value. The row is read, then updated
+// only if it still holds what was read; if someone saved in between, it reads again (the last save
+// still wins, as it always has for contacts), so the previous version kept is always the value this
+// change replaced. With `expected` (a restore), a field that no longer holds the expected value
+// stops the change: status "changed", nothing written.
+export async function editContact(
+  tenant: Tenant,
+  contactId: string,
+  fields: Partial<ContactFields>,
+  options: { via?: Via; expected?: Partial<Record<ContactKey, string | null>> } = {},
+): Promise<ActionResult<ContactSave>> {
+  const result = await withTenant<ActionResult<ContactSave>>(tenant, async (tx) => {
+    const where = { id: contactId, workspaceId: tenant.workspaceId };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await tx.contact.findFirst({ where, select: { companyId: true, name: true, email: true, title: true } });
+      if (!current) return notFound("Contact");
+      const expected = options.expected ?? {};
+      if ((Object.keys(expected) as ContactKey[]).some((k) => (expected[k] ?? null) !== (current[k] ?? null))) return { ok: true, data: { status: "changed" } };
+      const changed = CONTACT_KEYS.filter((k) => fields[k] !== undefined && (fields[k] ?? null) !== (current[k] ?? null));
+      if (changed.length === 0) return { ok: true, data: { status: "unchanged" } };
+      const data = Object.fromEntries(changed.map((k) => [k, fields[k] ?? null])) as Partial<ContactFields>;
+      const { count } = await tx.contact.updateMany({ where: { ...where, name: current.name, email: current.email, title: current.title }, data });
+      if (count === 1) {
+        await savePreviousVersions(tx, tenant, { companyId: current.companyId, contactId }, changed.map((k) => ({ field: CONTACT_VERSION_FIELDS[k], value: current[k] })), options.via ?? "APP");
+        return { ok: true, data: { status: "saved" } };
+      }
+    }
+    return { ok: false, error: CONTACT_RACE };
   });
+  if (result.ok && result.data.status === "saved") await purgeQuietly();
+  return result;
+}
+
+// The contact form's and save_contact's edit: editContact without a check, answering as before.
+export async function updateContact(tenant: Tenant, contactId: string, fields: Partial<ContactFields>, via: Via = "APP"): Promise<ActionResult> {
+  const result = await editContact(tenant, contactId, fields, { via });
+  return result.ok ? { ok: true, data: undefined } : result;
 }
 
 // Contacts are people's details, not company history, so removing one really deletes it.

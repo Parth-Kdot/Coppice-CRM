@@ -13,6 +13,7 @@ import { ArchivedContacts, ContactsBlock } from "@/components/ledger/company/con
 import { HistoryBlock, OutreachBlock } from "@/components/ledger/company/entries";
 import { CompanyHeader } from "@/components/ledger/company/header";
 import { LogHashFocus } from "@/components/ledger/company/log-hash-focus";
+import { PreviousVersions } from "@/components/ledger/company/previous-versions";
 import { LazyDisclosure } from "@/components/ledger/disclosure";
 import { ChevronLeftIcon, ReleaseIcon } from "@/components/ledger/icons";
 import { LogOutreachForm } from "@/components/ledger/log-form";
@@ -28,6 +29,7 @@ import { DETAIL_TAKE, getCompanyPage } from "@/lib/companies";
 import { daysBetween, day } from "@/lib/dates";
 import { recentDrafts } from "@/lib/drafts";
 import { domainKey } from "@/lib/duplicates";
+import { previousItems } from "@/lib/previous-versions";
 import { latestBrief } from "@/lib/research/brief";
 import { listSources } from "@/lib/research/sources";
 import { verifiedFacts } from "@/lib/facts";
@@ -43,6 +45,7 @@ import {
   moveStage,
   releaseClaim,
   removeContact,
+  restorePreviousVersion,
   unarchiveCompany,
   updateCompany,
   updateContact,
@@ -99,6 +102,7 @@ function hostOf(href: string): string | null {
 // (so the claim ticket would stand alone), under the claim ticket. Officers never see a control the server
 // would refuse: on someone else's claim the stage is read-only and there is no archive or AI. An
 // archived company has no claim, log or AI tools: the same ticket says ARCHIVED and carries Unarchive, its only button.
+// Values changed in the last hour sit under the notes and under each contact, each with Restore.
 export default async function CompanyPage({ params, searchParams }: PageProps<"/[workspaceId]/companies/[companyId]">) {
   const { workspaceId, companyId } = await params;
   const { userId, role } = await requireMembershipOr404(workspaceId);
@@ -106,7 +110,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
   const { olderOutreach, olderHistory } = await flags(searchParams);
   const data = await loadPage(workspaceId, companyId, olderOutreach, olderHistory);
   if (!data) notFound();
-  const { company, industries, templates, lookAlikes } = data;
+  const { company, industries, templates, lookAlikes, previousVersions } = data;
   // The time and date come from the database, the same clock the claim SQL uses (one read per request).
   const now = await dbNow();
   const today = await dbToday();
@@ -114,6 +118,18 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
 
   const isOwner = role === "owner";
   const archived = company.archivedAt !== null;
+  // Values replaced in the last hour, with a Restore for each (none on an archived company). The ages
+  // use the same database time as the read (dbNow is shared by the whole request).
+  const versions = previousItems(
+    previousVersions,
+    { company: { name: company.name, industry: company.industry, website: company.website, notes: company.notes }, contacts: company.contacts },
+    userId,
+    now,
+  );
+  const previous =
+    !archived && versions.company.length > 0 ? (
+      <PreviousVersions items={versions.company} ids={{ workspaceId, companyId: company.id }} restore={restorePreviousVersion} boxed drawnAt={now.getTime()} defaultOpen={versions.mine} />
+    ) : null;
   const closed = TERMINAL_STAGES.includes(company.stage);
   const claim = claimView(company, now, userId);
   // Someone else's live claim, seen by an officer: the server refuses moves, logs and archive.
@@ -186,6 +202,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
       meta={meta}
       notes={company.notes}
       editForm={editForm}
+      previous={previous}
       menu={
         archived
           ? null
@@ -303,6 +320,9 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
       contacts={company.contacts}
       readOnly={false}
       actions={{ add: addContact, update: updateContact, remove: removeContact }}
+      previous={versions.contacts}
+      restore={restorePreviousVersion}
+      stamp={now.getTime()}
     />
   );
 
