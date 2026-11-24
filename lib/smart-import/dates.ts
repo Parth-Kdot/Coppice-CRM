@@ -133,3 +133,20 @@ export function futureHint(proposals: { future?: boolean }[], cycleStart: number
 
 // "Mar 2, 2026", for notes and reasons a person reads.
 export const longDay = (date: string) => formatYmd(date, { month: "short", day: "numeric", year: "numeric" });
+
+// Every month a piece of text names, by code: a month word ("Aug", "March 2nd"), or a numeric date
+// ("3/2", "2026-03-02"), each read on its own the way parseDateText reads a single date. A bare
+// "may" is the verb and never counts. Used to check that a month an AI reported is really in its
+// quote (lib/capsule/check.ts).
+export function monthsMentioned(text: string): number[] {
+  const token = new RegExp(
+    `\\b\\d{4}-\\d{1,2}-\\d{1,2}\\b|\\b\\d{1,2}\\/\\d{1,2}(?:\\/(?:\\d{4}|\\d{2}))?\\b|\\b(?:${MONTH_WORD})\\b\\.?(?:\\s+\\d{1,2}(?:st|nd|rd|th)?\\b)?(?:,?\\s+\\d{4}\\b)?`,
+    "gi",
+  );
+  const months = new Set<number>();
+  for (const [piece] of text.matchAll(token)) {
+    const parts = parseDateText(piece);
+    if (parts) months.add(parts.month);
+  }
+  return [...months].sort((a, b) => a - b);
+}

@@ -14,6 +14,7 @@ const ICONS = {
   brief: EngravedFacts,
   assistants: EngravedClaim,
   ask: EngravedQueue,
+  capsule: EngravedLog,
 } as const;
 
 // Features: one ruled column. The engraved icon sits in the margin, the title and its one line in

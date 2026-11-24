@@ -18,7 +18,7 @@ import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
 import type { FoundCompany } from "@/lib/search";
 import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
-import { AiDraftIcon, BoardIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
+import { AiDraftIcon, BoardIcon, CapsuleIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
 import { asksQuestion } from "./ask/question";
 import { OverdueMark } from "./overdue";
 
@@ -163,6 +163,7 @@ function pageItems(workspaceId: string, query: string, askOn: boolean): PageItem
     ...(askOn
       ? [{ kind: "page" as const, key: "ask", label: "Go to Ask Coppice", hint: "Ask about your pipeline", href: `${base}/ask`, words: "ask coppice question copilot assistant ai help how", icon: <AiDraftIcon size={18} /> }]
       : []),
+    { kind: "page", key: "capsule", label: "Go to Time Capsule", hint: "Your year, and the handoff", href: `${base}/capsule`, words: "time capsule year recap wrapped handoff turnover archive playbook", icon: <CapsuleIcon size={18} /> },
     { kind: "page", key: "settings", label: "Go to Settings", hint: "Members and claim window", href: `${base}/settings`, words: "settings members invite claim window ai owner", icon: <SettingsIcon size={18} /> },
     { kind: "page", key: "workspaces", label: "Switch workspace", hint: "Your workspaces", href: "/workspaces", words: "switch workspace workspaces club team", icon: <UserIcon size={18} /> },
   ];

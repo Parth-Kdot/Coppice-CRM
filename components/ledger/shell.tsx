@@ -3,7 +3,7 @@
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { AiDraftIcon, BoardIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
+import { AiDraftIcon, BoardIcon, CapsuleIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, FactsIcon, ImportIcon, MoreIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, StatsIcon } from "./icons";
 import { LogoMark } from "@/components/brand/logo";
 import { PaletteProvider, SearchBar, usePalette } from "./palette";
 import { useNoteLane } from "./providers";
@@ -16,9 +16,10 @@ import "./shell.css";
 // the search that opens the palette), and the page. Feedback is written in a fixed lane at the
 // bottom that is empty when idle. On a phone the spine gives way to a bottom bar: Queue, Board,
 // Search, + Add (a small sheet: Add a company, Import) and More (Facts, Template stats, Ask Coppice when
-// AI is on, Settings and the account). A company page lights the list tab you came from (queue or board).
+// AI is on, Time Capsule, Settings and the account). A company page lights the list tab you came from
+// (queue or board).
 
-type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "ask" | "settings";
+type Screen = "queue" | "board" | "company" | "newCompany" | "import" | "facts" | "stats" | "ask" | "capsule" | "settings";
 
 function screenOf(pathname: string, workspaceId: string): Screen {
   const rest = pathname.slice(`/${workspaceId}`.length).replace(/\/+$/, "");
@@ -30,6 +31,7 @@ function screenOf(pathname: string, workspaceId: string): Screen {
   if (rest === "/facts") return "facts";
   if (rest === "/stats") return "stats";
   if (rest === "/ask") return "ask";
+  if (rest === "/capsule") return "capsule";
   if (rest === "/settings") return "settings";
   return "queue";
 }
@@ -180,6 +182,7 @@ function PhoneTabs({ workspaceId, workspaceName, screen, listTab, me, accountIte
     { key: "facts", label: "Facts", path: "/facts", icon: <FactsIcon />, screens: ["facts"] },
     { key: "stats", label: "Template stats", path: "/stats", icon: <StatsIcon />, screens: ["stats"] },
     ...(askOn ? [{ key: "ask", label: "Ask Coppice", path: "/ask", icon: <AiDraftIcon />, screens: ["ask" as Screen] }] : []),
+    { key: "capsule", label: "Time Capsule", path: "/capsule", icon: <CapsuleIcon />, screens: ["capsule"] },
     { key: "settings", label: "Settings", path: "/settings", icon: <SettingsIcon />, screens: ["settings"] },
   ];
   const addActive = addLinks.some((l) => l.screens.includes(screen));

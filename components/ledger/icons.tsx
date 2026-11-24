@@ -98,6 +98,18 @@ export function SettingsIcon(props: IconProps) {
 }
 
 // Claim: a bookmark, like the ribbon that marks your place in the book.
+// Time Capsule: a sealed pill-shaped capsule on its side, with its seam and a small sprout mark.
+export function CapsuleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.6" y="6.6" width="14.8" height="6.8" rx="3.4" />
+      <path d="M10 6.6v6.8" />
+      <path d="M5.4 10h2.2" strokeWidth={THIN} />
+      <path d="M12.4 10.2c.2-1 .9-1.6 1.9-1.6 0 1-.7 1.7-1.9 1.6Z" strokeWidth={THIN} />
+    </Icon>
+  );
+}
+
 export function ClaimIcon(props: IconProps) {
   return (
     <Icon {...props}>

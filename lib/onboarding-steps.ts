@@ -24,7 +24,7 @@ export type TourName = "basics" | "ai";
 export type TourRole = "owner" | "member";
 
 // Where a card's control lives. "company" is a company page the tour picks (yours first).
-export type TourRoute = "queue" | "board" | "company" | "import" | "facts" | "ask" | "stats" | "settings";
+export type TourRoute = "queue" | "board" | "company" | "import" | "facts" | "ask" | "stats" | "capsule" | "settings";
 
 export type Illustration = "queue" | "claim" | "log" | "board" | "check" | "draft" | "brief";
 
@@ -86,6 +86,7 @@ export const ROUTE_LABELS: Record<TourRoute, string> = {
   facts: "Go to Facts",
   ask: "Go to Ask Coppice",
   stats: "Go to Template stats",
+  capsule: "Go to the Time Capsule",
   settings: "Go to Settings",
 };
 
@@ -289,6 +290,21 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn, empty = false }: AiCo
       route: null,
       anchors: [],
       link: owner ? { route: "settings", label: "Open Settings" } : undefined,
+    });
+  }
+
+  // Owners only: the handoff to next year's board is theirs to build. It works with AI off, with
+  // cards made from facts alone.
+  if (owner) {
+    steps.push({
+      key: "capsule",
+      kind: "coach",
+      title: "Time Capsule",
+      body: aiWorks
+        ? "At turnover, hand the year on: AI reads notes into cards, and you approve each before officers see it."
+        : "At turnover, hand the year on with cards made from facts. With AI on, it also reads your notes.",
+      route: "capsule",
+      anchors: ["capsule-handoff", "capsule-recap"],
     });
   }
 
