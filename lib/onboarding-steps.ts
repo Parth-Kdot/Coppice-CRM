@@ -9,7 +9,8 @@
 //                     them and is now an owner gets only the invite card.
 //   aiSteps(ctx)      The optional AI tour offered after the basics, grouped by page so it moves as
 //                     little as it can: fact sheet, Smart import, Pitch Drafter, Claim Checker, Who to
-//                     contact (one company page), Ask Coppice, AI assistants, AI usage (Settings), done. With AI
+//                     contact (one company page), Ask Coppice, Explain these numbers (template stats), AI assistants,
+//                     AI usage (Settings), done. With AI
 //                     unavailable or off, the AI-only cards collapse into one card that says so. With
 //                     no company yet, the company-page cards show a drawing instead of a page.
 //
@@ -23,7 +24,7 @@ export type TourName = "basics" | "ai";
 export type TourRole = "owner" | "member";
 
 // Where a card's control lives. "company" is a company page the tour picks (yours first).
-export type TourRoute = "queue" | "board" | "company" | "import" | "facts" | "ask" | "settings";
+export type TourRoute = "queue" | "board" | "company" | "import" | "facts" | "ask" | "stats" | "settings";
 
 export type Illustration = "queue" | "claim" | "log" | "board" | "check" | "draft" | "brief";
 
@@ -84,6 +85,7 @@ export const ROUTE_LABELS: Record<TourRoute, string> = {
   import: "Go to Import",
   facts: "Go to Facts",
   ask: "Go to Ask Coppice",
+  stats: "Go to Template stats",
   settings: "Go to Settings",
 };
 
@@ -257,6 +259,14 @@ export function aiSteps({ role, aiConfigured, aiOn, mcpOn, empty = false }: AiCo
         body: "Ask about your pipeline in plain words. Anything it proposes waits for you to confirm.",
         route: "ask",
         anchors: ["ask-coppice"],
+      },
+      {
+        key: "stats",
+        kind: "coach",
+        title: "Explain these numbers",
+        body: "Template stats in plain words. It uses one AI call, only when you press the button.",
+        route: "stats",
+        anchors: ["explain-stats", "stats-verdict"],
       },
     );
   } else if (!aiConfigured) {

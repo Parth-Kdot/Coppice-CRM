@@ -14,7 +14,7 @@ import "./stats.css";
 
 // The likely range on a 0 to 100% rule: a bar from low to high and a tick at the rate. Drawn with SVG
 // attributes, not inline styles, so the strict style policy allows it.
-function RangeBar({ stat }: { stat: Rated }) {
+export function RangeBar({ stat }: { stat: Rated }) {
   if (!stat.interval || stat.rate === null) return null;
   const x = (v: number) => Math.round(v * 1000) / 10;
   return (
@@ -176,17 +176,21 @@ export function TemplatesTable({
   best,
   worst,
   split,
+  rowMenu,
 }: {
   lines: TemplateLine[];
   noTemplate: TemplateLine;
   best: string | null;
   worst: string | null;
   split: "none" | "industry" | "touch";
+  // A menu after a template's name (owners' "Try a variant"), or nothing.
+  rowMenu?: (line: TemplateLine) => ReactNode;
 }) {
   const nameCell = (line: TemplateLine) => (
     <NameCell label="Template" stat={line.stat}>
       <strong className="lg-wrap-any">{line.name}</strong>
       {line.archived && <span className="lg-badge lg-badge-stale lg-ml">Retired</span>}
+      {rowMenu?.(line)}
     </NameCell>
   );
   return (
