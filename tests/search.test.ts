@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
+import { day } from "@/lib/dates";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { nameKey } from "@/lib/duplicates";
 import { asUser } from "./helpers/next-request";
@@ -90,5 +91,38 @@ describe("company search ranks in the database, before the limit", () => {
 
   it("returns nothing for empty text", async () => {
     expect(await search("ownerA", "a", "   ")).toEqual([]);
+  });
+});
+
+describe("company search counts follow-up days on the database clock", () => {
+  it("gives days overdue and the due date from the database, even when Node's clock is years off", async () => {
+    await seed(OWNER, [{ name: "Stark Past" }, { name: "Stark Today" }, { name: "Stark Ahead" }, { name: "Stark None" }]);
+    // Follow-ups set from the database clock: 3 days ago, now, and 2 days ahead.
+    await withTenant(OWNER, async (tx) => {
+      await tx.$executeRaw`UPDATE "Company" SET "nextFollowUpAt" = now() - interval '3 days' WHERE "workspaceId" = 'a' AND name = 'Stark Past'`;
+      await tx.$executeRaw`UPDATE "Company" SET "nextFollowUpAt" = now() WHERE "workspaceId" = 'a' AND name = 'Stark Today'`;
+      await tx.$executeRaw`UPDATE "Company" SET "nextFollowUpAt" = now() + interval '2 days' WHERE "workspaceId" = 'a' AND name = 'Stark Ahead'`;
+    });
+    const stored = await withTenant(OWNER, (tx) => tx.company.findMany({ where: { workspaceId: "a", name: { startsWith: "Stark" } }, select: { name: true, nextFollowUpAt: true } }));
+    const dueOn = (name: string) => {
+      const at = stored.find((c) => c.name === name)?.nextFollowUpAt;
+      return at ? day(at) : null;
+    };
+
+    // Only Date is faked, so the database connection keeps working while Node thinks it is 2031.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2031-06-01T12:00:00Z"));
+    let found;
+    try {
+      found = await search("ownerA", "a", "stark");
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(found.map((f) => [f.name, f.days, f.dueOn])).toEqual([
+      ["Stark Ahead", -2, dueOn("Stark Ahead")],
+      ["Stark None", null, null],
+      ["Stark Past", 3, dueOn("Stark Past")],
+      ["Stark Today", 0, dueOn("Stark Today")],
+    ]);
   });
 });

@@ -16,7 +16,6 @@ import {
 } from "react";
 import { searchCompanies } from "@/app/(app)/[workspaceId]/search-actions";
 import type { FoundCompany } from "@/lib/search";
-import { day, daysBetween } from "@/lib/dates";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
 import { AiDraftIcon, BoardIcon, CapsuleIcon, FactsIcon, ImportIcon, PlusIcon, QueueIcon, SearchIcon, SettingsIcon, SproutIcon, StageGlyph, StatsIcon, UserIcon } from "./icons";
 import { asksQuestion } from "./ask/question";
@@ -463,8 +462,8 @@ function CommandPalette({ workspaceId, askOn, onClose, onNavigate }: { workspace
 }
 
 // When a company's follow-up is due, with the same levels the queue uses. Closed companies have none.
+// The search worked out the days on the server from the database clock, never the browser's.
 function DueMark({ company }: { company: FoundCompany }) {
-  if (TERMINAL_STAGES.includes(company.stage) || !company.nextFollowUpAt) return <span className="lg-muted">No follow-up</span>;
-  const due = new Date(company.nextFollowUpAt);
-  return <OverdueMark days={daysBetween(due, new Date())} dueOn={day(due)} size={14} />;
+  if (TERMINAL_STAGES.includes(company.stage) || company.days === null || company.dueOn === null) return <span className="lg-muted">No follow-up</span>;
+  return <OverdueMark days={company.days} dueOn={company.dueOn} size={14} />;
 }
