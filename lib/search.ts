@@ -1,5 +1,7 @@
 import type { Stage } from "@/generated/prisma/enums";
 import { literal } from "@/lib/board";
+import { dbNow } from "@/lib/claims";
+import { day, daysBetween } from "@/lib/dates";
 import { withTenant, type Tenant } from "@/lib/db";
 
 // The command palette's company search. A read only: it finds active companies of the workspace
@@ -19,8 +21,11 @@ export type FoundCompany = {
   industry: string | null;
   // Which field matched, in words: "name", "website" or "industry".
   matchedOn: "name" | "website" | "industry";
-  // ISO text of the follow-up date, or null when there is none.
-  nextFollowUpAt: string | null;
+  // Whole days the follow-up is overdue (negative when it is still ahead), counted from the
+  // database clock like the queue rows, so a wrong browser clock can't change it. Null with no follow-up.
+  days: number | null;
+  // The follow-up date in words ("Nov 2"), or null when there is none.
+  dueOn: string | null;
 };
 
 const LIMIT = 8;
@@ -31,6 +36,8 @@ export async function searchCompanies(tenant: Tenant, text: string): Promise<Fou
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "en", { numeric: true, sensitivity: "base" });
   const needle = text.toLowerCase();
   const found: FoundCompany[] = [];
+  // Read before the transaction, the same clock the claim SQL and the queue use.
+  const now = await dbNow();
   await withTenant(tenant, async (tx) => {
     const active = { workspaceId: tenant.workspaceId, archivedAt: null };
     const tiers = [
@@ -49,7 +56,15 @@ export async function searchCompanies(tenant: Tenant, text: string): Promise<Fou
       });
       for (const row of rows.sort(byName)) {
         const matchedOn: FoundCompany["matchedOn"] = row.name.toLowerCase().includes(needle) ? "name" : row.website?.toLowerCase().includes(needle) ? "website" : "industry";
-        found.push({ id: row.id, name: row.name, stage: row.stage, industry: row.industry, matchedOn, nextFollowUpAt: row.nextFollowUpAt?.toISOString() ?? null });
+        found.push({
+          id: row.id,
+          name: row.name,
+          stage: row.stage,
+          industry: row.industry,
+          matchedOn,
+          days: row.nextFollowUpAt ? daysBetween(row.nextFollowUpAt, now) : null,
+          dueOn: row.nextFollowUpAt ? day(row.nextFollowUpAt) : null,
+        });
       }
     }
   });
