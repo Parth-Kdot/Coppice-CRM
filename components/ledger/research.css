@@ -113,6 +113,53 @@
     font-size: var(--fs-2);
     font-weight: 600;
   }
+  /* ---------- The brief's other sections: campus ties, red flags, hook, suggested ask ---------- */
+  .lg-brief-section {
+    margin-top: 18px;
+  }
+  .lg-brief-section-h {
+    color: var(--ink-2);
+  }
+  .lg-brief-section > .lg-hint {
+    margin-top: 4px;
+    max-width: 70ch;
+  }
+  .lg-brief-flags {
+    list-style: none;
+    margin-top: 6px;
+  }
+  .lg-brief-flag {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--rust);
+    background: var(--rust-wash);
+    color: var(--ink);
+  }
+  .lg-brief-flag > svg {
+    flex: none;
+    margin-top: 2px;
+    color: var(--rust);
+  }
+  .lg-brief-flag > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .lg-brief-flag .lg-brief-door {
+    color: var(--rust);
+  }
+  .lg-brief-flag form {
+    margin-top: 6px;
+  }
+  .lg-brief-asktier {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
   .lg-brief-inboxes {
     margin-top: 16px;
   }

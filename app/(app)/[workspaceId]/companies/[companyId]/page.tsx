@@ -31,6 +31,7 @@ import { recentDrafts } from "@/lib/drafts";
 import { domainKey } from "@/lib/duplicates";
 import { previousItems } from "@/lib/previous-versions";
 import { latestBrief } from "@/lib/research/brief";
+import { tierFacts } from "@/lib/research/section-checks";
 import { listSources } from "@/lib/research/sources";
 import { verifiedFacts } from "@/lib/facts";
 import { REPLY_STAGES, TERMINAL_STAGES, STAGE_LABELS } from "@/lib/stages";
@@ -145,11 +146,15 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
   // the drafting reads together, then the research reads together, so at most three run at once.
   const ai = showAi && configured ? await aiUsage(tenant) : null;
   const researchOn = showAi && configured && ai !== null && ai.enabled;
+  // Facts load whenever drafting or research shows: the brief needs them to tell an owner viewing
+  // someone else's company whether a tier fact exists, even though only the drafter uses their text.
   const [facts, drafts, draftedToday] = await Promise.all([
-    canDraft && ai?.enabled ? verifiedFacts(tenant) : [],
+    (canDraft || researchOn) && ai?.enabled ? verifiedFacts(tenant) : [],
     canDraft && ai?.enabled ? recentDrafts(tenant, companyId) : [],
     canDraft && ai?.enabled ? draftsToday(tenant) : 0,
   ]);
+  const drafterFacts = canDraft ? facts : [];
+  const hasTierFacts = tierFacts(facts, now).length > 0;
   const [sources, brief] = await Promise.all([researchOn ? listSources(tenant) : [], researchOn ? latestBrief(tenant, companyId) : null]);
   const companyDomain = domainKey(company.website);
 
@@ -248,12 +253,12 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
             companyId={company.id}
             contacts={company.contacts}
             hasOutreach={company.outreachTotal > 0}
-            factCount={facts.length}
+            factCount={drafterFacts.length}
             usage={{ used: ai.used, limit: ai.limit }}
             daily={{ used: draftedToday, limit: DAILY_DRAFTS_PER_PERSON }}
             initialDrafts={drafts}
             today={today}
-            rules={{ factNumbers: factNumbers(facts), website: company.website }}
+            rules={{ factNumbers: factNumbers(drafterFacts), website: company.website }}
             templates={templates}
             actions={{ draft: draftEmail, check: checkDraft, logOutreach }}
           />
@@ -272,6 +277,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
               return { id: source.id, label: source.label, host, url: source.url, suggested };
             })}
             isOwner={isOwner}
+            hasTierFacts={hasTierFacts}
             usage={{ used: ai.used, limit: ai.limit }}
             initialBrief={brief}
             actions={{ request: requestBrief, accept: acceptBriefItem }}
