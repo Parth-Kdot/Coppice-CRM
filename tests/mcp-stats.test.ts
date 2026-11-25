@@ -152,8 +152,31 @@ describe("get_stats", () => {
       expect(data.stats.best).toBeNull();
       expect(data.stats.worst).toBeNull();
       expect(data.stats.howToRead).toMatch(/at least 20 counted sends/);
+      expect(data.stats.chances).toEqual({ vsOtherRatedInUse: [], leadingPairInUse: null, aiDraftedOverHandWritten: null });
       expect(data.templateLab).toBeNull();
     }
+  });
+
+  it("returns the chance figures the page shows, worked out by code, once two templates in use are rated", async () => {
+    const t1 = await template("Alumni angle");
+    const t2 = await template("Career fair");
+    await sends(t1, 20, 30, 12);
+    await sends(t2, 20, 30, 4);
+    const { stats } = resultJson(await callAs("officerA", "get_stats"));
+    // 12/20 against 4/20 is exactly 4069108/4091349, about 0.99456. The ranges overlap, so nothing is named.
+    expect(stats.best).toBeNull();
+    expect(stats.worst).toBeNull();
+    const byId = Object.fromEntries(stats.chances.vsOtherRatedInUse.map((c: { templateId: string; chance: number }) => [c.templateId, c.chance]));
+    expect(byId[t1]).toBeCloseTo(4069108 / 4091349, 10);
+    expect(byId[t2]).toBeCloseTo(1 - 4069108 / 4091349, 10);
+    expect(stats.chances.leadingPairInUse).toEqual({
+      first: { templateId: t1, name: { untrusted_text: "Alumni angle" } },
+      second: { templateId: t2, name: { untrusted_text: "Career fair" } },
+      chance: expect.closeTo(4069108 / 4091349, 10),
+    });
+    // Every send here is hand-written, so there is no AI-drafted side to compare.
+    expect(stats.chances.aiDraftedOverHandWritten).toBeNull();
+    expect(stats.howToRead).toMatch(/Chances never decide best or worst/);
   });
 
   it("splits by industry, wrapping industry names, and by touch", async () => {

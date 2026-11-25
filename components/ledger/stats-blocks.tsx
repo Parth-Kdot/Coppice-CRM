@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { formatCount, formatPct, formatRange, MATURITY_DAYS, MIN_SENDS, topParts, type Part, type Rated, type TemplateLine } from "@/lib/stats-math";
+import { formatCount, formatPct, formatRange, MATURITY_DAYS, MIN_SENDS, topParts, vsOthersText, type Part, type Rated, type TemplateLine } from "@/lib/stats-math";
 import { Disclosure } from "./disclosure";
 import "./pages.css";
 import "./stats.css";
@@ -63,8 +63,9 @@ function standingOf(stat: Rated, standing: Standing): ReactNode {
   return <span className="lg-muted">Rated</span>;
 }
 
-// The cells after the name, the same for a template, a split row and the comparison table.
-function StatCells({ stat, standing = null, rated = true }: { stat: Rated; standing?: Standing; rated?: boolean }) {
+// The cells after the name, the same for a template, a split row and the comparison table. `chance`
+// is set only on the main row of a rated template in use: its chance against the other rated ones.
+function StatCells({ stat, standing = null, rated = true, chance }: { stat: Rated; standing?: Standing; rated?: boolean; chance?: number }) {
   const counts = stat.sent > 0 ? countsText(stat) : "No sends yet";
   return (
     <>
@@ -90,7 +91,10 @@ function StatCells({ stat, standing = null, rated = true }: { stat: Rated; stand
         )}
       </td>
       <td data-label="Standing" className="lg-c-standing">
-        <span className="lg-cell">{rated ? standingOf(stat, standing) : <span className="lg-muted">Never ranked</span>}</span>
+        <span className="lg-cell">
+          {rated ? standingOf(stat, standing) : <span className="lg-muted">Never ranked</span>}
+          {chance !== undefined && <span className="lg-hint lg-chance">{vsOthersText(chance)}</span>}
+        </span>
       </td>
     </>
   );
@@ -121,8 +125,9 @@ function Head({ first }: { first: string }) {
   );
 }
 
-// The name cell: the name, and on a phone a "Details" line that opens the counts.
-function NameCell({ label, children, stat, sub = false }: { label: string; children: ReactNode; stat: Rated; sub?: boolean }) {
+// The name cell: the name, and on a phone a "Details" line that opens the counts (and the chance,
+// which a phone row has no room for beside the standing).
+function NameCell({ label, children, stat, sub = false, chance }: { label: string; children: ReactNode; stat: Rated; sub?: boolean; chance?: number }) {
   return (
     <td data-label={label} className="lg-c-name">
       <span className="lg-cell">
@@ -131,6 +136,7 @@ function NameCell({ label, children, stat, sub = false }: { label: string; child
           <span className="lg-statdetails">
             <Disclosure variant="inline" summary="Details">
               <span className="lg-cellsub">{countsText(stat)}</span>
+              {chance !== undefined && <span className="lg-cellsub">{vsOthersText(chance)}</span>}
             </Disclosure>
           </span>
         )}
@@ -177,6 +183,7 @@ export function TemplatesTable({
   worst,
   split,
   rowMenu,
+  chances = {},
 }: {
   lines: TemplateLine[];
   noTemplate: TemplateLine;
@@ -185,9 +192,13 @@ export function TemplatesTable({
   split: "none" | "industry" | "touch";
   // A menu after a template's name (owners' "Try a variant"), or nothing.
   rowMenu?: (line: TemplateLine) => ReactNode;
+  // Template key to its chance against the other rated templates in use (scorecard().chances.vsOthers).
+  // Only templates in use are given one; a retired template's row never shows a chance.
+  chances?: Record<string, number>;
 }) {
+  const chanceOf = (line: TemplateLine) => (line.archived ? undefined : chances[line.key]);
   const nameCell = (line: TemplateLine) => (
-    <NameCell label="Template" stat={line.stat}>
+    <NameCell label="Template" stat={line.stat} chance={chanceOf(line)}>
       <strong className="lg-wrap-any">{line.name}</strong>
       {line.archived && <span className="lg-badge lg-badge-stale lg-ml">Retired</span>}
       {rowMenu?.(line)}
@@ -203,7 +214,7 @@ export function TemplatesTable({
             <Fragment key={line.key}>
               <tr className="lg-mainrow">
                 {nameCell(line)}
-                <StatCells stat={line.stat} standing={line.key === best ? "best" : line.key === worst ? "worst" : null} />
+                <StatCells stat={line.stat} standing={line.key === best ? "best" : line.key === worst ? "worst" : null} chance={chanceOf(line)} />
               </tr>
               {split !== "none" && <PartRows parts={line.parts} split={split} owner={line.name} />}
             </Fragment>
@@ -251,6 +262,7 @@ export const RULES_NOTE = [
   `A send counts once it is ${MATURITY_DAYS} days old, so a recent email with no answer yet isn't held against its template. Younger sends show as maturing.`,
   `A template is rated only after ${MIN_SENDS} counted sends. Below that it says "too few yet" and isn't ranked.`,
   "The likely range is a 95% Wilson interval: where the true reply rate probably sits. Small samples give wide ranges.",
+  "The chance figures treat each reply rate as uncertain, starting from no opinion (as if one reply and one miss), and work out how likely one group's true rate is to be higher than another's. A template is compared only with the other rated templates people can still use. The figures never decide best or worst.",
   "Best and worst are named only when one template's whole range sits above (or below) every other rated template's range. Overlapping ranges mean the data can't tell them apart yet, so nothing is called. Retired templates are never named.",
   'A reply counts when someone marks which outreach got it (asked when a company moves to Replied or later, or "This got the reply" on the company page).',
   "An AI draft based on a template is counted under AI-drafted, not under that template, so a template's sends are only the emails logged with it by hand.",

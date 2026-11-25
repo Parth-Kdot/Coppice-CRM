@@ -160,6 +160,10 @@
   .lg-cell > .lg-badge {
     display: inline-flex;
   }
+  .lg-chance {
+    display: block;
+    margin-top: 2px;
+  }
   .lg-standing {
     display: grid;
     justify-items: start;
@@ -269,6 +273,10 @@
       width: 100%;
     }
     .lg-stattable tr.lg-subrow td.lg-c-standing {
+      display: none;
+    }
+    /* A phone row has no room for the chance beside the standing; it is in "Details" instead. */
+    .lg-stattable td.lg-c-standing .lg-chance {
       display: none;
     }
     .lg-statdetails {

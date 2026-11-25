@@ -14,7 +14,18 @@ import { requireMembershipOr404 } from "@/lib/authz";
 import { day } from "@/lib/dates";
 import { readNarrative } from "@/lib/scorecard/explain";
 import { workspaceStats } from "@/lib/stats";
-import { formatCount, formatPct, formatRange, MIN_SENDS, type ActiveVerdict, type Rated, type TemplateLine } from "@/lib/stats-math";
+import {
+  authorshipChanceText,
+  formatCount,
+  formatPct,
+  formatRange,
+  MIN_SENDS,
+  pairText,
+  type ActiveVerdict,
+  type LeadingPair,
+  type Rated,
+  type TemplateLine,
+} from "@/lib/stats-math";
 import { getExperimentView } from "@/lib/template-lab/lab";
 import { statsFiltersSchema } from "@/lib/validation";
 import "@/components/ledger/pages.css";
@@ -36,10 +47,14 @@ export async function generateMetadata({ params }: PageProps<"/[workspaceId]/sta
 const sentence = (stat: Rated) =>
   `${formatPct(stat.rate ?? 0)} of ${formatCount(stat.counted)} counted sends got a reply (likely ${formatRange(stat.interval ?? { low: 0, high: 0 })})`;
 
-function Verdict({ templates, verdict }: { templates: TemplateLine[]; verdict: ActiveVerdict }) {
+function Verdict({ templates, verdict, pair }: { templates: TemplateLine[]; verdict: ActiveVerdict; pair: LeadingPair | null }) {
   const find = (key: string | null) => templates.find((t) => t.key === key);
   const b = find(verdict.best);
   const w = find(verdict.worst);
+  // With no best named, the chance between the two leading rated templates in use. Once a best is
+  // named that chance is nearly always over 99%, so it adds nothing there.
+  const first = pair && !b ? find(pair.first) : undefined;
+  const second = pair && !b ? find(pair.second) : undefined;
   const { rated } = verdict;
   const inUse = templates.filter((t) => !t.archived).length;
   const named = (label: "Best" | "Worst", line: TemplateLine) => (
@@ -77,6 +92,7 @@ function Verdict({ templates, verdict }: { templates: TemplateLine[]; verdict: A
         {rated >= 2 && b && !w && <p className="lg-muted">No clear worst: the others&apos; ranges overlap.</p>}
         {rated >= 2 && w && !b && <p className="lg-muted">No clear best: the others&apos; ranges overlap.</p>}
         {why && <p>{why}</p>}
+        {pair && first && second && <p className="lg-hint">{pairText(first.name, second.name, pair.chance)}.</p>}
         {verdict.retiredBetter && (
           <p className="lg-hint">
             A retired template did better: {verdict.retiredBetter.name} ({formatPct(verdict.retiredBetter.rate)}).
@@ -162,7 +178,7 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
         </ul>
       </Disclosure>
 
-      <Verdict templates={stats.templates} verdict={stats.activeVerdict} />
+      <Verdict templates={stats.templates} verdict={stats.activeVerdict} pair={stats.chances.pair} />
 
       {(aiOn || explained.narrative) && (
         <ExplainPanel
@@ -198,6 +214,7 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
             best={stats.activeVerdict.best}
             worst={stats.activeVerdict.worst}
             split={split}
+            chances={stats.chances.vsOthers}
             rowMenu={
               role === "owner" && aiOn
                 ? (line) =>
@@ -218,6 +235,7 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
       {ai.sent + hand.sent > 0 && (
         <Disclosure summary={authorship} className="lg-stats-more">
           <p className="lg-hint">Emails only, since an AI draft is always an email.</p>
+          {stats.chances.authorship !== null && <p className="lg-hint">{authorshipChanceText(stats.chances.authorship)}.</p>}
           <CompareTable
             first="Email"
             rows={[

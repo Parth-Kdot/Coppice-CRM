@@ -125,6 +125,7 @@ export const GUIDE: GuideTopic[] = [
       "Owners write templates in Settings, and every officer can pick one when logging outreach or drafting. A template can use only the {{firstName}}, {{senderName}} and {{orgName}} placeholders. A template that was used is archived, never deleted, so its history stays in the stats.",
       `A send counts toward a template's reply rate only once it is ${days(MATURITY_DAYS)} old, so a recent email with no answer yet isn't held against it.`,
       `A template is rated only after ${MIN_SENDS} counted sends. Each rate comes with a 95 percent range. Coppice names a best or worst template only when its whole range sits above or below every other rated template's range.`,
+      "Next to the ranges, chance figures say how likely one template's true reply rate is to be higher than the other rated templates in use, worked out exactly by code from a uniform starting guess. They never decide best or worst.",
       "A reply counts only when someone marks which outreach got it. The stats page points out companies that replied with nothing marked.",
     ],
   },

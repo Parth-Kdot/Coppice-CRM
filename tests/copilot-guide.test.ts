@@ -112,6 +112,8 @@ describe("numbers come from the constants the code uses", () => {
   it("stats: the maturity and the minimum sends", () => {
     expect(text("templates-stats")).toContain(`${MATURITY_DAYS} days old`);
     expect(text("templates-stats")).toContain(`after ${MIN_SENDS} counted sends`);
+    expect(text("templates-stats")).toContain("chance figures");
+    expect(text("templates-stats")).toContain("never decide best or worst");
   });
 
   it("drafts, research and Ask Coppice: the daily limits, and the packet limits", () => {

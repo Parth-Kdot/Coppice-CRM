@@ -457,7 +457,7 @@ function registerStatsTools(server: McpServer, principal: McpPrincipal) {
     {
       title: "Template stats",
       description:
-        "The numbers the stats page shows: each template's sends, replies and likely range, best and worst when the data allows, by touch, AI-drafted against hand-written, gaps, and the Template Lab experiment.",
+        "The numbers the stats page shows: each template's sends, replies and likely range, best and worst when the data allows, and code-computed chances, by touch, AI-drafted against hand-written, gaps, and the Template Lab experiment.",
       inputSchema: mcpGetStatsSchema,
       annotations: READ,
     },
