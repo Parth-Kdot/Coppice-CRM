@@ -150,7 +150,9 @@ export function SuggestedAsk(props: SectionProps) {
       <h4 className="lg-tag lg-brief-section-h">{SECTION_HEADINGS.ask}</h4>
       <div className="lg-brief-item">
         <p className="lg-brief-asktier">
-          <span className="lg-tag">Verified fact</span> {ask.old && <span className="lg-badge lg-badge-stale">Over a year old</span>}
+          {/* A changed ask no longer names a fact the workspace stands by, so it isn't called verified. */}
+          <span className="lg-tag">{ask.changed ? "Tier fact, since changed" : "Verified fact"}</span>{" "}
+          {ask.old && <span className="lg-badge lg-badge-stale">Over a year old</span>}
         </p>
         <p className="lg-brief-title">
           <strong>{ask.factText}</strong>

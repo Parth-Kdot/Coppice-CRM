@@ -90,6 +90,8 @@ describe("the brief's sections", () => {
     const changed = draw(brief({ ask: { ...ask, changed: true } }));
     expect(changed).toContain("The tier this ask named changed or is no longer verified. Ask for a new brief.");
     expect(changed).not.toContain('value="a1"');
+    expect(changed).toContain("Tier fact, since changed");
+    expect(changed).not.toContain("Verified fact");
     const old = draw(brief({ ask: { ...ask, old: true } }));
     expect(old).toContain("Over a year old");
     expect(old).toContain('value="a1"');
