@@ -5,9 +5,9 @@ import { plantedInstruction } from "@/lib/smart-import/check";
 import { COMPANY_NOTE_PROMPT_MAX, OUTREACH_NOTE_PROMPT_MAX, OUTREACH_NOTES_PER_COMPANY } from "./limits";
 
 // The notes the model is shown, and exactly as it is shown them (the Time Capsule's prompt side).
-// Notes are text people typed: data, never instructions. Each is masked (emails and phone numbers,
-// in US and international formats), has its angle brackets swapped so it can't close the tags
-// around it, is cut to size, and gets a short id the model cites. A note that reads as an
+// Notes are text people typed: data, never instructions. Each is masked (emails, including ones
+// written out as "bob at acme dot com", and phone numbers in US and international formats), has
+// its angle brackets swapped so it can't close the tags around it, is cut to size, and gets a short id the model cites. A note that reads as an
 // instruction to an AI (plantedInstruction) is left out of the prompt, so it has no id and can
 // never be quoted. Quotes are checked against the text as it was sent, which is what is kept here.
 

@@ -658,6 +658,14 @@ describe("sites named in a brief line or quote", () => {
     expect(cleanLine(line, FETCHED)).toBe(true);
   });
 
+  // A website after a bare "at" is not a written-out address, so the masker leaves it, and the
+  // site check alone decides. A written-out address is a contact detail and drops the line.
+  it("keeps a line naming the fetched site after at, and drops one with a written-out address", () => {
+    expect(cleanLine("Apply at careers.acme.com by March 1.", ["careers.acme.com"])).toBe(true);
+    expect(cleanLine("Email sam at acme dot org to apply.", FETCHED)).toBe(false);
+    expect(cleanLine("Email sam (at) acme.org to apply.", FETCHED)).toBe(false);
+  });
+
   it("refuses a line with a tab or line break in it", () => {
     expect(cleanLine("Apply at evil\n.com today.", FETCHED)).toBe(false);
     expect(cleanLine("Apply at evil\t.com today.", FETCHED)).toBe(false);

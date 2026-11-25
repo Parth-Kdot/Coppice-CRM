@@ -170,6 +170,9 @@ describe("textProblem", () => {
     ["They gave $2,500 in 2025-26.", null],
     ["Emailed 3/2 and 4/15.", null],
     ["write to a@b.co", "contact"],
+    ["write to bob at acme dot com", "contact"],
+    ["write to bob (at) acme.com", "contact"],
+    ["They met at purdue.edu events.", "link"],
     ["+44 20 7946 0958", "contact"],
     ["(765) 555 0142", "contact"],
     ["[phone] twice", "contact"],
@@ -266,6 +269,11 @@ describe("the notes the model is shown", () => {
     expect(text).toContain("[phone]");
     expect(text).not.toMatch(/priya|atlas\.com|555|7946/);
     expect(companiesXml(companies)).not.toMatch(/@|555/);
+  });
+
+  it("masks an address written out to get past a filter", () => {
+    const { companies } = promptCompanies([company({ notes: "Write to bob at acme dot com.", outreach: [out("o1", "Sent to sam (at) atlas.com", 1)] })]);
+    expect(companies[0].notes.map((n) => n.text)).toEqual(["Write to [email].", "Sent to [email]"]);
   });
 
   it("cuts the notes field at 600 characters and an outreach note at 400, after masking", () => {
