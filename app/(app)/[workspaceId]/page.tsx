@@ -7,11 +7,13 @@ import { OverflowMenu } from "@/components/ledger/overflow-menu";
 import { FreshLeads, HeldByOthers, QueueProvider, QueueRow, type QueueRowData, type RowVariant } from "@/components/ledger/queue-row";
 import { Empty, PageHead } from "@/components/ledger/shared";
 import { MoreLink, ShowMore } from "@/components/ledger/show-more";
+import { WeeklyBrief } from "@/components/ledger/weekly-brief";
 import { claimState, dbToday } from "@/lib/claims";
 import { daysBetween, day } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { clampUpto, getQueueHome, QUEUE_STEP, type QueueGroup, type QueueRow as QueueRecord } from "@/lib/queue";
 import { queueFiltersSchema, queueQuery } from "@/lib/validation";
+import { readWeeklyBrief } from "@/lib/weekly-brief";
 import { loadWorkspace } from "./load-workspace";
 import { pageTitle } from "./page-title";
 
@@ -55,6 +57,9 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
 
   // `today` is for the rows' own log form ("Log outreach" opens it under the row); fetched alongside.
   const [home, today] = await Promise.all([getQueueHome(membership, { upto, now }), dbToday()]);
+  // The Monday brief: null (no card, nothing read) when AI is off. Reads what is stored and makes
+  // no AI call; the card's browser side asks for a write after the page is on screen.
+  const brief = await readWeeklyBrief(membership, { now, today });
   const total = home.yours.count + home.grabs.count + home.heldByOthers.count;
   const windowDays = workspace.claimWindowDays;
 
@@ -118,6 +123,8 @@ export default async function QueuePage({ params, searchParams }: PageProps<"/[w
             ]}
           />
         </PageHead>
+
+        {brief && <WeeklyBrief workspaceId={workspaceId} initial={brief} />}
 
         {/* Nothing due: with fresh leads waiting (a sheet just imported, say) that is where to start,
             so they open below; "All caught up" is only said when there is nothing left to pick. */}

@@ -141,6 +141,11 @@ export const ROUTES: Record<AiFeature, Route> = {
   // up to eight short bullets for each of four companies; an answer is at most five sentences.
   CAPSULE_CARDS: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 2000 },
   ARCHIVE_ASK: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 45_000, maxTokens: 700 },
+  // The Monday brief (lib/weekly-brief): a few sentences around the week's counts, once per
+  // workspace a week. Groq, as Ask Coppice already uses it, which keeps Gemini's per-model daily
+  // quota for drafting. Nobody waits on it (the queue loads first), and its reply is the size of
+  // an Explain reply, so Ask Coppice's budget fits.
+  WEEKLY_BRIEF: { provider: "groq", model: "openai/gpt-oss-120b", reasoningEffort: "low", timeoutMs: 30_000, maxTokens: 1500 },
 };
 
 export const providerOf = (feature: AiFeature): Provider => ROUTES[feature].provider ?? "gemini";

@@ -55,6 +55,14 @@ describe("breakdownAiUsage covers every feature", () => {
     expect(b.total).toBe(131);
   });
 
+  it("counts the Monday brief as an Ask Coppice call", () => {
+    const b = breakdownAiUsage([
+      { feature: "COPILOT", status: "SUCCEEDED", count: 6 },
+      { feature: "WEEKLY_BRIEF", status: "SUCCEEDED", count: 1 },
+    ]);
+    expect(b.parts).toEqual([{ key: "ask-coppice", label: "7 Ask Coppice calls", count: 7 }]);
+  });
+
   it("every AiFeature is in exactly one group", () => {
     const all = Object.values(AiFeature);
     expect([...GROUPED_FEATURES].sort()).toEqual([...all].sort());

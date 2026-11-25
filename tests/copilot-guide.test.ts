@@ -11,6 +11,7 @@ import { basicsSteps } from "@/lib/onboarding-steps";
 import { FRESH_CAP, QUEUE_CAP, QUEUE_SIZE } from "@/lib/queue";
 import { MATURITY_DAYS, MIN_SENDS } from "@/lib/stats-math";
 import { TERMINAL_STAGES } from "@/lib/stages";
+import { WEEKLY_BRIEF_PRIVACY } from "@/lib/weekly-brief/privacy";
 import { resetAndSeed } from "./helpers/seed";
 
 // Coppice's own product guide (lib/copilot/guide.ts), which Ask Coppice answers from word for word.
@@ -130,6 +131,17 @@ describe("numbers come from the constants the code uses", () => {
     // Settings is a page, so its source is read.
     const settings = readFileSync("app/(app)/[workspaceId]/settings/page.tsx", "utf8").replace(/\s+/g, " ");
     expect(settings).toContain("the names of companies it just showed you, and the industry names your workspace uses");
+  });
+
+  it("the Monday brief's privacy wording is one constant, used by the guide, the landing page and Settings", () => {
+    expect(text("ai-limits")).toContain(WEEKLY_BRIEF_PRIVACY);
+    expect(TRUST.privacy.find((p) => p.title === "The Monday brief")?.body).toBe(WEEKLY_BRIEF_PRIVACY);
+    // Settings is a page, so its source is read: it renders the constant itself.
+    const settings = readFileSync("app/(app)/[workspaceId]/settings/page.tsx", "utf8");
+    expect(settings).toContain('import { WEEKLY_BRIEF_PRIVACY } from "@/lib/weekly-brief/privacy";');
+    expect(settings).toContain("{WEEKLY_BRIEF_PRIVACY}");
+    expect(WEEKLY_BRIEF_PRIVACY).toContain("Groq");
+    expect(WEEKLY_BRIEF_PRIVACY).toContain("never sends a company, a person or a note");
   });
 
   it("AI limits: the workspace's default and range, and the window", () => {

@@ -118,8 +118,11 @@ export const STORED_MAX_SEGMENTS = 60;
 //  - A sentence is left out, with every segment in it (chips too), when its words hold a ranking,
 //    a number written as a word, or a link. What is kept is what is stored and shown.
 // Then the minimums count over what is kept: two fact chips and one whole sentence. When the verdict
-// is too early to tell and the model's own verdict sentence did not survive, code adds its own.
-export function filterNarrative(reply: ScorecardReply, table: FactTable): NarrativeFilter {
+// is too early to tell and the model's own verdict sentence did not survive, code adds its own,
+// unless `verdictSentence` is false (the Monday brief, where the verdict is one fact among many).
+export type NarrativeOptions = { verdictSentence?: boolean };
+export function filterNarrative(reply: ScorecardReply, table: FactTable, options: NarrativeOptions = {}): NarrativeFilter {
+  const { verdictSentence = true } = options;
   const problems: NarrativeProblem[] = [];
   const known = factKeys(table);
   const splitNames = nameSplitter(table, known);
@@ -195,7 +198,7 @@ export function filterNarrative(reply: ScorecardReply, table: FactTable): Narrat
   // The verdict is code's to state. If it is "too early to tell" and no verdict.best chip is left, code
   // adds its own sentence at the end of the last paragraph.
   const tooEarly = table.facts.some((f) => f.key === "verdict.best" && f.value === TOO_EARLY);
-  if (tooEarly && !kept.some((s) => s.some((x) => x.fact === "verdict.best"))) {
+  if (verdictSentence && tooEarly && !kept.some((s) => s.some((x) => x.fact === "verdict.best"))) {
     keptParagraphs[keptParagraphs.length - 1].push([
       { text: ` ${VERDICT_SENTENCE_LEAD}`, fact: null },
       { text: null, fact: "verdict.best" },
@@ -223,9 +226,9 @@ export function filterNarrative(reply: ScorecardReply, table: FactTable): Narrat
 // runAi's `accept` for a table: the reply passes (some of its sentences may still be left out when it
 // is stored) or is logged FAILED "broke_rules".
 export const acceptNarrative =
-  (table: FactTable) =>
+  (table: FactTable, options: NarrativeOptions = {}) =>
   (reply: ScorecardReply): AiRunError | null =>
-    filterNarrative(reply, table).ok ? null : "broke_rules";
+    filterNarrative(reply, table, options).ok ? null : "broke_rules";
 
 // ----- What is stored and what the page shows -----
 

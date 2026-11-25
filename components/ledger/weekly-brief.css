@@ -1,0 +1,51 @@
+/* ==========================================================================================
+   Ledger, the Monday brief at the top of the queue home: a section disclosure holding a few
+   sentences with number chips (the chips themselves are styled in lab/lab.css, as on the stats
+   page), the code-written lines, and the person's own claims that end this week. Plain CSS in a
+   file, so the strict style-src policy allows it. No animation.
+   ========================================================================================== */
+
+@layer components {
+  .lg-wbrief {
+    margin: 4px 0 18px;
+  }
+  .lg-wbrief-body {
+    display: grid;
+    gap: 10px;
+    max-width: 70ch;
+  }
+  /* The chip stays a chip in a line of text, whatever other page's styles are loaded. */
+  .lg-wbrief .lg-fact {
+    display: inline;
+    padding: 1px 4px;
+    border-bottom: 1px dotted var(--moss);
+  }
+  .lg-wbrief-text {
+    font-size: var(--fs-2);
+  }
+  .lg-wbrief-lines {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 18px;
+    list-style: disc;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .lg-wbrief-meta,
+  .lg-wbrief-what {
+    margin: 0;
+  }
+  .lg-wbrief-numbers {
+    margin: 0;
+  }
+  .lg-wbrief-mine {
+    margin: 4px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+    overflow-wrap: anywhere;
+  }
+  .lg-wbrief-mine-lead {
+    font-weight: 600;
+  }
+}

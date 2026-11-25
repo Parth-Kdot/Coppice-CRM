@@ -34,6 +34,10 @@ export const DAILY_BRIEFS_PER_PERSON = 10;
 export const DAILY_COPILOT_PER_PERSON = 50;
 // Ask the Archive (lib/capsule/archive.ts) makes one call per question that has a match.
 export const DAILY_ARCHIVE_QUESTIONS_PER_PERSON = 30;
+// The Monday brief (lib/weekly-brief) writes itself when someone opens the queue, so nobody asked
+// for it: it is skipped unless more than this many of the workspace's calls are left, and it never
+// takes the last ones a person would want for a draft. No per-person cap (one call a week).
+export const WEEKLY_BRIEF_MIN_LEFT = 20;
 
 
 // A failed call's code in AiRun: the client's codes, plus a reply the caller's checks refused.
@@ -121,6 +125,9 @@ async function gateIn(tx: Prisma.TransactionClient, tenant: Tenant, feature: AiF
   const used = await tx.aiRun.count({ where: { workspaceId: tenant.workspaceId, createdAt: { gte: new Date(now.getTime() - AI_WINDOW_DAYS * DAY_MS) } } });
   if (used >= workspace.aiMonthlyLimit) {
     return `This workspace has used its ${workspace.aiMonthlyLimit} AI calls for the last ${AI_WINDOW_DAYS} days. An owner can raise the limit in Settings.`;
+  }
+  if (feature === "WEEKLY_BRIEF" && used >= workspace.aiMonthlyLimit - WEEKLY_BRIEF_MIN_LEFT) {
+    return `The Monday brief waits until more than ${WEEKLY_BRIEF_MIN_LEFT} of this workspace's AI calls are left.`;
   }
   const since = new Date(now.getTime() - DAY_MS);
   const mine = { workspaceId: tenant.workspaceId, userId: tenant.userId, createdAt: { gte: since } };
