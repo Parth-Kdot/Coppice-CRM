@@ -138,6 +138,16 @@ describe("text helpers", () => {
     "bob (at) acme.com",
     "bob@acme dot com",
     "bob at mail.acme dot com",
+    "bob at acme . com",
+    "sam at acme . co . uk",
+    "bob at acme dot xyz",
+    "bob (at) acme.xyz",
+    "info at riverbend dot org",
+    "dana at gmail",
+    "dana at hotmail",
+    "dana at yahoo.com",
+    "bob@acme",
+    "dana [at] riverbend",
   ])("masks the written-out address %j", (address) => {
     expect(maskContactDetails(`Write to ${address} today`)).toBe("Write to [email] today");
   });
@@ -160,14 +170,26 @@ describe("text helpers", () => {
     "Gold tier at $2,500",
     "Meet at 5. Com",
     "bob at acme dot community",
+    // A website after a word that is never the name in an address.
+    "visit us at ourclub dot org",
+    "Find us @ hackpurdue.org",
+    "we met at the dot com boom",
+    // A sentence ending after a site never joins the next word to it.
+    "Register at hackpurdue.org. In 2025 we grew.",
+    "Dinner at 7. Me and Sam",
+    // No ending: a place or an employer, including companies that also run webmail.
+    "bob at acme",
+    "Priya at Yahoo agreed",
+    "Contacted Sam at Outlook",
+    "Meet @ noon",
+    "3@5",
   ])("leaves %j alone", (text) => {
     expect(maskContactDetails(text)).toBe(text);
   });
 
-  // The accepted false positive: a website written out with "dot" reads the same as an address.
-  it("masks a website written out with dot, which reads the same as an address", () => {
-    // "us" reads as the part before the "at", so it goes with the address.
-    expect(maskContactDetails("visit us at ourclub dot org")).toBe("visit [email]");
+  it("masks a spaced @ with real dots, unless the word before it is never a name", () => {
+    expect(maskContactDetails("Write to sam @ acme.com")).toBe("Write to [email]");
+    expect(maskContactDetails("Find us @ acme.com")).toBe("Find us @ acme.com");
   });
 
   test.for([
@@ -177,6 +199,8 @@ describe("text helpers", () => {
     "a at b dot ".repeat(5_000),
     "a [at] b [dot] ".repeat(4_000),
     "a.".repeat(25_000),
+    "a@".repeat(25_000),
+    "a @ b . ".repeat(7_000),
     "a".repeat(50_000),
   ])("masks a 50,000 character adversarial string quickly", (text) => {
     const input = text.slice(0, 50_000);
