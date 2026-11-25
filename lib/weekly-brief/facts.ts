@@ -26,8 +26,10 @@ const answerMove: Prisma.StageChangeWhereInput = {
 
 // Open companies: not archived and not Committed or Declined (the queue's own rule).
 const open = (workspaceId: string): Prisma.CompanyWhereInput => ({ workspaceId, archivedAt: null, stage: { notIn: TERMINAL_STAGES } });
-// Nobody holds it right now: never claimed, or the claim ran out. User ids are never empty.
-const unclaimed = (now: Date) => notHeldByOthers("", now);
+// Nobody holds it at this moment: never claimed, or the claim ran out. User ids are never empty.
+const unclaimed = (at: Date) => notHeldByOthers("", at);
+// Someone holds it with a claim that is live at this moment.
+const heldByAnyone = (at: Date): Prisma.CompanyWhereInput => ({ NOT: unclaimed(at) });
 
 export type WeeklyCounts = {
   weekStart: string;
@@ -63,10 +65,12 @@ export async function readWeeklyCounts(tenant: Tenant, weekStart: string, ranges
     // The coming week. Committed and Declined are never overdue or due: they are not open.
     const overdue = await tx.company.count({ where: { ...open(workspaceId), nextFollowUpAt: { lt: todayStart } } });
     const dueThisWeek = await tx.company.count({ where: { ...open(workspaceId), nextFollowUpAt: { gte: todayStart, lt: nextStart } } });
-    const live: Prisma.CompanyWhereInput = { claimedById: { not: null }, claimExpiresAt: { gt: now } };
-    const liveClaims = await tx.company.count({ where: { ...open(workspaceId), ...live } });
-    const claimsEnding = await tx.company.count({ where: { ...open(workspaceId), claimedById: { not: null }, claimExpiresAt: { gt: now, lt: nextStart } } });
-    const freshLeads = await tx.company.count({ where: { ...open(workspaceId), stage: "NOT_CONTACTED", nextFollowUpAt: null, ...unclaimed(now) } });
+    // Claims through lib/claims.ts's own filters: live now, and still live when next week starts.
+    // The ones that end this week are the difference.
+    const liveClaims = await tx.company.count({ where: { AND: [open(workspaceId), heldByAnyone(now)] } });
+    const liveNextWeek = await tx.company.count({ where: { AND: [open(workspaceId), heldByAnyone(nextStart)] } });
+    const claimsEnding = liveClaims - liveNextWeek;
+    const freshLeads = await tx.company.count({ where: { AND: [open(workspaceId), { stage: "NOT_CONTACTED", nextFollowUpAt: null }, unclaimed(now)] } });
     const openCount = await tx.company.count({ where: open(workspaceId) });
 
     return {

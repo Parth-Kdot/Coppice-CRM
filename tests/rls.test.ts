@@ -30,6 +30,7 @@ const TENANT_TABLES = [
   "OnboardingProgress",
   "AssistantActivity",
   "PreviousVersion",
+  "WeeklyBrief",
 ] as const;
 
 async function seedTenantRows(tenant: Tenant, suffix: string) {

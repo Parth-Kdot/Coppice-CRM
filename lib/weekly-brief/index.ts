@@ -133,18 +133,22 @@ const waitedEnough = (row: Row, now: Date) => now.getTime() - row.startedAt.getT
 // retryable failure past its wait, while tries are left this week.
 const mayTakeOver = (row: Row, now: Date) => (isStale(row, now) && row.attempts < MAX_ATTEMPTS) || (canRetry(row) && waitedEnough(row, now));
 
-// The viewer's own live claims that end before next Monday, soonest first.
+// The viewer's own live claims that end before next Monday, soonest first: held now and not held
+// any more when next week starts (lib/claims.ts's own filter, read at both moments). A person holds
+// a few dozen claims at most, so they are sorted here.
+const MINE_READ = 50;
 async function myClaimsEnding(member: Membership, now: Date, nextStart: Date): Promise<WeeklyBriefView["mine"]> {
   return withTenant(member, async (tx) => {
     const where = {
-      workspaceId: member.workspaceId,
-      archivedAt: null,
-      stage: { notIn: TERMINAL_STAGES },
-      AND: [heldBy(member.userId, now), { claimExpiresAt: { lt: nextStart } }],
+      AND: [{ workspaceId: member.workspaceId, archivedAt: null, stage: { notIn: TERMINAL_STAGES } }, heldBy(member.userId, now), { NOT: heldBy(member.userId, nextStart) }],
     };
-    const rows = await tx.company.findMany({ where, select: { id: true, name: true, claimExpiresAt: true }, orderBy: [{ claimExpiresAt: "asc" }, { id: "asc" }], take: MINE_SHOWN });
-    const count = rows.length < MINE_SHOWN ? rows.length : await tx.company.count({ where });
-    return { rows: rows.map((r) => ({ id: r.id, name: r.name, until: day(r.claimExpiresAt as Date) })), count };
+    const read = await tx.company.findMany({ where, select: { id: true, name: true, claimExpiresAt: true }, take: MINE_READ });
+    const count = read.length < MINE_READ ? read.length : await tx.company.count({ where });
+    const rows = read
+      .map((r) => ({ id: r.id, name: r.name, ends: r.claimExpiresAt as Date }))
+      .sort((a, b) => a.ends.getTime() - b.ends.getTime() || a.id.localeCompare(b.id))
+      .slice(0, MINE_SHOWN);
+    return { rows: rows.map((r) => ({ id: r.id, name: r.name, until: day(r.ends) })), count };
   });
 }
 

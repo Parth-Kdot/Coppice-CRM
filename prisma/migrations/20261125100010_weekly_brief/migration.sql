@@ -46,7 +46,7 @@ ALTER TABLE "WeeklyBrief" ADD CONSTRAINT "WeeklyBrief_ready_check" CHECK (
   "status" <> 'READY' OR ("facts" IS NOT NULL AND "paragraphs" IS NOT NULL AND "error" IS NULL)
 );
 ALTER TABLE "WeeklyBrief" ADD CONSTRAINT "WeeklyBrief_failed_check" CHECK (
-  "status" <> 'FAILED' OR "error" IN ('rate_limited', 'timeout', 'unavailable', 'truncated', 'invalid_output', 'broke_rules', 'bad_key', 'blocked', 'rejected', 'not_configured', 'refused')
+  "status" <> 'FAILED' OR ("error" IS NOT NULL AND "error" IN ('rate_limited', 'timeout', 'unavailable', 'truncated', 'invalid_output', 'broke_rules', 'bad_key', 'blocked', 'rejected', 'not_configured', 'refused'))
 );
 ALTER TABLE "WeeklyBrief" ADD CONSTRAINT "WeeklyBrief_paragraphs_check" CHECK ("paragraphs" IS NULL OR jsonb_typeof("paragraphs") = 'array');
 
