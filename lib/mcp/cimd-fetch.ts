@@ -169,22 +169,29 @@ function passedHeaders(headers: TransportResponse["headers"], withFreshness: boo
   return out;
 }
 
-// True when a string value or a key, at any depth, holds U+0000 or a lone UTF-16 surrogate (a JSON
-// escape for half of a pair, with no partner). The plugin stores the document's fields as they
-// are. Postgres can't store U+0000 in a text column. A lone surrogate makes Prisma refuse a text[]
-// column (contacts, redirect paths, grant_types) and is stored as U+FFFD in a plain text column.
-// A correctly paired surrogate, such as an emoji, is fine.
+// True when a string holds U+0000 or a lone UTF-16 surrogate (half of a pair, with no partner).
+// Postgres can't take U+0000 in a text value, stored or compared: it answers error 22021. A lone
+// surrogate has no UTF-8 form, so it reaches the database as U+FFFD, a different text than the one
+// that was sent. A correctly paired surrogate, such as an emoji, is fine. Used for the documents
+// below and for the client ids a request names (lib/mcp/cimd-gate.ts).
+export function isUnstorableText(value: string): boolean {
+  return value.includes("\u0000") || !value.isWellFormed();
+}
+
+// True when a string value or a key, at any depth, is unstorable text. The plugin stores the
+// document's fields as they are. A lone surrogate makes Prisma refuse a text[] column (contacts,
+// redirect paths, grant_types) and is stored as U+FFFD in a plain text column.
 function hasUnstorableText(root: unknown): boolean {
   const pending: unknown[] = [root];
   while (pending.length > 0) {
     const value = pending.pop();
     if (typeof value === "string") {
-      if (value.includes("\u0000") || !value.isWellFormed()) return true;
+      if (isUnstorableText(value)) return true;
     } else if (Array.isArray(value)) {
       pending.push(...value);
     } else if (value && typeof value === "object") {
       for (const [key, inner] of Object.entries(value)) {
-        if (key.includes("\u0000") || !key.isWellFormed()) return true;
+        if (isUnstorableText(key)) return true;
         pending.push(inner);
       }
     }

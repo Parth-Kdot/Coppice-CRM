@@ -1,6 +1,6 @@
 import { APIError } from "better-auth/api";
 import { prisma } from "@/lib/db";
-import { metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
+import { isUnstorableText, metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
 
 // A first filter in front of the plugin's client lookups (lib/auth.ts, hooks.before). It is not what
 // protects the fetch budgets. Those sit where the fetch happens (lib/mcp/cimd-budget.ts, called from
@@ -21,8 +21,18 @@ import { metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
 // any more is not connected again. A code is only issued after a consent is stored, so a real
 // assistant is connected before its first token request.
 //
-// What this does, for every request on the nine paths in CLIENT_LOOKUP_PATHS that names an https
-// client_id:
+// What this does first, for every request on the nine paths in CLIENT_LOOKUP_PATHS and every
+// client_id it names, an https address or not:
+// - A client_id that holds U+0000 or an unpaired surrogate is answered 400 invalid_client, before
+//   this file's own query and before the plugin's lookup. Postgres refuses U+0000 in a text value
+//   (error 22021), so such an id used to end as a raw 500: in the query below for an https id, and
+//   in the plugin's lookup for any other, a registered-style id included. An unpaired surrogate
+//   causes no error, but it reaches the database as U+FFFD, so the lookup would ask for another id
+//   than the one that was named. No client row can hold either, so no real client is refused. The
+//   answer is 400 with no Basic challenge even when the id came in a Basic header: the request is
+//   malformed, and nothing was checked against a client.
+//
+// What this does next, for every request on those paths that names an https client_id:
 // - A connected client is never touched here.
 // - The token, revoke, introspect and end-session endpoints answer invalid_client at once for a
 //   client that is not connected, whether it has no row or a metadata document row nobody allowed.
@@ -50,6 +60,12 @@ import { metadataUrlProblem } from "@/lib/mcp/cimd-fetch";
 //   id_token_hint that is a string whose claims can't be read is refused with invalid_client.
 //
 // What this does not do:
+// - It has no rule for the OAuth paths outside the nine, and none of them hands a caller's client_id
+//   to the client lookup: userinfo takes the id from a token Coppice issued (see the next point),
+//   end-session/confirm reads it from a cookie Coppice signed, registration ignores a client_id in
+//   its body, client/rotate-keys answers 403 before it reads its assertion because key rotation is
+//   off, and client management over HTTP is disabled (lib/auth.ts). If key rotation is ever
+//   switched on, client/rotate-keys must join CLIENT_LOOKUP_PATHS.
 // - It does not read the azp of an access token, so the lookups that userinfo and introspect make for
 //   a token's azp are not filtered here; the fetch point counts them. The client calling introspect
 //   is still filtered. There is no rule for userinfo.
@@ -147,8 +163,8 @@ function unverifiedClaims(jwt: unknown): Record<string, unknown> | null {
 
 type Source = { query?: unknown; body?: unknown; headers?: Headers | null; request?: Request | null };
 
-// Every client_id a request names, wherever the plugin would look for one, and the user parts of
-// its Basic header as they were sent.
+// Every client_id a request names, wherever the plugin would look for one and whatever its shape,
+// and the user parts of its Basic header as they were sent.
 async function namedClientIds(source: Source): Promise<{ ids: string[]; basicUsers: string[]; unreadable: boolean }> {
   const basicUsers: string[] = [];
   let unreadable = false;
@@ -196,14 +212,20 @@ async function namedClientIds(source: Source): Promise<{ ids: string[]; basicUse
       // The body was read already; what the router parsed is in `body`.
     }
   }
-  return { ids: [...found].filter(isHttpsUrl), basicUsers, unreadable };
+  return { ids: [...found], basicUsers, unreadable };
 }
 
 // Throws the error the OAuth endpoints use when a request must not go on to the plugin, or
 // returns. `path` is relative to /api/auth.
 export async function guardClientLookup(path: string, source: Source): Promise<void> {
   if (!CLIENT_LOOKUP_PATHS.has(path)) return;
-  const { ids: named, basicUsers, unreadable } = await namedClientIds(source);
+  const { ids, basicUsers, unreadable } = await namedClientIds(source);
+  // An id the database can't be asked for. This comes before every lookup, here and in the plugin.
+  if (ids.some(isUnstorableText)) {
+    throw new APIError("BAD_REQUEST", { error: "invalid_client", error_description: "client_id contains a NUL character or an unpaired surrogate." });
+  }
+  // The rest of this file is about addresses Coppice might fetch.
+  const named = ids.filter(isHttpsUrl);
   const connectedOnly = CONNECTED_ONLY_PATHS.has(path);
   const refuseClient = (): never => {
     const basic = /^Basic +/i.test(source.request?.headers.get("authorization") ?? "");
