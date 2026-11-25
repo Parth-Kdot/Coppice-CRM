@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { type Ref, useActionState, useEffect, useId, useRef, useState } from "react";
 import { AiDraftIcon, CheckIcon, CopyLinkIcon, ExternalIcon } from "@/components/ledger/icons";
 import { ChipGroup, type ChipOption } from "@/components/ledger/chips";
 import { ClaimCheck } from "@/components/ledger/draft-check";
@@ -160,7 +160,13 @@ export function DraftPanel(props: Props) {
         <div className="lg-draftgo">
           <button ref={draftButton} type="submit" disabled={pending || limitReached || dailyReached} className="lg-btn lg-btn-primary">
             <AiDraftIcon size={18} />
-            {pending ? "Drafting... (usually under a minute)" : "Draft two emails"}
+            {/* Both labels share one cell, so the button keeps its width and the hints beside it
+                don't rewrap when drafting starts or ends. The hidden one is out of the
+                accessibility tree. The wait line below says how long it takes. */}
+            <span className="lg-btn-stack">
+              <span data-shown={!pending}>Draft two emails</span>
+              <span data-shown={pending}>Drafting...</span>
+            </span>
           </button>
           <p className="lg-hint lg-draft-daily">
             Your drafts today: {props.daily.used} of {props.daily.limit}
@@ -198,16 +204,36 @@ export function DraftPanel(props: Props) {
         )}
       </form>
 
-      {pending && <QuillWait label="Writing two drafts. This usually takes under a minute." />}
-
-      {drafts.length > 0 && (
-        <div className="lg-letters" ref={letters}>
-          {drafts.map((draft, i) => (
-            <DraftCard key={draft.id} draft={draft} index={i} {...props} />
-          ))}
-        </div>
-      )}
+      <DraftLetters {...props} pending={pending} drafts={drafts} lettersRef={letters} />
     </section>
+  );
+}
+
+const WAIT_LABEL = "Writing two drafts. This usually takes under a minute.";
+
+type LettersProps = Props & { pending: boolean; drafts: DraftView[]; lettersRef?: Ref<HTMLDivElement> };
+
+// The letters area under the form, drawn so nothing on the page moves when the two drafts arrive.
+// The wait line has a slot above the letters whose height is kept even when the line is gone, so
+// showing or hiding it moves nothing. With no letters yet, a Draft click puts two placeholder
+// cards where the letters will land, sized like real ones in company.css. With earlier letters on
+// screen, they stay readable and copyable while the new ones are written.
+export function DraftLetters({ pending, drafts, lettersRef, ...props }: LettersProps) {
+  if (drafts.length === 0 && !pending) return null;
+  return (
+    <>
+      <div className="lg-letters-slot">{pending && <QuillWait label={WAIT_LABEL} />}</div>
+      <div className="lg-letters" ref={lettersRef}>
+        {drafts.length === 0 ? (
+          <>
+            <div className="lg-letter lg-letter-wait" aria-hidden="true" />
+            <div className="lg-letter lg-letter-wait" aria-hidden="true" />
+          </>
+        ) : (
+          drafts.map((draft, i) => <DraftCard key={draft.id} draft={draft} index={i} {...props} />)
+        )}
+      </div>
+    </>
   );
 }
 

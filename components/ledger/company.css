@@ -1058,6 +1058,15 @@
     align-items: center;
     gap: 10px 18px;
   }
+  .lg-btn-stack {
+    display: inline-grid;
+  }
+  .lg-btn-stack > span {
+    grid-area: 1 / 1;
+  }
+  .lg-btn-stack > [data-shown="false"] {
+    visibility: hidden;
+  }
   .lg-draftgo .lg-hint {
     flex: 1 1 320px;
     max-width: 70ch;
@@ -1076,13 +1085,33 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
     gap: 24px;
-    margin-top: 22px;
   }
   .lg-letter {
     min-width: 0;
     padding: 18px 20px 20px;
     border: 1px solid var(--edge);
     background: var(--sheet);
+  }
+  /* While the two drafts are written, placeholder cards hold the place of the letters, so the
+     page below does not move when they land. Each is as tall as the shortest real letter (one
+     with nothing flagged), measured at each width: a longer letter grows past it and only moves
+     what is already below the fold, while a taller placeholder would pull the page up. */
+  .lg-letter-wait {
+    min-height: 944px;
+    border-style: dashed;
+    background: transparent;
+  }
+  /* The wait line's slot above the letters. It keeps its height when the line is gone, so
+     showing or hiding the line moves nothing. */
+  .lg-letters-slot {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 64px;
+    margin-top: 6px;
+  }
+  .lg-letters-slot > .lg-quill-wait {
+    padding: 0;
   }
   .lg-letter-head {
     display: flex;
@@ -1389,6 +1418,12 @@
     }
     .lg-letter {
       padding: 14px 14px 16px;
+    }
+    .lg-letter-wait {
+      min-height: 1217px;
+    }
+    .lg-letters-slot {
+      min-height: 84px;
     }
     .lg-fkind {
       justify-self: start;
