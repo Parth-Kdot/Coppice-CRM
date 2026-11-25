@@ -8,15 +8,41 @@ import { maskInternationalPhones } from "@/lib/ai/phones";
 // characters can't make the match backtrack for seconds.
 const EMAIL = /[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+/g;
 
+// An address written out to get past a filter: "bob at acme dot com", "bob (at) acme (dot) com",
+// "bob[at]acme[dot]com", "bob @ acme . com", "bob@acme dot com". It must end in a known top-level
+// domain, and every quantifier is bounded so a long run of "a at a dot a" can't backtrack for long.
+// Groups: 1 is the "at" part, 2 the domain.
+const SPELLED_TLD = "com|org|edu|net|io|co|us|ai|dev|app|gov|info|me|biz|uk|ca|de|in|au";
+const SPELLED_AT = String.raw`\s{0,3}@\s{0,3}|\s{0,3}(?:\(\s{0,3}at\s{0,3}\)|\[\s{0,3}at\s{0,3}\]|\{\s{0,3}at\s{0,3}\})\s{0,3}|\s{1,3}at\s{1,3}`;
+const SPELLED_DOT = String.raw`\s{0,3}\.\s{0,3}|\s{1,3}dot\s{1,3}|\s{0,3}(?:\(dot\)|\[dot\]|\{dot\})\s{0,3}`;
+const SPELLED_EMAIL = new RegExp(
+  String.raw`(?<![\w.+-])[\w.+-]{1,64}(${SPELLED_AT})((?:[\w-]{1,63}(?:${SPELLED_DOT})){1,4}(?:${SPELLED_TLD}))(?![\w-]|\.[\w-])`,
+  "gi",
+);
+// A "dot" written out or in brackets, as opposed to a real ".".
+const WRITTEN_DOT = /\sdot\s|[([{]dot[)\]}]/i;
+
+// A bare " at " is an ordinary word, so with it the address counts only when a "dot" is written out
+// too. "Register at hackpurdue.org" and "Apply at careers.acme.com" are websites and stay as they
+// are, while "bob at acme dot com" is masked. "Visit us at ourclub dot org" is masked as well: a
+// website written out with "dot" reads the same as an address, and packets almost always write a
+// site with a real dot. A bracketed "(at)" or an "@" with spaces around it may be followed by real
+// dots, so "bob (at) acme.com" and "bob @ acme.com" are masked too.
+function maskSpelledEmails(text: string): string {
+  return text.replace(SPELLED_EMAIL, (match, at: string, domain: string) =>
+    /^\s+at\s+$/i.test(at) && !WRITTEN_DOT.test(domain) ? match : "[email]",
+  );
+}
+
 // North-American numbers: 765-555-0142, (765) 555 0142, +1 765.555.0142 ...
 const US_PHONE = /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b/g;
 
-// Emails, North-American phone numbers, and international ones that start with "+" or "00"
-// ("+44 20 7946 0958", "0049 89 1234567"; lib/ai/phones.ts). A number in another country's local
-// style ("089/1234567") is not masked here: matching it would also mask rows of small numbers in a
-// packet's tables. Research page text is masked more broadly (maskPage in lib/research/scan.ts).
+// Emails (with an "@" or written out, as above), North-American phone numbers, and international
+// ones that start with "+" or "00" ("+44 20 7946 0958", "0049 89 1234567"; lib/ai/phones.ts). A
+// number in another country's local style ("089/1234567") is not masked here: matching it would
+// also mask rows of small numbers in a packet's tables. Research page text is masked more broadly (maskPage in lib/research/scan.ts).
 export function maskContactDetails(text: string): string {
-  return maskInternationalPhones(text.replace(EMAIL, "[email]").replace(US_PHONE, "[phone]"));
+  return maskInternationalPhones(maskSpelledEmails(text.replace(EMAIL, "[email]")).replace(US_PHONE, "[phone]"));
 }
 
 // Text in a form where the same words match however the PDF set them: ligatures and smart quotes

@@ -126,6 +126,65 @@ describe("text helpers", () => {
     expect(maskContactDetails(text)).toBe(text);
   });
 
+  // An address written out to get past a filter is still an address.
+  test.for([
+    "bob at acme dot com",
+    "bob (at) acme (dot) com",
+    "bob[at]acme[dot]com",
+    "bob {at} acme {dot} org",
+    "Bob AT Acme DOT Com",
+    "bob.smith at mail dot acme dot co dot uk",
+    "bob @ acme . com",
+    "bob (at) acme.com",
+    "bob@acme dot com",
+    "bob at mail.acme dot com",
+  ])("masks the written-out address %j", (address) => {
+    expect(maskContactDetails(`Write to ${address} today`)).toBe("Write to [email] today");
+  });
+
+  it("masks a written-out address at the end of a sentence, and keeps the full stop", () => {
+    expect(maskContactDetails("Questions? Email sam at riverbend dot org.")).toBe("Questions? Email [email].");
+  });
+
+  // A bare "at" is an ordinary word: a website after it, or "at" with no address, stays as it is.
+  test.for([
+    "Register at hackpurdue.org",
+    "Apply at careers.acme.com",
+    "Learn more at coppice.org/sponsor",
+    "Find us at purdue.edu",
+    "Sign up at acme . com",
+    "met them at the fair",
+    "Doors open at 5 dot 30",
+    "acme dot com",
+    "Visit us at booth 12",
+    "Gold tier at $2,500",
+    "Meet at 5. Com",
+    "bob at acme dot community",
+  ])("leaves %j alone", (text) => {
+    expect(maskContactDetails(text)).toBe(text);
+  });
+
+  // The accepted false positive: a website written out with "dot" reads the same as an address.
+  it("masks a website written out with dot, which reads the same as an address", () => {
+    // "us" reads as the part before the "at", so it goes with the address.
+    expect(maskContactDetails("visit us at ourclub dot org")).toBe("visit [email]");
+  });
+
+  test.for([
+    "a at ".repeat(10_000),
+    " dot ".repeat(10_000),
+    "a (at) b . ".repeat(5_000),
+    "a at b dot ".repeat(5_000),
+    "a [at] b [dot] ".repeat(4_000),
+    "a.".repeat(25_000),
+    "a".repeat(50_000),
+  ])("masks a 50,000 character adversarial string quickly", (text) => {
+    const input = text.slice(0, 50_000);
+    const start = performance.now();
+    maskContactDetails(input);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+
   // Three groups of 3, 3 and 4 digits are a US number, whatever they were meant as: "765 555 0142"
   // and "250 500 1000" have the same shape. Masking the first matters more than keeping the second.
   it("masks a 3-3-4 group of digits as a US number even when it was a table row", () => {
@@ -216,6 +275,18 @@ describe("uploadFactSheet", () => {
     expect(await withTenant(OWNER, (tx) => tx.aiRun.findMany({ select: { feature: true, status: true } }))).toEqual([
       { feature: "FACT_EXTRACTION", status: "SUCCEEDED" },
     ]);
+  });
+
+  it("keeps a fact naming a website after at, and masks a written-out address on the same page", async () => {
+    const page = "Register at hackpurdue.org by March 1, 2027. Questions? Email sam at riverbend dot org.";
+    vi.mocked(unpdf.extractText).mockResolvedValueOnce({ totalPages: 1, text: [page] });
+    fakeGemini(answer(JSON.stringify({ facts: [{ text: "Register at hackpurdue.org by March 1, 2027.", quote: "Register at hackpurdue.org by March 1, 2027.", page: 1 }] })));
+    expect(await facts.uploadFactSheet(OWNER, "packet.pdf", PACKET)).toMatchObject({ ok: true, data: { facts: 1, quotesFound: 1 } });
+    expect((await items()).map((f) => f.text)).toEqual(["Register at hackpurdue.org by March 1, 2027."]);
+    const prompt = JSON.stringify(calls[0].body.contents);
+    expect(prompt).toContain("Register at hackpurdue.org");
+    expect(prompt).toContain("Email [email].");
+    expect(prompt).not.toContain("riverbend dot org");
   });
 
   it("swaps angle brackets so a page can't fake the page tags around it", async () => {

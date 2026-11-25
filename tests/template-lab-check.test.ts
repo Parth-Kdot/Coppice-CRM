@@ -331,12 +331,18 @@ describe("templateProblem", () => {
     ["an email address", "Write to dana@riverbend.org."],
     ["a phone number", "Call 765-555-0142 any time."],
     ["a masked email", "Write to [email]."],
+    ["a written-out email address", "Write to dana at riverbend dot org."],
+    ["an email address with (at)", "Write to dana (at) riverbend.org."],
   ])("refuses a template with %s", (_name, body) => {
     expect(templateProblem(body)).toBe(CONTACT_IN_TEMPLATE);
   });
 
   it("accepts the ordinary template", () => {
     expect(templateProblem(ORIGINAL)).toBeNull();
+  });
+
+  it("accepts a template that names the club's website after at", () => {
+    expect(templateProblem(`${ORIGINAL}\n\nLearn more at ourclub.org.`)).toBeNull();
   });
 });
 
