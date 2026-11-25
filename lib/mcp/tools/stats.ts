@@ -47,6 +47,7 @@ export async function getStatsTool(principal: McpPrincipal, args: z.infer<typeof
   };
   const sent = stats.templates.reduce((sum, t) => sum + t.stat.sent, stats.noTemplate.stat.sent);
   const { retiredBetter } = stats.activeVerdict;
+  const { chances } = stats;
   return ok({
     stats: {
       sendsLogged: sent,
@@ -59,12 +60,18 @@ export async function getStatsTool(principal: McpPrincipal, args: z.infer<typeof
       noTemplate: templateLineOut(stats.noTemplate, typedParts),
       byTouch: stats.byTouch.map((p) => partOut(p, false)),
       emailAuthorship: { aiDrafted: ratedOut(stats.authorship.ai), handWritten: ratedOut(stats.authorship.hand), ahead: stats.authorship.lead },
+      // Worked out by code and never used to name a best or worst.
+      chances: {
+        vsOtherRatedInUse: stats.templates.filter((t) => chances.vsOthers[t.key] !== undefined).map((t) => ({ templateId: t.key, chance: chances.vsOthers[t.key] })),
+        leadingPairInUse: chances.pair ? { first: named(chances.pair.first), second: named(chances.pair.second), chance: chances.pair.chance } : null,
+        aiDraftedOverHandWritten: chances.authorship,
+      },
       gaps: {
         sendsWithoutTemplate: stats.gaps.noTemplate,
         repliedCompaniesWithNoReplyMarked: stats.gaps.repliedUnmarked,
         sendsStillMaturing: stats.gaps.maturing,
       },
-      howToRead: `A send counts once it is ${MATURITY_DAYS} days old. A template is rated with at least ${MIN_SENDS} counted sends, and best or worst is named only when its likely range clears the others.`,
+      howToRead: `A send counts once it is ${MATURITY_DAYS} days old. A template is rated with at least ${MIN_SENDS} counted sends, and best or worst is named only when its likely range clears the others. Each chance is how likely one true reply rate is to be higher than another, from a uniform Beta(1,1) prior: a template against the pooled counted sends of the other rated templates in use, the two leading rated templates in use, and AI-drafted against hand-written emails. Chances never decide best or worst.`,
     },
     templateLab: experiment
       ? {

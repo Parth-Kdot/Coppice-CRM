@@ -128,6 +128,13 @@ describe("the fact table of the hand-computed fixture", () => {
     expect(text).not.toHaveProperty("verdict.retiredBetter");
   });
 
+  it("holds no chance facts, since only one template in use is rated and AI-drafted has too few, so its hash is unchanged", async () => {
+    const { facts } = buildFactTable(await workspaceStats(OWNER, "none"));
+    expect(facts.filter((f) => /chance/i.test(f.key))).toEqual([]);
+    // The hash this fixture had before the chance figures existed.
+    expect(factsHash(facts)).toBe("092f599cee2e72ca65f057d9bb6f1cd6");
+  });
+
   it("describes every fact in plain words, with a unique key", async () => {
     const { facts } = buildFactTable(await workspaceStats(OWNER, "none"));
     expect(new Set(facts.map((f) => f.key)).size).toBe(facts.length);
@@ -235,6 +242,56 @@ describe("the verdict facts", () => {
       "Template C",
     ]);
     expect(table.facts.filter((f) => /^t\d+\.name$/.test(f.key))).toHaveLength(MAX_TEMPLATES);
+  });
+});
+
+describe("the chance facts", () => {
+  const rows = (templateId: string, n: number, replies: number, aiDrafted = false): OutreachRow[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `${templateId}-${i}`,
+      companyId: `${templateId}-c${i}`,
+      templateId,
+      channel: "EMAIL" as const,
+      sentAt: new Date(NOW.getTime() - 40 * DAY),
+      gotReply: i < replies,
+      aiDrafted,
+      industry: null,
+    }));
+  // A 12/20 (AI-drafted emails), B 8/20 and C 4/20 (hand-written): all in use, all rated, no best named.
+  const table = buildFactTable(
+    scorecard({
+      now: NOW,
+      rows: [...rows("a", 20, 12, true), ...rows("b", 20, 8), ...rows("c", 20, 4)],
+      templates: [
+        { id: "a", name: "Alumni angle", archived: false },
+        { id: "b", name: "Career fair", archived: false },
+        { id: "c", name: "Cold intro", archived: false },
+      ],
+      repliedCompanyIds: [],
+    }),
+  );
+  const byKey = Object.fromEntries(table.facts.map((f) => [f.key, f]));
+
+  it("gives each rated template in use its chance against the other rated ones, rounded like every value", () => {
+    // Equal sends are ordered by name: t1 Alumni angle, t2 Career fair, t3 Cold intro.
+    expect(table.names).toEqual({ t1: "Alumni angle", t2: "Career fair", t3: "Cold intro" });
+    expect([byKey["t1.chanceVsOthers"].value, byKey["t1.chanceVsOthers"].text]).toEqual([0.9861, "99% chance above the other rated templates"]);
+    expect([byKey["t2.chanceVsOthers"].value, byKey["t2.chanceVsOthers"].text]).toEqual([0.5094, "51% chance above the other rated templates"]);
+    expect([byKey["t3.chanceVsOthers"].value, byKey["t3.chanceVsOthers"].text]).toEqual([0.0134, "1% chance above the other rated templates"]);
+    expect(byKey["t1.chanceVsOthers"].what).toMatch(/never decides best or worst/);
+  });
+
+  it("gives the leading pair and the authorship chance, and keeps the verdict too early", () => {
+    expect(byKey["verdict.best"].text).toBe(TOO_EARLY);
+    expect([byKey["verdict.pairChance"].value, byKey["verdict.pairChance"].text]).toEqual([
+      0.8916,
+      "Alumni angle against Career fair: 89% chance of the higher true reply rate",
+    ]);
+    expect([byKey["authorship.chance"].value, byKey["authorship.chance"].text]).toEqual([0.9861, "99% chance AI-drafted emails have the higher true reply rate"]);
+  });
+
+  it("keeps every key unique", () => {
+    expect(new Set(table.facts.map((f) => f.key)).size).toBe(table.facts.length);
   });
 });
 
