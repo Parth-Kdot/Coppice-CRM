@@ -261,7 +261,7 @@ function registerCompanyTools(server: McpServer, principal: McpPrincipal) {
     "mark_reply",
     {
       title: "Mark which outreach got the reply",
-      description: "Mark one outreach entry of a company in a reply stage as the one that got the answer, so template stats count it. A mark cannot be taken back.",
+      description: "Mark one outreach entry of a company in Replied, In conversation, Committed or Declined as the one that got the answer, so template stats count it. A no the company wrote counts as a reply. A mark cannot be taken back.",
       inputSchema: mcpMarkReplySchema,
       annotations: { ...ACTION, idempotentHint: true },
       scopeChallenge: needsWrite,
