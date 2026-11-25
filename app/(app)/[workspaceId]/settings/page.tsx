@@ -266,6 +266,9 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               subject of its AI draft with the names put back to placeholders.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
               addresses and phone numbers masked, plus the company&apos;s name and website; never your notes or contacts.
+              {" "}The claim check on a draft also sends the research brief items someone accepted for that company (the brief&apos;s own text,
+              written from public pages an owner approved, never the notes field itself) and a summary of the company&apos;s history by board
+              year: how many outreach entries and replies, and the month of any move to Committed or Declined. Never note text, names or who did what.
             </p>
             <p className="max-w-[66ch]">
               &ldquo;Explain these numbers&rdquo; on the stats page sends Gemini your template names and the numbers on that page (sends, replies and

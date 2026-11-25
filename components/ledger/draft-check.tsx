@@ -111,7 +111,7 @@ export function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Pro
   const tone = all.length > 0 ? "flag" : aiRan ? "clean" : "idle";
 
   let status: string;
-  if (checking) status = "The AI is reading this draft against your verified facts.";
+  if (checking) status = "The AI is reading this draft against your verified facts, accepted research and this company's history.";
   else if (!check) status = "The AI hasn't checked this yet.";
   else if (!fresh) status = "You've edited this since the AI checked it. Its earlier findings are hidden.";
   else if (check.error) status = `The AI check didn't run: ${check.error}`;
@@ -146,7 +146,7 @@ export function ClaimCheck({ draftId, subject, body, initial, n, ...props }: Pro
       <div className="lg-cc-part">
         <p className="lg-cc-label">
           <strong>AI check</strong>
-          <span className="lg-hint">Reads against the fact sheet</span>
+          <span className="lg-hint">Reads against facts, accepted research and history</span>
         </p>
         {aiFindings.length > 0 && <FindingList findings={aiFindings} />}
         {aiRan && aiFindings.length === 0 && <p className="lg-hint">The AI found no statement the facts don&apos;t support.</p>}

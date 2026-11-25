@@ -350,7 +350,7 @@ function registerKnowledgeTools(server: McpServer, principal: McpPrincipal) {
     {
       title: "Prepare an email",
       description:
-        "Fill a template, or check your own text, with the contact's first name, your name and the workspace name, then check numbers, links and past-sponsor claims against the verified facts. Coppice sends nothing: the person sends it, then you log it with log_outreach.",
+        "Fill a template, or check your own text, with the contact's first name, your name and the workspace name, then check numbers, links and past-sponsor claims against the verified facts, accepted research and the company's history. Coppice sends nothing: the person sends it, then you log it with log_outreach.",
       inputSchema: mcpPrepareEmailSchema,
       annotations: READ,
     },

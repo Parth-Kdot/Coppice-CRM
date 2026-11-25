@@ -38,7 +38,8 @@ type Props = {
   initialDrafts: DraftView[];
   // Today in West Lafayette, from the database, for the follow-up date box.
   today: string;
-  // What the Claim Checker's rules accept: numbers from verified facts and the company's website.
+  // What the Claim Checker's rules accept: numbers from verified facts, the company's website, and
+  // this company's accepted research and logged history (RuleContext.support).
   rules: RuleContext;
   // Templates a draft can be based on (not archived). Their text goes to the AI, masked like a note.
   templates?: TemplateOption[];

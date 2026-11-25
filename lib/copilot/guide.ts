@@ -137,6 +137,7 @@ export const GUIDE: GuideTopic[] = [
       `Draft email writes two variants of a first email or a follow-up, from verified facts only, and claims the company for you first. Coppice fills in names after the AI answers. Each person can make ${DAILY_DRAFTS_PER_PERSON} drafts in 24 hours.`,
       "Coppice never sends email. You open a draft in Gmail, Outlook on the web or your mail app, send it from there, and press I sent it to log the outreach.",
       "The Claim Checker flags what a draft says that the facts don't back up: numbers with no verified fact, links, and claims of a past sponsorship. Rules run as you type and an AI check adds more. It only advises. You decide what to change.",
+      "The Claim Checker also accepts what the company's own record shows: research brief items someone added to the notes, a move to Committed that lasted at least a week (proof of a past sponsorship), and a reply in an earlier board year (proof of having been in touch, not of a sponsorship). A reply followed by a decline proves nothing.",
     ],
   },
   {
@@ -179,7 +180,7 @@ export const GUIDE: GuideTopic[] = [
     body: [
       `AI is off until an owner turns it on in Settings. A new workspace may make ${DEFAULT_AI_LIMIT} AI calls in ${AI_WINDOW_DAYS} days, and an owner can change that from 0 to ${AI_LIMIT_MAX}. Failed calls still count.`,
       `Each person also has limits for 24 hours: ${DAILY_DRAFTS_PER_PERSON} drafts, ${DAILY_BRIEFS_PER_PERSON} research briefs and ${DAILY_COPILOT_PER_PERSON} questions to Ask Coppice. A failure on the AI service's side doesn't count against the person.`,
-      "Google's free Gemini tier, which may use what it receives to improve Google's products, reads fact sheet pages, writes drafts with placeholders in place of names, reads research pages an owner approved and sees only the shape of most Smart import cells. Groq reads Smart import's free-text cells and answers Ask Coppice.",
+      "Google's free Gemini tier, which may use what it receives to improve Google's products, reads fact sheet pages, writes drafts with placeholders in place of names, checks drafts against verified facts, accepted research brief items and a code-written summary of the company's history (counts and months, never notes or names), reads research pages an owner approved and sees only the shape of most Smart import cells. Groq reads Smart import's free-text cells and answers Ask Coppice.",
       "Ask Coppice sends Groq your question, your last few questions in that conversation, the names of companies it just showed you and the industry names your workspace uses. Notes, contacts and outreach history are not sent: the rows you see are read from your workspace by code. Email addresses and phone numbers are masked in everything sent.",
       "Groq says it doesn't keep what it is sent by default, apart from logs it may hold for up to 30 days to look into errors or abuse.",
     ],

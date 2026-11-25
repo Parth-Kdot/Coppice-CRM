@@ -233,8 +233,8 @@ export async function draftEmail(tenant: Tenant, companyId: string, request: Dra
   });
 
   // The Claim Checker reads both drafts in one call, after they're saved, so a failed check never
-  // loses a draft (lib/claim-check.ts).
-  const checks = await aiCheck(tenant, saved, { ...values, firstName: contact ? values.firstName : null }, { deadlineMs: DRAFT_CHECK_DEADLINE_MS, fallback: false });
+  // loses a draft. It also reads this company's accepted research and history (lib/claim-check.ts).
+  const checks = await aiCheck(tenant, companyId, saved, { ...values, firstName: contact ? values.firstName : null }, { deadlineMs: DRAFT_CHECK_DEADLINE_MS, fallback: false });
   await saveChecks(tenant, saved.map((d) => d.id), checks);
   return { ok: true, data: saved.map((d, i) => ({ ...d, check: checks[i] })) };
 }
