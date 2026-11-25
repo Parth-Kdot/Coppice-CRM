@@ -265,7 +265,8 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               follow-up it also carries the date and channel of each of the last five earlier outreach entries, whether they replied, and the
               subject of its AI draft with the names put back to placeholders.
               {" "}A &ldquo;Who to contact&rdquo; brief sends Gemini only the public text and addresses of the research pages an owner approved, with email
-              addresses and phone numbers masked, plus the company&apos;s name and website; never your notes or contacts.
+              addresses and phone numbers masked, plus the company&apos;s name and website and your verified facts that name a sponsorship tier or price,
+              so the brief can suggest which tier to ask for; never your notes or contacts.
             </p>
             <p className="max-w-[66ch]">
               &ldquo;Explain these numbers&rdquo; on the stats page sends Gemini your template names and the numbers on that page (sends, replies and
