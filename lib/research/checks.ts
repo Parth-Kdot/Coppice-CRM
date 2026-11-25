@@ -1,18 +1,20 @@
 import { maskPhones } from "@/lib/ai/phones";
 import { maskContactDetails, matchKey, quoteFound } from "@/lib/ai/text";
 import type { Door } from "@/lib/research/doors";
+import type { Topic } from "@/lib/research/sections";
 import { isApprovedHost, isSameSite } from "@/lib/research/urls";
 
 // The checks on what the AI wrote for a research brief (lib/research/brief.ts). Model output is
 // untrusted: anything that fails is dropped, never repaired.
 
-const PASSAGES_MAX = 25;
+const PASSAGES_MAX = 30;
 const ITEMS_MAX = 12;
 
 // A page as the checks see it: its number in the prompt, where it was fetched from, and the
 // stored text the AI was shown (null when it was skipped).
 export type CheckedPage = { position: number; url: string; finalUrl: string | null; text: string | null };
-export type Passage = { page: number; door: Door; quote: string };
+// A DOOR passage always has a door; the other topics may have none (lib/research/brief-prompt.ts).
+export type Passage = { page: number; topic: Topic; door?: Door; quote: string };
 export type DraftItem = { door: Door; title: string; detail: string; deadline: string | null; passage: number; quote: string };
 export type BriefItem = { id: string; door: Door; title: string; detail: string; deadline: string | null; page: number; quote: string };
 
@@ -184,13 +186,17 @@ const NOT_NAMES = new Set(
 );
 
 // Whether the text names an individual person, by the test above. `company` is the company's name,
-// whose words are never a person's ("Eli Lilly").
-export function namesPerson(text: string, company = ""): boolean {
+// whose words are never a person's ("Eli Lilly"). `extraOrdinary` adds words that never name a
+// person for one caller only: the brief's ask and campus ties pass TIER_WORDS
+// (lib/research/section-checks.ts), so "Gold Tier" is not read as a name there. Every other caller
+// keeps the test as it was.
+export function namesPerson(text: string, company = "", extraOrdinary: readonly string[] = []): boolean {
   const companyWords = new Set(company.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  const extra = new Set(extraOrdinary.map((w) => w.toLowerCase()));
   // "Women's" is checked as "women".
   const ordinary = (word: string) => {
     const key = word.toLowerCase().replace(/['’]s$/, "");
-    return NOT_NAMES.has(key) || companyWords.has(key);
+    return NOT_NAMES.has(key) || companyWords.has(key) || extra.has(key);
   };
   const line = text.normalize("NFKC");
   const tokens = [...line.matchAll(/[\p{L}\p{M}][\p{L}\p{M}'’-]*/gu)].map((m) => ({
@@ -215,7 +221,7 @@ export function namesPerson(text: string, company = ""): boolean {
 }
 
 // A masked contact detail of a person (a team inbox is "[team inbox]", which stays).
-const PERSON_CONTACT = /\[(?:email|phone)\]/i;
+export const PERSON_CONTACT = /\[(?:email|phone)\]/i;
 
 // ----- Passages and items -----
 
@@ -233,8 +239,12 @@ export function checkPassages(passages: Passage[], pages: Map<number, CheckedPag
     .slice(0, PASSAGES_MAX);
 }
 
+// The hosts of every page that was fetched, as asked for and as it ended up after redirects.
+export const fetchedHostsOf = (pages: Map<number, CheckedPage>): string[] =>
+  [...pages.values()].flatMap((p) => (p.finalUrl ? [new URL(p.finalUrl).hostname, new URL(p.url).hostname] : []));
+
 export function checkItems(items: DraftItem[], passages: Passage[], pages: Map<number, CheckedPage>, company = ""): BriefItem[] {
-  const fetchedHosts = [...pages.values()].flatMap((p) => (p.finalUrl ? [new URL(p.finalUrl).hostname, new URL(p.url).hostname] : []));
+  const fetchedHosts = fetchedHostsOf(pages);
   const seen = new Set<string>();
   const kept: BriefItem[] = [];
   for (const item of items) {

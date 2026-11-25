@@ -909,7 +909,7 @@ model CompanyBrief {
   companyId   String
   createdById String
   status      BriefStatus
-  // The checked items: { items: BriefItem[] }, each citing one of this brief's pages.
+  // The checked sections: { items, ties, flags, hook, ask }, each entry citing one of this brief's pages.
   brief       Json
   // Ids of items a person added to the company's notes.
   accepted    String[]    @default([])
