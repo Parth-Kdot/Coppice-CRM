@@ -252,6 +252,6 @@ export const RULES_NOTE = [
   `A template is rated only after ${MIN_SENDS} counted sends. Below that it says "too few yet" and isn't ranked.`,
   "The likely range is a 95% Wilson interval: where the true reply rate probably sits. Small samples give wide ranges.",
   "Best and worst are named only when one template's whole range sits above (or below) every other rated template's range. Overlapping ranges mean the data can't tell them apart yet, so nothing is called. Retired templates are never named.",
-  'A reply counts when someone marks which outreach got it (asked when a company moves to Replied or later, or "This got the reply" on the company page).',
+  "A reply counts when someone marks which outreach got it, and a no counts too. Coppice asks when a company moves into Replied, In conversation or Committed, or into Declined from Not contacted or Contacted, and the company page has a link to mark it.",
   "An AI draft based on a template is counted under AI-drafted, not under that template, so a template's sends are only the emails logged with it by hand.",
 ];

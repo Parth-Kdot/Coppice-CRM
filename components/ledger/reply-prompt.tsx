@@ -15,11 +15,14 @@ import { completeStamp } from "./motion-kit";
 import "./templates.css";
 
 // "Which outreach got the reply?": asked once a company moves into Replied, In conversation or
-// Committed from an earlier stage. The person picks the entry that got the answer and template stats
-// count it, or skips. A plain dialog over the page: Escape or Skip closes it and nothing is saved.
-// The newest 5 entries show (older ones one click away), each with one line of its note (the whole
-// note once picked). With a single entry it is picked already and the button says so. Once marked,
-// the picked entry is stamped (a press, a moss ring, the check settling onto it) and the dialog closes.
+// Committed from an earlier stage, or into Declined from Not contacted or Contacted (lib/stages.ts
+// opensReply). The person picks the entry that got the answer and template stats count it, or skips.
+// A plain dialog over the page: Escape or Skip closes it and nothing is saved. The newest 5 entries
+// show (older ones one click away), each with one line of its note (the whole note once picked). With
+// a single entry it is picked already and the button says so. Once marked, the picked entry is
+// stamped (a press, a moss ring, the check settling onto it) and the dialog closes.
+// `declined` switches to the Declined wording ("Did they answer?"). It never pre-picks a lone
+// entry, since many declines are the club giving up and one click shouldn't turn that into a reply.
 
 const NEWEST = 5;
 
@@ -32,9 +35,11 @@ type Props = {
   // Where focus goes when it closes, if the control that opened it is gone (a board slip that moved
   // to another column is a new element). Without it, focus goes back to whatever had it at open.
   returnFocus?: () => HTMLElement | null;
+  // The company is Declined: ask whether they wrote back at all, with nothing picked.
+  declined?: boolean;
 };
 
-export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDone, returnFocus }: Props) {
+export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDone, returnFocus, declined = false }: Props) {
   const id = useId();
   const notify = useNotify();
   const dialog = useRef<HTMLDialogElement | null>(null);
@@ -50,7 +55,8 @@ export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDo
     });
   };
   const only = choices.length === 1;
-  const [picked, setPicked] = useState<string | null>(only ? choices[0].id : null);
+  const prePick = only && !declined;
+  const [picked, setPicked] = useState<string | null>(prePick ? choices[0].id : null);
   // A date reads "Nov 21"; the time is added only when two entries share a day.
   const days = choices.map((c) => day(c.sentAt));
   const dateOf = (c: ReplyChoice, i: number) => (days.indexOf(days[i]) !== days.lastIndexOf(days[i]) ? when(c.sentAt) : days[i]);
@@ -91,12 +97,14 @@ export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDo
         <input type="hidden" name="workspaceId" value={workspaceId} />
         <input type="hidden" name="companyId" value={companyId} />
         <h2 id={`${id}-h`} className="lg-h3">
-          Which outreach got the reply?
+          {declined ? "Did they answer?" : "Which outreach got the reply?"}
         </h2>
         <p className="lg-hint">
-          {only
-            ? `${companyName} answered. Was it this one? Template stats count it.`
-            : `${companyName} answered. Pick the entry they replied to, so template stats count it.`}
+          {declined
+            ? `If ${companyName} wrote back to say no, pick the entry they answered, so template stats count it. If they never answered, skip.`
+            : only
+              ? `${companyName} answered. Was it this one? Template stats count it.`
+              : `${companyName} answered. Pick the entry they replied to, so template stats count it.`}
         </p>
         <fieldset className="lg-replyask-list">
           <legend className="lg-sr">Outreach on {companyName}, newest first</legend>
@@ -137,7 +145,7 @@ export function ReplyPrompt({ workspaceId, companyId, companyName, choices, onDo
             Skip
           </button>
           <button type="submit" className="lg-btn lg-btn-primary" disabled={pending || picked === null}>
-            {pending ? "Working..." : only ? "Yes, this one got the reply" : "Mark as the reply"}
+            {pending ? "Working..." : prePick ? "Yes, this one got the reply" : "Mark as the reply"}
           </button>
         </div>
       </form>

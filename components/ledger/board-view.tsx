@@ -30,8 +30,8 @@ import "./board.css";
 // three ways: drag one onto another stage, its stage glyph button (the slip's menu: Move to, Claim,
 // Release), or m while it has focus. All three call the real stage action; a refusal is written in
 // the slip's margin, and an officer never gets stage choices on a slip someone else holds (the menu
-// says who holds it; the server still checks). A move into a reply stage then asks which outreach
-// got the reply (ReplyPrompt). A slip just moved stays in sight in its new column even when it sorts
+// says who holds it; the server still checks). A move that opens a reply (lib/stages.ts opensReply)
+// then asks which outreach got the reply (ReplyPrompt, in the Declined wording for a move into Declined). A slip just moved stays in sight in its new column even when it sorts
 // past the 50 shown, marked "Just moved", until the next full load. Motion only marks the move
 // itself (the slip flies to its column and settles with a stamp, components/ledger/motion-kit.ts).
 //
@@ -88,7 +88,7 @@ export function BoardView(props: Props) {
   const [, startTransition] = useTransition();
   const [only, setOnly] = useState<Stage | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
-  const [replyAsk, setReplyAsk] = useState<{ id: string; name: string; choices: ReplyChoice[] } | null>(null);
+  const [replyAsk, setReplyAsk] = useState<{ id: string; name: string; choices: ReplyChoice[]; declined: boolean } | null>(null);
   const [slipErrors, setSlipErrors] = useState<Record<string, string>>({});
   const [flashing, setFlashing] = useState<ReadonlySet<string>>(new Set());
   // Slips moved here that the server's page of 50 doesn't include: drawn at the top of their new
@@ -254,7 +254,7 @@ export function BoardView(props: Props) {
         flash(id);
         if (away) notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`, "ok", { action: { label: "See it", onSelect: () => seeIt(id, to) } });
         else notify(`Moved ${card.name} to ${STAGE_LABELS[to]}.`);
-        if (result.data?.replyChoices) setReplyAsk({ id, name: card.name, choices: result.data.replyChoices });
+        if (result.data?.replyChoices) setReplyAsk({ id, name: card.name, choices: result.data.replyChoices, declined: to === "DECLINED" });
       } else {
         if (landing.current?.id === id) landing.current = null;
         restore(slip);
@@ -635,6 +635,7 @@ export function BoardView(props: Props) {
           companyId={replyAsk.id}
           companyName={replyAsk.name}
           choices={replyAsk.choices}
+          declined={replyAsk.declined}
           onDone={() => setReplyAsk(null)}
           returnFocus={() => slipOf(replyAsk.id)?.querySelector<HTMLElement>(SLIP_LINK) ?? document.querySelector<HTMLElement>("[data-stage-head]")}
         />
