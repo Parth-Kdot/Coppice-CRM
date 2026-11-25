@@ -2,7 +2,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vit
 import { changeStage, claimCompany, dbToday, logOutreach } from "@/lib/claims";
 import { addContact, createCompany } from "@/lib/companies";
 import { prisma, withTenant } from "@/lib/db";
+import { yearWindow } from "@/lib/capsule/year";
+import { repliedReason } from "@/lib/claim-rules";
 import { addFact } from "@/lib/facts";
+import { boardYearOf, yearLabel } from "@/lib/smart-import/dates";
 import { addSource } from "@/lib/research/sources";
 import { startExperiment } from "@/lib/template-lab/lab";
 import { createTemplate, listTemplates } from "@/lib/templates";
@@ -555,6 +558,47 @@ describe("prepare_email", () => {
     expect(found.map((f: string[]) => f[1])).not.toContain("https://acme.example.com");
     expect(data.findings[0].reason).toEqual(expect.any(String));
     expect(typeof data.findings[0].reason).toBe("string");
+  });
+
+  describe("with the company's own record as support", () => {
+    const historyOf = async (data: { findings: { kind: string; reason: string }[] }) => data.findings.filter((f) => f.kind === "history").map((f) => f.reason);
+    async function lastYear(companyId: string, rows: { reply?: boolean; committed?: boolean }) {
+      const start = boardYearOf(await dbToday()) - 1;
+      const when = (days: number) => new Date(yearWindow(start).from.getTime() + days * DAY);
+      await withTenant(OWNER_A, async (tx) => {
+        if (rows.reply) await tx.outreach.create({ data: { workspaceId: "a", companyId, senderId: "ownerA", sentAt: when(10), gotReply: true } });
+        if (rows.committed) await tx.stageChange.create({ data: { workspaceId: "a", companyId, changedById: "ownerA", fromStage: "REPLIED", toStage: "COMMITTED", changedAt: when(20) } });
+      });
+      return yearLabel(start);
+    }
+    const text = "Thanks for sponsoring us before. It was great working with you before.";
+
+    it("a lasting move to Committed last board year backs the line", async () => {
+      const co = await company("Acme");
+      await lastYear(co, { committed: true });
+      expect(await historyOf(await json("ownerA", "prepare_email", { companyId: co, text }))).toEqual([]);
+    });
+
+    it("no history keeps the generic reason, and a reply alone names the year they replied", async () => {
+      const none = await company("Acme");
+      expect(await historyOf(await json("ownerA", "prepare_email", { companyId: none, text }))).toEqual([
+        "Check this company really has a history with the organization.",
+        "Check this company really has a history with the organization.",
+      ]);
+      const replied = await company("Initech");
+      const label = await lastYear(replied, { reply: true });
+      expect(await historyOf(await json("ownerA", "prepare_email", { companyId: replied, text }))).toEqual([repliedReason(label)]);
+    });
+
+    it("a link to an accepted brief item's page is not flagged", async () => {
+      const co = await company("Acme");
+      const briefId = await storeBrief(co);
+      const link = "Apply at https://acme.example.com/giving today.";
+      const flagged = async () => (await json("ownerA", "prepare_email", { companyId: co, text: link })).findings.map((f: { kind: string }) => f.kind);
+      expect(await flagged()).toEqual(["link"]);
+      await withTenant(OWNER_A, (tx) => tx.companyBrief.update({ where: { id: briefId }, data: { accepted: ["i1"] } }));
+      expect(await flagged()).toEqual([]);
+    });
   });
 
   it("takes your own text with the placeholders filled too, and refuses an unknown placeholder", async () => {

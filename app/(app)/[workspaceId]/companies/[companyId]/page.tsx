@@ -23,7 +23,8 @@ import { BackToList } from "@/components/ledger/shell";
 import { isConfigured } from "@/lib/ai/client";
 import { aiUsage, DAILY_DRAFTS_PER_PERSON, draftsToday } from "@/lib/ai/run";
 import { requireMembershipOr404 } from "@/lib/authz";
-import { factNumbers } from "@/lib/claim-rules";
+import { factNumbers, ruleSupport } from "@/lib/claim-rules";
+import { claimSupport } from "@/lib/claim-support";
 import { claimView, dbNow, dbToday } from "@/lib/claims";
 import { DETAIL_TAKE, getCompanyPage } from "@/lib/companies";
 import { daysBetween, day } from "@/lib/dates";
@@ -150,6 +151,8 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
     canDraft && ai?.enabled ? recentDrafts(tenant, companyId) : [],
     canDraft && ai?.enabled ? draftsToday(tenant) : 0,
   ]);
+  // What the Claim Checker's rules may also accept: this company's accepted research and history.
+  const support = canDraft && ai?.enabled ? await claimSupport(tenant, companyId, today) : null;
   const [sources, brief] = await Promise.all([researchOn ? listSources(tenant) : [], researchOn ? latestBrief(tenant, companyId) : null]);
   const companyDomain = domainKey(company.website);
 
@@ -253,7 +256,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<"/
             daily={{ used: draftedToday, limit: DAILY_DRAFTS_PER_PERSON }}
             initialDrafts={drafts}
             today={today}
-            rules={{ factNumbers: factNumbers(facts), website: company.website }}
+            rules={{ factNumbers: factNumbers(facts), website: company.website, ...(support ? { support: ruleSupport(support) } : {}) }}
             templates={templates}
             actions={{ draft: draftEmail, check: checkDraft, logOutreach }}
           />

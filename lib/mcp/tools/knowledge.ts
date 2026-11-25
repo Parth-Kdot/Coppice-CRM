@@ -1,7 +1,8 @@
 import type { z } from "zod";
 import { aiUsage } from "@/lib/ai/run";
-import { checkRules, factNumbers } from "@/lib/claim-rules";
-import { claimState, dbNow } from "@/lib/claims";
+import { checkRules, factNumbers, HISTORY_REASON, ruleSupport } from "@/lib/claim-rules";
+import { claimSupport } from "@/lib/claim-support";
+import { claimState, dbNow, dbToday } from "@/lib/claims";
 import { prisma, withTenant } from "@/lib/db";
 import { addFact, getFactSheet, hasMaskToken, isStale, setFactVerified, updateFact, verifiedFacts } from "@/lib/facts";
 import { notFoundMessage } from "@/lib/messages";
@@ -213,7 +214,8 @@ const FINDING_REASONS = {
 } as const;
 
 // Fills a template (or checks the assistant's own text) with the names and runs the Claim
-// Checker's code rules over it. A read: nothing is saved and nothing is sent. The person sends
+// Checker's code rules over it, with the company's accepted research and logged history as
+// support, as the draft panel does. A read: nothing is saved and nothing is sent. The person sends
 // the email themselves and then logs it with log_outreach.
 export async function prepareEmailTool(principal: McpPrincipal, args: z.infer<typeof mcpPrepareEmailSchema>): Promise<ToolResult> {
   if ((args.templateId === undefined) === (args.text === undefined)) return fail("Send either templateId or text, not both and not neither.");
@@ -244,10 +246,17 @@ export async function prepareEmailTool(principal: McpPrincipal, args: z.infer<ty
   const names: Names = { firstName: contact?.name.trim().split(/\s+/)[0] || "there", senderName: sender?.name ?? "", orgName: workspace.name };
   const text = fill(body, names);
   const facts = await verifiedFacts(member);
-  const findings = checkRules(text, { factNumbers: factNumbers(facts), website: found.company.website });
+  const support = ruleSupport(await claimSupport(member, args.companyId, await dbToday()));
+  const findings = checkRules(text, { factNumbers: factNumbers(facts), website: found.company.website, support });
   return ok({
     text: untrusted(text),
-    findings: findings.map((f) => ({ kind: f.kind, quote: untrusted(f.quote), reason: FINDING_REASONS[f.kind] })),
+    // The generic reasons, except a history reason naming the board year they replied in, which
+    // code wrote from logged rows.
+    findings: findings.map((f) => ({
+      kind: f.kind,
+      quote: untrusted(f.quote),
+      reason: f.kind === "history" && f.reason !== HISTORY_REASON ? f.reason : FINDING_REASONS[f.kind],
+    })),
     note: "Coppice sends nothing. The person sends this themselves, then logs it with log_outreach.",
   });
 }
