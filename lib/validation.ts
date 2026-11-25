@@ -863,7 +863,7 @@ export const mcpAcceptBriefItemSchema = z.object({
   workspaceId: mcpWorkspace,
   companyId: mcpCompany,
   briefId: mcpId("The brief's id, from get_company."),
-  itemId: mcpText(40, "The brief item's id, or a team inbox's id, from get_company."),
+  itemId: mcpText(40, "The id of a brief entry from get_company: a door (i1), campus tie (t1), red flag (r1), the hook (h1), the suggested ask (a1), or a team inbox (m1-1)."),
 });
 
 // Settings > AI assistants: Disconnect one of your own assistants (lib/mcp/connections.ts). The
