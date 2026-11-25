@@ -352,8 +352,7 @@ export async function loadBrief(tenant: Tenant, where: { id?: string; companyId:
       orderBy: { position: "asc" },
     });
     const byPosition = new Map(pages.map((p) => [p.position, p]));
-    const parsed = StoredBrief.safeParse(brief.brief);
-    const items = (parsed.success ? parsed.data.items : []).flatMap((item) => {
+    const items = storedItems(brief.brief).flatMap((item) => {
       const url = byPosition.get(item.page)?.finalUrl;
       return url ? [{ ...item, url, accepted: brief.accepted.includes(item.id) }] : [];
     });
@@ -382,8 +381,14 @@ export async function loadBrief(tenant: Tenant, where: { id?: string; companyId:
 
 // Whether a brief has at least one item (a team inbox alone doesn't count: see loadBrief).
 function hasItems(brief: { brief: unknown }): boolean {
-  const parsed = StoredBrief.safeParse(brief.brief);
-  return parsed.success && parsed.data.items.length > 0;
+  return storedItems(brief.brief).length > 0;
+}
+
+// The door items of a stored brief, or none if the Json isn't in the shape this code writes. Also
+// read by the Claim Checker (lib/claim-support.ts) for the items a person accepted.
+export function storedItems(value: unknown): z.infer<typeof StoredBrief>["items"] {
+  const parsed = StoredBrief.safeParse(value);
+  return parsed.success ? parsed.data.items : [];
 }
 
 // The first of these briefs that found a team inbox on a page it read, if any.
