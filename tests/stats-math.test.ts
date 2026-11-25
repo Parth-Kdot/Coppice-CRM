@@ -1,19 +1,28 @@
 import { describe, expect, it, test } from "vitest";
 import { DAY_MS } from "@/lib/dates";
+import { readFileSync } from "node:fs";
 import {
   activeVerdict,
+  agreesWithStanding,
+  authorshipChanceText,
+  chanceAbove,
+  formatChance,
   formatCount,
   formatPct,
   formatRange,
   isMature,
+  leadingPair,
   MIN_SENDS,
   NO_INDUSTRY,
+  pairText,
+  posterior,
   rate,
   scorecard,
   topParts,
   touchNumbers,
   touchOf,
   verdict,
+  vsOthersText,
   wilson,
   type OutreachRow,
   type Part,
@@ -211,6 +220,9 @@ describe("scorecard", () => {
     expect(card.templates[1].stat.interval?.high).toBeCloseTo(0.4345, 4);
     expect(card.verdict).toEqual({ best: "t1", worst: "t2", rated: 2 });
     expect(card.noTemplate).toMatchObject({ key: "none", name: "No template", stat: { sent: 3, counted: 3, replies: 1, status: "too_few" } });
+    // Alumni is the only rated template in use (Cold is retired, Fair has too few), and AI-drafted
+    // has too few: there is nothing to state a chance against.
+    expect(card.chances).toEqual({ vsOthers: {}, pair: null, authorship: null });
   });
 
   it("splits by industry, with a No industry group last", () => {
@@ -337,5 +349,267 @@ describe("the industries shown under a template", () => {
     const { top, rest } = topParts(parts, 5);
     expect(top.map((p) => p.label)).toEqual(["F", "D", "E", "B", "C"]);
     expect(rest.map((p) => p.label)).toEqual(["A", "G"]);
+  });
+});
+
+// ----- Chance figures -----
+// Every expected value below was worked out as an exact fraction (written replies/counted, so 1/1 is
+// one reply from one counted send), and the decimals from the same sum with whole-number arithmetic.
+
+const counts = (replies: number, counted: number) => ({ replies, counted });
+
+describe("Beta posteriors", () => {
+  it("adds one reply and one miss to the counts", () => {
+    expect(posterior(counts(0, 0))).toEqual({ alpha: 1, beta: 1 });
+    expect(posterior(counts(12, 20))).toEqual({ alpha: 13, beta: 9 });
+  });
+
+  it("clamps counts that make no sense", () => {
+    expect(posterior(counts(7, 5))).toEqual({ alpha: 6, beta: 1 });
+    expect(posterior(counts(-3, 5))).toEqual({ alpha: 1, beta: 6 });
+    expect(posterior(counts(2, -4))).toEqual({ alpha: 1, beta: 1 });
+    expect(posterior(counts(Number.NaN, 5))).toEqual({ alpha: 1, beta: 6 });
+    expect(posterior(counts(1, Number.NaN))).toEqual({ alpha: 1, beta: 1 });
+    expect(posterior(counts(1.6, 4.2))).toEqual({ alpha: 3, beta: 3 });
+  });
+});
+
+describe("the chance of a higher true reply rate", () => {
+  test.each([
+    [0, 0, 0, 0, 1 / 2],
+    [1, 1, 0, 0, 2 / 3],
+    [1, 1, 0, 1, 5 / 6],
+    [2, 2, 0, 0, 3 / 4],
+    [0, 1, 1, 1, 1 / 6],
+    [5, 10, 5, 10, 1 / 2],
+    [5, 6, 0, 5, 1709 / 1716],
+    [5, 6, 2, 10, 219 / 221],
+    [0, 5, 7, 11, 5 / 442],
+    [6, 20, 4, 20, 59791 / 78884],
+    [9, 20, 3, 20, 184057 / 188108],
+    [12, 20, 4, 20, 4069108 / 4091349],
+    [2, 4, 22, 61, 56293 / 76648],
+    [22, 61, 2, 4, 20355 / 76648],
+  ])("%d/%d against %d/%d is the exact fraction", (ra, ca, rb, cb, expected) => {
+    expect(chanceAbove(counts(ra, ca), counts(rb, cb))).toBeCloseTo(expected, 10);
+  });
+
+  test.each([
+    [15, 25, 9, 42, 0.9991559128],
+    [2, 25, 22, 42, 0.0000803842],
+    [300, 1000, 280, 1000, 0.837654296],
+    [20, 20, 0, 20, 0.9999999999981],
+  ])("%d/%d against %d/%d matches to 10 places", (ra, ca, rb, cb, expected) => {
+    expect(chanceAbove(counts(ra, ca), counts(rb, cb))).toBeCloseTo(expected, 10);
+  });
+
+  it("reads exactly 1 when nothing could reverse it, and stays quick on big counts", () => {
+    expect(chanceAbove(counts(60, 60), counts(0, 60))).toBe(1);
+    const started = performance.now();
+    expect(chanceAbove(counts(5000, 20000), counts(4900, 20000))).toBeCloseTo(0.8767, 4);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  const PAIRS: [number, number, number, number][] = [
+    [0, 0, 0, 0],
+    [1, 1, 0, 1],
+    [5, 6, 2, 10],
+    [9, 20, 3, 20],
+    [2, 4, 22, 61],
+    [15, 25, 9, 42],
+    [300, 1000, 280, 1000],
+    [4, 40, 30, 40],
+  ];
+
+  it("adds up to 1 both ways round, gives the same number every time, and stays between 0 and 1", () => {
+    for (const [ra, ca, rb, cb] of PAIRS) {
+      const a = counts(ra, ca);
+      const b = counts(rb, cb);
+      const ab = chanceAbove(a, b);
+      expect(Math.abs(ab + chanceAbove(b, a) - 1)).toBeLessThan(1e-12);
+      expect(chanceAbove(a, b)).toBe(ab);
+      expect(ab).toBeGreaterThanOrEqual(0);
+      expect(ab).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("uses no randomness", () => {
+    const source = readFileSync(new URL("../lib/stats-math.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("Math.random");
+  });
+});
+
+describe("a chance never reads against a badge", () => {
+  test.each([
+    [0.4, "best", false],
+    [0.6, "worst", false],
+    [0.9, "best", true],
+    [0.1, "worst", true],
+    [0.5, "best", true],
+    [0.5, "worst", true],
+    [0.01, null, true],
+    [0.99, null, true],
+  ] as const)("%d with %s: %s", (chance, standing, expected) => {
+    expect(agreesWithStanding(chance, standing)).toBe(expected);
+  });
+});
+
+describe("chances in the scorecard", () => {
+  let n = 0;
+  // `count` sends of one template, 30 days old (so all counted), the first `replies` of them replied.
+  const sends = (templateId: string | null, count: number, replies: number, aiDrafted = false): OutreachRow[] =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `c${String(n++).padStart(4, "0")}`,
+      companyId: `co-${n}`,
+      templateId,
+      channel: "EMAIL" as const,
+      sentAt: ago(30),
+      gotReply: i < replies,
+      aiDrafted,
+      industry: null,
+    }));
+
+  // Three templates in use: A 12/20 (all AI-drafted emails), B 8/20 and C 4/20 (hand-written), and 500
+  // counted no-template sends with no replies, which must change nothing.
+  const three = scorecard(
+    {
+      now: NOW,
+      rows: [...sends("A", 20, 12, true), ...sends("B", 20, 8), ...sends("C", 20, 4), ...sends(null, 500, 0, true)],
+      templates: [
+        { id: "A", name: "A", archived: false },
+        { id: "B", name: "B", archived: false },
+        { id: "C", name: "C", archived: false },
+      ],
+      repliedCompanyIds: [],
+    },
+    "none",
+    20,
+  );
+
+  it("compares each template with the pooled other rated templates in use only", () => {
+    expect(Object.keys(three.chances.vsOthers).sort()).toEqual(["A", "B", "C"]);
+    // A 12/20 against B and C pooled (12/40), B 8/20 against 16/40, C 4/20 against 20/40.
+    expect(three.chances.vsOthers.A).toBeCloseTo(0.9861386034, 10);
+    expect(three.chances.vsOthers.B).toBeCloseTo(0.5093589357, 10);
+    expect(three.chances.vsOthers.C).toBeCloseTo(0.0134450033, 10);
+  });
+
+  it("still names no best and no worst, since the ranges overlap", () => {
+    // A 0.387 to 0.781 overlaps C 0.081 to 0.416.
+    expect(three.activeVerdict).toMatchObject({ best: null, worst: null, rated: 3 });
+  });
+
+  it("gives the two leading templates and the authorship chance", () => {
+    expect(three.chances.pair?.first).toBe("A");
+    expect(three.chances.pair?.second).toBe("B");
+    expect(three.chances.pair?.chance).toBeCloseTo(0.8916401999, 10);
+    // AI-drafted emails here are template A's 12/20 and the 500 unreplied no-template emails, so the
+    // AI side is 12/520 against hand-written 12/40.
+    expect(three.authorship.ai).toMatchObject({ counted: 520, replies: 12 });
+    expect(three.chances.authorship).toBeCloseTo(chanceAbove(counts(12, 520), counts(12, 40)), 12);
+  });
+
+  it("gives AI-drafted against hand-written as the brief's 12/20 against 12/40 when only templates are counted", () => {
+    const card = scorecard(
+      {
+        now: NOW,
+        rows: [...sends("A", 20, 12, true), ...sends("B", 20, 8), ...sends("C", 20, 4)],
+        templates: [
+          { id: "A", name: "A", archived: false },
+          { id: "B", name: "B", archived: false },
+          { id: "C", name: "C", archived: false },
+        ],
+        repliedCompanyIds: [],
+      },
+      "none",
+      20,
+    );
+    expect(card.chances.authorship).toBeCloseTo(0.9861386034, 10);
+  });
+
+  it("never puts a chance against a Worst badge, whatever the no-template sends look like", () => {
+    const card = scorecard(
+      {
+        now: NOW,
+        rows: [...sends("A", 40, 4), ...sends("B", 40, 30), ...sends(null, 500, 0)],
+        templates: [
+          { id: "A", name: "A", archived: false },
+          { id: "B", name: "B", archived: false },
+        ],
+        repliedCompanyIds: [],
+      },
+      "none",
+      20,
+    );
+    expect(card.activeVerdict.worst).toBe("A");
+    expect(card.activeVerdict.best).toBe("B");
+    expect(card.chances.vsOthers.A).toBeCloseTo(6.597e-10, 12);
+    expect(vsOthersText(card.chances.vsOthers.A)).toBe("<1% chance above the other rated templates");
+    expect(vsOthersText(card.chances.vsOthers.B)).toBe(">99% chance above the other rated templates");
+  });
+
+  it("leaves retired and unrated templates out of every comparison", () => {
+    const card = scorecard(
+      {
+        now: NOW,
+        rows: [...sends("A", 20, 9), ...sends("B", 20, 3), ...sends("Old", 1000, 490), ...sends("Thin", 10, 10)],
+        templates: [
+          { id: "A", name: "A", archived: false },
+          { id: "B", name: "B", archived: false },
+          { id: "Old", name: "Old", archived: true },
+          { id: "Thin", name: "Thin", archived: false },
+        ],
+        repliedCompanyIds: [],
+      },
+      "none",
+      20,
+    );
+    expect(Object.keys(card.chances.vsOthers).sort()).toEqual(["A", "B"]);
+    expect(card.chances.vsOthers.A).toBeCloseTo(184057 / 188108, 10);
+    expect(card.chances.pair).toEqual({ first: "A", second: "B", chance: expect.closeTo(184057 / 188108, 10) });
+  });
+});
+
+describe("the leading pair", () => {
+  const line = (key: string, replies: number, counted: number, archived = false): TemplateLine => ({
+    key,
+    name: key,
+    archived,
+    stat: rate({ sent: counted, counted, replies }),
+    parts: [],
+  });
+
+  it("takes the two highest rated templates in use, never a retired one", () => {
+    const templates = [line("Fall", 490, 1000, true), line("A", 9, 20), line("B", 3, 20)];
+    expect(activeVerdict(templates)).toMatchObject({ best: null, worst: null });
+    const pair = leadingPair(templates);
+    expect(pair).toMatchObject({ first: "A", second: "B" });
+    expect(pair?.chance).toBeCloseTo(184057 / 188108, 10);
+  });
+
+  it("is null with one rated template in use", () => {
+    expect(leadingPair([line("A", 9, 20), line("Thin", 3, 5), line("Old", 9, 20, true)])).toBeNull();
+  });
+
+  it("breaks a tie in rate by name", () => {
+    expect(leadingPair([line("Zed", 5, 20), line("Amy", 5, 20), line("Low", 1, 20)])).toEqual({ first: "Amy", second: "Zed", chance: expect.closeTo(0.5, 12) });
+  });
+});
+
+describe("chance wording", () => {
+  test.each([
+    [1, ">99% chance"],
+    [0, "<1% chance"],
+    [0.995, ">99% chance"],
+    [0.5, "50% chance"],
+    [0.891, "89% chance"],
+  ])("%d reads %s", (p, text) => {
+    expect(formatChance(p)).toBe(text);
+  });
+
+  it("writes the three lines the page shows", () => {
+    expect(vsOthersText(0.99916)).toBe(">99% chance above the other rated templates");
+    expect(pairText("A", "B", 0.9785)).toBe("A against B: 98% chance of the higher true reply rate");
+    expect(authorshipChanceText(0.63)).toBe("63% chance AI-drafted emails have the higher true reply rate");
   });
 });

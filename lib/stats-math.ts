@@ -15,6 +15,12 @@ import { DAY_MS } from "@/lib/dates";
 // - A template is called best only when its whole interval sits above every other rated template's
 //   interval, and worst only when it sits wholly below. Overlapping intervals mean the data can't
 //   tell them apart yet, so nothing is called.
+// - Next to the ranges, a chance figure says how likely one group's true reply rate is to be higher
+//   than another's. Each rate starts from no opinion (a Beta(1,1) prior, as if one reply and one
+//   miss), and the chance is an exact sum, so it never depends on randomness. A template is compared
+//   only with the pooled counted sends of the other rated templates people can still use, the same
+//   set that decides best and worst. The chance never decides best or worst, and a chance that
+//   would read against a best or worst badge is left out.
 
 export const MATURITY_DAYS = 14;
 export const MIN_SENDS = 20;
@@ -121,6 +127,117 @@ export function verdict<K>(items: readonly { key: K; stat: Rated }[]): Verdict<K
   return { best: best?.key ?? null, worst: worst?.key ?? null, rated: rated.length };
 }
 
+// ----- Chance figures (Beta posteriors) -----
+
+export type Counts = { counted: number; replies: number };
+export type Posterior = { alpha: number; beta: number };
+
+// Whole, non-negative counts with replies never above counted. Bad input reads as no sends.
+function cleanCounts({ counted, replies }: Counts): Counts {
+  const n = Number.isFinite(counted) && counted > 0 ? Math.round(counted) : 0;
+  const r = Number.isFinite(replies) && replies > 0 ? Math.min(Math.round(replies), n) : 0;
+  return { counted: n, replies: r };
+}
+
+// The uniform Beta(1,1) prior updated with the counts: one more than the replies, one more than the misses.
+export function posterior(counts: Counts): Posterior {
+  const { counted, replies } = cleanCounts(counts);
+  return { alpha: replies + 1, beta: counted - replies + 1 };
+}
+
+// ln(n!) for whole n, from a table of running sums of ln(k) that grows when a bigger n is asked for.
+// The sums are compensated (Kahan), so ln(n!) stays accurate to about 1e-12 even at n in the tens of thousands.
+let lnFactTable = new Float64Array([0, 0]);
+let lnFactCarry = 0;
+function lnF(n: number): number {
+  if (n >= lnFactTable.length) {
+    const size = Math.max(n + 1, lnFactTable.length * 2);
+    const next = new Float64Array(size);
+    next.set(lnFactTable);
+    for (let k = lnFactTable.length; k < size; k++) {
+      const y = Math.log(k) - lnFactCarry;
+      const t = next[k - 1] + y;
+      lnFactCarry = t - next[k - 1] - y;
+      next[k] = t;
+    }
+    lnFactTable = next;
+  }
+  return lnFactTable[n];
+}
+// ln of the Beta function for whole x, y of at least 1.
+const lnB = (x: number, y: number) => lnF(x - 1) + lnF(y - 1) - lnF(x + y - 1);
+
+// P(y's true rate is higher than x's), as the exact finite sum for whole-number Beta parameters:
+// the sum for i from 0 to alpha_y - 1 of B(alpha_x + i, beta_x + beta_y) / ((beta_y + i) B(1 + i, beta_y) B(alpha_x, beta_x)).
+// Added up in log space (each term relative to the largest), so big counts neither overflow nor underflow.
+function chanceYAboveX(x: Posterior, y: Posterior): number {
+  const terms = new Float64Array(y.alpha);
+  const base = lnB(x.alpha, x.beta);
+  let top = -Infinity;
+  for (let i = 0; i < y.alpha; i++) {
+    const t = lnB(x.alpha + i, x.beta + y.beta) - Math.log(y.beta + i) - lnB(1 + i, y.beta) - base;
+    terms[i] = t;
+    if (t > top) top = t;
+  }
+  let sum = 0;
+  for (let i = 0; i < terms.length; i++) sum += Math.exp(terms[i] - top);
+  return Math.exp(top + Math.log(sum));
+}
+
+// The chance that a's true reply rate is higher than b's. Exact and deterministic; the sum runs over
+// whichever side has the smaller alpha. Always between 0 and 1, and chanceAbove(a, b) + chanceAbove(b, a) is 1.
+export function chanceAbove(a: Counts, b: Counts): number {
+  const pa = posterior(a);
+  const pb = posterior(b);
+  const p = pa.alpha <= pb.alpha ? chanceYAboveX(pb, pa) : 1 - chanceYAboveX(pa, pb);
+  return Math.min(1, Math.max(0, p));
+}
+
+// A chance that reads against a badge is never shown: a best needs at least an even chance, a worst
+// at most one. Anything with no badge always agrees.
+export function agreesWithStanding(chance: number, standing: "best" | "worst" | null): boolean {
+  if (standing === "best") return chance >= 0.5;
+  if (standing === "worst") return chance <= 0.5;
+  return true;
+}
+
+export type LeadingPair = { first: string; second: string; chance: number };
+
+// The two rated templates in use with the highest rates (name breaks a tie), and the chance the
+// first's true rate is higher than the second's. Null with fewer than two.
+export function leadingPair(templates: readonly TemplateLine[], min = MIN_SENDS): LeadingPair | null {
+  const rated = templates
+    .filter((t) => !t.archived && t.stat.status === "rated" && t.stat.rate !== null && t.stat.counted >= min)
+    .sort((a, b) => (b.stat.rate as number) - (a.stat.rate as number) || a.name.localeCompare(b.name));
+  if (rated.length < 2) return null;
+  const [first, second] = rated;
+  return { first: first.key, second: second.key, chance: chanceAbove(first.stat, second.stat) };
+}
+
+export type Chances = {
+  // Template key to its chance of a higher true rate than the pooled other rated templates in use.
+  vsOthers: Record<string, number>;
+  pair: LeadingPair | null;
+  // AI-drafted emails against hand-written ones, when both are rated.
+  authorship: number | null;
+};
+
+function chancesOf(templates: readonly TemplateLine[], standing: Verdict<string>, ai: Rated, hand: Rated, min: number): Chances {
+  const rated = templates.filter((t) => !t.archived && t.stat.status === "rated" && t.stat.counted >= min);
+  const vsOthers: Record<string, number> = {};
+  for (const t of rated) {
+    const others = rated.filter((o) => o !== t);
+    if (others.length === 0) continue;
+    const pooled = { counted: others.reduce((n, o) => n + o.stat.counted, 0), replies: others.reduce((n, o) => n + o.stat.replies, 0) };
+    if (pooled.counted < min) continue;
+    const chance = chanceAbove(t.stat, pooled);
+    const badge = t.key === standing.best ? "best" : t.key === standing.worst ? "worst" : null;
+    if (agreesWithStanding(chance, badge)) vsOthers[t.key] = chance;
+  }
+  const bothRated = ai.status === "rated" && hand.status === "rated" && ai.counted >= min && hand.counted >= min;
+  return { vsOthers, pair: leadingPair(templates, min), authorship: bothRated ? chanceAbove(ai, hand) : null };
+}
+
 // ----- The Scorecard -----
 
 export const NO_TEMPLATE = "none";
@@ -143,6 +260,8 @@ export type Scorecard = {
   activeVerdict: ActiveVerdict;
   // Emails only (an AI draft is always an email, so other channels would not compare like for like).
   authorship: { ai: Rated; hand: Rated; lead: "ai" | "hand" | null };
+  // Chance figures beside the Wilson ranges. They never decide best or worst.
+  chances: Chances;
   byTouch: Part[];
   gaps: { noTemplate: number; repliedUnmarked: number; maturing: number };
 };
@@ -208,6 +327,15 @@ export function formatPct(x: number): string {
   return `${Math.round(x * 100)}%`;
 }
 
+// "98% chance". Never "0%" or "100%": the figure is a chance, so it is never shown as certain.
+export const formatChance = (p: number) => `${formatPct(Math.min(0.999, Math.max(0.001, p)))} chance`;
+// "98% chance above the other rated templates".
+export const vsOthersText = (p: number) => `${formatChance(p)} above the other rated templates`;
+// "Alumni angle against Career fair: 89% chance of the higher true reply rate".
+export const pairText = (first: string, second: string, p: number) => `${first} against ${second}: ${formatChance(p)} of the higher true reply rate`;
+// "63% chance AI-drafted emails have the higher true reply rate".
+export const authorshipChanceText = (p: number) => `${formatChance(p)} AI-drafted emails have the higher true reply rate`;
+
 // "12% to 31%".
 export const formatRange = (i: Interval) => `${formatPct(i.low)} to ${formatPct(i.high)}`;
 
@@ -251,12 +379,15 @@ export function scorecard(input: ScorecardInput, split: Split = "none", min = MI
   const marked = new Set(rows.filter((r) => r.gotReply).map((r) => r.companyId));
   const all = tally(rows, now);
 
+  const standing = activeVerdict(templates);
+
   return {
     templates,
     noTemplate: line(NO_TEMPLATE, "No template", false),
     verdict: verdict(templates.map((t) => ({ key: t.key, stat: t.stat }))),
-    activeVerdict: activeVerdict(templates),
+    activeVerdict: standing,
     authorship: { ai, hand, lead: authorVerdict.best },
+    chances: chancesOf(templates, standing, ai, hand, min),
     byTouch: partsOf(rows, "touch", touches, now, min),
     gaps: {
       noTemplate: rows.filter((r) => r.templateId === null).length,
