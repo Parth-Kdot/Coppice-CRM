@@ -2,7 +2,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, test, vi } from 
 import { checkDraft as checkAction } from "@/app/(app)/[workspaceId]/companies/draft-actions";
 import type { Membership } from "@/lib/authz";
 import { aiCheck, checkDraft, readCheck } from "@/lib/claim-check";
-import { checkRules, factNumbers } from "@/lib/claim-rules";
+import { checkRules, factNumbers, HISTORY_REASON, repliedReason, type RuleSupport } from "@/lib/claim-rules";
+import { yearWindow } from "@/lib/capsule/year";
+import { dbToday } from "@/lib/claims";
+import { DAY_MS } from "@/lib/dates";
+import { boardYearOf } from "@/lib/smart-import/dates";
 import { addContact, createCompany } from "@/lib/companies";
 import { prisma, withTenant } from "@/lib/db";
 import { draftEmail, recentDrafts } from "@/lib/drafts";
@@ -83,6 +87,61 @@ describe("checkRules", () => {
   });
 });
 
+describe("checkRules with this company's support", () => {
+  const none: RuleSupport = { brief: [], historyYears: [], sites: [], history: { sponsored: null, replied: null } };
+  const withSupport = (support: Partial<RuleSupport>) => ({ ...RULES, support: { ...none, ...support } });
+  const sponsored = withSupport({ history: { sponsored: "2025-26", replied: null } });
+  const replied = withSupport({ history: { sponsored: null, replied: "2024-25" } });
+  const history = (text: string, rules: Parameters<typeof checkRules>[1]) => checkRules(text, rules).filter((f) => f.kind === "history");
+
+  test.for(["Thanks for sponsoring us last year!", "As a past sponsor, you know our work.", "Last year Globex sponsored our Gold tier."])(
+    "a sponsorship line passes with a lasting move to Committed: %s",
+    (text) => {
+      expect(history(text, sponsored)).toEqual([]);
+    },
+  );
+
+  test.for(["It was great working with you before.", "We'd love to work with you once again."])("a contact line passes with a reply or a Committed move: %s", (text) => {
+    expect(history(text, replied)).toEqual([]);
+    expect(history(text, sponsored)).toEqual([]);
+  });
+
+  it("a sponsorship line with only an earlier reply stays flagged, naming the year they replied", () => {
+    expect(history("Thanks for sponsoring us last year!", replied)).toEqual([{ kind: "history", quote: "sponsoring us last year", reason: repliedReason("2024-25") }]);
+    expect(repliedReason("2024-25")).toBe("They replied in 2024-25, but no move to Committed is logged for this company.");
+  });
+
+  it("with no history the reason is exactly as before", () => {
+    expect(HISTORY_REASON).toBe("Check this company really has a history with you.");
+    expect(history("Thanks for sponsoring us last year!", withSupport({}))).toEqual([{ kind: "history", quote: "sponsoring us last year", reason: HISTORY_REASON }]);
+    expect(history("It was great working with you before.", withSupport({}))[0].reason).toBe(HISTORY_REASON);
+  });
+
+  it("a number from an accepted brief item passes only in a sentence about that item", () => {
+    const rules = withSupport({ brief: [{ number: "5000", words: ["community", "fund"] }] });
+    expect(checkRules("The Community Fund gives up to $5,000. We'd love to apply.", rules)).toEqual([]);
+    expect(checkRules("Our hackathon draws 5,000 students.", rules).map((f) => f.quote)).toEqual(["5,000"]);
+    // The item's words in another sentence don't help.
+    expect(checkRules("We know the Community Fund. Our hackathon draws 5,000 students.", rules).map((f) => f.quote)).toEqual(["5,000"]);
+  });
+
+  it("a Committed year passes only inside the history line itself", () => {
+    // RULES has 2025 as a verified number, so these rules start with none.
+    const rules = { ...withSupport({ historyYears: ["2025"], history: { sponsored: "2025-26", replied: null } }), factNumbers: [] };
+    expect(checkRules("Thanks again: you sponsored us in 2025.", rules)).toEqual([]);
+    expect(checkRules("Our club was founded in 2025.", rules).map((f) => f.quote)).toEqual(["2025"]);
+  });
+
+  it("a link to an accepted item's site passes; other links are still flagged", () => {
+    const rules = withSupport({ sites: ["acme.example.com", "sites.google.com/acme-giving"] });
+    const quotes = (text: string) => checkRules(text, rules).map((f) => f.quote);
+    expect(quotes("Apply at https://acme.example.com/giving.")).toEqual([]);
+    expect(quotes("Apply at https://other.example.com/giving.")).toEqual(["https://other.example.com/giving"]);
+    expect(quotes("See https://sites.google.com/acme-giving/apply.")).toEqual([]);
+    expect(quotes("See https://sites.google.com/other/apply.")).toEqual(["https://sites.google.com/other/apply"]);
+  });
+});
+
 describe("placeholders", () => {
   it("fills names in and takes them back out, longest name first", () => {
     const filled = fill("Hi {{firstName}}, from {{senderName}} of {{orgName}}", NAMES);
@@ -135,7 +194,7 @@ describe("the AI check", () => {
 
   it("sends placeholders instead of names, masks contact details, and numbers the emails", async () => {
     fakeGemini(issues());
-    await aiCheck(OWNER, [draft, { subject: "Two", body: "Second email" }], NAMES);
+    await aiCheck(OWNER, companyId, [draft, { subject: "Two", body: "Second email" }], NAMES);
     const prompt = JSON.stringify(calls[0].body);
     expect(prompt).toContain("1. The annual hackathon draws 600 students.");
     expect(prompt).toContain('<email number=\\"1\\">\\nSubject: {{orgName}} at Purdue\\n\\nHi {{firstName}},');
@@ -154,7 +213,7 @@ describe("the AI check", () => {
         { email: 1, quote: "Hi", problem: "Too short to mean anything." },
       ),
     );
-    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    const [check] = await aiCheck(OWNER, companyId, [draft], NAMES);
     expect(check).toEqual({
       subject: draft.subject,
       body: draft.body,
@@ -166,7 +225,7 @@ describe("the AI check", () => {
   it("sends a draft for a contact named Ed with 'Education' and 'Edison' intact", async () => {
     fakeGemini(issues());
     const text = { subject: "Education Day", body: "Hi Ed,\n\nOur Education Day reaches 1,200 students. Edison would approve.\n\nSam Lee\nOrg A" };
-    await aiCheck(OWNER, [text], { ...NAMES, firstName: "Ed" });
+    await aiCheck(OWNER, companyId, [text], { ...NAMES, firstName: "Ed" });
     const prompt = JSON.stringify(calls[0].body);
     expect(prompt).toContain("Subject: Education Day");
     expect(prompt).toContain("Hi {{firstName}},");
@@ -181,7 +240,7 @@ describe("the AI check", () => {
         { email: 1, quote: "{{orgName}} has 900 members", problem: `${"No fact gives a member count, ".repeat(10)}` },
       ),
     );
-    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    const [check] = await aiCheck(OWNER, companyId, [draft], NAMES);
     expect(check.error).toBeNull();
     expect(check.ai).toHaveLength(1);
     expect(check.ai[0].quote).toBe("Org A has 900 members");
@@ -191,7 +250,7 @@ describe("the AI check", () => {
   it("a reply whose every issue is broken is an error, never a clean result", async () => {
     const broken = () => answer(JSON.stringify({ issues: [{ email: "one", quote: 5, problem: null }, { email: "two" }] }));
     fakeGemini(broken(), broken(), broken());
-    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    const [check] = await aiCheck(OWNER, companyId, [draft], NAMES);
     expect(check.ai).toEqual([]);
     expect(check.error).toBe("The AI sent back something unusable. Try again.");
     const logged = await withTenant(OWNER, (tx) => tx.aiRun.findMany({ where: { feature: "CLAIM_CHECK" }, select: { status: true, error: true } }));
@@ -200,7 +259,7 @@ describe("the AI check", () => {
 
   it("a 500 on Flash-Lite moves on to 3.6 Flash for Check again", async () => {
     fakeGemini(apiError(500, "Internal", "INTERNAL"), issues({ email: 1, quote: "{{orgName}} has 900 members", problem: "No member count." }));
-    const [check] = await aiCheck(OWNER, [draft], NAMES);
+    const [check] = await aiCheck(OWNER, companyId, [draft], NAMES);
     expect(check.ai).toHaveLength(1);
     expect(calls.map((c) => c.url.match(/models\/([^:]+)/)?.[1])).toEqual(["gemini-3.5-flash-lite", "gemini-3.6-flash"]);
   });
@@ -208,7 +267,7 @@ describe("the AI check", () => {
   it("returns the reason, and no AI findings, when the AI can't answer", async () => {
     // Every model in line is out of quota.
     fakeGemini(...Array.from({ length: 2 }, () => apiError(429, "Resource exhausted", "RESOURCE_EXHAUSTED")));
-    expect(await aiCheck(OWNER, [draft], NAMES)).toEqual([{ ...draft, ai: [], error: "The AI is busy right now. Try again in a minute." }]);
+    expect(await aiCheck(OWNER, companyId, [draft], NAMES)).toEqual([{ ...draft, ai: [], error: "The AI is busy right now. Try again in a minute." }]);
   });
 
   // Recorded reply: a draft listed the Gold benefits the way the facts
@@ -220,7 +279,7 @@ describe("the AI check", () => {
     await addFact(OWNER, "Gold ($2,500): a booth, plus everything in Silver.");
     const gold = { subject: "Gold", body: "Hi Hank,\n\nGold ($2,500) gets a booth, logo on the event page and a thank-you post.\n\nSam Lee\nOrg A" };
     fakeGemini(issues());
-    const [check] = await aiCheck(OWNER, [gold], NAMES);
+    const [check] = await aiCheck(OWNER, companyId, [gold], NAMES);
     expect(check).toMatchObject({ ai: [], error: null });
     const body = calls[0].body as { systemInstruction: unknown; contents: unknown };
     const system = JSON.stringify(body.systemInstruction);
@@ -235,8 +294,90 @@ describe("the AI check", () => {
   it("says when no facts are verified", async () => {
     await withTenant(OWNER, (tx) => tx.factSheetItem.deleteMany());
     fakeGemini(issues());
-    await aiCheck(OWNER, [draft], NAMES);
+    await aiCheck(OWNER, companyId, [draft], NAMES);
     expect(JSON.stringify(calls[0].body)).toContain("(none verified)");
+  });
+
+  describe("with this company's accepted research and history", () => {
+    async function history() {
+      const start = boardYearOf(await dbToday()) - 1;
+      const lastYear = (days: number) => new Date(yearWindow(start).from.getTime() + days * DAY_MS);
+      await addContact(OWNER, companyId, { name: "Hank Scorpio", email: "hank@globex.com", title: null });
+      await withTenant(OWNER, async (tx) => {
+        await tx.outreach.create({ data: { workspaceId: "a", companyId, senderId: "officerA", sentAt: lastYear(30), gotReply: true, note: "Spoke with Hank Scorpio at hank@globex.com" } });
+        await tx.stageChange.create({ data: { workspaceId: "a", companyId, changedById: "officerA", fromStage: "REPLIED", toStage: "COMMITTED", changedAt: lastYear(60) } });
+        await tx.company.update({ where: { id_workspaceId: { id: companyId, workspaceId: "a" } }, data: { stage: "IN_CONVERSATION" } });
+        const brief = await tx.companyBrief.create({
+          data: {
+            workspaceId: "a",
+            companyId,
+            createdById: "officerA",
+            status: "READY",
+            accepted: ["i1"],
+            brief: {
+              items: [
+                { id: "i1", door: "GIVING", title: "Community Fund", detail: "Takes requests twice a year.", deadline: "March 1", page: 1, quote: "The Community Fund gives up to $5,000." },
+                { id: "i2", door: "ERG", title: "Women in Tech group", detail: "Hosts events.", deadline: null, page: 1, quote: "Not accepted." },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+        await tx.companyBriefPage.create({
+          data: { workspaceId: "a", briefId: brief.id, position: 1, url: "https://globex.com/giving", finalUrl: "https://globex.com/giving", inboxes: ["giving@globex.com"] },
+        });
+      });
+      return start;
+    }
+
+    it("sends the accepted items and code-written history lines, never names, notes, senders, inboxes or the stage now", async () => {
+      const start = await history();
+      fakeGemini(issues());
+      await aiCheck(OWNER, companyId, [draft], NAMES);
+      const prompt = JSON.stringify(calls[0].body.contents);
+      expect(prompt).toContain('<research>\\nR1. Giving portal: Community Fund. Takes requests twice a year. Deadline: March 1. Quote: \\"The Community Fund gives up to $5,000.\\"\\n</research>');
+      expect(prompt).toContain(`<history>\\n${start}-${String((start + 1) % 100).padStart(2, "0")}: 1 outreach entry, 1 reply; moved to Committed in `);
+      expect(prompt).not.toMatch(/Women in Tech|Hank|Scorpio|hank@|Spoke with|giving@|officerA|In conversation|IN_CONVERSATION/);
+    });
+
+    it("says when nothing is accepted or logged, and tells the AI a reply is not a sponsorship", async () => {
+      fakeGemini(issues());
+      await aiCheck(OWNER, companyId, [draft], NAMES);
+      const body = JSON.stringify(calls[0].body);
+      expect(body).toContain("<research>\\n(none accepted)\\n</research>");
+      expect(body).toContain("<history>\\n(nothing logged)\\n</history>");
+      expect(body).toContain("A reply supports having been in touch, and is not a sponsorship.");
+      expect(body).toContain("A reply followed by a move to Declined is not a good relationship.");
+    });
+
+    it("draftEmail's check carries the company's history", async () => {
+      await history();
+      const variants = [{ angle: "A", subject: "Hello {{firstName}}", body: "Hi {{firstName}}, thanks for sponsoring us last year.\n\n{{senderName}}\n{{orgName}}" }];
+      fakeGemini(answer(JSON.stringify({ variants })), issues());
+      expect(await draftEmail(OWNER, companyId, { kind: "FIRST_TOUCH", contactId: null, note: null })).toMatchObject({ ok: true });
+      expect(JSON.stringify(calls[1].body)).toContain("1 outreach entry, 1 reply; moved to Committed in ");
+      expect(JSON.stringify(calls[0].body)).not.toContain("<history>");
+    });
+
+    it("Check again reads the support of the draft's own company", async () => {
+      await history();
+      const other = await createCompany(OWNER, { name: "Initech", website: "initech.com" });
+      if (other.status !== "saved") throw new Error("flagged");
+      const variants = [{ angle: "A", subject: "Hi", body: "Hi {{firstName}}\n\n{{senderName}}\n{{orgName}}" }];
+      const ids: string[] = [];
+      for (const id of [companyId, other.companyId]) {
+        fakeGemini(answer(JSON.stringify({ variants })), issues());
+        const result = await draftEmail(OWNER, id, { kind: "FIRST_TOUCH", contactId: null, note: null });
+        if (!result.ok) throw new Error(result.error);
+        ids.push(result.data[0].id);
+      }
+      fakeGemini(issues(), issues());
+      await checkDraft(OWNER, ids[0], { subject: "Hi", body: "Thanks for sponsoring us last year." });
+      await checkDraft(OWNER, ids[1], { subject: "Hi", body: "Thanks for sponsoring us last year." });
+      expect(JSON.stringify(calls[0].body)).toContain("R1. Giving portal: Community Fund.");
+      expect(JSON.stringify(calls[1].body)).toContain("<history>\\n(nothing logged)\\n</history>");
+      expect(JSON.stringify(calls[1].body)).toContain("(none accepted)");
+    });
   });
 
   it("runs after drafting, and the result survives a reload", async () => {
