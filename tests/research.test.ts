@@ -6,6 +6,7 @@ import { numbersIn } from "@/lib/ai/text";
 import type { Membership } from "@/lib/authz";
 import { dbNow } from "@/lib/claims";
 import { addContact, archiveCompany, createCompany } from "@/lib/companies";
+import { addFact, setFactVerified, updateFact } from "@/lib/facts";
 import { prisma, withTenant, type Tenant } from "@/lib/db";
 import { acceptBriefItem } from "@/lib/research/accept";
 import { BRIEF_RUNNING_MS, latestBrief, requestBrief, type BriefView } from "@/lib/research/brief";
@@ -167,7 +168,7 @@ describe("requestBrief", () => {
     }
     // The writing call sees only the checked passages: not the pages, not the invented one.
     const writing = promptOf(1);
-    expect(writing).toContain("<passage number=\\\"1\\\" door=\\\"UNIVERSITY_RELATIONS\\\">");
+    expect(writing).toContain("<passage number=\\\"1\\\" topic=\\\"DOOR\\\" door=\\\"UNIVERSITY_RELATIONS\\\">");
     expect(writing).not.toContain("Jane Doe leads campus outreach");
     expect(writing).not.toContain("500 interns");
     expect(writing).not.toContain("acme.com");
@@ -849,5 +850,193 @@ describe("approved sources without a label", () => {
     const added = await addSource(OWNER, "https://careers.acme.com/interns", null);
     if (!added.ok) throw new Error(added.error);
     expect((await listSources(OWNER)).find((s) => s.id === added.data.sourceId)?.label).toBe("careers.acme.com/interns");
+  });
+});
+
+describe("brief sections: campus ties, red flags, the hook and the suggested ask", () => {
+  const COMMUNITY = "https://acme.org/community";
+  const COMMUNITY_HTML = `<p>Acme partners with Purdue University on a student design challenge every spring.</p>
+<p>The Acme Foundation does not fund individual student travel.</p>
+<p>Acme opened a new plant in Lafayette in 2024.</p>
+<p>Acme supports hackathons that teach students to build hardware.</p>`;
+  const TIE_Q = "Acme partners with Purdue University on a student design challenge every spring.";
+  const FLAG_Q = "The Acme Foundation does not fund individual student travel.";
+  const HOOK_Q = "Acme opened a new plant in Lafayette in 2024.";
+  const ASK_Q = "Acme supports hackathons that teach students to build hardware.";
+  const DOOR_Q = "Our University Relations team partners with student organizations at Purdue.";
+  const GOLD = "Gold Tier ($2,500): logo on the event shirt";
+
+  let communityId: string;
+  let goldId: string;
+
+  const fullReading = () =>
+    answer(
+      JSON.stringify({
+        passages: [
+          { page: 1, topic: "DOOR", door: "UNIVERSITY_RELATIONS", quote: DOOR_Q },
+          { page: 2, topic: "CAMPUS_TIE", quote: TIE_Q },
+          { page: 2, topic: "RED_FLAG", quote: FLAG_Q },
+          { page: 2, topic: "HOOK", quote: HOOK_Q },
+          { page: 2, topic: "HOOK", quote: ASK_Q },
+        ],
+      }),
+    );
+  const writing = (over: Record<string, unknown> = {}) =>
+    answer(
+      JSON.stringify({
+        items: [item({ door: "UNIVERSITY_RELATIONS", title: "University Relations team", detail: "Partners with student organizations at Purdue.", passage: 1, quote: DOOR_Q })],
+        ties: [{ title: "Purdue design challenge", detail: "A spring design challenge with Purdue University students.", passage: 2, quote: TIE_Q }],
+        flags: [{ kind: "OTHER", title: "No money for individual student travel", passage: 3, quote: FLAG_Q }],
+        hook: { line: "Acme opened a new plant in Lafayette in 2024.", passage: 4, quote: HOOK_Q },
+        ask: { tier: 1, reason: "Acme backs hackathons that teach hardware.", passage: 5, quote: ASK_Q },
+        ...over,
+      }),
+    );
+  const sectionsWeb = () => web({ [COMMUNITY]: html(COMMUNITY_HTML) });
+  const askFull = (tenant: Tenant = OWNER) => requestBrief(tenant, companyId, [careersId, communityId], { deps: sectionsWeb().deps, limits: FAST });
+
+  beforeEach(async () => {
+    communityId = await source(COMMUNITY, "Acme community");
+    goldId = ok(await addFact(OWNER, GOLD)).factId;
+    ok(await addFact(OWNER, "We have 400 members across three campuses"));
+  });
+
+  it("gives a READY brief with every section, each linking only to the fetched page it quotes", async () => {
+    fakeGemini(fullReading(), writing());
+    const brief = ok(await askFull(OFFICER));
+    expect(brief.status).toBe("READY");
+    expect(brief.items.map((i) => [i.id, i.title, i.url])).toEqual([["i1", "University Relations team", CAREERS]]);
+    expect(brief.ties).toEqual([{ id: "t1", title: "Purdue design challenge", detail: "A spring design challenge with Purdue University students.", page: 2, quote: TIE_Q, url: COMMUNITY, accepted: false }]);
+    expect(brief.flags).toEqual([{ id: "r1", kind: "OTHER", title: "No money for individual student travel", page: 2, quote: FLAG_Q, url: COMMUNITY, accepted: false }]);
+    expect(brief.hook).toEqual({ id: "h1", line: "Acme opened a new plant in Lafayette in 2024.", page: 2, quote: HOOK_Q, url: COMMUNITY, accepted: false });
+    expect(brief.ask).toEqual({ id: "a1", factId: goldId, factText: GOLD, reason: "Acme backs hackathons that teach hardware.", page: 2, quote: ASK_Q, url: COMMUNITY, accepted: false, changed: false, old: false });
+    // Still two AI calls, no more.
+    expect((await runs()).map((r) => r.feature)).toEqual(["RESEARCH_READ", "RESEARCH_BRIEF"]);
+  });
+
+  it("drops a passage with an invalid door or a DOOR passage with no door, and keeps a campus tie with no door", async () => {
+    fakeGemini(
+      answer(
+        JSON.stringify({
+          passages: [
+            { page: 1, topic: "DOOR", door: "BACK_DOOR", quote: DOOR_Q },
+            { page: 1, topic: "DOOR", quote: DOOR_Q },
+            { page: 2, topic: "CAMPUS_TIE", quote: TIE_Q },
+          ],
+        }),
+      ),
+      writing({ items: [], flags: [], hook: null, ask: null, ties: [{ title: "Purdue design challenge", detail: "A spring design challenge with Purdue University students.", passage: 1, quote: TIE_Q }] }),
+    );
+    const brief = ok(await askFull());
+    expect(promptOf(1)).not.toContain(DOOR_Q);
+    expect(promptOf(1)).toContain('topic=\\"CAMPUS_TIE\\">');
+    expect(brief.items).toEqual([]);
+    expect(brief.ties.map((t) => t.title)).toEqual(["Purdue design challenge"]);
+  });
+
+  it("reads an old reply with no topic as doors, and an old stored brief with only items loads with empty sections", async () => {
+    fakeGemini(...GOOD_RUN());
+    const brief = ok(await ask(OWNER, [careersId, givingId]));
+    expect(brief.items).toHaveLength(3);
+    expect(brief).toMatchObject({ ties: [], flags: [], hook: null });
+    await withTenant(OWNER, (tx) => tx.companyBrief.update({ where: { id: brief.id }, data: { brief: { items: [{ id: "i1", door: "OTHER", title: "Old door", detail: "From before.", deadline: null, page: 1, quote: DOOR_Q }] } } }));
+    const old = await latestBrief(OWNER, companyId);
+    expect(old?.items.map((i) => i.title)).toEqual(["Old door"]);
+    expect(old).toMatchObject({ ties: [], flags: [], hook: null, ask: null });
+  });
+
+  it("a broken list of ties drops only the ties: the doors stay and the brief is READY", async () => {
+    fakeGemini(fullReading(), writing({ ties: [{ title: 7 }, { nonsense: true }] }));
+    const brief = ok(await askFull());
+    expect(brief.status).toBe("READY");
+    expect(brief.items).toHaveLength(1);
+    expect(brief.ties).toEqual([]);
+    expect(brief.flags).toHaveLength(1);
+  });
+
+  it("sends the writing call the tier facts only: no other fact, note, contact or email", async () => {
+    fakeGemini(fullReading(), writing());
+    ok(await askFull());
+    const prompt = promptOf(1);
+    expect(prompt).toContain(`<tier number=\\"1\\">${GOLD}</tier>`);
+    for (const secret of ["400 members", "Met them at the fall fair", "Hank", "hank@acme.com", "university.relations@acme.com"]) {
+      expect(prompt).not.toContain(secret);
+    }
+    // The reading call never sees a fact.
+    expect(promptOf(0)).not.toContain("Gold Tier");
+  });
+
+  it("with no tier fact, there is no tiers block and any ask the AI returns is dropped", async () => {
+    ok(await setFactVerified(OWNER, goldId, false));
+    fakeGemini(fullReading(), writing());
+    const brief = ok(await askFull());
+    expect(promptOf(1)).not.toContain("<tiers>");
+    expect(promptOf(1)).toContain("There are no verified tiers, so return ask as null.");
+    expect(brief.ask).toBeNull();
+  });
+
+  it("an ask whose fact is unverified or edited loads as changed and can't be added; one over a year old loads as old and still can", async () => {
+    fakeGemini(fullReading(), writing());
+    const brief = ok(await askFull());
+    ok(await setFactVerified(OWNER, goldId, false));
+    expect((await latestBrief(OWNER, companyId))?.ask).toMatchObject({ changed: true, old: false });
+    expect(await acceptBriefItem(OWNER, companyId, brief.id, "a1")).toEqual({ ok: false, error: "The tier this ask named changed or is no longer verified. Ask for a new brief." });
+    ok(await setFactVerified(OWNER, goldId, true));
+    expect((await latestBrief(OWNER, companyId))?.ask?.changed).toBe(false);
+    ok(await updateFact(OWNER, goldId, "Gold Tier ($3,000): logo on the event shirt"));
+    expect((await latestBrief(OWNER, companyId))?.ask?.changed).toBe(true);
+    ok(await updateFact(OWNER, goldId, GOLD));
+    const longAgo = new Date((await dbNow()).getTime() - 400 * 24 * 60 * 60 * 1000);
+    await withTenant(OWNER, (tx) => tx.factSheetItem.update({ where: { id: goldId }, data: { verifiedAt: longAgo, createdAt: longAgo } }));
+    expect((await latestBrief(OWNER, companyId))?.ask).toMatchObject({ changed: false, old: true });
+    ok(await acceptBriefItem(OWNER, companyId, brief.id, "a1"));
+    expect(await notesOf()).toContain(`Coppice brief, suggested ask: ${GOLD}. Why: Acme backs hackathons that teach hardware. Source: ${COMMUNITY}`);
+  });
+
+  it("a newer brief with only a red flag counts as a finding, so it replaces an earlier brief", async () => {
+    fakeGemini(...GOOD_RUN());
+    ok(await ask(OWNER, [careersId, givingId]));
+    fakeGemini(fullReading(), writing({ items: [], ties: [], hook: null, ask: null }));
+    const onlyFlag = ok(await askFull(OFFICER));
+    expect(onlyFlag.items).toEqual([]);
+    expect(await latestBrief(OWNER, companyId)).toMatchObject({ id: onlyFlag.id, newer: null, flags: [{ id: "r1" }] });
+  });
+
+  it("adds a tie, a flag, the hook and the ask as one note line each, with its source, once", async () => {
+    fakeGemini(fullReading(), writing());
+    const brief = ok(await askFull());
+    for (const id of ["t1", "r1", "h1", "a1"]) {
+      ok(await acceptBriefItem(OFFICER, companyId, brief.id, id));
+      ok(await acceptBriefItem(OFFICER, companyId, brief.id, id));
+    }
+    expect((await notesOf())?.split("\n")).toEqual([
+      "Met them at the fall fair.",
+      `Coppice brief, campus tie: Purdue design challenge. A spring design challenge with Purdue University students. Source: ${COMMUNITY}`,
+      `Coppice brief, red flag (Other): No money for individual student travel. Source: ${COMMUNITY}`,
+      `Coppice brief, outreach hook: Acme opened a new plant in Lafayette in 2024. Source: ${COMMUNITY}`,
+      `Coppice brief, suggested ask: ${GOLD}. Why: Acme backs hackathons that teach hardware. Source: ${COMMUNITY}`,
+    ]);
+    const shown = await latestBrief(OWNER, companyId);
+    expect([shown?.ties[0].accepted, shown?.flags[0].accepted, shown?.hook?.accepted, shown?.ask?.accepted]).toEqual([true, true, true, true]);
+    const stored = await withTenant(OWNER, (tx) => tx.companyBrief.findUniqueOrThrow({ where: { id: brief.id }, select: { accepted: true } }));
+    expect(stored.accepted).toEqual(["t1", "r1", "h1", "a1"]);
+  });
+
+  it("another workspace can't accept a section", async () => {
+    fakeGemini(fullReading(), writing());
+    const brief = ok(await askFull());
+    await prisma.workspace.update({ where: { id: "b" }, data: { aiEnabled: true } });
+    for (const id of ["t1", "r1", "h1", "a1"]) {
+      expect(await acceptBriefItem(OTHER_ORG, companyId, brief.id, id)).toEqual({ ok: false, error: "Brief not found." });
+    }
+    expect(await notesOf()).toBe("Met them at the fall fair.");
+  });
+
+  it("still needs only two AI calls left, and still logs exactly two", async () => {
+    await prisma.workspace.update({ where: { id: "a" }, data: { aiMonthlyLimit: 2 } });
+    fakeGemini(fullReading(), writing());
+    ok(await askFull());
+    expect(await runs()).toHaveLength(2);
+    expect((await askFull()).ok).toBe(false);
   });
 });

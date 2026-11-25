@@ -441,7 +441,7 @@ function registerKnowledgeTools(server: McpServer, principal: McpPrincipal) {
     {
       title: "Add a brief item to the notes",
       description:
-        "Add one item of a research brief that someone already requested in Coppice to the company's notes. Needs AI on, an open company and, for officers, no one else's live claim. You cannot ask for a brief.",
+        "Add one item of a research brief that someone already requested in Coppice (a door, campus tie, red flag, the outreach hook or the suggested ask) to the company's notes. A suggested ask whose tier fact changed is refused. Needs AI on, an open company and, for officers, no one else's live claim. You cannot ask for a brief.",
       inputSchema: mcpAcceptBriefItemSchema,
       annotations: { ...ACTION, idempotentHint: true },
       scopeChallenge: needsWrite,

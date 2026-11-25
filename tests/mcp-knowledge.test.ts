@@ -705,6 +705,58 @@ describe("accept_brief_item", () => {
     expect(await notesOf(id)).toContain("Coppice brief, team inbox: giving@acme.example.com.");
   });
 
+  it("takes the ids of every section (t1, r1, h1, a1), once each, and refuses an ask whose fact changed", async () => {
+    const id = await company(`Acme ${++made}`, { notes: "Met them at the fair." });
+    const { briefId, factId } = await withTenant(OWNER_A, async (tx) => {
+      const fact = await tx.factSheetItem.create({
+        data: { workspaceId: "a", source: "MANUAL", text: "Gold Tier ($2,500)", createdById: "ownerA", verifiedAt: new Date(), verifiedById: "ownerA" },
+        select: { id: true },
+      });
+      const brief = await tx.companyBrief.create({
+        data: {
+          workspaceId: "a",
+          companyId: id,
+          createdById: "officerA",
+          status: "READY",
+          brief: {
+            items: [],
+            ties: [{ id: "t1", title: "Purdue design challenge", detail: "With Purdue University students.", page: 1, quote: "q1" }],
+            flags: [{ id: "r1", kind: "ELIGIBILITY", title: "Only registered nonprofits", page: 1, quote: "q2" }],
+            hook: { id: "h1", line: "Acme opened a plant in Lafayette.", page: 1, quote: "q3" },
+            ask: { id: "a1", factId: fact.id, factText: "Gold Tier ($2,500)", reason: "Acme backs hackathons.", page: 1, quote: "q4" },
+          },
+        },
+        select: { id: true },
+      });
+      await tx.companyBriefPage.create({ data: { workspaceId: "a", briefId: brief.id, position: 1, url: "https://acme.example.com/giving", finalUrl: "https://acme.example.com/giving" } });
+      return { briefId: brief.id, factId: fact.id };
+    });
+    for (const itemId of ["t1", "r1", "h1", "a1"]) {
+      expect(await json("officerA", "accept_brief_item", { companyId: id, briefId, itemId })).toMatchObject({ added: true, alreadyThere: false });
+      expect(await json("officerA", "accept_brief_item", { companyId: id, briefId, itemId })).toMatchObject({ added: false, alreadyThere: true });
+    }
+    expect(await activityRows("a", "officerA")).toHaveLength(4);
+    expect((await notesOf(id))?.split("\n").slice(1)).toEqual([
+      "Coppice brief, campus tie: Purdue design challenge. With Purdue University students. Source: https://acme.example.com/giving",
+      "Coppice brief, red flag (Eligibility rules): Only registered nonprofits. Source: https://acme.example.com/giving",
+      "Coppice brief, outreach hook: Acme opened a plant in Lafayette. Source: https://acme.example.com/giving",
+      "Coppice brief, suggested ask: Gold Tier ($2,500). Why: Acme backs hackathons. Source: https://acme.example.com/giving",
+    ]);
+    // A second company's ask, after its fact was edited: refused, nothing written.
+    const other = await company(`Acme ${++made}`, { notes: "Fresh." });
+    const otherBrief = await withTenant(OWNER_A, async (tx) => {
+      await tx.factSheetItem.update({ where: { id: factId }, data: { text: "Gold Tier ($3,000)" } });
+      const brief = await tx.companyBrief.create({
+        data: { workspaceId: "a", companyId: other, createdById: "officerA", status: "READY", brief: { items: [], ask: { id: "a1", factId, factText: "Gold Tier ($2,500)", reason: "Acme backs hackathons.", page: 1, quote: "q4" } } },
+        select: { id: true },
+      });
+      await tx.companyBriefPage.create({ data: { workspaceId: "a", briefId: brief.id, position: 1, url: "https://acme.example.com/giving", finalUrl: "https://acme.example.com/giving" } });
+      return brief.id;
+    });
+    expect(said(await callAs("officerA", "accept_brief_item", { companyId: other, briefId: otherBrief, itemId: "a1" }))).toMatch(/tier this ask named changed/);
+    expect(await notesOf(other)).toBe("Fresh.");
+  });
+
   it("keeps the notes from before as a previous version made by the assistant", async () => {
     const { id, briefId } = await setup();
     await json("officerA", "accept_brief_item", { companyId: id, briefId, itemId: "i1" });

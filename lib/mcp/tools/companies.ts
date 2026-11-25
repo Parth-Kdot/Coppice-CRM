@@ -210,6 +210,24 @@ export async function getCompany(principal: McpPrincipal, args: z.infer<typeof m
           })),
           // Team inboxes the brief found (careers@ and the like), with the ids accept_brief_item takes.
           inboxes: brief.inboxes.map((i) => ({ id: i.id, address: untrusted(i.email), url: untrusted(i.url), accepted: i.accepted })),
+          // The brief's other sections, each quoting the fetched page it links to. The ask's tier is
+          // the verified fact's own text; `changed` means that fact was edited or unverified since
+          // (it can't be added), `old` that it was last verified over a year ago.
+          ties: brief.ties.map((t) => ({ id: t.id, title: untrusted(t.title), detail: untrusted(t.detail), quote: untrusted(t.quote), url: untrusted(t.url), accepted: t.accepted })),
+          flags: brief.flags.map((f) => ({ id: f.id, kind: f.kind, title: untrusted(f.title), quote: untrusted(f.quote), url: untrusted(f.url), accepted: f.accepted })),
+          hook: brief.hook ? { id: brief.hook.id, line: untrusted(brief.hook.line), quote: untrusted(brief.hook.quote), url: untrusted(brief.hook.url), accepted: brief.hook.accepted } : null,
+          ask: brief.ask
+            ? {
+                id: brief.ask.id,
+                tier: untrusted(brief.ask.factText),
+                reason: untrusted(brief.ask.reason),
+                quote: untrusted(brief.ask.quote),
+                url: untrusted(brief.ask.url),
+                accepted: brief.ask.accepted,
+                changed: brief.ask.changed,
+                old: brief.ask.old,
+              }
+            : null,
         }
       : null,
     yourRecentDrafts: drafts.map((d) => ({ id: d.id, kind: d.kind, angle: untrusted(d.angle), subject: untrusted(d.subject), body: untrusted(d.body), createdAt: iso(d.createdAt) })),

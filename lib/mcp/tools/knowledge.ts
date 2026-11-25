@@ -8,6 +8,7 @@ import { notFoundMessage } from "@/lib/messages";
 import { fill, placeholderProblem, type Names } from "@/lib/placeholders";
 import { acceptBriefItem } from "@/lib/research/accept";
 import { loadBrief } from "@/lib/research/brief";
+import { isAccepted } from "@/lib/research/sections";
 import { addSource, archiveSource, listSources, renameSource } from "@/lib/research/sources";
 import { parseSourceUrl, SKIP_MESSAGES } from "@/lib/research/urls";
 import { STAGE_LABELS, TERMINAL_STAGES } from "@/lib/stages";
@@ -333,7 +334,7 @@ export async function acceptBriefItemTool(principal: McpPrincipal, args: z.infer
   }
   // An item that is already in the notes is accepted again without a change, so it is not logged again.
   const brief = await loadBrief(member, { id: args.briefId, companyId: args.companyId });
-  const already = brief ? [...brief.items, ...brief.inboxes].some((i) => i.id === args.itemId && i.accepted) : false;
+  const already = brief ? isAccepted(brief, args.itemId) : false;
   const result = await acceptBriefItem(member, args.companyId, args.briefId, args.itemId, "ASSISTANT");
   return fromResult(result, async () => {
     if (!already) await recordActivity(principal, member, { tool: "accept_brief_item", action: "updated", companyId: args.companyId });

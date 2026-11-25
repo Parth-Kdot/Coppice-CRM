@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
-import { ActionForm } from "@/components/action-form";
+import { AddToNotes, BriefSections, shortUrl } from "@/components/brief-sections";
 import { focusSoon } from "@/components/ledger/focus";
 import { AiDraftIcon, ExternalIcon, WarningIcon } from "@/components/ledger/icons";
-import { QuillWait, Tick } from "@/components/ledger/marks";
+import { QuillWait } from "@/components/ledger/marks";
 import { ErrorLine } from "@/components/ledger/shared";
 import { when } from "@/lib/dates";
 import { BRIEF_SOURCES_MAX } from "@/lib/limits";
 import type { BriefView } from "@/lib/research/brief";
 import { DOOR_LABELS } from "@/lib/research/doors";
+import { viewHasFindings } from "@/lib/research/sections";
 import type { ActionResult } from "@/lib/validation";
 import "@/components/ledger/company.css";
 import "@/components/ledger/research.css";
@@ -23,6 +24,8 @@ type Props = {
   // The workspace's approved sources; the ones on the company's own domain start ticked.
   sources: Source[];
   isOwner: boolean;
+  // Whether a verified fact names a tier or price, so a suggested ask is possible.
+  hasTierFacts: boolean;
   usage: { used: number; limit: number };
   // The latest brief for this company, whoever asked for it.
   initialBrief: BriefView | null;
@@ -31,9 +34,6 @@ type Props = {
     accept: (prev: ActionResult | null, form: FormData) => Promise<ActionResult>;
   };
 };
-
-// A link's text: the page without its scheme, so the reader sees where it goes.
-const shortUrl = (url: string) => url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 // "Who to contact": asks for a research brief from approved pages and shows the latest one as a
 // suggestion. Each item quotes the page it came from and links to it; nothing reaches the company
@@ -44,10 +44,11 @@ export function BriefPanel(props: Props) {
   const fresh = state?.ok ? state.data : null;
   // The page reloads with the newest brief after a request or an "Add to notes"; a brief this
   // request just returned is shown until then.
-  // A new brief with no item doesn't replace an earlier one that has items: that one stays, with
-  // a line saying what the new request found, and its team inboxes (the server does the same on reload).
-  const freshThin = fresh !== null && fresh.items.length === 0;
-  const initialUseful = props.initialBrief !== null && props.initialBrief.items.length > 0;
+  // A new brief that found nothing in any section doesn't replace an earlier one that did: that one
+  // stays, with a line saying what the new request found, and its team inboxes (the server does the
+  // same on reload).
+  const freshThin = fresh !== null && !viewHasFindings(fresh);
+  const initialUseful = props.initialBrief !== null && viewHasFindings(props.initialBrief);
   const newerThanInitial = fresh !== null && (!props.initialBrief || fresh.createdAt > props.initialBrief.createdAt);
   const brief =
     fresh && newerThanInitial && !(freshThin && initialUseful)
@@ -171,25 +172,10 @@ export function BriefPanel(props: Props) {
 
 type CardProps = Props & { brief: BriefView };
 
-// "Add to notes" for one item or inbox, or a mark once it is in the notes.
-function AddToNotes({ itemId, accepted, brief, ...props }: CardProps & { itemId: string; accepted: boolean }) {
-  if (accepted) {
-    return (
-      <p className="lg-brief-added">
-        <Tick size={18} />
-        In the notes
-      </p>
-    );
-  }
-  return (
-    <ActionForm action={props.actions.accept} submitLabel="Add to notes" successMessage="Added to the notes." small>
-      <input type="hidden" name="workspaceId" value={props.workspaceId} />
-      <input type="hidden" name="companyId" value={props.companyId} />
-      <input type="hidden" name="briefId" value={brief.id} />
-      <input type="hidden" name="itemId" value={itemId} />
-    </ActionForm>
-  );
-}
+// "Add to notes" for one door or inbox of this card.
+const addFor = (props: CardProps, entry: { id: string; accepted: boolean }) => (
+  <AddToNotes workspaceId={props.workspaceId} companyId={props.companyId} accept={props.actions.accept} briefId={props.brief.id} itemId={entry.id} accepted={entry.accepted} />
+);
 
 function BriefCard(props: CardProps) {
   const { brief } = props;
@@ -249,12 +235,14 @@ function BriefCard(props: CardProps) {
         </div>
       )}
 
-      {brief.items.length === 0 ? (
+      {!viewHasFindings(brief) ? (
         <p className="lg-brief-empty">
           {brief.status === "NO_PAGES"
             ? "None of the pages could be read, so the AI wasn't asked. See why below."
             : "Nothing on these pages checked out as a way in. Try other pages."}
         </p>
+      ) : brief.items.length === 0 ? (
+        <p className="lg-brief-empty">No door was found on these pages.</p>
       ) : (
         <ol className="lg-brief-items">
           {brief.items.map((item) => (
@@ -263,6 +251,7 @@ function BriefCard(props: CardProps) {
         </ol>
       )}
 
+      <BriefSections workspaceId={props.workspaceId} companyId={props.companyId} brief={brief} isOwner={props.isOwner} hasTierFacts={props.hasTierFacts} accept={props.actions.accept} />
       {brief.inboxes.length > 0 && <InboxList {...props} />}
       <PagesRead pages={brief.pages} />
     </article>
@@ -291,7 +280,7 @@ function BriefItemRow({ item, ...props }: CardProps & { item: BriefView["items"]
           </a>
         </footer>
       </blockquote>
-      <AddToNotes {...props} itemId={item.id} accepted={item.accepted} />
+      {addFor(props, item)}
     </li>
   );
 }
@@ -312,7 +301,7 @@ function InboxList(props: CardProps) {
                 </a>
               </span>
             </span>
-            <AddToNotes {...props} itemId={inbox.id} accepted={inbox.accepted} />
+            {addFor(props, inbox)}
           </li>
         ))}
       </ul>
