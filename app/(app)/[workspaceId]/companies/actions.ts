@@ -213,8 +213,9 @@ export async function archiveDuplicate(_prev: ActionResult | null, form: FormDat
   return { ok: true, data: undefined };
 }
 
-// A move into a reply stage (Replied, In conversation, Committed) from any other stage also
-// returns the company's latest outreach, so the page can ask "Which outreach got the reply?".
+// A move into Replied, In conversation or Committed from any other stage, or into Declined from Not
+// contacted or Contacted, also returns the company's latest outreach, so the page can ask which
+// outreach got the reply (lib/stages.ts opensReply). A no counts as a reply.
 export type MoveResult = { replyChoices: ReplyChoice[] } | undefined;
 
 export async function moveStage(_prev: ActionResult<MoveResult> | null, form: FormData): Promise<ActionResult<MoveResult>> {
