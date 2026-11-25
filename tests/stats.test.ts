@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Membership } from "@/lib/authz";
-import { dbNow } from "@/lib/claims";
+import { dbNow, markReply } from "@/lib/claims";
 import { DAY_MS } from "@/lib/dates";
 import { prisma, withTenant } from "@/lib/db";
 import { workspaceStats } from "@/lib/stats";
@@ -21,7 +21,10 @@ import { resetAndSeed } from "./helpers/seed";
 //   small-0..1  G: no template, email, 1 day ago (2nd touch), maturing. No replies.
 //   ai-0..3     H: no template, from AI drafts, 20 days ago, Tech. Replies from ai-0..1.
 // "Spring ask" was never used. Replied stage: good-0 (marked), small-7 (nothing marked), lonely
-// (no outreach at all), and an archived company (left out of the gap count).
+// (no outreach at all), and an archived company (left out of the gap count). Declined: bad-15 (its
+// Cold intro reply marked) and bad-16 (nothing marked). Declined companies stay out of the gap
+// count, so bad-16 doesn't raise it, and a stage alone changes no rate: every number below is the
+// same as before the two were Declined.
 //
 // By hand:
 //   Alumni angle  sent 28, counted 25, replies 15: 60%, Wilson 40.7% to 76.6%. Rated.
@@ -50,7 +53,7 @@ async function seedFixture() {
     await tx.company.createMany({
       data: [
         ...range("bad", 0, 14).map((id) => company(id, "Tech")),
-        ...range("bad", 15, 24).map((id) => company(id, "Energy")),
+        ...range("bad", 15, 24).map((id) => company(id, "Energy", id === "bad-15" || id === "bad-16" ? { stage: "DECLINED" } : {})),
         ...range("good", 0, 14).map((id) => company(id, "Energy", id === "good-0" ? { stage: "REPLIED" } : {})),
         ...range("small", 0, 7).map((id) => company(id, null, id === "small-7" ? { stage: "REPLIED" } : {})),
         ...range("ai", 0, 3).map((id) => company(id, "Tech")),
@@ -147,6 +150,37 @@ describe("workspaceStats", () => {
       ["3rd touch or later", 2, 2, 0],
     ]);
     expect(stats.gaps).toEqual({ noTemplate: 11, repliedUnmarked: 2, maturing: 5 });
+  });
+
+  it("a marked reply on a Declined company counts toward its template", async () => {
+    // bad-16 is Declined with nothing marked. Its only outreach is the Cold intro send, 60 days ago,
+    // which is also its 1st touch. Marking it adds one reply everywhere that send is counted:
+    //   Cold intro    counted 25, replies 2 + 1 = 3: 12%, Wilson 4.17% to 29.96%. Still rated.
+    //   Alumni angle  unchanged, 40.7% to 76.6%, so the ranges still don't overlap: best and worst stay.
+    //   Hand-written  66 sent, 61 counted, 22 + 1 = 23 replies.
+    //   1st touch     52 sent, 52 counted, 18 + 1 = 19 replies. 2nd and 3rd+ unchanged.
+    //   By industry   Cold intro Energy (bad-15..24): 10 sent, 10 counted, 1 + 1 = 2 replies.
+    //   Gaps          bad-16 is Declined, so the replied-but-unmarked count stays 2.
+    expect(await markReply(OWNER, "bad-16", "o-0-bad-16")).toEqual({ ok: true, data: undefined });
+    const stats = await workspaceStats(OWNER);
+    const cold = stats.templates.find((t) => t.key === "t-cold");
+    expect(cold?.stat).toMatchObject({ status: "rated", sent: 25, counted: 25, replies: 3 });
+    expect(cold?.stat.rate).toBeCloseTo(0.12, 6);
+    expect(cold?.stat.interval?.low).toBeCloseTo(0.0417, 4);
+    expect(cold?.stat.interval?.high).toBeCloseTo(0.2996, 4);
+    expect(stats.verdict).toEqual({ best: "t-alumni", worst: "t-cold", rated: 2 });
+    expect(stats.authorship.hand).toMatchObject({ sent: 66, counted: 61, replies: 23 });
+    expect(stats.byTouch.map((p) => [p.label, p.stat.sent, p.stat.counted, p.stat.replies])).toEqual([
+      ["1st touch", 52, 52, 19],
+      ["2nd touch", 18, 13, 6],
+      ["3rd touch or later", 2, 2, 0],
+    ]);
+    expect(stats.gaps.repliedUnmarked).toBe(2);
+    const byIndustry = await workspaceStats(OWNER, "industry");
+    expect(byIndustry.templates.find((t) => t.key === "t-cold")?.parts.map((p) => [p.label, p.stat.sent, p.stat.counted, p.stat.replies])).toEqual([
+      ["Energy", 10, 10, 2],
+      ["Tech", 15, 15, 1],
+    ]);
   });
 
   it("splits each template by industry", async () => {

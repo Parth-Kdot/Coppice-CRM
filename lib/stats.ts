@@ -1,6 +1,6 @@
 import { dbNow } from "@/lib/claims";
 import { withTenant, type Tenant } from "@/lib/db";
-import { REPLY_STAGES } from "@/lib/stages";
+import { ANSWERED_STAGES } from "@/lib/stages";
 import { scorecard, type OutreachRow, type Scorecard, type Split } from "@/lib/stats-math";
 
 // Template stats (the Scorecard): reads the workspace's templates, outreach and companies in three
@@ -33,7 +33,7 @@ export async function workspaceStats(tenant: Tenant, split: Split = "none"): Pro
       select: { id: true, companyId: true, templateId: true, channel: true, sentAt: true, gotReply: true, aiDraftId: true },
     });
     const companies = await tx.company.findMany({
-      where: { workspaceId, OR: [{ outreach: { some: {} } }, { stage: { in: REPLY_STAGES } }] },
+      where: { workspaceId, OR: [{ outreach: { some: {} } }, { stage: { in: ANSWERED_STAGES } }] },
       select: { id: true, industry: true, stage: true, archivedAt: true },
     });
     return { templates, outreach, companies };
@@ -46,7 +46,7 @@ export async function workspaceStats(tenant: Tenant, split: Split = "none"): Pro
       now,
       rows,
       templates: data.templates.map((t) => ({ id: t.id, name: t.name, archived: t.archivedAt !== null })),
-      repliedCompanyIds: data.companies.filter((c) => c.archivedAt === null && REPLY_STAGES.includes(c.stage)).map((c) => c.id),
+      repliedCompanyIds: data.companies.filter((c) => c.archivedAt === null && ANSWERED_STAGES.includes(c.stage)).map((c) => c.id),
     },
     split,
   );
