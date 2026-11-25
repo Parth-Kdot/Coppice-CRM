@@ -1,11 +1,14 @@
 import {
+  authorshipChanceText,
   formatCount,
   formatPct,
   formatRange,
   MATURITY_DAYS,
   MIN_SENDS,
+  pairText,
   TOUCH_LABELS,
   TOUCHES,
+  vsOthersText,
   type Rated,
   type Scorecard,
 } from "@/lib/stats-math";
@@ -103,6 +106,19 @@ export function buildFactTable(card: Scorecard): FactTable {
       what: `templates in use that have ${MIN_SENDS} counted sends, so are rated`,
     },
   );
+  // The chance the two leading rated templates in use differ that way round. Code works it out
+  // (lib/stats-math.ts) and it never changes the verdict.
+  const { chances } = card;
+  if (chances.pair) {
+    const first = nameOf(chances.pair.first) ?? "";
+    const second = nameOf(chances.pair.second) ?? "";
+    facts.push({
+      key: "verdict.pairChance",
+      value: round4(chances.pair.chance),
+      text: pairText(first, second, chances.pair.chance),
+      what: `chance that ${first} has a higher true reply rate than ${second}, the two rated templates in use with the highest reply rates; it never changes the verdict`,
+    });
+  }
   if (activeVerdict.retiredBetter) {
     const { name, rate } = activeVerdict.retiredBetter;
     facts.push({
@@ -125,6 +141,15 @@ export function buildFactTable(card: Scorecard): FactTable {
       { key: `${key}.inUse`, value: t.archived ? "retired" : "in use", text: t.archived ? "retired" : "in use", what: `whether people can still pick ${t.name}` },
       ...statFacts(key, `sends of ${t.name}`, t.stat),
     );
+    const chance = chances.vsOthers[t.key];
+    if (chance !== undefined) {
+      facts.push({
+        key: `${key}.chanceVsOthers`,
+        value: round4(chance),
+        text: vsOthersText(chance),
+        what: `chance that ${t.name} has a higher true reply rate than the other rated templates in use, their counted sends pooled; it never decides best or worst`,
+      });
+    }
   });
 
   facts.push(...statFacts("noTemplate", "sends logged with no template", card.noTemplate.stat));
@@ -139,6 +164,14 @@ export function buildFactTable(card: Scorecard): FactTable {
     text: lead === "ai" ? "AI-drafted emails" : lead === "hand" ? "hand-written emails" : "no clear lead yet",
     what: "which kind of email gets replies more often, named only when the likely ranges do not overlap",
   });
+  if (chances.authorship !== null) {
+    facts.push({
+      key: "authorship.chance",
+      value: round4(chances.authorship),
+      text: authorshipChanceText(chances.authorship),
+      what: "chance that AI-drafted emails have a higher true reply rate than hand-written ones; it never changes the lead",
+    });
+  }
 
   // The three touches, always in order.
   TOUCHES.forEach((touch, i) => {

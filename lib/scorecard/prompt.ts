@@ -12,11 +12,14 @@ import { SCORECARD_MAX_PARAGRAPHS, SCORECARD_MAX_SEGMENTS, SCORECARD_TEXT_MAX } 
 type ExampleSegment = { text: string; fact: null } | { text: null; fact: string };
 const w = (text: string): ExampleSegment => ({ text, fact: null });
 const f = (fact: string): ExampleSegment => ({ text: null, fact });
-export const PROMPT_EXAMPLES: Record<"verdict" | "ratedLine" | "gaps", ExampleSegment[]> = {
+export const PROMPT_EXAMPLES: Record<"verdict" | "ratedLine" | "gaps" | "chance" | "pair", ExampleSegment[]> = {
   // Any state of the verdict: the lead-in, the fact, a full stop. When nothing is rated the chip reads "too early to tell".
   verdict: [w("Right now the verdict is: "), f("verdict.best"), w(".")],
   // A template name chip, then the number chips that belong to it.
   ratedLine: [w("Sends of "), f("t1.name"), w(" got a reply "), f("t1.rate"), w(" of the time, with a likely range of "), f("t1.range"), w(".")],
+  // A chance fact for one template, after its name chip; and the chance for the two leading templates in use.
+  chance: [w("For "), f("t1.name"), w(", the chance figure reads "), f("t1.chanceVsOthers"), w(".")],
+  pair: [w("Of the rated templates in use, the chance figure reads "), f("verdict.pairChance"), w(".")],
   gaps: [w("Gaps in the data: "), f("gaps.noTemplate"), w(" sends have no template and "), f("gaps.maturing"), w(" sends are still too young to count.")],
 };
 // A sentence the prompt asks the model to write in its own words, for a template that is not rated.
@@ -44,7 +47,8 @@ Rules:
 - Every number is a fact segment. Never write a digit, a "%" sign or a number as a word in your own words.
 - ${NEVER_LINE_PREFIX} (a sentence that holds one is left out of the answer): ranking words ${NEVER_WRITTEN.rankings}; number words ${NEVER_WRITTEN.numbers}.
 - To say which template a number belongs to, use that template's name fact (for example t1.name) just before the number's fact. Never type a template's name yourself.
-- Code decides every ranking. Rankings appear only through the verdict.best, verdict.worst and authorship.lead facts. Use those facts as they are.
+- Code decides every ranking and works out every chance. Rankings and chances appear only through the verdict.best, verdict.worst, authorship.lead, tN.chanceVsOthers, verdict.pairChance and authorship.chance facts. Use those facts as they are.
+- A chance fact reads on its own, like a verdict fact: a few words, the fact, a full stop. For example: ${show(PROMPT_EXAMPLES.chance)} or ${show(PROMPT_EXAMPLES.pair)}
 - A verdict fact is a whole answer that reads on its own. Write a few opening words, then the fact, then a full stop, and nothing else around it. This is the shape, and it works whether or not any template is rated: ${show(PROMPT_EXAMPLES.verdict)}
 - A template line looks like this: ${show(PROMPT_EXAMPLES.ratedLine)}
 - The sample rule decides what can be said. A template is rated only once it has rule.minSends counted sends, and a send counts once it is rule.maturityDays days old. For a template that is not rated, say that too few sends have counted so far (for example: "${NOT_RATED_SENTENCE}") and do not talk about its rate. If verdict.best reads "too early to tell", use the verdict fact as in the shape shown earlier and then say that too few sends have counted so far.

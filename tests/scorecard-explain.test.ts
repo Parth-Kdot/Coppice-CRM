@@ -414,6 +414,31 @@ describe("the prompt", () => {
     expect(kept(examples, named).dropped).toBe(0);
   });
 
+  it("shows chance sentences its own checks accept, against a table that has chance facts", () => {
+    // The fixture has a single rated template in use, so it has no chance facts; add them the way buildFactTable would.
+    const withChances: FactTable = {
+      ...table,
+      facts: [
+        ...table.facts,
+        { key: "t1.chanceVsOthers", value: 0.9861, text: "99% chance above the other rated templates", what: "chance" },
+        { key: "verdict.pairChance", value: 0.8916, text: "Alumni angle against Career fair: 89% chance of the higher true reply rate", what: "chance" },
+      ],
+    };
+    // With the verdict sentence too, so code has nothing of its own to add.
+    const examples = reply(PROMPT_EXAMPLES.chance, PROMPT_EXAMPLES.pair, PROMPT_EXAMPLES.verdict);
+    expect(kept(examples, withChances)).toEqual({ text: render(examples.paragraphs), dropped: 0 });
+    expect(render(examples.paragraphs)).toBe(
+      "For [t1.name], the chance figure reads [t1.chanceVsOthers]. / Of the rated templates in use, the chance figure reads [verdict.pairChance]. / Right now the verdict is: [verdict.best].",
+    );
+    // Without those facts the same reply is refused, since it names keys the table lacks.
+    expect(codes(examples)).toContain("unknown_fact");
+  });
+
+  it("puts the chance examples in the prompt text", () => {
+    expect(SCORECARD_SYSTEM).toContain('{"text": null, "fact": "t1.chanceVsOthers"}');
+    expect(SCORECARD_SYSTEM).toContain('{"text": null, "fact": "verdict.pairChance"}');
+  });
+
   it("puts the examples it shows in the prompt text", () => {
     expect(SCORECARD_SYSTEM).toContain('{"text": "Right now the verdict is: ", "fact": null}, {"text": null, "fact": "verdict.best"}, {"text": ".", "fact": null}');
     expect(SCORECARD_SYSTEM).toContain(NOT_RATED_SENTENCE);
