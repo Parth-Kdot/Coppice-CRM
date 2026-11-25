@@ -52,7 +52,7 @@ export function ConfirmCard({
         {!card.legal && card.reason && <p className="lg-askcard-why">{card.reason}</p>}
         {kept && (
           <p className="lg-askcard-why">
-            Which email got the reply?{" "}
+            {card.stage === "DECLINED" ? "If they wrote back, which email got the reply?" : "Which email got the reply?"}{" "}
             <Link href={`${card.href}#outreach`} className="lg-link">
               Open {card.companyName} to mark it
             </Link>

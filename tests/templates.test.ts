@@ -280,7 +280,7 @@ describe("which outreach got the reply", () => {
   const mark = (outreachId: string, user = "officerA", workspaceId = "a", companyId = acme) =>
     asUser(user, () => markReplyAction(null, form({ workspaceId, companyId, outreachId })));
 
-  test.each(["REPLIED", "IN_CONVERSATION", "COMMITTED"])("moving from Contacted to %s asks, listing the company's outreach newest first", async (stage) => {
+  test.each(["REPLIED", "IN_CONVERSATION", "COMMITTED", "DECLINED"])("moving from Contacted to %s asks, listing the company's outreach newest first", async (stage) => {
     const result = await move(stage);
     expect(result).toMatchObject({
       ok: true,
@@ -295,12 +295,31 @@ describe("which outreach got the reply", () => {
 
   test.each([
     ["CONTACTED", "NOT_CONTACTED"],
-    ["CONTACTED", "DECLINED"],
     ["REPLIED", "IN_CONVERSATION"],
     ["IN_CONVERSATION", "COMMITTED"],
+    ["REPLIED", "DECLINED"],
+    ["COMMITTED", "DECLINED"],
+    ["DECLINED", "CONTACTED"],
   ])("moving from %s to %s doesn't ask", async (from, to) => {
     await setStage(acme, from);
     expect(await move(to)).toEqual(OK);
+  });
+
+  it("moving out of Declined into Replied still asks", async () => {
+    await setStage(acme, "DECLINED");
+    expect(await move("REPLIED")).toMatchObject({ ok: true, data: { replyChoices: [{ id: second }, { id: first }] } });
+  });
+
+  it("a Declined company's reply can be marked by any member, since closing cleared the claim", async () => {
+    // The owner holds it, so the officer couldn't mark it while it was open.
+    await withTenant(OWNER, (tx) => tx.$executeRaw`UPDATE "Company" SET "claimedById" = 'ownerA' WHERE id = ${acme}`);
+    await setStage(acme, "CONTACTED");
+    expect(await markReply(OFFICER, acme, first)).toEqual({ ok: false, error: expect.stringMatching(/^This company is Contacted/) });
+    expect(await move("DECLINED", "ownerA")).toMatchObject({ ok: true, data: { replyChoices: [{ id: second }, { id: first }] } });
+    expect(await withTenant(OWNER, (tx) => tx.company.findUniqueOrThrow({ where: { id: acme }, select: { claimedById: true } }))).toEqual({ claimedById: null });
+    expect(await mark(first, "officerA")).toEqual(OK);
+    expect(await mark(first, "ownerA")).toEqual(OK);
+    expect((await outreachRows(acme)).map((o) => o.gotReply)).toEqual([true, false]);
   });
 
   it("doesn't ask when the company has no outreach to pick from", async () => {

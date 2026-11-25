@@ -151,7 +151,9 @@ export type ScorecardInput = {
   now: Date;
   rows: readonly OutreachRow[];
   templates: readonly TemplateInfo[];
-  // Companies in a reply stage (Replied, In conversation, Committed), not archived.
+  // Companies in an answered stage (Replied, In conversation, Committed), not archived. Declined is
+  // left out on purpose: an unmarked decline is often a silent no, and the gap would push people to
+  // mark one anyway.
   repliedCompanyIds: readonly string[];
 };
 

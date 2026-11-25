@@ -1031,6 +1031,17 @@ describe("mark_reply", () => {
     expect((await getCompanyDetail(OWNER_A, id))?.outreach[0].gotReply).toBe(false);
     expect(await activityRows("a")).toEqual([]);
   });
+
+  it("marks a reply on a Declined company, since a no counts as a reply", async () => {
+    const id = await company("Acme");
+    await claimCompany(OWNER_A, id);
+    const logged = await logOutreach(OWNER_A, id, { channel: "EMAIL", note: null, followUpOn: await dbToday() });
+    if (!logged.ok) throw new Error("seed");
+    await changeStage(OWNER_A, id, "DECLINED");
+    expect((await callAs("ownerA", "mark_reply", { companyId: id, outreachId: logged.data.outreachId })).isError).toBeFalsy();
+    expect((await getCompanyDetail(OWNER_A, id))?.outreach[0].gotReply).toBe(true);
+    expect(await activityRows("a")).toHaveLength(1);
+  });
 });
 
 // ----- set_follow_up -----

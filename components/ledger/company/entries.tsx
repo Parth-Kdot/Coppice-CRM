@@ -94,14 +94,15 @@ const toChoice = (o: OutreachData): ReplyChoice => ({
 });
 
 // One "Mark which one got the reply" link for a company in a reply stage, opening the same question
-// a stage move asks (ReplyPrompt), over the latest ten entries.
-function MarkReply({ workspaceId, companyId, companyName, outreach }: { workspaceId: string; companyId: string; companyName: string; outreach: OutreachData[] }) {
+// a stage move asks (ReplyPrompt), over the latest ten entries. On a Declined company the link asks
+// whether they wrote back at all, and the question opens in the Declined wording with nothing picked.
+function MarkReply({ workspaceId, companyId, companyName, outreach, declined }: { workspaceId: string; companyId: string; companyName: string; outreach: OutreachData[]; declined: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <p className="lg-markreply">
         <button type="button" className="lg-linkbtn" onClick={() => setOpen(true)}>
-          Mark which one got the reply
+          {declined ? "Did they write back? Mark the entry they answered" : "Mark which one got the reply"}
         </button>
       </p>
       {open && (
@@ -110,6 +111,7 @@ function MarkReply({ workspaceId, companyId, companyName, outreach }: { workspac
           companyId={companyId}
           companyName={companyName}
           choices={outreach.slice(0, 10).map(toChoice)}
+          declined={declined}
           onDone={() => {
             setOpen(false);
             // The link goes once an entry is marked, so the block's heading takes focus.
@@ -156,6 +158,7 @@ export function OutreachBlock({
   olderHref,
   older,
   canMarkReply,
+  declined = false,
   claimable,
 }: {
   workspaceId: string;
@@ -168,6 +171,8 @@ export function OutreachBlock({
   olderHref: string;
   older: boolean;
   canMarkReply: boolean;
+  // The company is Declined, so the mark link uses the Declined wording.
+  declined?: boolean;
 }) {
   return (
     <section className="lg-block" id="outreach" aria-labelledby="outreach-h">
@@ -182,7 +187,7 @@ export function OutreachBlock({
         </Empty>
       ) : (
         <>
-          {canMarkReply && !outreach.some((o) => o.gotReply) && <MarkReply workspaceId={workspaceId} companyId={companyId} companyName={companyName} outreach={outreach} />}
+          {canMarkReply && !outreach.some((o) => o.gotReply) && <MarkReply workspaceId={workspaceId} companyId={companyId} companyName={companyName} outreach={outreach} declined={declined} />}
           <OutreachList outreach={outreach} total={total} thisYear={thisYear} olderHref={olderHref} older={older} />
         </>
       )}

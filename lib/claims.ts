@@ -413,9 +413,11 @@ export function changeStage(actor: Membership, companyId: string, toStage: Stage
 }
 
 // "Which outreach got the reply?": once a company is in a reply stage (Replied, In conversation,
-// Committed), a person marks the outreach that got the answer, and template stats count it. The
-// outreach must be this company's, in this workspace. Same claim rule as a stage move. Marking only
-// ever sets gotReply; marking the same one twice is fine.
+// Committed or Declined), a person marks the outreach that got the answer, and template stats count
+// it. A no counts as a reply. Closing a company clears its claim and a closed company can't be
+// claimed again, so any member can mark a Declined or Committed company. The outreach must be this
+// company's, in this workspace. Same claim rule as a stage move. Marking only ever sets gotReply;
+// marking the same one twice is fine.
 export function markReply(actor: Membership, companyId: string, outreachId: string): Promise<ActionResult> {
   return withTenant(actor, async (tx) => {
     const row = await readClaim(tx, actor.workspaceId, companyId, { lock: true });

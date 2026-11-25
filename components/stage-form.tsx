@@ -21,8 +21,9 @@ type MoveAction = (prev: ActionResult<MoveResult> | null, form: FormData) => Pro
 // "Move to Replied ▾", opens the stage menu (MoveMenu, the board's own) with every stage. A move
 // forward runs at once. A move backwards (In conversation to Replied) and a move into Committed or
 // Declined ask first: the first undoes progress, the second closes the pitch and releases any claim.
-// A move into a reply stage then asks which outreach got the reply (ReplyPrompt). A refusal (someone
-// else took the company meanwhile) is a toast.
+// A move that opens a reply (lib/stages.ts opensReply) then asks which outreach got the reply
+// (ReplyPrompt), in the Declined wording when the move was into Declined. A refusal (someone else
+// took the company meanwhile) is a toast.
 //
 // <StageMover> wraps the page and holds the menu, the move and the reply question. The button
 // (<MoveToButton>) and the header's ⋯ items ("Move to…", "Reopen…") both open the same menu
@@ -63,7 +64,8 @@ type Props = {
 export function StageMover({ workspaceId, companyId, companyName, stage, action, children }: Props) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [pending, startTransition] = useTransition();
-  const [choices, setChoices] = useState<ReplyChoice[] | null>(null);
+  // The reply question's entries, and whether the move that opened it went into Declined.
+  const [choices, setChoices] = useState<{ list: ReplyChoice[]; declined: boolean } | null>(null);
   const confirm = useConfirm();
   const notify = useNotify();
   // Where focus goes once a move (and its reply question) is done.
@@ -100,7 +102,7 @@ export function StageMover({ workspaceId, companyId, companyName, stage, action,
       // Back to the control that opened the menu, if it stays: a closed company has no Move
       // button, so a move into Committed or Declined (or one made from the ⋯ menu) ends on the ⋯ button.
       after.current = !TERMINAL_STAGES.includes(to) && from?.dataset.tour === "stage-move" ? '[data-tour="stage-move"]' : '[data-tour="company-more"]';
-      if (result.data?.replyChoices) setChoices(result.data.replyChoices);
+      if (result.data?.replyChoices) setChoices({ list: result.data.replyChoices, declined: to === "DECLINED" });
       else startTransition(() => focusSoon(after.current));
     });
   };
@@ -128,7 +130,8 @@ export function StageMover({ workspaceId, companyId, companyName, stage, action,
           workspaceId={workspaceId}
           companyId={companyId}
           companyName={companyName}
-          choices={choices}
+          choices={choices.list}
+          declined={choices.declined}
           onDone={() => {
             setChoices(null);
             focusSoon(after.current);

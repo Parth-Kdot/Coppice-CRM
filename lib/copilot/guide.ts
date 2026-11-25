@@ -83,7 +83,7 @@ export const GUIDE: GuideTopic[] = [
     body: [
       "Every company is in one of six stages: Not contacted, Contacted, Replied, In conversation, Committed or Declined. Logging outreach moves Not contacted to Contacted. You move the others yourself, on the board or the company page.",
       "Committed and Declined are the outcomes. Moving a company there asks first, ends the pitch and releases any claim. A closed company can't be claimed, logged on or given a follow-up date until someone reopens it.",
-      "Moving a company backwards, or reopening a closed one, asks first too. Moving into Replied, In conversation or Committed asks which outreach got the reply, so template stats know what worked.",
+      "Moving a company backwards, or reopening a closed one, asks first too. Moving into Replied, In conversation or Committed, or into Declined from Not contacted or Contacted, asks which outreach got the reply, so template stats know what worked. A no counts as a reply.",
       "A live claim held by someone else blocks a stage move, unless you are an owner. Every move is kept in the company's history.",
     ],
   },

@@ -245,8 +245,8 @@ export default async function StatsPage({ params, searchParams }: PageProps<"/[w
             </div>
           </dl>
           <p className="lg-hint mt-2">
-            A replied company with no reply marked counts as a miss for every template it got. Open it and press &ldquo;This got the reply&rdquo; on the right
-            entry.
+            A replied company with no reply marked counts as a miss for every template it got. Open it, press &ldquo;Mark which one got the reply&rdquo; and pick
+            the right entry.
           </p>
         </Disclosure>
       )}
