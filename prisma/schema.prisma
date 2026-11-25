@@ -61,6 +61,8 @@ model User {
   redactionsMade           ArchiveRedaction[]
   // Previous versions this person replaced.
   previousVersionsReplaced PreviousVersion[]     @relation("PreviousVersionReplacedBy")
+  // Monday briefs this person's queue view started writing.
+  weeklyBriefsStarted      WeeklyBrief[]
 
   @@unique([email])
   @@map("user")
@@ -163,6 +165,8 @@ model Workspace {
   // MCP: what assistants changed.
   assistantActivity   AssistantActivity[]
   previousVersions    PreviousVersion[]
+  // The Monday brief, one row a week.
+  weeklyBriefs        WeeklyBrief[]
 
   @@unique([slug])
   @@map("workspace")
@@ -673,6 +677,8 @@ enum AiFeature {
   // Time Capsule (Groq): relationship cards read from notes, and Ask the Archive.
   CAPSULE_CARDS
   ARCHIVE_ASK
+  // The Monday brief on the queue home (Groq): sentences around the week's counts, once per workspace a week.
+  WEEKLY_BRIEF
 }
 
 enum AiRunStatus {
@@ -1285,4 +1291,42 @@ model PreviousVersion {
   @@index([replacedAt])
   @@index([contactId, companyId, workspaceId])
   @@index([replacedById])
+}
+
+// ----- The Monday brief (Ask Coppice, AI feature 6) -----
+
+enum WeeklyBriefStatus {
+  WRITING
+  READY
+  FAILED
+}
+
+// One Monday brief per workspace per week (lib/weekly-brief), shared by every member. Code works out
+// the week's counts (`facts`, frozen when written) and the model's sentences around them are stored
+// as checked `paragraphs`. A quiet week is READY with no paragraphs and no model. A failed try keeps
+// only a short error code. Rows older than eight weeks are deleted when a new week's row is written.
+model WeeklyBrief {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  // The Monday that starts the week, as a calendar date in West Lafayette ("2026-11-23").
+  weekStart        String
+  status           WeeklyBriefStatus
+  facts            Json?
+  paragraphs       Json?
+  droppedSentences Int               @default(0)
+  model            String?
+  error            String?
+  // Tries made this week, at most three (a CHECK allows up to ten).
+  attempts         Int               @default(0)
+  startedById      String
+  // From the database clock (dbNow), as the 2-minute and 15-minute waits are measured against it.
+  startedAt        DateTime          @db.Timestamptz(3)
+  writtenAt        DateTime?         @db.Timestamptz(3)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  startedBy User      @relation(fields: [startedById], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, weekStart])
+  @@index([startedById])
 }

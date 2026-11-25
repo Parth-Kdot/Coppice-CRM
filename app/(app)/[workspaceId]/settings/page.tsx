@@ -1,4 +1,5 @@
 import { CAPSULE_PRIVACY } from "@/lib/capsule/limits";
+import { WEEKLY_BRIEF_PRIVACY } from "@/lib/weekly-brief/privacy";
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
 import { AssistantActivityList } from "@/components/ledger/assistant-activity";
@@ -288,6 +289,7 @@ export default async function SettingsPage({ params }: PageProps<"/[workspaceId]
               facts, templates and stats, goes to the company behind it, and Coppice&apos;s masking does not apply.
             </p>
             <p className="max-w-[66ch]">{CAPSULE_PRIVACY}</p>
+            <p className="max-w-[66ch]">{WEEKLY_BRIEF_PRIVACY}</p>
           </Disclosure>
           {isOwner && (
             <ActionForm

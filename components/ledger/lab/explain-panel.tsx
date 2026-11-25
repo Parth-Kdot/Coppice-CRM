@@ -131,7 +131,7 @@ export function ExplainPanel({ workspaceId, paragraphs, written, changed, droppe
 
 // A number (or a name) the page's own facts hold. A button, so it works by keyboard and on touch:
 // pressing it spells out what the number is.
-function FactChip({ segment, pressed, onPress }: { segment: Extract<ExplainSegment, { kind: "fact" }>; pressed: boolean; onPress: () => void }) {
+export function FactChip({ segment, pressed, onPress }: { segment: Extract<ExplainSegment, { kind: "fact" }>; pressed: boolean; onPress: () => void }) {
   const id = useId();
   const kind = segment.key.endsWith(".name") ? "name" : "number";
   return (

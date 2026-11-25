@@ -1006,6 +1006,8 @@ export const scorecardReplySchema = z.object({
     .max(SCORECARD_MAX_PARAGRAPHS),
 });
 export type ScorecardReply = z.output<typeof scorecardReplySchema>;
+// The Monday brief's reply (lib/weekly-brief): the same shape, checked by the same code.
+export const weeklyBriefReplySchema = scorecardReplySchema;
 
 // The Template Lab's variants. A variant over its limits is dropped on its own (a summary is cut
 // to fit) instead of losing the whole reply; code checks each one that is left (lib/template-lab/check.ts).
